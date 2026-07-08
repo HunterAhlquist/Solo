@@ -1,0 +1,9 @@
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex flex-column align-center justify-center" Style="height:100vh;gap:1rem">
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    <MudText Typo="Typo.body1" Color="Color.Secondary">@Message</MudText>
+</MudContainer>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Message { get; set; }
+}

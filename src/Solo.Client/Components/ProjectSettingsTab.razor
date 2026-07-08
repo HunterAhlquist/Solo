@@ -1,0 +1,115 @@
+@inject ApiClient Api
+@inject ProjectNavStore Nav
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudPaper Elevation="1" Class="pa-4" Style="max-width:32rem">
+    <MudText Typo="Typo.h4" Class="mb-4">Project</MudText>
+
+    @* Edits commit on blur, never per keystroke. *@
+    <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Immediate="false" OnBlur="@SaveAsync" OnKeyDown="@OnKeyDown" Class="mb-3" />
+    <IconPicker Value="@_icon" ValueChanged="@OnIconChanged" />
+
+    <MudDivider Class="my-6" />
+
+    <MudText Typo="Typo.h4" Color="Color.Error" Class="mb-2">Danger zone</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+        Deleting a project removes its boards, tasks and history. There is no undo.
+    </MudText>
+    <MudButton Variant="Variant.Outlined" Color="Color.Error"
+               StartIcon="@Icons.Material.Filled.Delete" OnClick="@DeleteAsync">
+        Delete project
+    </MudButton>
+</MudPaper>
+
+@code {
+    private string _name = string.Empty;
+    private string? _icon;
+
+    [Parameter, EditorRequired]
+    public required ProjectDto Project { get; set; }
+
+    [Parameter]
+    public EventCallback<ProjectDto> OnSaved { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _name = Project.Name;
+        _icon = Project.Icon;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SaveAsync();
+        }
+    }
+
+    /// <summary>Dropdown selection is itself a save event.</summary>
+    private async Task OnIconChanged(string? icon)
+    {
+        _icon = icon;
+        await SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || (_name == Project.Name && _icon == Project.Icon))
+        {
+            return;
+        }
+
+        try
+        {
+            var updated = await Api.UpdateProjectAsync(Project.Id, new UpdateProjectRequest
+            {
+                Name = _name.Trim(),
+                Icon = _icon,
+                Version = Project.Version,
+            });
+            await OnSaved.InvokeAsync(updated);
+            await Nav.RefreshProjectsAsync();
+        }
+        catch (ApiConflictException)
+        {
+            Snackbar.Add("Updated by someone else — your view was refreshed.", Severity.Info);
+            await OnSaved.InvokeAsync(await Api.GetProjectAsync(Project.Id));
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
+            _name = Project.Name;
+            _icon = Project.Icon;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            "Delete project",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message, $"Permanently delete \"{Project.Name}\" and everything in it?" },
+                { d => d.ConfirmText, "Delete forever" },
+            });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteProjectAsync(Project.Id);
+            await Nav.RefreshProjectsAsync();
+            Navigation.NavigateTo("");
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't delete the project.", Severity.Error);
+        }
+    }
+}

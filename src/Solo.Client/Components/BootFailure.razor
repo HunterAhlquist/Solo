@@ -1,0 +1,18 @@
+@*
+    The instance couldn't be reached at startup. There's no router, no theme and
+    no auth yet — keep this dependency-free.
+*@
+<div style="display:grid;place-content:center;gap:1rem;height:100vh;
+            font-family:system-ui,sans-serif;background:#1a1a27;color:#e0e0e6;text-align:center">
+    <h1 style="margin:0;font-size:1.5rem">Can't reach this Solo instance</h1>
+    <p style="margin:0;color:#9a9aa8;max-width:32rem">
+        The server didn't answer the configuration request. If it's still starting up, reload in a moment.
+    </p>
+    <code style="background:#24243a;padding:.5rem .75rem;border-radius:4px;color:#c7c7d4">@Error</code>
+    <a href="." style="color:#8d7ffa">Reload</a>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Error { get; set; }
+}

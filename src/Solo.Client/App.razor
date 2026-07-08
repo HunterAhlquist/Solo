@@ -1,0 +1,42 @@
+@inject AppConfig Config
+
+@if (Config.LoadError is not null)
+{
+    <BootFailure Error="@Config.LoadError" />
+}
+else
+{
+    <CascadingAuthenticationState>
+        <Router AppAssembly="@typeof(App).Assembly">
+            <Found Context="routeData">
+                <SetupGate>
+                    <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                        <NotAuthorized>
+                            @if (context.User.Identity?.IsAuthenticated == true)
+                            {
+                                <MudAlert Severity="Severity.Error" Class="ma-8">
+                                    You don't have access to this page.
+                                </MudAlert>
+                            }
+                            else
+                            {
+                                <RedirectToSignIn />
+                            }
+                        </NotAuthorized>
+                        <Authorizing>
+                            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                        </Authorizing>
+                    </AuthorizeRouteView>
+                </SetupGate>
+                <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+            </Found>
+            <NotFound>
+                <LayoutView Layout="@typeof(MainLayout)">
+                    <MudAlert Severity="Severity.Warning" Class="ma-8">
+                        That page doesn't exist.
+                    </MudAlert>
+                </LayoutView>
+            </NotFound>
+        </Router>
+    </CascadingAuthenticationState>
+}

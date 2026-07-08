@@ -1,0 +1,309 @@
+@page "/setup"
+@layout EmptyLayout
+@inject SetupClient SetupApi
+@inject ApiClient Api
+@inject AppConfig Config
+@inject UserSession Session
+@inject GoogleIdentityService Google
+@inject NavigationManager Navigation
+@inject IJSRuntime Js
+@inject ISnackbar Snackbar
+
+<PageTitle>Set up Solo</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="py-8">
+    <MudPaper Elevation="2" Class="pa-6">
+        <MudText Typo="Typo.h1" Class="mb-1">Set up Solo</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-6">
+            One-time configuration for this instance.
+        </MudText>
+
+        <MudStepper @bind-ActiveIndex="_step"
+                    OnPreviewInteraction="@OnStepInteraction"
+                    ShowResetButton="false"
+                    ShowSkip="false"
+                    Class="mt-2">
+            <ChildContent>
+
+                @* -- 1. Prove you're the operator ------------------------------- *@
+                <MudStep Title="Operator credentials" @bind-Completed="_credentialsDone">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        The static credentials from this instance's environment
+                        (<code>Setup__Username</code> / <code>Setup__Password</code>).
+                        They stop working the moment setup completes.
+                    </MudText>
+                    <MudTextField @bind-Value="_username" Label="Setup username" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Class="mb-3" Immediate="false" />
+                    <MudTextField @bind-Value="_password" Label="Setup password" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" InputType="InputType.Password" Immediate="false" />
+                </MudStep>
+
+                @* -- 2. Instance settings --------------------------------------- *@
+                <MudStep Title="Retention" @bind-Completed="_settingsDone">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        How long to keep the audit trail. You can change this later in instance settings.
+                    </MudText>
+                    <MudNumericField @bind-Value="_retentionDays" Label="Audit retention (days)"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="3650" />
+                </MudStep>
+
+                @* -- 3. Sign in with the real identity provider ----------------- *@
+                <MudStep Title="Sign in" @bind-Completed="_signedIn">
+                    @if (!Config.ProviderConfigured)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true">
+                            No identity provider is configured. Set <code>Auth__Authority</code>,
+                            <code>Auth__ClientId</code> and <code>Auth__Provider</code> on the server, restart it,
+                            then reload this page.
+                        </MudAlert>
+                    }
+                    else if (_signedIn)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true">
+                            Signed in as <strong>@_signedInName</strong>.
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                            Sign in with @Config.ProviderName. This account becomes the instance's super admin.
+                        </MudText>
+
+                        @if (Config.IsGoogle)
+                        {
+                            @* No redirect, so the wizard keeps its place. *@
+                            <GoogleSignInButton OnSignedIn="@OnGoogleSignedInAsync" />
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@BeginSignIn">
+                                Continue with @Config.ProviderName
+                            </MudButton>
+                        }
+                    }
+                </MudStep>
+
+                @* -- 4. Handoff ------------------------------------------------- *@
+                <MudStep Title="Finish">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        Confirm the setup credentials once more. This grants
+                        <strong>@_signedInName</strong> super admin and permanently disables the static account.
+                    </MudText>
+                    <MudTextField @bind-Value="_username" Label="Setup username" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Class="mb-3" Immediate="false" />
+                    <MudTextField @bind-Value="_password" Label="Setup password" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" InputType="InputType.Password" Immediate="false" />
+                </MudStep>
+            </ChildContent>
+
+            <CompletedContent>
+                <MudAlert Severity="Severity.Success" Class="my-4">
+                    Solo is ready. Taking you to your projects…
+                </MudAlert>
+            </CompletedContent>
+        </MudStepper>
+
+        @if (_busy)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-4" />
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private const string StepStorageKey = "solo.setup.step";
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private int _step;
+    private bool _credentialsDone;
+    private bool _settingsDone;
+    private bool _signedIn;
+    private bool _busy;
+    private string _username = string.Empty;
+    private string _password = string.Empty;
+    private string _signedInName = "this account";
+    private int _retentionDays = 90;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The sign-in step round-trips through the identity provider, which
+        // reloads the app and wipes component state. Only the step index is
+        // restored — the static credentials are deliberately never persisted;
+        // the final step asks for them again, which is the point of the handoff.
+        if (AuthenticationStateTask is not null)
+        {
+            var user = (await AuthenticationStateTask).User;
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _signedInName = user.Identity.Name ?? "this account";
+                _credentialsDone = true;
+                _settingsDone = true;
+                _signedIn = true;
+                _step = 3;
+                return;
+            }
+        }
+
+        var stored = await Js.InvokeAsync<string?>("solo.storage.getSession", StepStorageKey);
+        if (int.TryParse(stored, out var step) && step is >= 0 and <= 2)
+        {
+            _step = step;
+            _credentialsDone = step > 0;
+            _settingsDone = step > 1;
+        }
+    }
+
+    /// <summary>
+    /// Each "Next" is a real API call — the wizard never advances past a step it
+    /// couldn't actually perform.
+    /// </summary>
+    /// <remarks>
+    /// MudStepper's Next button raises <see cref="StepAction.Complete"/> for the
+    /// step you are <em>leaving</em>, not <see cref="StepAction.Activate"/> for the
+    /// one you're entering — <c>Activate</c> only fires when a step header is
+    /// clicked directly. So the work is dispatched on <c>args.StepIndex</c>, which
+    /// is the current step.
+    /// </remarks>
+    private async Task OnStepInteraction(StepperInteractionEventArgs args)
+    {
+        switch (args.Action)
+        {
+            case StepAction.Complete:
+                args.Cancel = !await LeaveStepAsync(args.StepIndex);
+                if (!args.Cancel)
+                {
+                    await RememberStepAsync(args.StepIndex + 1);
+                }
+
+                break;
+
+            case StepAction.Activate:
+                // Clicking a step header: back is always fine, forward only into
+                // work already done.
+                args.Cancel = args.StepIndex > _step && !CanJumpTo(args.StepIndex);
+                break;
+        }
+    }
+
+    /// <summary>Performs the step being left. False cancels the transition.</summary>
+    private Task<bool> LeaveStepAsync(int stepIndex) => stepIndex switch
+    {
+        0 => VerifyCredentialsAsync(),
+        1 => SaveSettingsAsync(),
+        2 => RequireSignedIn(),
+        3 => CompleteAsync(),
+        _ => Task.FromResult(true),
+    };
+
+    private bool CanJumpTo(int stepIndex) => stepIndex switch
+    {
+        1 => _credentialsDone,
+        2 => _settingsDone,
+        3 => _signedIn,
+        _ => true,
+    };
+
+    private Task<bool> RequireSignedIn()
+    {
+        if (!_signedIn)
+        {
+            Snackbar.Add($"Sign in with {Config.ProviderName} first.", Severity.Info);
+        }
+
+        return Task.FromResult(_signedIn);
+    }
+
+    /// <summary>
+    /// The sign-in step round-trips through the provider and reloads the app, so
+    /// the wizard's position (never the credentials) survives in session storage.
+    /// </summary>
+    private async Task RememberStepAsync(int stepIndex) =>
+        await Js.InvokeVoidAsync("solo.storage.setSession", StepStorageKey, stepIndex.ToString());
+
+    private Task<bool> VerifyCredentialsAsync() => RunAsync(async () =>
+    {
+        if (await SetupApi.VerifyAsync(_username, _password))
+        {
+            _credentialsDone = true;
+            return true;
+        }
+
+        Snackbar.Add("Those setup credentials were rejected.", Severity.Error);
+        return false;
+    });
+
+    private Task<bool> SaveSettingsAsync() => RunAsync(async () =>
+    {
+        await SetupApi.UpdateSettingsAsync(_username, _password, _retentionDays);
+        _settingsDone = true;
+        return true;
+    });
+
+    private void BeginSignIn() =>
+        Navigation.NavigateToLogin("authentication/login", new InteractiveRequestOptions
+        {
+            Interaction = InteractionType.SignIn,
+            ReturnUrl = Navigation.ToAbsoluteUri("setup").ToString(),
+        });
+
+    /// <summary>
+    /// Google signs in without leaving the page, so the wizard simply marks the
+    /// step done and moves on — no reload, no restored step index.
+    /// </summary>
+    /// <remarks>
+    /// Read the credential straight from the service: the cascading
+    /// authentication state re-emits asynchronously and may still be anonymous
+    /// at this instant.
+    /// </remarks>
+    private async Task OnGoogleSignedInAsync()
+    {
+        var principal = GoogleJwt.ToPrincipal(await Google.GetTokenAsync());
+        _signedInName = principal?.Identity?.Name ?? "this account";
+        _signedIn = true;
+        StateHasChanged();
+    }
+
+    private Task<bool> CompleteAsync() => RunAsync(async () =>
+    {
+        var user = await Api.CompleteSetupAsync(new CompleteSetupRequest
+        {
+            SetupUsername = _username,
+            SetupPassword = _password,
+        });
+
+        Session.Replace(user);
+
+        // Flip the flag in-process so SetupGate stops trapping every route here.
+        Config.SetupCompleted = true;
+        await Js.InvokeVoidAsync("solo.storage.removeSession", StepStorageKey);
+
+        await Task.Delay(700);
+        Navigation.NavigateTo("", replace: true);
+        return true;
+    });
+
+    private async Task<bool> RunAsync(Func<Task<bool>> action)
+    {
+        _busy = true;
+        try
+        {
+            return await action();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? e.Title ?? "That step failed.", Severity.Error);
+            return false;
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Couldn't reach the server.", Severity.Error);
+            return false;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

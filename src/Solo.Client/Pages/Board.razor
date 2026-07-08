@@ -1,0 +1,567 @@
+@page "/projects/{ProjectId:guid}/boards/{BoardId:guid}"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject BoardStore Store
+@inject IBoardHubClient Hub
+@inject UserSession Session
+@inject SaveGuard Guard
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Store.Board?.Name ?? "Board") · Solo</PageTitle>
+
+@if (Store.Board is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <div class="d-flex align-center mb-3" style="gap:.75rem">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
+                       Href="@($"projects/{ProjectId}")" aria-label="Back to project" />
+        <MudIcon Icon="@SoloIcons.Resolve(Store.Board.Icon)" Color="Color.Primary" />
+        <MudText Typo="Typo.h1">@Store.Board.Name</MudText>
+
+        @if (!Store.Board.IsOpen)
+        {
+            <MudChip T="string" Size="Size.Small" Label="true" Color="Color.Default">Closed</MudChip>
+        }
+
+        <MudSpacer />
+        <PresenceCluster Entries="@Store.PresenceOn(EntityTypes.Board, BoardId)" MaxVisible="5" />
+
+        @if (CanWrite)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateEpicAsync">
+                Epic
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => CreateTaskAsync(null))">
+                Task
+            </MudButton>
+        }
+    </div>
+
+    <MudDropContainer T="TaskDto" @ref="_container" Items="@_ordered" Class="kanban"
+                      ItemsSelector="@ShowsTask"
+                      CanDrop="@CanDrop"
+                      ItemDisabled="@(_ => !CanWrite)"
+                      ItemDropped="@OnItemDroppedAsync"
+                      ApplyDropClassesOnDragStarted="true"
+                      CanDropClass="kanban-zone--can-drop"
+                      NoDropClass="kanban-zone--no-drop">
+        <ChildContent>
+
+            <div class="kanban-header">
+                <div></div>
+                @foreach (var status in BoardZones.Statuses)
+                {
+                    <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
+                        @BoardZones.Title(status) (@_ordered.Count(t => t.Status == status))
+                    </MudText>
+                }
+            </div>
+
+            @foreach (var epic in Store.Board.Epics)
+            {
+                <div class="kanban-lane">
+                    <div class="kanban-lane__gutter">
+                        <div class="kanban-lane__title">
+                            <MudIconButton Size="Size.Small" Class="pa-0"
+                                           Icon="@(IsCollapsed(epic.Id) ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
+                                           OnClick="@(() => ToggleCollapsed(epic.Id))"
+                                           aria-label="Collapse epic" />
+                            <MudText Typo="Typo.subtitle2" Class="text-truncate flex-grow-1"
+                                     Style="cursor:pointer" @onclick="@(() => OpenEpic(epic))">
+                                @epic.Name
+                            </MudText>
+                        </div>
+
+                        <div class="d-flex align-center" style="gap:.35rem">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @TasksOfEpic(epic.Id).Count
+                            </MudText>
+                            <MudSpacer />
+                            <PresenceCluster Entries="@Store.PresenceOn(EntityTypes.Epic, epic.Id)" MaxVisible="2" />
+                            <span class="presence-cluster">
+                                @foreach (var assignee in MembersOf(epic.AssigneeIds).Take(3))
+                                {
+                                    <UserAvatar UserId="@(assignee.UserId ?? assignee.Id)"
+                                                DisplayName="@(assignee.DisplayName ?? assignee.Email)"
+                                                AvatarUrl="@assignee.AvatarUrl" />
+                                }
+                            </span>
+                        </div>
+
+                        @if (CanWrite)
+                        {
+                            <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" Dense="true"
+                                     AnchorOrigin="Origin.BottomLeft" aria-label="Epic actions">
+                                <MudMenuItem Icon="@Icons.Material.Filled.Add"
+                                             OnClick="@(() => CreateTaskAsync(epic.Id))">Add task</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.ArrowUpward"
+                                             Disabled="@(EpicIndex(epic.Id) == 0)"
+                                             OnClick="@(() => MoveEpicAsync(epic, -1))">Move up</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.ArrowDownward"
+                                             Disabled="@(EpicIndex(epic.Id) == Store.Board.Epics.Count - 1)"
+                                             OnClick="@(() => MoveEpicAsync(epic, 1))">Move down</MudMenuItem>
+                                <MudDivider />
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete"
+                                             OnClick="@(() => DeleteEpicAsync(epic))">Delete epic</MudMenuItem>
+                            </MudMenu>
+                        }
+                    </div>
+
+                    @if (IsCollapsed(epic.Id))
+                    {
+                        <div class="kanban-zone" style="grid-column:2 / span 3">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @TasksOfEpic(epic.Id).Count task(s) hidden
+                            </MudText>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var status in BoardZones.Statuses)
+                        {
+                            <KanbanZone Identifier="@BoardZones.Id(epic.Id, status)"
+                                        HiddenCount="@HiddenCount(epic.Id, status)"
+                                        OnExpand="@(() => ExpandFinished(epic.Id))" />
+                        }
+                    }
+                </div>
+            }
+
+            @* The ad-hoc band: tasks that belong to no epic. Dropping here detaches. *@
+            <div class="kanban-lane kanban-lane--adhoc">
+                <div class="kanban-lane__gutter">
+                    <div class="kanban-lane__title">
+                        <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Small" Color="Color.Secondary" />
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">No epic</MudText>
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@TasksOfEpic(null).Count</MudText>
+                </div>
+
+                @foreach (var status in BoardZones.Statuses)
+                {
+                    <KanbanZone Identifier="@BoardZones.Id(null, status)"
+                                HiddenCount="@HiddenCount(null, status)"
+                                OnExpand="@(() => ExpandFinished(null))" />
+                }
+            </div>
+
+            @if (Store.Board.Epics.Count == 0 && _ordered.Count == 0)
+            {
+                <EmptyState Message="This board is empty."
+                            Icon="@Icons.Material.Filled.ViewKanban"
+                            ActionText="@(CanWrite ? "Add a task" : null)"
+                            OnAction="@(() => CreateTaskAsync(null))" />
+            }
+        </ChildContent>
+
+        <ItemRenderer>
+            <TaskCard Task="@context"
+                      Label="@LabelOf(context)"
+                      Assignees="@MembersOf(context.AssigneeIds)"
+                      Presence="@Store.PresenceOn(EntityTypes.Task, context.Id)"
+                      Pulse="@_pulsing.Contains(context.Id)"
+                      Shake="@_shaking.Contains(context.Id)"
+                      OnOpen="@OpenTask" />
+        </ItemRenderer>
+    </MudDropContainer>
+
+    <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite" OnClose="@CloseDrawerAsync" />
+}
+
+@code {
+    private MudDropContainer<TaskDto>? _container;
+    private List<TaskDto> _ordered = [];
+    private readonly HashSet<Guid> _collapsed = [];
+    private readonly HashSet<Guid> _expandedFinished = [];
+    private readonly HashSet<Guid> _pulsing = [];
+    private readonly HashSet<Guid> _shaking = [];
+    private HashSet<Guid> _folded = [];
+    private bool _refreshZones;
+    private TaskDto? _openTask;
+    private EpicDto? _openEpic;
+    private bool _canWrite;
+
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+    private bool CanWrite => _canWrite && (Store.Board?.IsOpen ?? false);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnStoreChanged;
+        Store.Pulsed += OnPulsed;
+
+        if (Session.Current is null)
+        {
+            try
+            {
+                await Session.LoadAsync();
+            }
+            catch (ApiException)
+            {
+                // The board load below reports the real problem.
+            }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Store.BoardId == BoardId)
+        {
+            return;
+        }
+
+        try
+        {
+            await Store.LoadAsync(BoardId);
+            var me = Store.Members.FirstOrDefault(m => m.UserId == Session.UserId);
+            _canWrite = Session.IsSuperAdmin || (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
+            Rebuild();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't open that board.", Severity.Error);
+        }
+    }
+
+    // -- Rendering ----------------------------------------------------------
+
+    /// <summary>
+    /// Which zone renders a task — and, for a folded Finished column, whether it
+    /// renders at all. Everything stays reachable behind the expander.
+    /// </summary>
+    private bool ShowsTask(TaskDto task, string zoneId) =>
+        BoardZones.Id(task.EpicId, task.Status) == zoneId && !_folded.Contains(task.Id);
+
+    private void Rebuild()
+    {
+        _ordered = (Store.Board?.Tasks ?? []).OrderBy(t => t.Rank).ToList();
+
+        // Finished-column hygiene: past 25 cards the overflow folds away.
+        _folded = [];
+        foreach (var group in _ordered.Where(t => t.Status == TaskState.Finished).GroupBy(t => t.EpicId))
+        {
+            var key = group.Key ?? Guid.Empty;
+            if (_expandedFinished.Contains(key))
+            {
+                continue;
+            }
+
+            foreach (var task in group.Skip(BoardZones.FinishedVisibleLimit))
+            {
+                _folded.Add(task.Id);
+            }
+        }
+
+        // Deliberately not calling _container.Refresh() here: the drop zones read
+        // MudDropContainer.Items live, and the container still holds the *previous*
+        // list until this component re-renders and re-supplies the parameter.
+        // Refreshing now would repaint the zones from stale data, leaving the UI a
+        // change behind — a new task only appeared once something else moved.
+        _refreshZones = true;
+    }
+
+    /// <summary>Now that the container has the new Items, tell its zones to re-read them.</summary>
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!_refreshZones)
+        {
+            return;
+        }
+
+        _refreshZones = false;
+        _container?.Refresh();
+    }
+
+    private int HiddenCount(Guid? epicId, TaskState status) =>
+        status != TaskState.Finished
+            ? 0
+            : _ordered.Count(t => t.EpicId == epicId && t.Status == status && _folded.Contains(t.Id));
+
+    private void ExpandFinished(Guid? epicId)
+    {
+        _expandedFinished.Add(epicId ?? Guid.Empty);
+        Rebuild();
+    }
+
+    private List<TaskDto> TasksOfEpic(Guid? epicId) => _ordered.Where(t => t.EpicId == epicId).ToList();
+
+    private LabelDto? LabelOf(TaskDto task) =>
+        task.LabelId is null ? null : Store.Board?.Labels.FirstOrDefault(l => l.Id == task.LabelId);
+
+    private List<ProjectMemberDto> MembersOf(IReadOnlyList<Guid> userIds) =>
+        Store.Members.Where(m => m.UserId is not null && userIds.Contains(m.UserId.Value)).ToList();
+
+    private bool IsCollapsed(Guid epicId) => _collapsed.Contains(epicId);
+
+    private void ToggleCollapsed(Guid epicId)
+    {
+        if (!_collapsed.Add(epicId))
+        {
+            _collapsed.Remove(epicId);
+        }
+
+        // Zones appear/disappear with the lane; refresh once they've re-rendered.
+        _refreshZones = true;
+    }
+
+    private int EpicIndex(Guid epicId) =>
+        Store.Board!.Epics.ToList().FindIndex(e => e.Id == epicId);
+
+    // -- Drag & drop --------------------------------------------------------
+
+    /// <summary>
+    /// A task whose status is derived from its sub-tasks refuses a column change.
+    /// Refusing at drop-target time gives the user a red no-drop zone before they
+    /// let go, rather than an error after.
+    /// </summary>
+    private bool CanDrop(TaskDto task, string zoneId)
+    {
+        if (!BoardZones.TryParse(zoneId, out _, out var status))
+        {
+            return false;
+        }
+
+        return task.SubTasks.Count == 0 || status == task.Status;
+    }
+
+    private async Task OnItemDroppedAsync(MudItemDropInfo<TaskDto> drop)
+    {
+        var task = drop.Item;
+        if (task is null || !CanWrite || !BoardZones.TryParse(drop.DropzoneIdentifier, out var epicId, out var status))
+        {
+            return;
+        }
+
+        var plan = DropPlan.For(task, epicId, status);
+        if (plan.Rejected)
+        {
+            await ShakeAsync(task.Id);
+            Snackbar.Add("Status follows sub-tasks — tick them off instead.", Severity.Info);
+            return;
+        }
+
+        // Order matters: the task must belong to the target lane and column before
+        // its rank is interpreted relative to that zone's neighbours.
+        if (plan.ChangeEpic)
+        {
+            var moved = await Guard.RunAsync(() => Api.SetTaskEpicAsync(task.Id, epicId), Store.RefreshAsync);
+            if (moved is null)
+            {
+                return;
+            }
+
+            Store.ApplyTask(moved);
+        }
+
+        if (plan.ChangeStatus)
+        {
+            var moved = await Guard.RunAsync(() => Api.SetTaskStatusAsync(task.Id, status), Store.RefreshAsync);
+            if (moved is null)
+            {
+                return;
+            }
+
+            Store.ApplyTask(moved);
+        }
+
+        await RerankAsync(task, epicId, status, drop.IndexInZone);
+    }
+
+    /// <summary>
+    /// MudBlazor hands us the target index among the zone's <em>other</em> items
+    /// (it already compensates for a downward move within the same zone), so the
+    /// neighbours are just the items either side of that slot.
+    /// </summary>
+    private async Task RerankAsync(TaskDto task, Guid? epicId, TaskState status, int indexInZone)
+    {
+        var others = _ordered
+            .Where(t => t.Id != task.Id && t.EpicId == epicId && t.Status == status)
+            .OrderBy(t => t.Rank)
+            .Select(t => t.Id)
+            .ToList();
+
+        var (preceding, following) = RankNeighbors.Compute(others, indexInZone);
+        if (preceding is null && following is null)
+        {
+            return;
+        }
+
+        var ranked = await Guard.RunAsync(
+            () => Api.RerankTaskAsync(task.Id, preceding, following), Store.RefreshAsync);
+        if (ranked is not null)
+        {
+            Store.ApplyTask(ranked);
+        }
+    }
+
+    private async Task ShakeAsync(Guid taskId)
+    {
+        _shaking.Add(taskId);
+        StateHasChanged();
+        await Task.Delay(340);
+        _shaking.Remove(taskId);
+        StateHasChanged();
+    }
+
+    // -- Epics --------------------------------------------------------------
+
+    private async Task CreateEpicAsync()
+    {
+        var name = await PromptAsync("New epic", "Epic name");
+        if (name is null)
+        {
+            return;
+        }
+
+        var created = await Guard.RunAsync(() => Api.CreateEpicAsync(BoardId, new CreateEpicRequest { Name = name }));
+        if (created is not null)
+        {
+            await Store.RefreshAsync();
+        }
+    }
+
+    /// <summary>
+    /// Epic bands reorder by menu rather than drag: a nested drop container inside
+    /// the task container fights it for the same pointer events. Same endpoint,
+    /// same fractional rank, and it works from the keyboard.
+    /// </summary>
+    private async Task MoveEpicAsync(EpicDto epic, int offset)
+    {
+        var epics = Store.Board!.Epics.ToList();
+        var index = epics.FindIndex(e => e.Id == epic.Id);
+        var target = index + offset;
+        if (target < 0 || target >= epics.Count)
+        {
+            return;
+        }
+
+        var others = epics.Where(e => e.Id != epic.Id).ToList();
+        var preceding = target > 0 ? others[target - 1].Id : (Guid?)null;
+        var following = target < others.Count ? others[target].Id : (Guid?)null;
+
+        var moved = await Guard.RunAsync(
+            () => Api.RerankEpicAsync(epic.Id, preceding, following), Store.RefreshAsync);
+        if (moved is not null)
+        {
+            Store.ApplyEpic(moved);
+        }
+    }
+
+    private async Task DeleteEpicAsync(EpicDto epic)
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            "Delete epic",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message, $"Delete the epic \"{epic.Name}\"? Its tasks move to the ad-hoc band." },
+            });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        await Guard.RunAsync(() => Api.DeleteEpicAsync(epic.Id));
+        await Store.RefreshAsync();
+    }
+
+    // -- Tasks --------------------------------------------------------------
+
+    private async Task CreateTaskAsync(Guid? epicId)
+    {
+        var name = await PromptAsync("New task", "Task name");
+        if (name is null)
+        {
+            return;
+        }
+
+        var created = await Guard.RunAsync(() =>
+            Api.CreateTaskAsync(BoardId, new CreateTaskRequest { Name = name, EpicId = epicId }));
+        if (created is not null)
+        {
+            Store.ApplyTask(created);
+        }
+    }
+
+    private async Task<string?> PromptAsync(string title, string label)
+    {
+        var dialog = await Dialogs.ShowAsync<TextPromptDialog>(
+            title, new DialogParameters<TextPromptDialog> { { d => d.Label, label } });
+        return await dialog.Result is { Canceled: false, Data: string name } ? name : null;
+    }
+
+    // -- Drawer -------------------------------------------------------------
+
+    private async Task OpenTask(TaskDto task)
+    {
+        _openEpic = null;
+        _openTask = task;
+        await Hub.SetPresence(EntityTypes.Task, task.Id, PresenceMode.Viewing);
+    }
+
+    private async Task OpenEpic(EpicDto epic)
+    {
+        _openTask = null;
+        _openEpic = epic;
+        await Hub.SetPresence(EntityTypes.Epic, epic.Id, PresenceMode.Viewing);
+    }
+
+    private async Task CloseDrawerAsync()
+    {
+        _openTask = null;
+        _openEpic = null;
+        await Hub.SetPresence(EntityTypes.Board, BoardId, PresenceMode.None);
+    }
+
+    // -- Live updates -------------------------------------------------------
+
+    private void OnStoreChanged() => InvokeAsync(() =>
+    {
+        // Keep the open drawer pointed at the freshly fetched instance.
+        if (_openTask is not null)
+        {
+            _openTask = Store.Board?.Tasks.FirstOrDefault(t => t.Id == _openTask.Id);
+        }
+
+        if (_openEpic is not null)
+        {
+            _openEpic = Store.Board?.Epics.FirstOrDefault(e => e.Id == _openEpic.Id);
+        }
+
+        Rebuild();
+        StateHasChanged();
+    });
+
+    /// <summary>Remote changes apply silently; the card flashes its outline once.</summary>
+    private void OnPulsed(string entityType, Guid entityId) => _ = InvokeAsync(async () =>
+    {
+        if (entityType != EntityTypes.Task)
+        {
+            return;
+        }
+
+        _pulsing.Add(entityId);
+        StateHasChanged();
+        await Task.Delay(650);
+        _pulsing.Remove(entityId);
+        StateHasChanged();
+    });
+
+    public async ValueTask DisposeAsync()
+    {
+        Store.Changed -= OnStoreChanged;
+        Store.Pulsed -= OnPulsed;
+        await Store.DetachAsync();
+    }
+}

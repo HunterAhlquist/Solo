@@ -1,0 +1,26 @@
+@*
+    One cell of the swimlane × column grid. The container owns which tasks land
+    here (via its ItemsSelector); the zone only owns the drop target and the
+    Finished column's overflow expander.
+*@
+<MudDropZone T="TaskDto" Identifier="@Identifier" AllowReorder="true" Class="kanban-zone">
+    @if (HiddenCount > 0)
+    {
+        <MudButton Variant="Variant.Text" Size="Size.Small" Style="opacity:.65"
+                   StartIcon="@Icons.Material.Filled.UnfoldMore" OnClick="@OnExpand">
+            Show all @(HiddenCount + BoardZones.FinishedVisibleLimit)
+        </MudButton>
+    }
+</MudDropZone>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Identifier { get; set; }
+
+    /// <summary>Cards folded away behind the expander; zero for every non-Finished zone.</summary>
+    [Parameter]
+    public int HiddenCount { get; set; }
+
+    [Parameter]
+    public EventCallback OnExpand { get; set; }
+}

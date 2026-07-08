@@ -1,0 +1,57 @@
+@*
+    Create/rename for the two things that have a name and an icon: projects and
+    boards. Dialog close is the save event.
+*@
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" AutoFocus="true" Class="mb-3"
+                      OnKeyDown="@OnKeyDown" />
+        <IconPicker @bind-Value="_icon" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@string.IsNullOrWhiteSpace(_name)" OnClick="@Save">
+            @SaveText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _name = string.Empty;
+    private string? _icon;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter]
+    public string? Name { get; set; }
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter]
+    public string SaveText { get; set; } = "Create";
+
+    protected override void OnInitialized()
+    {
+        _name = Name ?? string.Empty;
+        _icon = Icon;
+    }
+
+    /// <summary>Enter commits a single-line edit.</summary>
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_name))
+        {
+            Save();
+        }
+    }
+
+    private void Save() => Dialog.Close(DialogResult.Ok(new NameIcon(_name.Trim(), _icon)));
+
+    private void Cancel() => Dialog.Cancel();
+
+    public sealed record NameIcon(string Name, string? Icon);
+}

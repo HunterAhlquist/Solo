@@ -1,0 +1,39 @@
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_text" Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" AutoFocus="true" OnKeyDown="@OnKeyDown" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@string.IsNullOrWhiteSpace(_text)" OnClick="@Save">
+            @SaveText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _text = string.Empty;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public required string Label { get; set; }
+
+    [Parameter]
+    public string SaveText { get; set; } = "Create";
+
+    /// <summary>Enter commits a single-line edit.</summary>
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_text))
+        {
+            Save();
+        }
+    }
+
+    private void Save() => Dialog.Close(DialogResult.Ok(_text.Trim()));
+
+    private void Cancel() => Dialog.Cancel();
+}

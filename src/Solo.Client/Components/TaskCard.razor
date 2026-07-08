@@ -1,0 +1,79 @@
+@*
+    A card is: name, label, assignees, sub-task progress, presence. It flashes its
+    outline once when a remote change lands on it.
+*@
+<MudPaper Elevation="1"
+          Class="@($"kanban-card pa-2 {(Pulse ? "solo-pulse" : string.Empty)} {(Shake ? "solo-shake" : string.Empty)}")"
+          @onclick="@(() => OnOpen.InvokeAsync(Task))">
+
+    <MudText Typo="Typo.body2" Class="mb-1">@Task.Name</MudText>
+
+    <div class="d-flex align-center" style="gap:.35rem">
+        @if (Label is not null)
+        {
+            <div class="kanban-card__labels">
+                <LabelChip Label="@Label" />
+            </div>
+        }
+
+        <MudSpacer />
+
+        @if (Task.SubTasks.Count > 0)
+        {
+            <MudTooltip Text="@($"{FinishedCount} of {Task.SubTasks.Count} sub-tasks done — status follows sub-tasks")">
+                <div class="d-flex align-center" style="gap:.25rem">
+                    <MudProgressCircular Size="Size.Small" Color="@ProgressColor" Value="@ProgressPercent" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @FinishedCount/@Task.SubTasks.Count
+                    </MudText>
+                </div>
+            </MudTooltip>
+        }
+
+        <PresenceCluster Entries="@Presence" MaxVisible="2" />
+
+        @if (Assignees.Count > 0)
+        {
+            <span class="presence-cluster">
+                @foreach (var assignee in Assignees.Take(3))
+                {
+                    <UserAvatar UserId="@(assignee.UserId ?? assignee.Id)"
+                                DisplayName="@(assignee.DisplayName ?? assignee.Email)"
+                                AvatarUrl="@assignee.AvatarUrl" />
+                }
+            </span>
+        }
+    </div>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public required TaskDto Task { get; set; }
+
+    [Parameter]
+    public LabelDto? Label { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ProjectMemberDto> Assignees { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<PresenceEntry> Presence { get; set; } = [];
+
+    /// <summary>A remote change just landed here.</summary>
+    [Parameter]
+    public bool Pulse { get; set; }
+
+    /// <summary>A drag this card can't accept was attempted.</summary>
+    [Parameter]
+    public bool Shake { get; set; }
+
+    [Parameter]
+    public EventCallback<TaskDto> OnOpen { get; set; }
+
+    private int FinishedCount => Task.SubTasks.Count(s => s.IsFinished);
+
+    private double ProgressPercent =>
+        Task.SubTasks.Count == 0 ? 0 : FinishedCount * 100.0 / Task.SubTasks.Count;
+
+    private Color ProgressColor => FinishedCount == Task.SubTasks.Count ? Color.Success : Color.Primary;
+}

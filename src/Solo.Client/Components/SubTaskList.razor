@@ -1,0 +1,148 @@
+@inject ApiClient Api
+@inject SaveGuard Guard
+@inject BoardStore Store
+
+@*
+    A task with sub-tasks has a derived status: the checklist drives it. Ticking a
+    box applies the roll-up locally for instant feedback, then reconciles from the
+    server's response — which is authoritative.
+*@
+
+<div class="d-flex align-center mb-1">
+    <MudText Typo="Typo.subtitle2">Sub-tasks</MudText>
+    @if (SubTasks.Count > 0)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-2">
+            @SubTasks.Count(s => s.IsFinished)/@SubTasks.Count
+        </MudText>
+    }
+</div>
+
+@if (SubTasks.Count == 0)
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+        None. Adding one makes this task's status follow the checklist.
+    </MudText>
+}
+else
+{
+    <MudList T="string" Dense="true" Class="pa-0">
+        @foreach (var subTask in SubTasks.OrderBy(s => s.Rank))
+        {
+            <MudListItem T="string" Class="pa-0">
+                <div class="d-flex align-center" style="gap:.35rem">
+                    <MudCheckBox T="bool" Value="@subTask.IsFinished" Dense="true" Color="Color.Primary"
+                                 Disabled="@(!CanWrite)"
+                                 ValueChanged="@(finished => ToggleAsync(subTask, finished))" />
+
+                    <MudText Typo="Typo.body2" Class="flex-grow-1"
+                             Style="@(subTask.IsFinished ? "text-decoration:line-through;opacity:.6" : null)">
+                        @subTask.Name
+                    </MudText>
+
+                    <LabelChip Label="@LabelOf(subTask)" />
+
+                    @if (CanWrite)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeleteAsync(subTask))" aria-label="Delete sub-task" />
+                    }
+                </div>
+            </MudListItem>
+        }
+    </MudList>
+}
+
+@if (CanWrite)
+{
+    <div class="d-flex align-center mt-2" style="gap:.5rem">
+        <MudTextField @bind-Value="_newName" Placeholder="Add a sub-task…" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" Immediate="true" OnKeyDown="@OnKeyDown" Class="flex-grow-1" />
+        <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Size="Size.Small"
+                       Disabled="@string.IsNullOrWhiteSpace(_newName)" OnClick="@AddAsync"
+                       aria-label="Add sub-task" />
+    </div>
+}
+
+@code {
+    private string _newName = string.Empty;
+
+    [Parameter, EditorRequired]
+    public Guid TaskId { get; set; }
+
+    [Parameter, EditorRequired]
+    public required IReadOnlyList<SubTaskDto> SubTasks { get; set; }
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    /// <summary>Sub-task edits change the parent task's status, so the drawer refetches it.</summary>
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    private LabelDto? LabelOf(SubTaskDto subTask) =>
+        subTask.LabelId is null ? null : Store.Board?.Labels.FirstOrDefault(l => l.Id == subTask.LabelId);
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddAsync();
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newName))
+        {
+            return;
+        }
+
+        var name = _newName.Trim();
+        _newName = string.Empty;
+
+        await Guard.RunAsync(() => Api.CreateSubTaskAsync(TaskId, new CreateSubTaskRequest { Name = name }));
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task ToggleAsync(SubTaskDto subTask, bool isFinished)
+    {
+        ApplyRollUpLocally(subTask, isFinished);
+
+        await Guard.RunAsync(() => Api.SetSubTaskFinishedAsync(subTask.Id, isFinished));
+
+        // Reconcile: the server is authoritative, and it also re-ranks nothing we
+        // guessed at. Same rule either way — TaskStateCalculator is shared.
+        await OnChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Ticking a box moves the card between columns immediately, before the round
+    /// trip. Uses the very same <see cref="TaskStateCalculator"/> the server does,
+    /// so the optimistic state and the reconciled state agree.
+    /// </summary>
+    private void ApplyRollUpLocally(SubTaskDto subTask, bool isFinished)
+    {
+        if (Store.Board?.Tasks.FirstOrDefault(t => t.Id == TaskId) is not { } task)
+        {
+            return;
+        }
+
+        var subTasks = task.SubTasks
+            .Select(s => s.Id == subTask.Id ? s with { IsFinished = isFinished } : s)
+            .ToList();
+
+        Store.ApplyTask(task with
+        {
+            SubTasks = subTasks,
+            Status = TaskStateCalculator.Derive(
+                subTasks.Count, subTasks.Count(s => s.IsFinished), task.Status),
+        });
+    }
+
+    private async Task DeleteAsync(SubTaskDto subTask)
+    {
+        await Guard.RunAsync(() => Api.DeleteSubTaskAsync(subTask.Id));
+        await OnChanged.InvokeAsync();
+    }
+}

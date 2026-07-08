@@ -1,0 +1,56 @@
+@page "/signin"
+@layout EmptyLayout
+@inject AppConfig Config
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in · Solo</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="d-flex align-center justify-center" Style="height:100vh">
+    <MudPaper Elevation="2" Class="pa-8 width-100 d-flex flex-column align-center" Style="gap:1.5rem">
+        <MudText Typo="Typo.h1">Solo</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+            Project management for game development.
+        </MudText>
+
+        @if (!Config.ProviderConfigured)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">
+                No identity provider is configured on this instance.
+            </MudAlert>
+        }
+        else if (Config.IsGoogle)
+        {
+            @* Google renders its own button and calls back with an ID token. *@
+            <GoogleSignInButton OnSignedIn="@GoToReturnUrl" />
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       StartIcon="@ProviderIcon" OnClick="@BeginSignIn">
+                Continue with @Config.ProviderName
+            </MudButton>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private string ProviderIcon => Config.Auth?.Provider?.ToLowerInvariant() switch
+    {
+        "google" => Icons.Custom.Brands.Google,
+        "microsoft" => Icons.Custom.Brands.Microsoft,
+        _ => Icons.Material.Filled.Login,
+    };
+
+    /// <summary>Where the user was headed before the guard bounced them here.</summary>
+    private string ReturnUrl => QueryString.Value(Navigation.Uri, "returnUrl") is { Length: > 0 } url ? url : "/";
+
+    /// <summary>Google signs in without a redirect, so we do the navigation ourselves.</summary>
+    private void GoToReturnUrl() => Navigation.NavigateTo(ReturnUrl, replace: true);
+
+    private void BeginSignIn() =>
+        Navigation.NavigateToLogin("authentication/login", new InteractiveRequestOptions
+        {
+            Interaction = InteractionType.SignIn,
+            ReturnUrl = Navigation.ToAbsoluteUri(ReturnUrl).ToString(),
+        });
+}

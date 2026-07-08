@@ -79,6 +79,8 @@ REST controllers using DTOs from `Solo.Shared` (never entities). Mutations follo
 
 Validation via FluentValidation (or data annotations — decide at scaffold time); ProblemDetails for errors; `409 Conflict` on concurrency-token mismatch so the client can re-fetch and merge.
 
+**The sidebar's project → board tree needs no new endpoint.** It composes `GET /api/projects` (already returns `ProjectSummaryDto` with the caller's `Role` and `IsOwner`, which is exactly what gates "Add board") with `GET /api/projects/{id}/boards`, fetched lazily the first time a project is expanded. A dedicated `/api/nav` payload was considered and rejected: it would duplicate two endpoints to save requests the user may never make, and it would need its own authorization rules. The N+1 is bounded by how many projects a person actually opens.
+
 ## 5. Live editing (SignalR)
 
 Single `BoardHub` with typed client contract in `Solo.Shared`:

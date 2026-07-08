@@ -116,9 +116,19 @@ if (app.Configuration.GetValue("Database:AutoMigrate", true))
     }
 }
 
-// Serves the published Blazor WASM client when present.
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// Serves the Blazor WASM client: framework files (_framework/*) first, then the
+// client's own wwwroot assets, with index.html as the SPA fallback below.
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // index.html, css/app.css and js/solo-interop.js carry no fingerprint, and
+    // ASP.NET sends them with an ETag but no Cache-Control — which lets a browser
+    // serve a stale copy without revalidating. "no-cache" still allows caching;
+    // it just requires an If-None-Match round trip, which the ETag answers with a
+    // 304. (_framework/* is fingerprinted and handled by UseBlazorFrameworkFiles.)
+    OnPrepareResponse = context =>
+        context.Context.Response.Headers.CacheControl = "no-cache",
+});
 
 app.UseAuthentication();
 app.UseMiddleware<CurrentUserMiddleware>();

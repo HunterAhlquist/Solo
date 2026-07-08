@@ -1,0 +1,16 @@
+@inject NavigationManager Navigation
+
+@code {
+    /// <summary>
+    /// Sends an anonymous visitor to the sign-in page, remembering where they
+    /// were headed so the provider round-trip lands them back on it.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        var returnUrl = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var query = string.IsNullOrEmpty(returnUrl)
+            ? string.Empty
+            : $"?returnUrl={Uri.EscapeDataString("/" + returnUrl)}";
+        Navigation.NavigateTo($"signin{query}", replace: true);
+    }
+}

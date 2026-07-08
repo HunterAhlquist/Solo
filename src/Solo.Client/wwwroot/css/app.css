@@ -1,0 +1,302 @@
+html, body {
+    margin: 0;
+    height: 100%;
+}
+
+/* Monospace everywhere, matching the theme — covers plain HTML the MudBlazor
+   typography variables don't reach (e.g. the boot splash and raw <code>). */
+body {
+    font-family: "Courier New", monospace;
+}
+
+/* Inline code picks up the sibling site's pink so it stands off the yellow. */
+code {
+    color: #c02d76;
+}
+
+/* ---------------------------------------------------------------------------
+   Boot splash — shown until Blazor swaps in the root component.
+   --------------------------------------------------------------------------- */
+.boot-splash {
+    display: grid;
+    place-content: center;
+    gap: 1.25rem;
+    height: 100vh;
+    background: #000000;
+    color: #fff600;
+    font: 700 1.75rem/1 "Courier New", monospace;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+}
+
+.boot-splash__bar {
+    width: 12rem;
+    height: 2px;
+    overflow: hidden;
+    background: #101010;
+}
+
+.boot-splash__bar span {
+    display: block;
+    width: 40%;
+    height: 100%;
+    background: #fff600;
+    animation: boot-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes boot-slide {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(350%); }
+}
+
+/* ---------------------------------------------------------------------------
+   Change pulse — a one-shot outline flash when a remote change lands on an
+   element (§4 of the frontend plan: silent apply, visible activity).
+   --------------------------------------------------------------------------- */
+.solo-pulse {
+    animation: solo-pulse 600ms ease-out 1;
+}
+
+@keyframes solo-pulse {
+    0%   { box-shadow: 0 0 0 0 var(--mud-palette-primary); }
+    35%  { box-shadow: 0 0 0 3px var(--mud-palette-primary); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+}
+
+/* Rejected drag (auto-status task dropped on a status column). */
+.solo-shake {
+    animation: solo-shake 320ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
+}
+
+@keyframes solo-shake {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(3px); }
+    30%, 50%, 70% { transform: translateX(-5px); }
+    40%, 60% { transform: translateX(5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .solo-pulse, .solo-shake, .boot-splash__bar span { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Utilities MudBlazor doesn't ship. It has pa-/px-/py- but no pt-, and none of
+   h-100, width-100 or text-truncate — all of which look plausible enough to use
+   by mistake.
+   --------------------------------------------------------------------------- */
+.h-100 { height: 100%; }
+
+.width-100 { width: 100%; }
+
+.text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+/*
+   MudGrid pulls itself up by its spacing (margin-top:-24px), expecting a padded
+   parent. Directly under a tab strip or a toolbar it becomes an invisible overlay
+   that eats their clicks. Wrap the grid in this; padding on the grid itself cannot
+   cancel the grid's own negative margin. Measured: 24px overlap -> 0.
+*/
+.grid-inset { padding-top: 24px; }
+
+/* ---------------------------------------------------------------------------
+   Markdown editor: the read view is the click target that opens the editor, so
+   it needs to look and behave like a field rather than a stray line of text.
+   --------------------------------------------------------------------------- */
+.markdown-read {
+    min-height: 3.5rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+}
+
+.markdown-read--editable {
+    cursor: text;
+}
+
+.markdown-read--editable:hover {
+    border-color: var(--mud-palette-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Sidebar: a scrolling project → board tree with a footer pinned to the bottom,
+   so "Add project" stays reachable no matter how many projects there are.
+   --------------------------------------------------------------------------- */
+.nav-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.nav-shell__scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.nav-shell__footer {
+    flex: 0 0 auto;
+}
+
+/* The create actions are affordances, not destinations — never "active". */
+.nav-shell__add {
+    color: var(--mud-palette-text-secondary);
+}
+
+.nav-shell__add:hover {
+    color: var(--mud-palette-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Kanban surface
+   --------------------------------------------------------------------------- */
+.kanban {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.kanban-header {
+    display: grid;
+    grid-template-columns: var(--kanban-lane-gutter, 13rem) repeat(3, 1fr);
+    gap: 0.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 0.35rem 0;
+    background: var(--mud-palette-background);
+}
+
+.kanban-lane {
+    display: grid;
+    grid-template-columns: var(--kanban-lane-gutter, 13rem) repeat(3, 1fr);
+    gap: 0.5rem;
+    align-items: stretch;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    /* Page background, not surface: cards are surface, so a surface lane would
+       give them zero contrast. The lane still reads as a container via its
+       border and the gutter divider. */
+    background: var(--mud-palette-background);
+}
+
+.kanban-lane__gutter {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.6rem;
+    border-right: 1px solid var(--mud-palette-lines-default);
+    min-width: 0;
+}
+
+.kanban-lane__title {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.kanban-lane--adhoc {
+    background: transparent;
+    border-style: dashed;
+}
+
+.kanban-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    min-height: 4.5rem;
+    min-width: 0;
+    border-radius: var(--mud-default-borderradius);
+    transition: background-color 120ms ease-in-out;
+}
+
+.kanban-zone--can-drop {
+    background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
+    outline: 1px dashed var(--mud-palette-primary);
+}
+
+.kanban-zone--no-drop {
+    background: color-mix(in srgb, var(--mud-palette-error) 8%, transparent);
+    cursor: not-allowed;
+}
+
+.kanban-card {
+    cursor: grab;
+    user-select: none;
+    /* A border does the separating work: MudPaper's Elevation shadow is invisible
+       on a near-black surface, and the card fill sits only one step above the lane.
+       lines-default is the theme's translucent-yellow hairline. */
+    border: 1px solid var(--mud-palette-lines-default);
+}
+
+.kanban-card:hover {
+    border-color: var(--mud-palette-primary);
+}
+
+.kanban-card:active {
+    cursor: grabbing;
+}
+
+.kanban-card__labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.mud-drop-item-preview-start {
+    opacity: 0.35;
+}
+
+/* Presence avatars sit tight; they're ambient, not a focal point. */
+.presence-cluster {
+    display: inline-flex;
+    align-items: center;
+}
+
+.presence-cluster > * + * {
+    margin-left: -0.4rem;
+}
+
+.presence-avatar--editing {
+    outline: 2px solid var(--mud-palette-warning);
+    animation: presence-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes presence-breathe {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .presence-avatar--editing { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Blazor's built-in error strip
+   --------------------------------------------------------------------------- */
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 20000;
+    padding: 0.6rem 1.25rem 0.6rem 1.25rem;
+    background: #fff600;
+    color: #000000;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+}
+
+#blazor-error-ui .dismiss {
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+    cursor: pointer;
+}

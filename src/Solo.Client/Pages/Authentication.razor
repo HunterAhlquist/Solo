@@ -1,0 +1,58 @@
+@page "/authentication/{action}"
+@layout EmptyLayout
+@inject AppConfig Config
+@inject NavigationManager Navigation
+
+@*
+    The OIDC redirect endpoints (login, login-callback, logout, logout-callback…).
+    Deliberately outside the app chrome and outside the setup gate.
+*@
+
+@if (Config.UsesOidcRedirect)
+{
+    <RemoteAuthenticatorView Action="@Action">
+        <LoggingIn>
+            <AuthPending Message="Redirecting you to sign in…" />
+        </LoggingIn>
+        <CompletingLoggingIn>
+            <AuthPending Message="Signing you in…" />
+        </CompletingLoggingIn>
+        <LogOut>
+            <AuthPending Message="Signing you out…" />
+        </LogOut>
+        <CompletingLogOut>
+            <AuthPending Message="Signing you out…" />
+        </CompletingLogOut>
+        <LogOutSucceeded>
+            <AuthPending Message="You're signed out." />
+        </LogOutSucceeded>
+        <LogInFailed>
+            <AuthFailure Title="Sign-in failed" Detail="@context" />
+        </LogInFailed>
+        <LogOutFailed>
+            <AuthFailure Title="Sign-out failed" Detail="@context" />
+        </LogOutFailed>
+    </RemoteAuthenticatorView>
+}
+else
+{
+    <AuthPending Message="Redirecting…" />
+}
+
+@code {
+    [Parameter]
+    public string? Action { get; set; }
+
+    /// <summary>
+    /// Google Identity Services never redirects, so these routes are dead on a
+    /// Google instance — and <c>RemoteAuthenticatorView</c>'s services aren't even
+    /// registered. Anyone landing here from a stale bookmark goes to sign-in.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        if (!Config.UsesOidcRedirect)
+        {
+            Navigation.NavigateTo("signin", replace: true);
+        }
+    }
+}

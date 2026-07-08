@@ -1,0 +1,149 @@
+@page "/"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject UserSession Session
+@inject ProjectNavStore Nav
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Projects · Solo</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudText Typo="Typo.h1">Projects</MudText>
+    <MudSpacer />
+    @if (Session.IsSuperAdmin)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateProjectAsync">
+            New project
+        </MudButton>
+    }
+</div>
+
+@if (_projects is null)
+{
+    <div class="grid-inset">
+    <MudGrid>
+        @for (var i = 0; i < 3; i++)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="96px" />
+            </MudItem>
+        }
+    </MudGrid>
+    </div>
+}
+else if (_projects.Count == 0)
+{
+    <EmptyState Message="No projects yet."
+                Icon="@Icons.Material.Filled.Dashboard"
+                ActionText="@(Session.IsSuperAdmin ? "Create one" : null)"
+                OnAction="@CreateProjectAsync" />
+
+    @if (!Session.IsSuperAdmin)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mt-3">
+            Ask an administrator to invite you to a project.
+        </MudText>
+    }
+}
+else
+{
+    <div class="grid-inset">
+    <MudGrid>
+        @foreach (var project in _projects)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="1" Class="h-100" Style="cursor:pointer"
+                         @onclick="@(() => Navigation.NavigateTo($"projects/{project.Id}"))">
+                    <MudCardContent>
+                        <div class="d-flex align-center" style="gap:.75rem">
+                            <MudAvatar Color="Color.Primary" Variant="Variant.Outlined">
+                                <MudIcon Icon="@SoloIcons.Resolve(project.Icon)" />
+                            </MudAvatar>
+                            <div class="flex-grow-1" style="min-width:0">
+                                <MudText Typo="Typo.h4" Class="text-truncate">@project.Name</MudText>
+                                <div class="d-flex align-center mt-1" style="gap:.35rem">
+                                    @if (project.IsOwner)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Label="true"
+                                                 Color="Color.Primary" Class="ma-0">Owner</MudChip>
+                                    }
+                                    <MudChip T="string" Size="Size.Small" Label="true"
+                                             Color="Color.Default" Class="ma-0">
+                                        @(project.Role == ProjectRole.ReadWrite ? "Read/write" : "Read only")
+                                    </MudChip>
+                                </div>
+                            </div>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ProjectSummaryDto>? _projects;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The layout also loads the session, but a direct hit on this page can
+        // race it — and the "New project" button depends on IsSuperAdmin.
+        if (Session.Current is null)
+        {
+            try
+            {
+                await Session.LoadAsync();
+            }
+            catch (ApiException)
+            {
+                // Non-fatal: the page still lists whatever projects they can see.
+            }
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _projects = await Api.GetProjectsAsync();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't load projects.", Severity.Error);
+            _projects = [];
+        }
+    }
+
+    private async Task CreateProjectAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<NameIconDialog>(
+            "New project",
+            new DialogParameters<NameIconDialog> { { d => d.SaveText, "Create" } });
+
+        if (await dialog.Result is not { Canceled: false, Data: NameIconDialog.NameIcon created })
+        {
+            return;
+        }
+
+        try
+        {
+            var project = await Api.CreateProjectAsync(new CreateProjectRequest
+            {
+                Name = created.Name,
+                Icon = created.Icon,
+            });
+            await Nav.RefreshProjectsAsync();
+            Navigation.NavigateTo($"projects/{project.Id}");
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't create the project.", Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,61 @@
+@*
+    Initials on a colour derived from the user's id, so the same person is the
+    same colour on every card without storing anything.
+*@
+<MudTooltip Text="@(Tooltip ?? DisplayName ?? "Unknown user")">
+    <MudAvatar Size="@Size" Style="@Style" Class="@Class">
+        @if (!string.IsNullOrEmpty(AvatarUrl))
+        {
+            <MudImage Src="@AvatarUrl" Alt="@DisplayName" />
+        }
+        else
+        {
+            @Initials
+        }
+    </MudAvatar>
+</MudTooltip>
+
+@code {
+    private static readonly string[] Palette =
+    [
+        "#8d7ffa", "#4fd1c5", "#f6ad55", "#f56565",
+        "#63b3ed", "#48bb78", "#ed64a6", "#ecc94b",
+    ];
+
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    [Parameter]
+    public string? DisplayName { get; set; }
+
+    [Parameter]
+    public string? AvatarUrl { get; set; }
+
+    [Parameter]
+    public string? Tooltip { get; set; }
+
+    [Parameter]
+    public Size Size { get; set; } = Size.Small;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string Style =>
+        $"background-color:{Palette[Math.Abs(UserId.GetHashCode()) % Palette.Length]};color:#15151f;font-size:.7rem";
+
+    private string Initials
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(DisplayName))
+            {
+                return "?";
+            }
+
+            var parts = DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length == 1
+                ? parts[0][..1].ToUpperInvariant()
+                : $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+        }
+    }
+}

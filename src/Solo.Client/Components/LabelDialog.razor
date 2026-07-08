@@ -1,0 +1,61 @@
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" AutoFocus="true" Class="mb-3" />
+        <MudColorPicker Value="@_color" ValueChanged="@(c => _color = c)" Label="Colour"
+                        Variant="Variant.Outlined" Margin="Margin.Dense"
+                        ColorPickerMode="ColorPickerMode.HEX" ShowAlpha="false" />
+        <div class="mt-4">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Preview</MudText>
+            <div class="mt-1">
+                <LabelChip Label="@Preview" />
+            </div>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@string.IsNullOrWhiteSpace(_name)" OnClick="@Save">
+            @SaveText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _name = string.Empty;
+    private MudColor _color = new("#8d7ffa");
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter]
+    public string? Name { get; set; }
+
+    /// <summary>Named to avoid shadowing MudBlazor's <c>Color</c> enum inside this component.</summary>
+    [Parameter]
+    public string? HexColor { get; set; }
+
+    [Parameter]
+    public string SaveText { get; set; } = "Save";
+
+    /// <summary>The server validates <c>^#[0-9a-fA-F]{6}$</c>, so hand it exactly that — no alpha.</summary>
+    private string Hex => $"#{_color.R:x2}{_color.G:x2}{_color.B:x2}";
+
+    private LabelDto Preview => new(Guid.Empty, Guid.Empty, null, LabelKind.Task,
+        string.IsNullOrWhiteSpace(_name) ? "label" : _name, Hex, 0);
+
+    protected override void OnInitialized()
+    {
+        _name = Name ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(HexColor))
+        {
+            _color = new MudColor(HexColor);
+        }
+    }
+
+    private void Save() => Dialog.Close(DialogResult.Ok(new LabelEdit(_name.Trim(), Hex)));
+
+    private void Cancel() => Dialog.Cancel();
+
+    public sealed record LabelEdit(string Name, string Color);
+}

@@ -1,0 +1,163 @@
+@implements IDisposable
+@inject ApiClient Api
+@inject SaveGuard Guard
+@inject BoardStore Store
+@inject UserSession Session
+@inject IDialogService Dialogs
+
+@*
+    A flat chronological thread — no nesting, per the concept. Markdown via the
+    shared editor.
+*@
+
+<MudText Typo="Typo.subtitle2" Class="mb-2">Comments</MudText>
+
+@if (_comments is null)
+{
+    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+}
+else
+{
+    @foreach (var comment in _comments)
+    {
+        <MudPaper Elevation="0" Class="pa-2 mb-2"
+                  Style="border:1px solid var(--mud-palette-lines-default)">
+            <div class="d-flex align-center mb-1" style="gap:.5rem">
+                <UserAvatar UserId="@comment.AuthorId" DisplayName="@comment.AuthorDisplayName" />
+                <MudText Typo="Typo.caption">@(comment.AuthorDisplayName ?? "Unknown")</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @comment.CreatedAt.ToLocalTime().ToString("g")
+                </MudText>
+                <MudSpacer />
+                @if (comment.AuthorId == Session.UserId && CanWrite)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteAsync(comment))" aria-label="Delete comment" />
+                }
+            </div>
+
+            @if (_editingId == comment.Id)
+            {
+                <MarkdownEditor Value="@comment.Body" CanWrite="true" AlwaysEditing="true" Lines="4"
+                                SaveText="Save" OnSave="@(body => UpdateAsync(comment, body))" />
+            }
+            else
+            {
+                <div @onclick="@(() => BeginEdit(comment))"
+                     style="@(comment.AuthorId == Session.UserId && CanWrite ? "cursor:text" : null)">
+                    <MudMarkdown Value="@comment.Body" />
+                </div>
+            }
+        </MudPaper>
+    }
+
+    @if (_comments.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">No comments yet.</MudText>
+    }
+
+    @if (CanWrite)
+    {
+        <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
+                        Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
+    }
+}
+
+@code {
+    private IReadOnlyList<CommentDto>? _comments;
+    private Guid? _editingId;
+
+    /// <summary>Exactly one of these is set — the drawer shows an epic or a task.</summary>
+    [Parameter]
+    public Guid? TaskId { get; set; }
+
+    [Parameter]
+    public Guid? EpicId { get; set; }
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    protected override void OnInitialized() => Store.CommentsChanged += OnCommentsChanged;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private void OnCommentsChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _comments = TaskId is { } taskId
+                ? await Api.GetTaskCommentsAsync(taskId)
+                : EpicId is { } epicId
+                    ? await Api.GetEpicCommentsAsync(epicId)
+                    : [];
+        }
+        catch (ApiException)
+        {
+            _comments = [];
+        }
+    }
+
+    private void BeginEdit(CommentDto comment)
+    {
+        if (comment.AuthorId == Session.UserId && CanWrite)
+        {
+            _editingId = comment.Id;
+        }
+    }
+
+    private async Task AddAsync(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return;
+        }
+
+        await Guard.RunAsync(() => TaskId is { } taskId
+            ? Api.AddTaskCommentAsync(taskId, body)
+            : Api.AddEpicCommentAsync(EpicId!.Value, body));
+
+        await LoadAsync();
+    }
+
+    private async Task UpdateAsync(CommentDto comment, string body)
+    {
+        _editingId = null;
+        if (string.IsNullOrWhiteSpace(body) || body == comment.Body)
+        {
+            return;
+        }
+
+        await Guard.RunAsync(
+            () => Api.UpdateCommentAsync(comment.Id, new UpdateCommentRequest
+            {
+                Body = body,
+                Version = comment.Version,
+            }),
+            LoadAsync);
+
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(CommentDto comment)
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            "Delete comment",
+            new DialogParameters<ConfirmDialog> { { d => d.Message, "Delete this comment?" } });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        await Guard.RunAsync(() => Api.DeleteCommentAsync(comment.Id));
+        await LoadAsync();
+    }
+
+    public void Dispose() => Store.CommentsChanged -= OnCommentsChanged;
+}

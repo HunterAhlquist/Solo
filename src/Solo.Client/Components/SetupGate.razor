@@ -1,0 +1,70 @@
+@implements IDisposable
+@inject AppConfig Config
+@inject NavigationManager Navigation
+
+@*
+    Until first-run setup completes, every route funnels to the wizard. The
+    SetupCompleted flag rides along on the anonymous auth-config call, so this
+    redirect needs no authentication — which matters, because on a fresh
+    instance nobody can authenticate yet.
+*@
+
+@if (_allowed)
+{
+    @ChildContent
+}
+
+@code {
+    private bool _allowed;
+
+    [Parameter, EditorRequired]
+    public required RenderFragment ChildContent { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        Evaluate();
+    }
+
+    protected override void OnParametersSet() => Evaluate();
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        Evaluate();
+        StateHasChanged();
+    }
+
+    private void Evaluate()
+    {
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var queryStart = path.IndexOf('?');
+        if (queryStart >= 0)
+        {
+            path = path[..queryStart];
+        }
+
+        var isSetup = path.Equals("setup", StringComparison.OrdinalIgnoreCase);
+
+        // The OIDC callbacks must stay reachable: the wizard's own sign-in step
+        // round-trips through them.
+        var isAuthCallback = path.StartsWith("authentication/", StringComparison.OrdinalIgnoreCase);
+
+        if (!Config.SetupCompleted && !isSetup && !isAuthCallback)
+        {
+            _allowed = false;
+            Navigation.NavigateTo("setup", replace: true);
+            return;
+        }
+
+        if (Config.SetupCompleted && isSetup)
+        {
+            _allowed = false;
+            Navigation.NavigateTo("", replace: true);
+            return;
+        }
+
+        _allowed = true;
+    }
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}

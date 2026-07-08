@@ -1,0 +1,127 @@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+@*
+    The audit trail is column-level: one row per changed column, carrying the
+    previous value. Server-paged — it grows without bound until retention prunes it.
+*@
+
+<MudPaper Elevation="0" Class="pa-3 mb-3" Style="border:1px solid var(--mud-palette-lines-default)">
+    <div class="d-flex flex-wrap align-end" style="gap:.75rem">
+        <MudSelect T="string" @bind-Value="_table" Label="Table" Clearable="true" Variant="Variant.Outlined"
+                   Margin="Margin.Dense" Style="min-width:12rem">
+            @foreach (var table in Tables)
+            {
+                <MudSelectItem T="string" Value="@table">@table</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="Guid?" @bind-Value="_userId" Label="User" Clearable="true" Variant="Variant.Outlined"
+                   Margin="Margin.Dense" Style="min-width:14rem">
+            @foreach (var member in Members.Where(m => m.UserId is not null))
+            {
+                <MudSelectItem T="Guid?" Value="@member.UserId">@(member.DisplayName ?? member.Email)</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudDatePicker @bind-Date="_from" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" Style="min-width:11rem" />
+        <MudDatePicker @bind-Date="_to" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" Style="min-width:11rem" />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@ApplyAsync">Apply</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="@ClearAsync">Clear</MudButton>
+    </div>
+</MudPaper>
+
+<MudTable @ref="_grid" T="AuditEntryDto" ServerData="@LoadAsync" Dense="true" Hover="true"
+          Elevation="1" Breakpoint="Breakpoint.None" RowsPerPage="50">
+    <HeaderContent>
+        <MudTh>When</MudTh>
+        <MudTh>Who</MudTh>
+        <MudTh>Table</MudTh>
+        <MudTh>Column</MudTh>
+        <MudTh>Previous value</MudTh>
+    </HeaderContent>
+    <RowTemplate Context="entry">
+        <MudTd DataLabel="When">
+            <MudTooltip Text="@entry.Timestamp.ToLocalTime().ToString("F")">
+                <MudText Typo="Typo.body2">@entry.Timestamp.ToLocalTime().ToString("g")</MudText>
+            </MudTooltip>
+        </MudTd>
+        <MudTd DataLabel="Who">
+            <MudText Typo="Typo.body2">@(entry.UserDisplayName ?? "System")</MudText>
+        </MudTd>
+        <MudTd DataLabel="Table">@entry.TableName</MudTd>
+        <MudTd DataLabel="Column">@(entry.ColumnName ?? "—")</MudTd>
+        <MudTd DataLabel="Previous value">
+            <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width:28rem;display:block">
+                @(entry.PreviousValue ?? "—")
+            </MudText>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">No audit entries match those filters.</MudText>
+    </NoRecordsContent>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="new[] { 25, 50, 100, 200 }" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    /// <summary>
+    /// Must match EF's table names exactly — the API filters on the stored
+    /// <c>TableName</c> string, which comes from <c>IEntityType.GetTableName()</c>.
+    /// </summary>
+    private static readonly string[] Tables =
+        ["Projects", "ProjectMembers", "Boards", "Epics", "Tasks", "SubTasks", "Labels", "Comments", "Assignments"];
+
+    private MudTable<AuditEntryDto>? _grid;
+    private string? _table;
+    private Guid? _userId;
+    private DateTime? _from;
+    private DateTime? _to;
+
+    [Parameter, EditorRequired]
+    public Guid ProjectId { get; set; }
+
+    /// <summary>Populates the user filter without a second round trip.</summary>
+    [Parameter]
+    public IReadOnlyList<ProjectMemberDto> Members { get; set; } = [];
+
+    private async Task<TableData<AuditEntryDto>> LoadAsync(TableState state, CancellationToken ct)
+    {
+        try
+        {
+            var result = await Api.GetAuditAsync(
+                ProjectId,
+                table: _table,
+                userId: _userId,
+                from: _from,
+                // The server treats `to` as exclusive, so a picked day means
+                // "through the end of that day".
+                to: _to?.AddDays(1),
+                page: state.Page + 1,
+                pageSize: state.PageSize,
+                ct: ct);
+
+            return new TableData<AuditEntryDto> { Items = result.Items, TotalItems = result.TotalCount };
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't load the audit trail.", Severity.Error);
+            return new TableData<AuditEntryDto> { Items = [], TotalItems = 0 };
+        }
+    }
+
+    private Task ApplyAsync() => _grid?.ReloadServerData() ?? Task.CompletedTask;
+
+    private Task ClearAsync()
+    {
+        _table = null;
+        _userId = null;
+        _from = null;
+        _to = null;
+        return ApplyAsync();
+    }
+}

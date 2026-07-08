@@ -1,0 +1,29 @@
+@*
+    Empty states get one obvious action, never a shrug.
+*@
+<MudPaper Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center"
+          Style="border:1px dashed var(--mud-palette-lines-default);gap:.75rem">
+    <MudIcon Icon="@Icon" Size="Size.Large" Color="Color.Secondary" />
+    <MudText Typo="Typo.body1" Color="Color.Secondary">@Message</MudText>
+    @if (ActionText is not null && OnAction.HasDelegate)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@OnAction">
+            @ActionText
+        </MudButton>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Message { get; set; }
+
+    [Parameter]
+    public string Icon { get; set; } = Icons.Material.Filled.Inbox;
+
+    [Parameter]
+    public string? ActionText { get; set; }
+
+    [Parameter]
+    public EventCallback OnAction { get; set; }
+}

@@ -1,0 +1,203 @@
+@inject ApiClient Api
+@inject UserSession Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+@if (_members is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    @if (IsOwner)
+    {
+        <MudPaper Elevation="0" Class="pa-3 mb-4" Style="border:1px solid var(--mud-palette-lines-default)">
+            <div class="d-flex align-end" style="gap:.75rem">
+                <MudTextField @bind-Value="_inviteEmail" Label="Invite by email" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Immediate="true" OnKeyDown="@OnInviteKeyDown" Class="flex-grow-1" />
+                <MudSelect T="ProjectRole" @bind-Value="_inviteRole" Label="Role" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Style="max-width:11rem">
+                    <MudSelectItem T="ProjectRole" Value="ProjectRole.Read">Read only</MudSelectItem>
+                    <MudSelectItem T="ProjectRole" Value="ProjectRole.ReadWrite">Read/write</MudSelectItem>
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@InviteAsync"
+                           Disabled="@(string.IsNullOrWhiteSpace(_inviteEmail) || _busy)">
+                    Invite
+                </MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    <MudTable T="ProjectMemberDto" Items="@_members" Dense="true" Hover="true" Elevation="1" Breakpoint="Breakpoint.None">
+        <HeaderContent>
+            <MudTh>Member</MudTh>
+            <MudTh>Role</MudTh>
+            <MudTh>Owner</MudTh>
+            <MudTh />
+        </HeaderContent>
+        <RowTemplate Context="member">
+            <MudTd DataLabel="Member">
+                <div class="d-flex align-center" style="gap:.6rem">
+                    <UserAvatar UserId="@(member.UserId ?? member.Id)" DisplayName="@(member.DisplayName ?? member.Email)"
+                                AvatarUrl="@member.AvatarUrl" />
+                    <div style="min-width:0">
+                        <MudText Typo="Typo.body2">@(member.DisplayName ?? member.Email)</MudText>
+                        @if (member.DisplayName is not null)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@member.Email</MudText>
+                        }
+                    </div>
+                    @if (member.IsPending)
+                    {
+                        <MudTooltip Text="Invited, but hasn't signed in yet.">
+                            <MudChip T="string" Size="Size.Small" Label="true" Color="Color.Warning" Class="ma-0">
+                                Pending
+                            </MudChip>
+                        </MudTooltip>
+                    }
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Role">
+                @if (IsOwner)
+                {
+                    <MudSelect T="ProjectRole" Value="@member.Role" Dense="true" Margin="Margin.Dense"
+                               Variant="Variant.Text" Style="max-width:10rem"
+                               ValueChanged="@(role => SetRoleAsync(member, role, member.IsOwner))">
+                        <MudSelectItem T="ProjectRole" Value="ProjectRole.Read">Read only</MudSelectItem>
+                        <MudSelectItem T="ProjectRole" Value="ProjectRole.ReadWrite">Read/write</MudSelectItem>
+                    </MudSelect>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2">
+                        @(member.Role == ProjectRole.ReadWrite ? "Read/write" : "Read only")
+                    </MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Owner">
+                <MudSwitch T="bool" Value="@member.IsOwner" Color="Color.Primary" Disabled="@(!IsOwner)"
+                           ValueChanged="@(owner => SetRoleAsync(member, member.Role, owner))" />
+            </MudTd>
+            <MudTd Style="text-align:right">
+                @if (IsOwner)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.PersonRemove" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => RemoveAsync(member))" aria-label="Remove member" />
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private IReadOnlyList<ProjectMemberDto>? _members;
+    private string _inviteEmail = string.Empty;
+    private ProjectRole _inviteRole = ProjectRole.Read;
+    private bool _busy;
+
+    [Parameter, EditorRequired]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public bool IsOwner { get; set; }
+
+    /// <summary>Membership drives this page's own permissions, so the parent re-reads the project.</summary>
+    [Parameter]
+    public EventCallback OnMembersChanged { get; set; }
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _members = (await Api.GetMembersAsync(ProjectId))
+                .OrderByDescending(m => m.IsOwner)
+                .ThenBy(m => m.DisplayName ?? m.Email)
+                .ToList();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't load members.", Severity.Error);
+            _members = [];
+        }
+    }
+
+    private async Task OnInviteKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await InviteAsync();
+        }
+    }
+
+    private async Task InviteAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_inviteEmail))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await Api.InviteMemberAsync(ProjectId,
+                new InviteMemberRequest { Email = _inviteEmail.Trim(), Role = _inviteRole });
+            _inviteEmail = string.Empty;
+            await LoadAsync();
+            await OnMembersChanged.InvokeAsync();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't send that invite.", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Dropdown selection and switch toggle are both save events — commit immediately.</summary>
+    private async Task SetRoleAsync(ProjectMemberDto member, ProjectRole role, bool isOwner)
+    {
+        try
+        {
+            await Api.UpdateMemberAsync(ProjectId, member.Id,
+                new UpdateMemberRequest { Role = role, IsOwner = isOwner });
+            await LoadAsync();
+            await OnMembersChanged.InvokeAsync();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't update that member.", Severity.Error);
+            await LoadAsync();
+        }
+    }
+
+    private async Task RemoveAsync(ProjectMemberDto member)
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            "Remove member",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message, $"Remove {member.DisplayName ?? member.Email} from this project?" },
+                { d => d.ConfirmText, "Remove" },
+            });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.RemoveMemberAsync(ProjectId, member.Id);
+            await LoadAsync();
+            await OnMembersChanged.InvokeAsync();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't remove that member.", Severity.Error);
+        }
+    }
+}

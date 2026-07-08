@@ -1,0 +1,114 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject ThemeService Theme
+@inject UserSession Session
+@inject AppConfig Config
+@inject GoogleIdentityService Google
+@inject NavigationManager Navigation
+
+<MudThemeProvider Theme="@SoloTheme.Theme" IsDarkMode="@Theme.IsDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider CloseButton="true" CloseOnEscapeKey="true" MaxWidth="MaxWidth.Small" FullWidth="true" />
+<MudSnackbarProvider />
+
+<MudLayout>
+    @* Height comes from the theme's AppbarHeight (5em), so no Dense here. *@
+    <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@(() => _drawerOpen = !_drawerOpen)" aria-label="Toggle navigation" />
+        <MudLink Href="" Underline="Underline.None" Color="Color.Inherit" Class="ml-2">
+            <MudText Typo="Typo.h5">Solo</MudText>
+        </MudLink>
+        <MudSpacer />
+
+        <AuthorizeView>
+            <Authorized>
+                <ConnectionIndicator />
+                <MudTooltip Text="@(Theme.IsDarkMode ? "Switch to light theme" : "Switch to dark theme")">
+                    <MudIconButton
+                        Icon="@(Theme.IsDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                        Color="Color.Inherit" OnClick="@Theme.ToggleAsync" />
+                </MudTooltip>
+                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit"
+                         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <MudText Typo="Typo.body2" Class="px-4 py-2">@context.User.Identity?.Name</MudText>
+                    <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@SignOut">Sign out</MudMenuItem>
+                </MudMenu>
+            </Authorized>
+        </AuthorizeView>
+    </MudAppBar>
+
+    <AuthorizeView>
+        <Authorized>
+            @* Responsive, not Mini: a Mini drawer is icon-only and can't hold a tree. *@
+            <MudDrawer @bind-Open="_drawerOpen" Elevation="1" ClipMode="DrawerClipMode.Always"
+                       Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md">
+                <NavMenu />
+            </MudDrawer>
+        </Authorized>
+    </AuthorizeView>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // localStorage isn't reachable until the first render completes.
+        await Theme.InitializeAsync();
+
+        // The signed-in user's profile: their id drives presence self-exclusion,
+        // and IsSuperAdmin gates the admin nav.
+        if (AuthenticationStateTask is not null && Session.Current is null)
+        {
+            var state = await AuthenticationStateTask;
+            if (state.User.Identity?.IsAuthenticated == true)
+            {
+                try
+                {
+                    await Session.LoadAsync();
+                    StateHasChanged();
+                }
+                catch (ApiException)
+                {
+                    // Token rejected or user deprovisioned; the route guards
+                    // bounce them to sign-in on the next navigation.
+                }
+            }
+        }
+    }
+
+    private void OnThemeChanged() => StateHasChanged();
+
+    /// <summary>Google has no logout redirect: drop the credential and go home.</summary>
+    private async Task SignOut()
+    {
+        if (Config.IsGoogle)
+        {
+            await Google.SignOutAsync();
+            Navigation.NavigateTo("signin", replace: true);
+            return;
+        }
+
+        Navigation.NavigateToLogout("authentication/logout");
+    }
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

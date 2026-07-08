@@ -1,0 +1,86 @@
+@page "/settings"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+<PageTitle>Instance settings · Solo</PageTitle>
+
+<MudText Typo="Typo.h1" Class="mb-4">Instance settings</MudText>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_settings is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudPaper Elevation="1" Class="pa-4" Style="max-width:32rem">
+        <MudText Typo="Typo.h4" Class="mb-1">Audit retention</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Audit entries older than this are pruned automatically.
+        </MudText>
+
+        @* Blur commits — no save-per-keystroke. *@
+        <MudNumericField T="int" @bind-Value="_retentionDays" Label="Days" Variant="Variant.Outlined"
+                         Margin="Margin.Dense" Min="1" Max="3650" Immediate="false" OnBlur="@SaveAsync" />
+
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4 d-block">
+            Setup completed: @(_settings.SetupCompleted ? "yes" : "no")
+        </MudText>
+    </MudPaper>
+}
+
+@code {
+    private InstanceSettingsDto? _settings;
+    private int _retentionDays;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _settings = await Api.GetInstanceSettingsAsync();
+            _retentionDays = _settings.AuditRetentionDays;
+        }
+        catch (ApiException e)
+        {
+            // The endpoint is super-admin only; a 403 here is a legitimate answer.
+            _error = e.StatusCode == System.Net.HttpStatusCode.Forbidden
+                ? "Only the instance super admin can change these settings."
+                : e.Detail ?? "Couldn't load instance settings.";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_settings is null || _retentionDays == _settings.AuditRetentionDays)
+        {
+            return;
+        }
+
+        try
+        {
+            _settings = await Api.UpdateInstanceSettingsAsync(new UpdateInstanceSettingsRequest
+            {
+                AuditRetentionDays = _retentionDays,
+                Version = _settings.Version,
+            });
+            _retentionDays = _settings.AuditRetentionDays;
+            Snackbar.Add("Saved.", Severity.Success);
+        }
+        catch (ApiConflictException)
+        {
+            _settings = await Api.GetInstanceSettingsAsync();
+            _retentionDays = _settings.AuditRetentionDays;
+            Snackbar.Add("Updated by someone else — your view was refreshed.", Severity.Info);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
+            _retentionDays = _settings.AuditRetentionDays;
+        }
+    }
+}

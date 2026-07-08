@@ -1,0 +1,179 @@
+@inject ApiClient Api
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+@*
+    Project-global labels and board-local additions, split by what they apply to.
+    The defaults the server seeds are visible and editable like any other.
+*@
+
+@if (_labels is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    @* grid-inset: without it MudGrid's negative top margin overlays the tab strip. *@
+    <div class="grid-inset">
+    <MudGrid>
+        @foreach (var kind in new[] { LabelKind.Task, LabelKind.SubTask })
+        {
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="1" Class="pa-3">
+                    <div class="d-flex align-center mb-3">
+                        <MudText Typo="Typo.h4">
+                            @(kind == LabelKind.Task ? "Task labels" : "Sub-task labels")
+                        </MudText>
+                        <MudSpacer />
+                        @if (CanWrite)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => CreateAsync(kind))" aria-label="Add label" />
+                        }
+                    </div>
+
+                    @{
+                        var labels = _labels.Where(l => l.Kind == kind).ToList();
+                    }
+                    @if (labels.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">None yet.</MudText>
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true">
+                            @foreach (var label in labels)
+                            {
+                                <MudListItem T="string">
+                                    <div class="d-flex align-center" style="gap:.6rem">
+                                        <LabelChip Label="@label" />
+                                        @if (label.BoardId is not null)
+                                        {
+                                            <MudTooltip Text="Only available on one board.">
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                                         Class="ma-0">board</MudChip>
+                                            </MudTooltip>
+                                        }
+                                        <MudSpacer />
+                                        @if (CanWrite)
+                                        {
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                           OnClick="@(() => EditAsync(label))" aria-label="Edit label" />
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                           Color="Color.Error" OnClick="@(() => DeleteAsync(label))"
+                                                           aria-label="Delete label" />
+                                        }
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<LabelDto>? _labels;
+
+    [Parameter, EditorRequired]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _labels = await Api.GetLabelsAsync(ProjectId);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't load labels.", Severity.Error);
+            _labels = [];
+        }
+    }
+
+    private async Task CreateAsync(LabelKind kind)
+    {
+        var dialog = await Dialogs.ShowAsync<LabelDialog>(
+            "New label",
+            new DialogParameters<LabelDialog> { { d => d.SaveText, "Create" } });
+
+        if (await dialog.Result is not { Canceled: false, Data: LabelDialog.LabelEdit created })
+        {
+            return;
+        }
+
+        await GuardAsync(() => Api.CreateLabelAsync(ProjectId, new CreateLabelRequest
+        {
+            Kind = kind,
+            Name = created.Name,
+            Color = created.Color,
+        }));
+    }
+
+    private async Task EditAsync(LabelDto label)
+    {
+        var dialog = await Dialogs.ShowAsync<LabelDialog>(
+            "Edit label",
+            new DialogParameters<LabelDialog>
+            {
+                { d => d.Name, label.Name },
+                { d => d.HexColor, label.Color },
+                { d => d.SaveText, "Save" },
+            });
+
+        if (await dialog.Result is not { Canceled: false, Data: LabelDialog.LabelEdit edited })
+        {
+            return;
+        }
+
+        await GuardAsync(() => Api.UpdateLabelAsync(ProjectId, label.Id, new UpdateLabelRequest
+        {
+            Name = edited.Name,
+            Color = edited.Color,
+            Version = label.Version,
+        }));
+    }
+
+    private async Task DeleteAsync(LabelDto label)
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            "Delete label",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message, $"Delete the label \"{label.Name}\"? Items using it keep their other fields." },
+            });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        await GuardAsync(() => Api.DeleteLabelAsync(ProjectId, label.Id));
+    }
+
+    private async Task GuardAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (ApiConflictException)
+        {
+            Snackbar.Add("Updated by someone else — your view was refreshed.", Severity.Info);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
+        }
+
+        await LoadAsync();
+    }
+}

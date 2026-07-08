@@ -1,4 +1,3 @@
-using Solo.Data.Domain;
 using Solo.Shared;
 using Xunit;
 

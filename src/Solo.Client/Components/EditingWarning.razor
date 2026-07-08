@@ -1,0 +1,24 @@
+@*
+    The concept's collision-avoidance mechanism: before you type a character, you
+    see that someone else is already in here.
+*@
+@if (Editors.Count > 0)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3" Icon="@Icons.Material.Filled.EditNote">
+        @Message is editing this right now — your save may overwrite theirs.
+    </MudAlert>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public required IReadOnlyList<PresenceEntry> Editors { get; set; }
+
+    private string Message => Editors.Count switch
+    {
+        1 => Editors[0].DisplayName ?? "Someone else",
+        2 => $"{Name(0)} and {Name(1)}",
+        _ => $"{Name(0)} and {Editors.Count - 1} others",
+    };
+
+    private string Name(int index) => Editors[index].DisplayName ?? "Someone";
+}

@@ -1,0 +1,18 @@
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex flex-column align-center justify-center" Style="height:100vh;gap:1rem">
+    <MudAlert Severity="Severity.Error" Class="width-100">
+        <MudText Typo="Typo.subtitle1">@Title</MudText>
+        @if (!string.IsNullOrWhiteSpace(Detail))
+        {
+            <MudText Typo="Typo.body2">@Detail</MudText>
+        }
+    </MudAlert>
+    <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary">Back to Solo</MudButton>
+</MudContainer>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Title { get; set; }
+
+    [Parameter]
+    public string? Detail { get; set; }
+}

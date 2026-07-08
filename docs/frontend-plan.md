@@ -12,12 +12,12 @@ Companion to `backend-plan.md`. The backend is fully implemented (API controller
 src/Solo.Client/
 ├── Program.cs              — auth bootstrap, DI, MudBlazor services
 ├── App.razor, Routes       — router + auth guards
-├── Layout/                 — MainLayout, NavMenu, AppBar (presence-aware)
+├── Layout/                 — MainLayout, NavMenu (project → board tree), AppBar (presence-aware)
 ├── Auth/                   — dynamic OIDC config, ID-token message handler
 ├── Api/                    — typed ApiClient over HttpClient (one method per endpoint)
 ├── Realtime/               — BoardHubClient (typed SignalR wrapper), presence state
-├── State/                  — BoardStore + per-page state containers
-├── Pages/                  — routable pages (see §5)
+├── State/                  — BoardStore, ProjectNavStore + per-page state containers
+├── Pages/                  — routable pages (see §6)
 └── Components/             — Kanban pieces, markdown editor, dialogs, shared bits
 ```
 
@@ -28,7 +28,11 @@ src/Solo.Client/
 ## 2. Authentication flow
 
 - **Dynamic provider config:** WASM `Program.Main` is async — before building the host, fetch the anonymous `GET /api/config/auth` (`AuthConfigDto`) with a bare `HttpClient` and feed `Authority`/`ClientId` into `AddOidcAuthentication`. The provider is configured only in the API's environment, exactly as the backend plan intends.
-- **Token wrinkle (important):** the API validates tokens with `ValidAudience = ClientId`, i.e. it expects the OIDC **ID token** (Google's access tokens are opaque, non-JWT). A custom `AuthorizationMessageHandler` attaches the stored ID token as the Bearer token on API calls, and the SignalR `AccessTokenProvider` returns the same. Works identically for Google and Microsoft.
+- **Token wrinkle (important):** the API validates tokens with `ValidAudience = ClientId`, i.e. it expects the OIDC **ID token** (Google's access tokens are opaque, non-JWT). A custom `AuthorizationMessageHandler` attaches the stored ID token as the Bearer token on API calls, and the SignalR `AccessTokenProvider` returns the same.
+- **Google does not do code + PKCE from a browser.** This plan originally assumed one OIDC flow served every provider; that is false. Google's *Web application* OAuth clients require a `client_secret` at the token endpoint **even with PKCE**, and a WASM client ships to the browser, so it can hold no secret. Google's *Desktop app* clients are public but only accept loopback redirects, so they can't serve a hosted web app either (they are, however, the right fit for the Electron shell in §12). Implicit (`response_type=id_token`) would dodge the token endpoint but Google no longer supports it for new integrations.
+  - **Google** ⇒ **Google Identity Services** (`google.accounts.id`). The `credential` it returns *is* the ID token, with `aud = ClientId` — precisely what the API validates. No secret, no token endpoint, no redirect. Cost: Google-specific, ~1h token lifetime, and renewal via FedCM/One Tap rather than a silent iframe. The GIS script is loaded lazily, so non-Google instances never contact Google.
+  - **Microsoft / generic OIDC** ⇒ `AddOidcAuthentication` with code + PKCE, exactly as described above.
+  - `IdTokenProvider` is the only class that knows the difference; everything downstream — the message handler, the hub, the API — sees an ID token either way.
 - **Route guards:** `AuthorizeRouteView` everywhere except sign-in and the setup wizard. If `AuthConfigDto.SetupCompleted` is false, all navigation redirects to `/setup` — the flag arrives on the anonymous config call, so the redirect needs no auth.
 - After sign-in, `GET /api/users/me` hydrates the current user (id for presence/self-exclusion, `IsSuperAdmin` for gating admin UI).
 
@@ -48,20 +52,43 @@ src/Solo.Client/
 - **Presence UX:** `PresenceChanged` snapshots drive avatar clusters on board cards and detail drawers — grey avatar = viewing, colored/pulsing = editing. Opening an editor calls `SetPresence(entityType, id, Editing)`; if someone else is already editing, the editor shows a prominent "Hunter is editing this" warning before you type, which is the concept's collision-avoidance mechanism.
 - Store layer: a scoped `BoardStore` holds `BoardDetailDto` + presence snapshot, exposes `IObservable`-style change notifications (plain C# events are fine); components subscribe and re-render. No Fluxor — the store is small and the save-event model keeps mutation paths few.
 
-## 5. Pages
+## 5. Navigation sidebar
+
+The drawer is the app's map. `DrawerVariant.Responsive` (not `Mini` — a mini drawer is icon-only and cannot hold a tree), open by default above the `Md` breakpoint.
+
+```
+All projects
+├─ ▸ Solo                     ← MudNavGroup, collapsed
+├─ ▾ Side quest               ← expanded
+│    ├─ Main board            ← open boards only
+│    ├─ Prototype
+│    ├─ Project settings      ← members, labels, audit, closed boards
+│    └─ + Add board           ← foot of this project's boards
+└─ ─────────────────
+   + Add project              ← pinned to the foot of the sidebar
+   Instance settings
+```
+
+- **`ProjectNavStore`** holds the tree: projects from `GET /api/projects`, and a project's boards from `GET /api/projects/{id}/boards` **fetched on first expand**. Signing in costs one request, not one per project. No new API surface (see `backend-plan.md` §4).
+- **Only open boards are listed.** Closed ones stay in the project home's faded foldout — "fold, don't hide" (§12) means reachable, not omnipresent. A sidebar listing every closed board buries the boards in play.
+- **Create where the thing lives:** "Add board" sits at the foot of a project's boards; "Add project" is pinned to the foot of the sidebar, below the scrolling tree, so it stays reachable at any project count. Both open the shared `NameIconDialog` and navigate to what they created.
+- **Affordances match the API's rules**, so no button 403s: "Add project" is super-admin only; "Add board" needs super admin, project owner, or `ReadWrite` (`ProjectNavStore.CanAddBoard`). A project's name is a group header rather than a link, so "Project settings" is how the tree reaches the project home.
+- Mutations elsewhere keep the tree honest: the projects list, boards grid and project settings tab call `RefreshProjectsAsync`/`RefreshBoardsAsync` after create, rename, delete, close and reopen.
+
+## 6. Pages
 
 | Route | Page | Notes |
 |---|---|---|
 | `/signin` | Sign-in | Provider button (label/icon from `AuthConfigDto.Provider`) |
 | `/setup` | First-run wizard | Stepper: static-credential check (`POST /api/setup/verify`) → retention (`PUT /api/setup/settings`) → SSO sign-in → handoff (`POST /api/setup/complete` re-proving static creds) |
-| `/` | Projects list | Cards with icon + role badge; create (super admin only) |
+| `/` | Projects list | Cards with icon + role badge; create (super admin only). The sidebar (§5) is the primary navigation; this page stays as the overview and the empty-state entry point |
 | `/projects/{id}` | Project home | Boards grid — closed boards tucked in a faded foldout with one-click reopen — + tabs: Members, Labels, Audit, Settings |
-| `/projects/{id}/boards/{boardId}` | **Kanban board** | The core surface (§6) |
+| `/projects/{id}/boards/{boardId}` | **Kanban board** | The core surface (§7) |
 | `/settings` | Instance settings | Super admin: audit retention (`/api/settings`) |
 
 Project tabs: **Members** (invite by email, role toggle Read/ReadWrite, owner flag, pending badge), **Labels** (global + per-board task/subtask labels, color picker, defaults visible), **Audit** (paged `MudTable` over `/api/projects/{id}/audit` with user/table/date filters).
 
-## 6. Kanban board layout
+## 7. Kanban board layout
 
 Three fixed status columns — **Unstarted / In Progress / Finished** — with **epics as horizontal swimlanes** spanning all three, matching the decided "epic visually surrounds its child tasks":
 
@@ -84,24 +111,24 @@ Three fixed status columns — **Unstarted / In Progress / Finished** — with *
 - **Finished-column hygiene:** past 25 cards the Finished column folds the overflow behind a faded expander ("Show all N") — same pattern as closed boards: tucked away, never locked away.
 - **Detail drawer** (right side, epic or task): markdown description, label select, assignees, sub-task checklist (add/toggle/re-rank/label), comments thread. Sub-task toggles update task status locally via the same rollup rule for instant feedback, then reconcile from the server response.
 
-## 7. Markdown editing
+## 8. Markdown editing
 
 `MudBlazor.Markdown` renders (`MudMarkdown`); editing is a **write/preview toggle** — `MudTextField` textarea with monospace font, preview tab rendering the draft. Save on drawer close or explicit save button (a "save event"), Esc cancels. Same component reused for descriptions and comments.
 
-## 8. Theming & UX defaults
+## 9. Theming & UX defaults
 
 - MudBlazor theme with dark mode as the default (game-dev audience), light theme available, preference persisted in `localStorage`.
 - Icons: Material icon picker for project/board icons (they're free-text strings in the DTOs — store icon names).
 - Density: compact — this is a tool, not a marketing site. Keyboard: Esc closes drawers, Enter commits single-line edits.
 - Empty states with a single obvious action ("No boards yet — create one").
 
-## 9. Testing
+## 10. Testing
 
 - **bUnit** component tests: status-rollup display, save-event triggers (blur commits, keystrokes don't), 409-refresh flow, presence badge rendering, drag handlers calling the right endpoint per drop zone.
 - **Playwright E2E** (against the real API + Testcontainers Postgres, reusing the backend test-auth handler): sign-in redirect, setup wizard happy path, create project→board→epic→task, drag across columns, two-browser live-update and presence test.
 - CI: client build + bUnit in the existing workflow; E2E as a separate job.
 
-## 10. Build order
+## 11. Build order
 
 | Phase | Deliverable | Exit criterion |
 |---|---|---|
@@ -116,7 +143,7 @@ Three fixed status columns — **Unstarted / In Progress / Finished** — with *
 
 Phases 5 and 6 are independent after 4; 6 can start earlier if collisions become annoying during development.
 
-## 11. Decisions
+## 12. Decisions
 
 All open questions were resolved on 2026-07-07:
 
@@ -124,3 +151,4 @@ All open questions were resolved on 2026-07-07:
 - **Comments are a flat chronological thread**, markdown-enabled via the shared editor.
 - **Desktop-first; Electron client anticipated.** No phone layout for v1. All backend connectivity goes through a single configurable instance address (`InstanceConnection`, §3) so the same client can later ship as an Electron app pointed at a self-hosted server — one instance at a time, never a multi-instance switcher.
 - **Remote changes apply silently with a one-shot colored outline pulse** on the changed element — no toasts; presence avatars carry the ambient signal.
+- **The sidebar is the navigation surface** (§5): a project → board tree with creation actions at the foot of each scope. Boards load per project on expand rather than up front, and closed boards are omitted from it — consistent with "fold, don't hide", since the project home still lists them.

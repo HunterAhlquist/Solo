@@ -1,0 +1,95 @@
+@page "/projects/{ProjectId:guid}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject UserSession Session
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_project?.Name ?? "Project") · Solo</PageTitle>
+
+@if (_project is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <div class="d-flex align-center mb-4" style="gap:.75rem">
+        <MudIcon Icon="@SoloIcons.Resolve(_project.Icon)" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h1">@_project.Name</MudText>
+    </div>
+
+    <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true">
+        <MudTabPanel Text="Boards" Icon="@Icons.Material.Filled.ViewKanban">
+            <BoardsGrid ProjectId="@ProjectId" CanWrite="@_canWrite" />
+        </MudTabPanel>
+
+        <MudTabPanel Text="Members" Icon="@Icons.Material.Filled.People">
+            <MembersTab ProjectId="@ProjectId" IsOwner="@_isOwner" OnMembersChanged="@LoadProjectAsync" />
+        </MudTabPanel>
+
+        <MudTabPanel Text="Labels" Icon="@Icons.Material.Filled.Label">
+            <LabelsTab ProjectId="@ProjectId" CanWrite="@_canWrite" />
+        </MudTabPanel>
+
+        @if (_isOwner)
+        {
+            <MudTabPanel Text="Audit" Icon="@Icons.Material.Filled.History">
+                <AuditTab ProjectId="@ProjectId" Members="@_project.Members" />
+            </MudTabPanel>
+
+            <MudTabPanel Text="Settings" Icon="@Icons.Material.Filled.Settings">
+                <ProjectSettingsTab Project="@_project" OnSaved="@OnProjectSaved" />
+            </MudTabPanel>
+        }
+    </MudTabs>
+}
+
+@code {
+    private ProjectDto? _project;
+    private bool _isOwner;
+    private bool _canWrite;
+
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    /// <summary>
+    /// The layout hydrates the session too, but it races this page — and every tab
+    /// here is gated on the signed-in user's id and super-admin flag. Without this,
+    /// an owner sees neither the Audit nor the Settings tab.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.Current is null)
+        {
+            try
+            {
+                await Session.LoadAsync();
+            }
+            catch (ApiException)
+            {
+                // Non-fatal: the project loads, permissions stay at their minimum.
+            }
+        }
+    }
+
+    protected override Task OnParametersSetAsync() => LoadProjectAsync();
+
+    private async Task LoadProjectAsync()
+    {
+        try
+        {
+            _project = await Api.GetProjectAsync(ProjectId);
+
+            // Membership decides which tabs exist at all. The super admin has
+            // every right on every project without being a member of any.
+            var me = _project.Members.FirstOrDefault(m => m.UserId == Session.UserId);
+            _isOwner = Session.IsSuperAdmin || (me?.IsOwner ?? false);
+            _canWrite = _isOwner || me?.Role == ProjectRole.ReadWrite;
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't load that project.", Severity.Error);
+        }
+    }
+
+    private void OnProjectSaved(ProjectDto project) => _project = project;
+}

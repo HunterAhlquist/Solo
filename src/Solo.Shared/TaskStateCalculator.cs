@@ -1,6 +1,4 @@
-using Solo.Shared;
-
-namespace Solo.Data.Domain;
+namespace Solo.Shared;
 
 public static class TaskStateCalculator
 {
@@ -9,6 +7,11 @@ public static class TaskStateCalculator
     /// status is auto-derived: all finished = Finished, some finished = InProgress,
     /// none finished = Unstarted.
     /// </summary>
+    /// <remarks>
+    /// Lives in Solo.Shared so the client can apply the identical roll-up
+    /// optimistically when a checklist box is ticked. The server's answer always
+    /// wins, but the two must never disagree — hence one implementation.
+    /// </remarks>
     public static TaskState Derive(int subTaskCount, int finishedCount, TaskState manualStatus)
     {
         if (subTaskCount == 0)

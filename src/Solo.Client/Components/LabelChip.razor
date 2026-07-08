@@ -1,0 +1,31 @@
+@if (Label is not null)
+{
+    <MudChip T="string" Size="Size.Small" Label="true" Style="@ChipStyle" Class="ma-0">
+        @Label.Name
+    </MudChip>
+}
+
+@code {
+    [Parameter]
+    public LabelDto? Label { get; set; }
+
+    /// <summary>
+    /// Labels carry an arbitrary hex colour, so pick the text colour by relative
+    /// luminance rather than guessing — a yellow label needs dark text.
+    /// </summary>
+    private string ChipStyle =>
+        $"background-color:{Label!.Color};color:{(IsLight(Label.Color) ? "#15151f" : "#ffffff")}";
+
+    private static bool IsLight(string hex)
+    {
+        if (hex.Length != 7 || hex[0] != '#' ||
+            !int.TryParse(hex.AsSpan(1, 2), System.Globalization.NumberStyles.HexNumber, null, out var r) ||
+            !int.TryParse(hex.AsSpan(3, 2), System.Globalization.NumberStyles.HexNumber, null, out var g) ||
+            !int.TryParse(hex.AsSpan(5, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+        {
+            return false;
+        }
+
+        return ((0.299 * r) + (0.587 * g) + (0.114 * b)) > 150;
+    }
+}

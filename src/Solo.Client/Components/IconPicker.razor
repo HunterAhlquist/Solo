@@ -1,0 +1,35 @@
+@*
+    Project/board icons are free-text Material icon names in the DTOs, so store
+    the name. An autocomplete over a curated list beats a 2,000-icon grid.
+*@
+<MudAutocomplete T="string" Value="@Value" ValueChanged="@OnChanged" Label="@Label"
+                 Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                 SearchFunc="@Search" MaxItems="24" CoerceValue="true" ResetValueOnEmptyText="true">
+    <ItemTemplate Context="icon">
+        <div class="d-flex align-center" style="gap:.5rem">
+            <MudIcon Icon="@SoloIcons.Resolve(icon)" Size="Size.Small" />
+            <MudText Typo="Typo.body2">@icon</MudText>
+        </div>
+    </ItemTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter]
+    public string Label { get; set; } = "Icon";
+
+    private Task OnChanged(string? value) => ValueChanged.InvokeAsync(value);
+
+    private Task<IEnumerable<string>> Search(string? value, CancellationToken ct)
+    {
+        var matches = string.IsNullOrWhiteSpace(value)
+            ? SoloIcons.Names
+            : SoloIcons.Names.Where(n => n.Contains(value, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(matches);
+    }
+}

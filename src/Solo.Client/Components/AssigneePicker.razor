@@ -1,0 +1,55 @@
+@*
+    Dropdown close is the save event — MudSelect raises it once per selection change.
+*@
+<MudSelect T="Guid" MultiSelection="true" SelectedValues="@Selected" Disabled="@(!CanWrite)"
+           SelectedValuesChanged="@OnSelectedChanged" Label="Assignees" Variant="Variant.Outlined"
+           Margin="Margin.Dense" MultiSelectionTextFunc="@Describe" AnchorOrigin="Origin.BottomCenter">
+    @foreach (var member in Assignable)
+    {
+        <MudSelectItem T="Guid" Value="@member.UserId!.Value">
+            @(member.DisplayName ?? member.Email)
+        </MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter, EditorRequired]
+    public required IReadOnlyList<ProjectMemberDto> Members { get; set; }
+
+    [Parameter, EditorRequired]
+    public required IReadOnlyList<Guid> AssigneeIds { get; set; }
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    [Parameter]
+    public EventCallback<IReadOnlyList<Guid>> OnChanged { get; set; }
+
+    /// <summary>Pending invitees have no user id yet, so they can't be assigned anything.</summary>
+    private IEnumerable<ProjectMemberDto> Assignable => Members.Where(m => m.UserId is not null);
+
+    private IReadOnlyCollection<Guid> Selected => AssigneeIds;
+
+    private Task OnSelectedChanged(IReadOnlyCollection<Guid> values) => OnChanged.InvokeAsync(values.ToList());
+
+    /// <summary>
+    /// MudSelect hands this the <em>values</em> it holds, stringified — for us that's
+    /// raw GUIDs, not the item text. Map them back to people before showing them.
+    /// </summary>
+    private string Describe(IReadOnlyList<string> selectedValues)
+    {
+        var names = selectedValues
+            .Select(value => Guid.TryParse(value, out var userId) ? userId : (Guid?)null)
+            .Select(userId => Members.FirstOrDefault(m => m.UserId == userId))
+            .Select(member => member?.DisplayName ?? member?.Email)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
+        return names.Count switch
+        {
+            0 => "Nobody",
+            1 => names[0]!,
+            _ => $"{names.Count} people",
+        };
+    }
+}

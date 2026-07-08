@@ -1,0 +1,327 @@
+@inject ApiClient Api
+@inject BoardStore Store
+@inject IBoardHubClient Hub
+@inject SaveGuard Guard
+@inject IDialogService Dialogs
+
+@*
+    The right-hand detail drawer for a task or an epic. Every field commits on a
+    save event — blur, dropdown selection, or an explicit Save. Opening an editor
+    reports Editing presence, which is what warns the next person off.
+*@
+
+<MudDrawer Open="@IsOpen" Anchor="Anchor.Right" Elevation="3" Variant="DrawerVariant.Temporary"
+           Width="34rem" OverlayAutoClose="true" OpenChanged="@OnOpenChanged">
+    @if (Entity is not null)
+    {
+        <MudDrawerHeader Class="d-flex align-center">
+            <MudText Typo="Typo.subtitle1" Class="flex-grow-1">
+                @(Task is not null ? "Task" : "Epic")
+            </MudText>
+            <PresenceCluster Entries="@PresenceEntries" MaxVisible="4" />
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                           OnClick="@CloseAsync" aria-label="Close" />
+        </MudDrawerHeader>
+
+        <div class="pa-4" style="overflow-y:auto">
+            <EditingWarning Editors="@Editors" />
+
+            @* -- Name: blur commits ------------------------------------------- *@
+            <MudTextField T="string" Value="@_name" ValueChanged="@OnNameChanged" Label="Name"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="false"
+                          Disabled="@(!CanWrite)" OnKeyDown="@OnNameKeyDown" Class="mb-3" />
+
+            @if (Task is not null)
+            {
+                <div class="d-flex mb-3" style="gap:.75rem">
+                    <MudSelect T="Guid?" Value="@Task.LabelId" Label="Label" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Clearable="true" Disabled="@(!CanWrite)"
+                               ValueChanged="@OnLabelChanged" Class="flex-grow-1">
+                        @foreach (var label in TaskLabels)
+                        {
+                            <MudSelectItem T="Guid?" Value="@label.Id">@label.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudTooltip Text="@StatusTooltip" Disabled="@(Task.SubTasks.Count == 0)">
+                        <MudSelect T="TaskState" Value="@Task.Status" Label="Status" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" Style="min-width:11rem"
+                                   Disabled="@(!CanWrite || Task.SubTasks.Count > 0)"
+                                   ValueChanged="@OnStatusChanged">
+                            @foreach (var status in BoardZones.Statuses)
+                            {
+                                <MudSelectItem T="TaskState" Value="@status">@BoardZones.Title(status)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTooltip>
+                </div>
+            }
+
+            <div class="mb-4">
+                <AssigneePicker Members="@Store.Members" AssigneeIds="@AssigneeIds"
+                                CanWrite="@CanWrite" OnChanged="@OnAssigneesChanged" />
+            </div>
+
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Description</MudText>
+            <MarkdownEditor Value="@Description" CanWrite="@CanWrite" OnSave="@OnDescriptionSaved"
+                            OnEditingChanged="@ReportEditingAsync" Class="mb-4" />
+
+            <MudDivider Class="my-4" />
+
+            @if (Task is not null)
+            {
+                <SubTaskList TaskId="@Task.Id" SubTasks="@Task.SubTasks" CanWrite="@CanWrite"
+                             OnChanged="@RefreshTaskAsync" />
+                <MudDivider Class="my-4" />
+            }
+
+            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" CanWrite="@CanWrite" />
+
+            @if (CanWrite)
+            {
+                <MudDivider Class="my-4" />
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Delete" OnClick="@DeleteAsync">
+                    Delete @(Task is not null ? "task" : "epic")
+                </MudButton>
+            }
+        </div>
+    }
+</MudDrawer>
+
+@code {
+    private string _name = string.Empty;
+    private Guid? _boundTo;
+
+    [Parameter]
+    public TaskDto? Task { get; set; }
+
+    [Parameter]
+    public EpicDto? Epic { get; set; }
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private bool IsOpen => Entity is not null;
+
+    private object? Entity => (object?)Task ?? Epic;
+
+    private Guid EntityId => Task?.Id ?? Epic!.Id;
+
+    private string EntityType => Task is not null ? EntityTypes.Task : EntityTypes.Epic;
+
+    private string? Description => Task?.Description ?? Epic?.Description;
+
+    private IReadOnlyList<Guid> AssigneeIds => Task?.AssigneeIds ?? Epic?.AssigneeIds ?? [];
+
+    private IReadOnlyList<PresenceEntry> PresenceEntries =>
+        Entity is null ? [] : Store.PresenceOn(EntityType, EntityId);
+
+    private IReadOnlyList<PresenceEntry> Editors =>
+        Entity is null ? [] : Store.EditorsOn(EntityType, EntityId);
+
+    /// <summary>Only task-kind labels apply to tasks.</summary>
+    private IEnumerable<LabelDto> TaskLabels =>
+        (Store.Board?.Labels ?? []).Where(l => l.Kind == LabelKind.Task);
+
+    private const string StatusTooltip = "Status follows sub-tasks — tick them off instead.";
+
+    protected override void OnParametersSet()
+    {
+        // Re-seed the local edit buffer only when the drawer switches entity, so a
+        // live refetch never clobbers what the user is mid-way through typing.
+        if (Entity is null)
+        {
+            _boundTo = null;
+            return;
+        }
+
+        if (_boundTo != EntityId)
+        {
+            _boundTo = EntityId;
+            _name = Task?.Name ?? Epic!.Name;
+        }
+    }
+
+    // -- Presence -----------------------------------------------------------
+
+    private Task ReportEditingAsync(bool editing) =>
+        Hub.SetPresence(EntityType, EntityId, editing ? PresenceMode.Editing : PresenceMode.Viewing);
+
+    private async Task OnOpenChanged(bool open)
+    {
+        if (!open)
+        {
+            await CloseAsync();
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        // Esc and overlay-click both land here; the board clears presence.
+        await OnClose.InvokeAsync();
+    }
+
+    // -- Save events --------------------------------------------------------
+
+    private async Task OnNameKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await OnNameChanged(_name);
+        }
+    }
+
+    private async Task OnNameChanged(string name)
+    {
+        _name = name;
+        if (string.IsNullOrWhiteSpace(name) || name == (Task?.Name ?? Epic!.Name))
+        {
+            return;
+        }
+
+        await SaveAsync(name.Trim(), Description);
+    }
+
+    private Task OnDescriptionSaved(string description) =>
+        SaveAsync(Task?.Name ?? Epic!.Name, description);
+
+    private async Task SaveAsync(string name, string? description)
+    {
+        if (Task is { } task)
+        {
+            var saved = await Guard.RunAsync(
+                () => Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest
+                {
+                    Name = name,
+                    LabelId = task.LabelId,
+                    Description = description,
+                    Version = task.Version,
+                }),
+                Store.RefreshAsync);
+
+            if (saved is not null)
+            {
+                Store.ApplyTask(saved);
+            }
+        }
+        else if (Epic is { } epic)
+        {
+            var saved = await Guard.RunAsync(
+                () => Api.UpdateEpicAsync(epic.Id, new UpdateEpicRequest
+                {
+                    Name = name,
+                    Description = description,
+                    Version = epic.Version,
+                }),
+                Store.RefreshAsync);
+
+            if (saved is not null)
+            {
+                Store.ApplyEpic(saved);
+            }
+        }
+    }
+
+    private async Task OnLabelChanged(Guid? labelId)
+    {
+        if (Task is not { } task)
+        {
+            return;
+        }
+
+        var saved = await Guard.RunAsync(
+            () => Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest
+            {
+                Name = task.Name,
+                LabelId = labelId,
+                Description = task.Description,
+                Version = task.Version,
+            }),
+            Store.RefreshAsync);
+
+        if (saved is not null)
+        {
+            Store.ApplyTask(saved);
+        }
+    }
+
+    private async Task OnStatusChanged(TaskState status)
+    {
+        if (Task is not { } task || task.Status == status)
+        {
+            return;
+        }
+
+        var saved = await Guard.RunAsync(() => Api.SetTaskStatusAsync(task.Id, status), Store.RefreshAsync);
+        if (saved is not null)
+        {
+            Store.ApplyTask(saved);
+        }
+    }
+
+    private async Task OnAssigneesChanged(IReadOnlyList<Guid> userIds)
+    {
+        if (Task is { } task)
+        {
+            var saved = await Guard.RunAsync(
+                () => Api.SetTaskAssigneesAsync(task.Id, userIds), Store.RefreshAsync);
+            if (saved is not null)
+            {
+                Store.ApplyTask(saved);
+            }
+        }
+        else if (Epic is { } epic)
+        {
+            var saved = await Guard.RunAsync(
+                () => Api.SetEpicAssigneesAsync(epic.Id, userIds), Store.RefreshAsync);
+            if (saved is not null)
+            {
+                Store.ApplyEpic(saved);
+            }
+        }
+    }
+
+    /// <summary>A checklist change re-derives the task's status server-side.</summary>
+    private async Task RefreshTaskAsync()
+    {
+        if (Task is { } task)
+        {
+            Store.ApplyTask(await Api.GetTaskAsync(task.Id));
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var noun = Task is not null ? "task" : "epic";
+        var name = Task?.Name ?? Epic!.Name;
+
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            $"Delete {noun}",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message, $"Delete the {noun} \"{name}\"?" },
+            });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        if (Task is { } task)
+        {
+            await Guard.RunAsync(() => Api.DeleteTaskAsync(task.Id));
+            Store.RemoveTask(task.Id);
+        }
+        else if (Epic is { } epic)
+        {
+            await Guard.RunAsync(() => Api.DeleteEpicAsync(epic.Id));
+            await Store.RefreshAsync();
+        }
+
+        await CloseAsync();
+    }
+}

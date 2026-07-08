@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, backend]
+    branches: [main, backend, frontend]
     tags: ["v*"]
   pull_request:
     branches: [main]
@@ -27,7 +27,8 @@ jobs:
         run: dotnet build Solo.slnx --no-restore -c Release
 
       # Integration tests spin up Postgres via Testcontainers; the ubuntu
-      # runner's Docker daemon covers that.
+      # runner's Docker daemon covers that. bUnit component tests for
+      # Solo.Client run in the same pass — they need no browser.
       - name: Test
         run: dotnet test Solo.slnx --no-build -c Release --logger "trx" --results-directory TestResults
 

@@ -1,0 +1,60 @@
+@implements IDisposable
+@inject GoogleIdentityService Google
+@inject ThemeService Theme
+
+@*
+    Google renders this button itself, inside the div below — its branding rules
+    require it, and it's what carries the FedCM/One Tap plumbing. Nothing here
+    posts a form or navigates: the credential arrives via a JS callback.
+*@
+<div class="d-flex flex-column align-center" style="gap:.5rem">
+    <div @ref="_container"></div>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+    }
+</div>
+
+@code {
+    private ElementReference _container;
+    private string? _error;
+
+    /// <summary>Fires once a credential has been received and stored.</summary>
+    [Parameter]
+    public EventCallback OnSignedIn { get; set; }
+
+    protected override void OnInitialized() => Google.SignedInChanged += OnSignedInChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            await Google.InitializeAsync();
+            await Google.RenderButtonAsync(_container, Theme.IsDarkMode);
+        }
+        catch (JSException)
+        {
+            // Google's script is blocked or unreachable (offline, content blocker).
+            _error = "Couldn't load Google sign-in. Check your connection or any content blocker.";
+            StateHasChanged();
+        }
+    }
+
+    private void OnSignedInChanged() => _ = InvokeAsync(async () =>
+    {
+        if (await Google.GetTokenAsync() is not null)
+        {
+            await OnSignedIn.InvokeAsync();
+        }
+
+        StateHasChanged();
+    });
+
+    public void Dispose() => Google.SignedInChanged -= OnSignedInChanged;
+}

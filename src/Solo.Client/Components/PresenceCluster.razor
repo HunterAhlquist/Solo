@@ -1,0 +1,35 @@
+@*
+    Ambient collision-avoidance signal: grey avatar = viewing, outlined and
+    pulsing = editing. Self is already excluded by BoardStore.PresenceOn.
+*@
+@if (Entries.Count > 0)
+{
+    <span class="presence-cluster">
+        @foreach (var entry in Entries.Take(MaxVisible))
+        {
+            <UserAvatar UserId="@entry.UserId"
+                        DisplayName="@entry.DisplayName"
+                        Tooltip="@Describe(entry)"
+                        Size="Size.Small"
+                        Class="@(entry.Mode == PresenceMode.Editing ? "presence-avatar--editing" : null)" />
+        }
+
+        @if (Entries.Count > MaxVisible)
+        {
+            <MudAvatar Size="Size.Small" Color="Color.Default">
+                +@(Entries.Count - MaxVisible)
+            </MudAvatar>
+        }
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public required IReadOnlyList<PresenceEntry> Entries { get; set; }
+
+    [Parameter]
+    public int MaxVisible { get; set; } = 3;
+
+    private static string Describe(PresenceEntry entry) =>
+        $"{entry.DisplayName ?? "Someone"} is {(entry.Mode == PresenceMode.Editing ? "editing" : "viewing")} this";
+}

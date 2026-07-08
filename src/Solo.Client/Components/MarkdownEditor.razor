@@ -1,0 +1,157 @@
+@*
+    Write/preview toggle. The save event is an explicit Save (or drawer close);
+    Esc cancels. Never per keystroke. Reused for descriptions and comments.
+*@
+<div class="@Class">
+    @if (_editing)
+    {
+        <MudTabs Elevation="0" Rounded="true" Class="mb-2" @bind-ActivePanelIndex="_tab">
+            <MudTabPanel Text="Write" Icon="@Icons.Material.Filled.Edit">
+                <MudTextField @bind-Value="_draft" Lines="@Lines" MaxLines="24" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Immediate="false"
+                              Style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem"
+                              Placeholder="@Placeholder" @onkeydown="@OnKeyDown" />
+            </MudTabPanel>
+            <MudTabPanel Text="Preview" Icon="@Icons.Material.Filled.Visibility">
+                <MudPaper Elevation="0" Class="pa-2"
+                          Style="border:1px solid var(--mud-palette-lines-default);min-height:6rem">
+                    @if (string.IsNullOrWhiteSpace(_draft))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Nothing to preview.</MudText>
+                    }
+                    else
+                    {
+                        <MudMarkdown Value="@_draft" />
+                    }
+                </MudPaper>
+            </MudTabPanel>
+        </MudTabs>
+
+        <div class="d-flex" style="gap:.5rem">
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="@SaveAsync">
+                @SaveText
+            </MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@CancelAsync">Cancel</MudButton>
+            <MudSpacer />
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="align-self-center">
+                Markdown · Esc to cancel
+            </MudText>
+        </div>
+    }
+    else
+    {
+        @* A one-line label is a poor click target — give the reader a real box. *@
+        <div class="markdown-read @(CanWrite ? "markdown-read--editable" : null)" @onclick="@BeginEditAsync">
+            @if (string.IsNullOrWhiteSpace(Value))
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @(CanWrite ? EmptyPrompt : "No description.")
+                </MudText>
+            }
+            else
+            {
+                <MudMarkdown Value="@Value" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _editing;
+    private int _tab;
+    private string _draft = string.Empty;
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    /// <summary>Passed through to the root element, so callers can space it like any component.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    [Parameter]
+    public int Lines { get; set; } = 6;
+
+    [Parameter]
+    public string Placeholder { get; set; } = "Write markdown…";
+
+    [Parameter]
+    public string EmptyPrompt { get; set; } = "Add a description…";
+
+    [Parameter]
+    public string SaveText { get; set; } = "Save";
+
+    /// <summary>Clears the editor after a successful save — used for the comment composer.</summary>
+    [Parameter]
+    public bool ResetAfterSave { get; set; }
+
+    /// <summary>Starts in edit mode and never collapses back to a read view.</summary>
+    [Parameter]
+    public bool AlwaysEditing { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnSave { get; set; }
+
+    /// <summary>Opening the editor reports Editing presence; closing it clears.</summary>
+    [Parameter]
+    public EventCallback<bool> OnEditingChanged { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (AlwaysEditing && !_editing)
+        {
+            _editing = true;
+            _draft = Value ?? string.Empty;
+        }
+    }
+
+    private async Task BeginEditAsync()
+    {
+        if (!CanWrite || _editing)
+        {
+            return;
+        }
+
+        _draft = Value ?? string.Empty;
+        _editing = true;
+        _tab = 0;
+        await OnEditingChanged.InvokeAsync(true);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CancelAsync();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        await OnSave.InvokeAsync(_draft);
+
+        if (ResetAfterSave)
+        {
+            _draft = string.Empty;
+        }
+
+        if (!AlwaysEditing)
+        {
+            _editing = false;
+            await OnEditingChanged.InvokeAsync(false);
+        }
+    }
+
+    private async Task CancelAsync()
+    {
+        _draft = Value ?? string.Empty;
+
+        if (!AlwaysEditing)
+        {
+            _editing = false;
+            await OnEditingChanged.InvokeAsync(false);
+        }
+    }
+}
