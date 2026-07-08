@@ -1,0 +1,72 @@
+# ===========================================================================
+# Solo — deployment template (TrueNAS SCALE custom app / docker compose)
+#
+# TrueNAS SCALE: Apps -> Discover Apps -> ... -> Install via YAML, then paste
+# this file (edit the CHANGE_ME values first).
+#
+# The image is PRIVATE on GHCR. Before installing, register the registry
+# credential once: Apps -> Configuration -> Manage Container Registries ->
+# Add ghcr.io with your GitHub username and a Personal Access Token that has
+# the `read:packages` scope. (Plain docker hosts: `docker login ghcr.io`.)
+# ===========================================================================
+
+services:
+  solo:
+    image: ghcr.io/hunterahlquist/solo:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # host:container — pick any free host port; the app listens on 8080.
+      - "30080:8080"
+    environment:
+      # -- Database (must match the postgres service below) ------------------
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=solo;Username=solo;Password=CHANGE_ME_DB_PASSWORD"
+
+      # -- OIDC SSO (exactly one provider per deployment) --------------------
+      # Google preset:
+      #   Auth__Authority: "https://accounts.google.com"
+      #   Auth__Provider:  "google"
+      # Microsoft Entra ID preset:
+      #   Auth__Authority: "https://login.microsoftonline.com/<tenant-id>/v2.0"
+      #   Auth__Provider:  "microsoft"
+      # Any other OIDC-compliant issuer: use its authority URL + "generic".
+      Auth__Authority: "https://accounts.google.com"
+      Auth__ClientId: "CHANGE_ME_OIDC_CLIENT_ID"
+      Auth__Provider: "google"
+
+      # -- First-run setup account -------------------------------------------
+      # Used only by the setup wizard; permanently disabled after the wizard
+      # hands super admin off to your SSO account.
+      Setup__Username: "setup"
+      Setup__Password: "CHANGE_ME_SETUP_PASSWORD"
+
+    # The aspnet base image ships no curl/wget; probe the TCP port via bash.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: solo
+      POSTGRES_USER: solo
+      POSTGRES_PASSWORD: "CHANGE_ME_DB_PASSWORD"
+    volumes:
+      # Named volume (TrueNAS stores it on the apps pool). To keep the data on
+      # a specific dataset instead, replace with a host path, e.g.:
+      #   - /mnt/tank/apps/solo/pgdata:/var/lib/postgresql/data
+      - solo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solo -d solo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  solo-pgdata:

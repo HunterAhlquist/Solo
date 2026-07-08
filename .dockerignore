@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+.git/
+.github/
+.claude/
+docs/
+tests/
+deploy/
+README.md
+LICENSE
+Dockerfile
+.dockerignore
+.DS_Store
