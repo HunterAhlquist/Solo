@@ -15,6 +15,8 @@ internal sealed class FakeBoardHub : IBoardHubClient
 
     public bool IsConnected { get; set; } = true;
 
+    public bool IsActive { get; set; }
+
     public List<Guid> Joined { get; } = [];
 
     public List<Guid> Left { get; } = [];

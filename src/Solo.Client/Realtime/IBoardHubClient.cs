@@ -20,4 +20,12 @@ public interface IBoardHubClient : IBoardHubServer
     event Func<Task>? ConnectionStateChanged;
 
     bool IsConnected { get; }
+
+    /// <summary>
+    /// True while attached to a board, i.e. a live connection is expected. Off the
+    /// board (project lists, settings) there is nothing to connect to, so the
+    /// "reconnecting" hint should stay hidden even though <see cref="IsConnected"/>
+    /// is false.
+    /// </summary>
+    bool IsActive { get; }
 }

@@ -40,6 +40,8 @@ public sealed class BoardHubClient(
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
+    public bool IsActive => _boardId is not null;
+
     public async Task JoinBoard(Guid boardId)
     {
         await _gate.WaitAsync();
@@ -59,6 +61,7 @@ public sealed class BoardHubClient(
             await _connection!.InvokeAsync(nameof(IBoardHubServer.JoinBoard), boardId);
             _boardId = boardId;
             _presence = null;
+            await Notify();
         }
         finally
         {
@@ -82,12 +85,14 @@ public sealed class BoardHubClient(
             await _connection.InvokeAsync(nameof(IBoardHubServer.LeaveBoard), boardId);
             _boardId = null;
             _presence = null;
+            await Notify();
         }
         catch (Exception e) when (e is HubException or InvalidOperationException)
         {
             // Navigating away from a dead connection is not worth a stack trace.
             _boardId = null;
             _presence = null;
+            await Notify();
         }
         finally
         {

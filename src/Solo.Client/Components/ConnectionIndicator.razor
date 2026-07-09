@@ -2,10 +2,11 @@
 @inject IBoardHubClient Hub
 
 @*
-    Only speaks up when the live connection is down — an always-on "connected"
-    badge is noise.
+    Only speaks up when a board's live feed is down — an always-on "connected"
+    badge is noise, and off the board there is no feed to be down. Nothing shows
+    on the project list or settings pages.
 *@
-@if (!_connected)
+@if (_active && !_connected)
 {
     <MudTooltip Text="Reconnecting to the live feed — changes from others may be delayed.">
         <MudIcon Icon="@Icons.Material.Filled.CloudOff" Color="Color.Warning" Size="Size.Small" Class="mr-2" />
@@ -14,17 +15,20 @@
 
 @code {
     private bool _connected = true;
+    private bool _active;
 
     protected override void OnInitialized()
     {
         Hub.ConnectionStateChanged += OnConnectionStateChanged;
         _connected = Hub.IsConnected;
+        _active = Hub.IsActive;
     }
 
     private Task OnConnectionStateChanged() =>
         InvokeAsync(() =>
         {
             _connected = Hub.IsConnected;
+            _active = Hub.IsActive;
             StateHasChanged();
         });
 
