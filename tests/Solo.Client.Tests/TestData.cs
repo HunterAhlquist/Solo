@@ -18,11 +18,13 @@ internal static class TestData
         decimal rank = 1024m,
         IReadOnlyList<SubTaskDto>? subTasks = null,
         Guid? labelId = null,
-        IReadOnlyList<Guid>? assignees = null) =>
+        IReadOnlyList<Guid>? assignees = null,
+        int number = 1) =>
         new(
             id ?? Guid.NewGuid(),
             BoardId,
             epicId,
+            number,
             "Task",
             labelId,
             null,
@@ -49,5 +51,6 @@ internal static class TestData
         IReadOnlyList<TaskDto>? tasks = null,
         IReadOnlyList<EpicDto>? epics = null,
         IReadOnlyList<LabelDto>? labels = null) =>
-        new(BoardId, ProjectId, "Board", null, null, true, 1, epics ?? [], tasks ?? [], labels ?? []);
+        new(BoardId, ProjectId, "PROJ", "Board", "BRD", null, null, true, 1,
+            epics ?? [], tasks ?? [], labels ?? []);
 }

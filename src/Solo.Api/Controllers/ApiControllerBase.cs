@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Solo.Data;
 using Solo.Data.Entities;
 
@@ -8,6 +9,17 @@ namespace Solo.Api.Controllers;
 [ApiController]
 public abstract class ApiControllerBase : ControllerBase
 {
+    /// <summary>True when the failed save tripped the named unique index.</summary>
+    protected static bool IsUniqueViolation(DbUpdateException e, string indexName) =>
+        e.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg &&
+        pg.ConstraintName == indexName;
+
+    /// <summary>409 for an alias that another sibling already claimed.</summary>
+    protected ObjectResult AliasTakenProblem(string siblingScope) => Problem(
+        statusCode: StatusCodes.Status409Conflict,
+        title: "Alias already in use",
+        detail: $"Another {siblingScope} already uses this alias. Pick a different one.");
+
     /// <summary>
     /// Applies the client's optimistic-concurrency token before a save so a
     /// stale edit surfaces as <see cref="DbUpdateConcurrencyException"/>.

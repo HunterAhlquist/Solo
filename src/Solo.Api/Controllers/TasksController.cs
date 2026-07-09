@@ -71,7 +71,22 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             Rank = Ranking.ForAppend(existingRanks),
         };
         db.Tasks.Add(task);
+
+        // Serial number: bump the board's counter atomically, so concurrent
+        // creates get distinct numbers and a deleted task's number is never
+        // reassigned. A failed save burns the number — gaps are fine, reuse isn't.
+        var numbers = await db.Database.SqlQuery<int>(
+            $"""
+             WITH bumped AS (
+                 UPDATE "Boards" SET "NextTaskNumber" = "NextTaskNumber" + 1
+                 WHERE "Id" = {boardId}
+                 RETURNING "NextTaskNumber" - 1 AS "Value"
+             )
+             SELECT "Value" FROM bumped
+             """).ToListAsync(ct);
+        task.Number = numbers.Single();
         await db.SaveChangesAsync(ct);
+
         await notifier.BoardEntityChanged(boardId, EntityTypes.Task, task.Id, ChangeKind.Created);
         return CreatedAtAction(nameof(Get), new { taskId = task.Id }, task.ToDto());
     }

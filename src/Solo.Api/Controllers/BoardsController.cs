@@ -34,11 +34,20 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         {
             ProjectId = projectId,
             Name = request.Name,
+            Alias = Aliases.Normalize(request.Alias),
             Icon = request.Icon,
             ImageId = request.ImageId,
         };
         db.Boards.Add(board);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e) when (IsUniqueViolation(e, "IX_Boards_ProjectId_Alias"))
+        {
+            return AliasTakenProblem("board in this project");
+        }
+
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Board, board.Id, ChangeKind.Created);
         return CreatedAtAction(nameof(Get), new { boardId = board.Id }, board.ToDto());
     }
@@ -48,23 +57,41 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
     [Authorize(Policy = AuthConstants.ProjectReadPolicy)]
     public async Task<ActionResult<BoardDetailDto>> Get(Guid boardId, CancellationToken ct)
     {
-        var board = await db.Boards.AsNoTracking()
+        var board = await LoadDetail(b => b.Id == boardId, ct);
+        return board is null ? NotFound() : await BuildDetailAsync(board, ct);
+    }
+
+    /// <summary>Alias lookup: what the client's aliased routes resolve through.</summary>
+    [HttpGet("api/projects/by-alias/{projectAlias}/boards/{boardAlias}")]
+    [Authorize(Policy = AuthConstants.ProjectReadPolicy)]
+    public async Task<ActionResult<BoardDetailDto>> GetByAlias(
+        string projectAlias, string boardAlias, CancellationToken ct)
+    {
+        var project = Aliases.Normalize(projectAlias);
+        var alias = Aliases.Normalize(boardAlias);
+        var board = await LoadDetail(b => b.Alias == alias && b.Project!.Alias == project, ct);
+        return board is null ? NotFound() : await BuildDetailAsync(board, ct);
+    }
+
+    private Task<Board?> LoadDetail(
+        System.Linq.Expressions.Expression<Func<Board, bool>> filter, CancellationToken ct) =>
+        db.Boards.AsNoTracking()
+            .Include(b => b.Project)
             .Include(b => b.Epics).ThenInclude(e => e.Assignments)
             .Include(b => b.Tasks).ThenInclude(t => t.SubTasks)
             .Include(b => b.Tasks).ThenInclude(t => t.Assignments)
-            .FirstOrDefaultAsync(b => b.Id == boardId, ct);
-        if (board is null)
-        {
-            return NotFound();
-        }
+            .FirstOrDefaultAsync(filter, ct);
 
+    private async Task<BoardDetailDto> BuildDetailAsync(Board board, CancellationToken ct)
+    {
         var labels = await db.Labels.AsNoTracking()
-            .Where(l => l.ProjectId == board.ProjectId && (l.BoardId == null || l.BoardId == boardId))
+            .Where(l => l.ProjectId == board.ProjectId && (l.BoardId == null || l.BoardId == board.Id))
             .OrderBy(l => l.Kind).ThenBy(l => l.Name)
             .ToListAsync(ct);
 
         return new BoardDetailDto(
-            board.Id, board.ProjectId, board.Name, board.Icon, board.ImageId, board.IsOpen, board.Version,
+            board.Id, board.ProjectId, board.Project!.Alias, board.Name, board.Alias,
+            board.Icon, board.ImageId, board.IsOpen, board.Version,
             board.Epics.OrderBy(e => e.Rank).Select(e => e.ToDto()).ToList(),
             board.Tasks.OrderBy(t => t.Rank).Select(t => t.ToDto()).ToList(),
             labels.Select(l => l.ToDto()).ToList());
@@ -82,17 +109,26 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         }
 
         board.Name = request.Name;
+        board.Alias = Aliases.Normalize(request.Alias);
         board.Icon = request.Icon;
         board.ImageId = request.ImageId;
         UseClientVersion(db, board, request.Version);
-        var conflict = await SaveOrConflictAsync(db, ct);
-        if (conflict is not null)
+        try
         {
-            return conflict;
+            var conflict = await SaveOrConflictAsync(db, ct);
+            if (conflict is not null)
+            {
+                return conflict;
+            }
+        }
+        catch (DbUpdateException e) when (IsUniqueViolation(e, "IX_Boards_ProjectId_Alias"))
+        {
+            return AliasTakenProblem("board in this project");
         }
 
         await notifier.BoardEntityChanged(boardId, EntityTypes.Board, boardId,
-            ChangeKind.Updated, nameof(board.Name), nameof(board.Icon), nameof(board.ImageId));
+            ChangeKind.Updated, nameof(board.Name), nameof(board.Alias),
+            nameof(board.Icon), nameof(board.ImageId));
         return board.ToDto();
     }
 

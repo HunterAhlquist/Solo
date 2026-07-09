@@ -1,6 +1,5 @@
 @implements IDisposable
 @inject GoogleIdentityService Google
-@inject ThemeService Theme
 
 @*
     Google renders this button itself, inside the div below — its branding rules
@@ -36,7 +35,7 @@
         try
         {
             await Google.InitializeAsync();
-            await Google.RenderButtonAsync(_container, Theme.IsDarkMode);
+            await Google.RenderButtonAsync(_container, darkMode: true);
         }
         catch (JSException)
         {

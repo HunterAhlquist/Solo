@@ -56,7 +56,7 @@ else
         {
             <MudItem xs="12" sm="6" md="4">
                 <MudCard Elevation="1" Class="h-100" Style="cursor:pointer"
-                         @onclick="@(() => Navigation.NavigateTo($"projects/{project.Id}"))">
+                         @onclick="@(() => Navigation.NavigateTo($"projects/{project.Alias}"))">
                     <MudCardContent>
                         <div class="d-flex align-center" style="gap:.75rem">
                             <MudAvatar Color="Color.Primary" Variant="Variant.Outlined">
@@ -136,11 +136,12 @@ else
             var project = await Api.CreateProjectAsync(new CreateProjectRequest
             {
                 Name = created.Name,
+                Alias = created.Alias,
                 Icon = created.Icon,
                 ImageId = created.ImageId,
             });
             await Nav.RefreshProjectsAsync();
-            Navigation.NavigateTo($"projects/{project.Id}");
+            Navigation.NavigateTo($"projects/{project.Alias}");
         }
         catch (ApiException e)
         {

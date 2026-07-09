@@ -8,10 +8,9 @@ namespace Solo.Client.Layout;
 /// Courier New throughout.
 /// </summary>
 /// <remarks>
-/// The source theme is dark-only. Solo keeps its light theme (the plan calls for
-/// it, and <see cref="State.ThemeService"/> persists the choice), so the light
-/// palette is an adaptation of the same brand — yellow is unreadable on white, so
-/// it darkens to a mustard while black/yellow stays the story in dark mode.
+/// Dark-only: both layouts pin <c>IsDarkMode</c>, so the theme's light palette
+/// is unused. It stays defined because MudTheme requires one, not because
+/// anything renders it.
 /// </remarks>
 public static class SoloTheme
 {

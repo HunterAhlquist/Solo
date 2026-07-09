@@ -1,11 +1,10 @@
 @inherits LayoutComponentBase
-@inject ThemeService Theme
 
 @*
     Chrome-free layout for sign-in, the auth redirects, and the setup wizard —
     all of which run before there's a signed-in user to build chrome around.
 *@
-<MudThemeProvider Theme="@SoloTheme.Theme" IsDarkMode="@Theme.IsDarkMode" />
+<MudThemeProvider Theme="@SoloTheme.Theme" IsDarkMode="true" />
 <MudPopoverProvider />
 <MudDialogProvider CloseButton="true" CloseOnEscapeKey="true" />
 <MudSnackbarProvider />

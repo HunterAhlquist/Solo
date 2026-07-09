@@ -18,6 +18,10 @@
     </div>
 
     <div class="d-flex align-center" style="gap:.35rem">
+        @if (Serial is not null)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-size:.65rem">@Serial</MudText>
+        }
         <MudSpacer />
 
         @if (Task.SubTasks.Count > 0)
@@ -51,6 +55,10 @@
 @code {
     [Parameter, EditorRequired]
     public required TaskDto Task { get; set; }
+
+    /// <summary>The composed serial number (PROJECT-BOARD-N), shown under the title.</summary>
+    [Parameter]
+    public string? Serial { get; set; }
 
     [Parameter]
     public LabelDto? Label { get; set; }

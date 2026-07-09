@@ -6,16 +6,23 @@ public sealed record BoardDto(
     Guid Id,
     Guid ProjectId,
     string Name,
+    string Alias,
     string? Icon,
     Guid? ImageId,
     bool IsOpen,
     uint Version);
 
-/// <summary>Full board payload: everything needed to render the Kanban view.</summary>
+/// <summary>
+/// Full board payload: everything needed to render the Kanban view.
+/// <paramref name="ProjectAlias"/> rides along so the client can compose task
+/// serial numbers (PROJECT-BOARD-N) without a second fetch.
+/// </summary>
 public sealed record BoardDetailDto(
     Guid Id,
     Guid ProjectId,
+    string ProjectAlias,
     string Name,
+    string Alias,
     string? Icon,
     Guid? ImageId,
     bool IsOpen,
@@ -29,6 +36,9 @@ public sealed class CreateBoardRequest
     [Required, MaxLength(200)]
     public required string Name { get; init; }
 
+    [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
+    public required string Alias { get; init; }
+
     [MaxLength(100)]
     public string? Icon { get; init; }
 
@@ -39,6 +49,9 @@ public sealed class UpdateBoardRequest
 {
     [Required, MaxLength(200)]
     public required string Name { get; init; }
+
+    [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
+    public required string Alias { get; init; }
 
     [MaxLength(100)]
     public string? Icon { get; init; }

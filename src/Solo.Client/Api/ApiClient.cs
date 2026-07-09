@@ -46,6 +46,10 @@ public sealed class ApiClient(HttpClient http)
     public Task<ProjectDto> GetProjectAsync(Guid projectId, CancellationToken ct = default) =>
         GetAsync<ProjectDto>($"api/projects/{projectId}", ct);
 
+    /// <summary>Resolves the aliased project route (/projects/DMD).</summary>
+    public Task<ProjectDto> GetProjectByAliasAsync(string projectAlias, CancellationToken ct = default) =>
+        GetAsync<ProjectDto>($"api/projects/by-alias/{Uri.EscapeDataString(projectAlias)}", ct);
+
     public Task<ProjectDto> CreateProjectAsync(CreateProjectRequest request, CancellationToken ct = default) =>
         SendAsync<ProjectDto>(HttpMethod.Post, "api/projects", request, ct);
 
@@ -78,6 +82,12 @@ public sealed class ApiClient(HttpClient http)
     /// <summary>The one-shot render payload for the Kanban view.</summary>
     public Task<BoardDetailDto> GetBoardAsync(Guid boardId, CancellationToken ct = default) =>
         GetAsync<BoardDetailDto>($"api/boards/{boardId}", ct);
+
+    /// <summary>Resolves the aliased board route (/projects/DMD/boards/PW26).</summary>
+    public Task<BoardDetailDto> GetBoardByAliasAsync(
+        string projectAlias, string boardAlias, CancellationToken ct = default) =>
+        GetAsync<BoardDetailDto>(
+            $"api/projects/by-alias/{Uri.EscapeDataString(projectAlias)}/boards/{Uri.EscapeDataString(boardAlias)}", ct);
 
     public Task<BoardDto> CreateBoardAsync(
         Guid projectId, CreateBoardRequest request, CancellationToken ct = default) =>

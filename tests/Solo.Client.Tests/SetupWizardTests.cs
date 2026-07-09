@@ -37,7 +37,6 @@ public class SetupWizardTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(config);
         Services.AddScoped<GoogleIdentityService>();
-        Services.AddScoped<ThemeService>();
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;

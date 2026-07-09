@@ -37,10 +37,18 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
 
     private async Task<(ProjectDto Project, BoardDto Board)> CreateProjectWithBoard(string name)
     {
-        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name });
+        var project = await _admin.PostJson<ProjectDto>(
+            "/api/projects", new { name, alias = AliasOf(name) });
         var board = await _admin.PostJson<BoardDto>(
-            $"/api/projects/{project.Id}/boards", new { name = $"{name} board" });
+            $"/api/projects/{project.Id}/boards", new { name = $"{name} board", alias = AliasOf(name) });
         return (project, board);
+    }
+
+    /// <summary>"Round trip" → "ROUNDTRI": a valid alias derived from the test name.</summary>
+    private static string AliasOf(string name)
+    {
+        var upper = new string(name.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+        return upper[..Math.Min(upper.Length, 8)];
     }
 
     [SkippableFact]
@@ -280,7 +288,7 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         postgres.SkipUnlessDockerAvailable();
         var (project, board) = await CreateProjectWithBoard("Labels");
         var otherBoard = await _admin.PostJson<BoardDto>(
-            $"/api/projects/{project.Id}/boards", new { name = "Other" });
+            $"/api/projects/{project.Id}/boards", new { name = "Other", alias = "OTHER" });
 
         var boardLocal = await _admin.PostJson<LabelDto>($"/api/projects/{project.Id}/labels", new
         {
@@ -325,7 +333,115 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         var user = _factory.As("plain", "plain@example.com");
         await user.GetJson<UserDto>("/api/users/me");
 
-        var denied = await user.PostAsJsonAsync("/api/projects", new { name = "Nope" }, TestClients.Json);
+        var denied = await user.PostAsJsonAsync(
+            "/api/projects", new { name = "Nope", alias = "NOPE" }, TestClients.Json);
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    // -- Aliases and serial numbers ------------------------------------------
+
+    [SkippableFact]
+    public async Task TaskNumbers_IncrementPerBoard_AndSurviveDeletion()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Serials");
+
+        var first = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "one" });
+        var second = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "two" });
+        Assert.Equal(1, first.Number);
+        Assert.Equal(2, second.Number);
+
+        // Numbers are never reused: delete #2, the next task is #3.
+        await _admin.DeleteAsync($"/api/tasks/{second.Id}");
+        var third = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "three" });
+        Assert.Equal(3, third.Number);
+
+        // A second board numbers independently.
+        var other = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Other", alias = "OTHER" });
+        var fresh = await _admin.PostJson<TaskDto>($"/api/boards/{other.Id}/tasks", new { name = "reset" });
+        Assert.Equal(1, fresh.Number);
+    }
+
+    [SkippableFact]
+    public async Task Aliases_AreUniquePerSiblingSet_AndNormalizedToUpper()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Unique");
+
+        // A duplicate project alias is refused, whatever case it arrives in.
+        var duplicate = await _admin.PostAsJsonAsync(
+            "/api/projects", new { name = "Copycat", alias = "UNIQUE" }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+
+        // A duplicate board alias inside the same project is refused …
+        var boardDuplicate = await _admin.PostAsJsonAsync(
+            $"/api/projects/{project.Id}/boards", new { name = "Copy", alias = board.Alias }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Conflict, boardDuplicate.StatusCode);
+
+        // … but another project can reuse it freely.
+        var second = await _admin.PostJson<ProjectDto>(
+            "/api/projects", new { name = "Second", alias = "SECOND" });
+        var reused = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{second.Id}/boards", new { name = "Reuse", alias = board.Alias });
+        Assert.Equal(board.Alias, reused.Alias);
+
+        // Lower-case input is stored upper-case.
+        Assert.Equal("UNIQUE", project.Alias);
+    }
+
+    [SkippableFact]
+    public async Task ByAliasRoutes_ResolveCaseInsensitively_AndComposeSerialData()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Lookup");
+        await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "numbered" });
+
+        var byAlias = await _admin.GetJson<ProjectDto>($"/api/projects/by-alias/{project.Alias.ToLower()}");
+        Assert.Equal(project.Id, byAlias.Id);
+
+        var detail = await _admin.GetJson<BoardDetailDto>(
+            $"/api/projects/by-alias/{project.Alias.ToLower()}/boards/{board.Alias.ToLower()}");
+        Assert.Equal(board.Id, detail.Id);
+        Assert.Equal(project.Alias, detail.ProjectAlias);
+        Assert.Equal(1, detail.Tasks.Single().Number);
+
+        // A member-less stranger is refused through the alias route too.
+        var stranger = _factory.As("stranger2", "stranger2@example.com");
+        await stranger.GetJson<UserDto>("/api/users/me");
+        var denied = await stranger.GetAsync($"/api/projects/by-alias/{project.Alias}");
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task ReadOnlyMembers_CanComment_ButOnlyOnTheirOwnBehalf()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Comments");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Discuss" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "lurker@example.com", role = "Read" });
+
+        var lurker = _factory.As("lurker", "lurker@example.com", "Lurker");
+        await lurker.GetJson<UserDto>("/api/users/me");
+
+        // Read-only members join the conversation …
+        var comment = await lurker.PostJson<CommentDto>(
+            $"/api/tasks/{task.Id}/comments", new { body = "My two cents" });
+        var edited = await lurker.PutJson<CommentDto>(
+            $"/api/comments/{comment.Id}", new { body = "Revised cents", version = comment.Version });
+        Assert.Equal("Revised cents", edited.Body);
+
+        // … but still cannot touch the board itself, or someone else's comment.
+        var write = await lurker.PostAsJsonAsync(
+            $"/api/boards/{board.Id}/tasks", new { name = "Denied" }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
+
+        var adminComment = await _admin.PostJson<CommentDto>(
+            $"/api/tasks/{task.Id}/comments", new { body = "Admin says" });
+        var foreignEdit = await lurker.PutAsJsonAsync(
+            $"/api/comments/{adminComment.Id}",
+            new { body = "Hijacked", version = adminComment.Version }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Forbidden, foreignEdit.StatusCode);
     }
 }

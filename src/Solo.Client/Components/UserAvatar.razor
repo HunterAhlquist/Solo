@@ -1,6 +1,6 @@
 @*
-    Initials on a colour derived from the user's id, so the same person is the
-    same colour on every card without storing anything.
+    Initials on a colour derived from the user's reported name, so the same
+    person is the same colour on every client without storing anything.
 *@
 <MudTooltip Text="@(Tooltip ?? DisplayName ?? "Unknown user")">
     <MudAvatar Size="@Size" Style="@Style" Class="@Class">
@@ -46,7 +46,26 @@
     public string? Class { get; set; }
 
     private string Style =>
-        $"background-color:{Palette[Math.Abs(UserId.GetHashCode()) % Palette.Length]};color:#15151f;font-size:.7rem";
+        $"background-color:{Palette[ColorIndex]};color:#15151f;font-size:.7rem";
+
+    /// <summary>
+    /// FNV-1a over the display name: string.GetHashCode is salted per process,
+    /// so it would give every client (and every reload) different colours.
+    /// </summary>
+    private int ColorIndex
+    {
+        get
+        {
+            var name = string.IsNullOrWhiteSpace(DisplayName) ? UserId.ToString() : DisplayName;
+            var hash = 2166136261u;
+            foreach (var c in name)
+            {
+                hash = (hash ^ c) * 16777619u;
+            }
+
+            return (int)(hash % (uint)Palette.Length);
+        }
+    }
 
     private string Initials
     {

@@ -10,6 +10,10 @@
     @* Edits commit on blur, never per keystroke. *@
     <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
                   Immediate="false" OnBlur="@SaveAsync" OnKeyDown="@OnKeyDown" Class="mb-3" />
+    <MudTextField T="string" @bind-Value="_alias" Label="Alias" Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Immediate="false" MaxLength="Aliases.MaxLength" OnBlur="@SaveAsync" OnKeyDown="@OnKeyDown"
+                  HelperText="Stands in for the id in links and serial numbers — capital letters and digits, max 8."
+                  Class="mb-3" />
     <IconImagePicker Icon="@_icon" IconChanged="@OnIconChanged" ImageId="@_imageId" ImageIdChanged="@OnImageChanged" />
 
     <MudDivider Class="my-6" />
@@ -26,6 +30,7 @@
 
 @code {
     private string _name = string.Empty;
+    private string _alias = string.Empty;
     private string? _icon;
     private Guid? _imageId;
 
@@ -38,6 +43,7 @@
     protected override void OnParametersSet()
     {
         _name = Project.Name;
+        _alias = Project.Alias;
         _icon = Project.Icon;
         _imageId = Project.ImageId;
     }
@@ -66,23 +72,34 @@
 
     private async Task SaveAsync()
     {
+        var alias = Aliases.Normalize(_alias);
         if (string.IsNullOrWhiteSpace(_name) ||
-            (_name == Project.Name && _icon == Project.Icon && _imageId == Project.ImageId))
+            !System.Text.RegularExpressions.Regex.IsMatch(alias, Aliases.Pattern) ||
+            (_name == Project.Name && alias == Project.Alias &&
+             _icon == Project.Icon && _imageId == Project.ImageId))
         {
             return;
         }
 
+        var previousAlias = Project.Alias;
         try
         {
             var updated = await Api.UpdateProjectAsync(Project.Id, new UpdateProjectRequest
             {
                 Name = _name.Trim(),
+                Alias = alias,
                 Icon = _icon,
                 ImageId = _imageId,
                 Version = Project.Version,
             });
             await OnSaved.InvokeAsync(updated);
             await Nav.RefreshProjectsAsync();
+
+            // The page's URL carries the alias; renaming it strands the old route.
+            if (updated.Alias != previousAlias)
+            {
+                Navigation.NavigateTo($"projects/{updated.Alias}");
+            }
         }
         catch (ApiConflictException)
         {
@@ -93,6 +110,7 @@
         {
             Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
             _name = Project.Name;
+            _alias = Project.Alias;
             _icon = Project.Icon;
             _imageId = Project.ImageId;
         }

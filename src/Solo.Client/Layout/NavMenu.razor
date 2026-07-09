@@ -48,7 +48,7 @@
                 {
                     @foreach (var board in boards)
                     {
-                        <MudNavLink Href="@BoardHref(project.Id, board.Id)"
+                        <MudNavLink Href="@BoardHref(project.Alias, board.Alias)"
                                     Match="NavLinkMatch.All"
                                     Icon="@SoloIcons.Resolve(board.ImageId, board.Icon)">
                             @board.Name
@@ -62,8 +62,10 @@
                         </MudText>
                     }
 
+                    <MudDivider DividerType="DividerType.Middle" Class="my-2" />
+
                     @* Open the project home for members, labels, closed boards. *@
-                    <MudNavLink Href="@($"projects/{project.Id}")" Match="NavLinkMatch.All"
+                    <MudNavLink Href="@($"projects/{project.Alias}")" Match="NavLinkMatch.All"
                                 Icon="@Icons.Material.Filled.Tune">
                         Project settings
                     </MudNavLink>
@@ -92,7 +94,7 @@
                 </MudNavLink>
 
                 <MudNavLink Href="settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">
-                    Instance settings
+                    Admin settings
                 </MudNavLink>
             }
         </MudNavMenu>
@@ -186,19 +188,24 @@
         }
     }
 
-    private static string BoardHref(Guid projectId, Guid boardId) =>
-        $"projects/{projectId}/boards/{boardId}";
+    private static string BoardHref(string projectAlias, string boardAlias) =>
+        $"projects/{projectAlias}/boards/{boardAlias}";
 
     private void OnNavChanged() => InvokeAsync(StateHasChanged);
 
     /// <summary>Deep-linking straight to a board should reveal it in the tree.</summary>
     private void ExpandProjectFromUrl()
     {
+        // Routes carry the project's alias; the tree is keyed by id, so map it
+        // through the (already loaded) project list.
         var path = Navigation.ToBaseRelativePath(Navigation.Uri);
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments is ["projects", var id, ..] && Guid.TryParse(id, out var projectId))
+        if (segments is ["projects", var alias, ..] &&
+            Nav.Projects.FirstOrDefault(p =>
+                string.Equals(p.Alias, Uri.UnescapeDataString(alias), StringComparison.OrdinalIgnoreCase))
+                is { } project)
         {
-            _ = OnExpandedAsync(projectId, true);
+            _ = OnExpandedAsync(project.Id, true);
         }
     }
 
@@ -233,11 +240,12 @@
             var project = await Api.CreateProjectAsync(new CreateProjectRequest
             {
                 Name = created.Name,
+                Alias = created.Alias,
                 Icon = created.Icon,
                 ImageId = created.ImageId,
             });
             await Nav.RefreshProjectsAsync();
-            Navigation.NavigateTo($"projects/{project.Id}");
+            Navigation.NavigateTo($"projects/{project.Alias}");
         }
         catch (ApiException e)
         {
@@ -259,9 +267,15 @@
         try
         {
             var board = await Api.CreateBoardAsync(project.Id,
-                new CreateBoardRequest { Name = created.Name, Icon = created.Icon, ImageId = created.ImageId });
+                new CreateBoardRequest
+                {
+                    Name = created.Name,
+                    Alias = created.Alias,
+                    Icon = created.Icon,
+                    ImageId = created.ImageId,
+                });
             await Nav.RefreshBoardsAsync(project.Id);
-            Navigation.NavigateTo(BoardHref(project.Id, board.Id));
+            Navigation.NavigateTo(BoardHref(project.Alias, board.Alias));
         }
         catch (ApiException e)
         {

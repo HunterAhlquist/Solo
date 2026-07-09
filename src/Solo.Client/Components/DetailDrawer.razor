@@ -16,7 +16,7 @@
     {
         <MudDrawerHeader Class="d-flex align-center">
             <MudText Typo="Typo.subtitle1" Class="flex-grow-1">
-                @(Task is not null ? "Task" : "Epic")
+                @HeaderText
             </MudText>
             <PresenceCluster Entries="@PresenceEntries" MaxVisible="4" />
             <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
@@ -75,7 +75,7 @@
                 <MudDivider Class="my-4" />
             }
 
-            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" CanWrite="@CanWrite" />
+            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" />
 
             @if (CanWrite)
             {
@@ -112,6 +112,12 @@
     private Guid EntityId => Task?.Id ?? Epic!.Id;
 
     private string EntityType => Task is not null ? EntityTypes.Task : EntityTypes.Epic;
+
+    /// <summary>A task announces itself by serial number; epics have none.</summary>
+    private string HeaderText =>
+        Task is { } task && Store.Board is { } board
+            ? Aliases.Serial(board.ProjectAlias, board.Alias, task.Number)
+            : Task is not null ? "Task" : "Epic";
 
     private string? Description => Task?.Description ?? Epic?.Description;
 

@@ -1,4 +1,4 @@
-@page "/projects/{ProjectId:guid}"
+@page "/projects/{ProjectAlias}"
 @attribute [Authorize]
 @inject ApiClient Api
 @inject UserSession Session
@@ -20,21 +20,24 @@ else
 
     <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true">
         <MudTabPanel Text="Boards" Icon="@Icons.Material.Filled.ViewKanban">
-            <BoardsGrid ProjectId="@ProjectId" CanWrite="@_canWrite" />
+            <BoardsGrid ProjectId="@_project.Id" ProjectAlias="@_project.Alias" CanWrite="@_canWrite" />
         </MudTabPanel>
 
         <MudTabPanel Text="Members" Icon="@Icons.Material.Filled.People">
-            <MembersTab ProjectId="@ProjectId" IsOwner="@_isOwner" OnMembersChanged="@LoadProjectAsync" />
+            <MembersTab ProjectId="@_project.Id" IsOwner="@_isOwner" OnMembersChanged="@LoadProjectAsync" />
         </MudTabPanel>
 
-        <MudTabPanel Text="Labels" Icon="@Icons.Material.Filled.Label">
-            <LabelsTab ProjectId="@ProjectId" CanWrite="@_canWrite" />
-        </MudTabPanel>
+        @if (_canWrite)
+        {
+            <MudTabPanel Text="Labels" Icon="@Icons.Material.Filled.Label">
+                <LabelsTab ProjectId="@_project.Id" CanWrite="@_canWrite" />
+            </MudTabPanel>
+        }
 
         @if (_isOwner)
         {
             <MudTabPanel Text="Audit" Icon="@Icons.Material.Filled.History">
-                <AuditTab ProjectId="@ProjectId" Members="@_project.Members" />
+                <AuditTab ProjectId="@_project.Id" Members="@_project.Members" />
             </MudTabPanel>
 
             <MudTabPanel Text="Settings" Icon="@Icons.Material.Filled.Settings">
@@ -50,7 +53,7 @@ else
     private bool _canWrite;
 
     [Parameter]
-    public Guid ProjectId { get; set; }
+    public string ProjectAlias { get; set; } = string.Empty;
 
     /// <summary>
     /// The layout hydrates the session too, but it races this page — and every tab
@@ -79,15 +82,16 @@ else
     /// <summary>Opening a project bubbles it to the top of the sidebar's recents.</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_recorded == ProjectId)
+        // The route only carries the alias; the id arrives with the payload.
+        if (_project is not { } project || _recorded == project.Id)
         {
             return;
         }
 
-        _recorded = ProjectId;
+        _recorded = project.Id;
         try
         {
-            await Recent.RecordAsync(ProjectId);
+            await Recent.RecordAsync(project.Id);
         }
         catch (JSException)
         {
@@ -99,7 +103,7 @@ else
     {
         try
         {
-            _project = await Api.GetProjectAsync(ProjectId);
+            _project = await Api.GetProjectByAliasAsync(ProjectAlias);
 
             // Membership decides which tabs exist at all. The super admin has
             // every right on every project without being a member of any.

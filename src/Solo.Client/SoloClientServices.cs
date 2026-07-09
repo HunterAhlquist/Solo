@@ -39,7 +39,6 @@ public static class SoloClientServices
         services.AddScoped<BoardStore>();
         services.AddScoped<ProjectNavStore>();
         services.AddScoped<UserSession>();
-        services.AddScoped<ThemeService>();
         services.AddScoped<RecentProjectsStore>();
         services.AddScoped<SaveGuard>();
 

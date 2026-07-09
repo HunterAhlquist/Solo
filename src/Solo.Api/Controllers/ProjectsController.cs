@@ -37,7 +37,8 @@ public sealed class ProjectsController(
             .ToListAsync(ct);
         return memberships
             .Select(m => new ProjectSummaryDto(
-                m.ProjectId, m.Project!.Name, m.Project.Icon, m.Project.ImageId, m.Role, m.IsOwner))
+                m.ProjectId, m.Project!.Name, m.Project.Alias, m.Project.Icon, m.Project.ImageId,
+                m.Role, m.IsOwner))
             .ToList();
     }
 
@@ -47,7 +48,13 @@ public sealed class ProjectsController(
     public async Task<ActionResult<ProjectDto>> Create(CreateProjectRequest request, CancellationToken ct)
     {
         var user = currentUser.User!;
-        var project = new Project { Name = request.Name, Icon = request.Icon, ImageId = request.ImageId };
+        var project = new Project
+        {
+            Name = request.Name,
+            Alias = Aliases.Normalize(request.Alias),
+            Icon = request.Icon,
+            ImageId = request.ImageId,
+        };
         project.Members.Add(new ProjectMember
         {
             Email = user.Email,
@@ -57,7 +64,14 @@ public sealed class ProjectsController(
         });
         project.Labels.AddRange(LabelDefaults.ForProject(project.Id));
         db.Projects.Add(project);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException e) when (IsUniqueViolation(e, "IX_Projects_Alias"))
+        {
+            return AliasTakenProblem("project");
+        }
 
         var created = await LoadProject(project.Id, ct);
         return CreatedAtAction(nameof(Get), new { projectId = project.Id }, created!.ToDto());
@@ -68,6 +82,18 @@ public sealed class ProjectsController(
     public async Task<ActionResult<ProjectDto>> Get(Guid projectId, CancellationToken ct)
     {
         var project = await LoadProject(projectId, ct);
+        return project is null ? NotFound() : project.ToDto();
+    }
+
+    /// <summary>Alias lookup: what the client's aliased routes resolve through.</summary>
+    [HttpGet("by-alias/{projectAlias}")]
+    [Authorize(Policy = AuthConstants.ProjectReadPolicy)]
+    public async Task<ActionResult<ProjectDto>> GetByAlias(string projectAlias, CancellationToken ct)
+    {
+        var alias = Aliases.Normalize(projectAlias);
+        var project = await db.Projects.AsNoTracking()
+            .Include(p => p.Members).ThenInclude(m => m.User)
+            .FirstOrDefaultAsync(p => p.Alias == alias, ct);
         return project is null ? NotFound() : project.ToDto();
     }
 
@@ -83,17 +109,26 @@ public sealed class ProjectsController(
         }
 
         project.Name = request.Name;
+        project.Alias = Aliases.Normalize(request.Alias);
         project.Icon = request.Icon;
         project.ImageId = request.ImageId;
         UseClientVersion(db, project, request.Version);
-        var conflict = await SaveOrConflictAsync(db, ct);
-        if (conflict is not null)
+        try
         {
-            return conflict;
+            var conflict = await SaveOrConflictAsync(db, ct);
+            if (conflict is not null)
+            {
+                return conflict;
+            }
+        }
+        catch (DbUpdateException e) when (IsUniqueViolation(e, "IX_Projects_Alias"))
+        {
+            return AliasTakenProblem("project");
         }
 
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Project, projectId,
-            ChangeKind.Updated, nameof(project.Name), nameof(project.Icon), nameof(project.ImageId));
+            ChangeKind.Updated, nameof(project.Name), nameof(project.Alias),
+            nameof(project.Icon), nameof(project.ImageId));
         return project.ToDto();
     }
 

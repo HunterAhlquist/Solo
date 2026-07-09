@@ -37,10 +37,17 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
     async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     private static ProjectSummaryDto Project(Guid id, string name, ProjectRole role, bool isOwner) =>
-        new(id, name, "Games", null, role, isOwner);
+        new(id, name, AliasOf(name), "Games", null, role, isOwner);
 
     private static BoardDto Board(Guid id, string name, bool isOpen = true) =>
-        new(id, TestData.ProjectId, name, "Rocket", null, isOpen, 1);
+        new(id, TestData.ProjectId, name, AliasOf(name), "Rocket", null, isOpen, 1);
+
+    /// <summary>"Side quest" → "SIDEQUES": a valid alias derived from the display name.</summary>
+    private static string AliasOf(string name)
+    {
+        var upper = new string(name.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
+        return upper[..Math.Min(upper.Length, 8)];
+    }
 
     private void Route(bool isSuperAdmin, ProjectRole role = ProjectRole.ReadWrite, bool isOwner = false,
         IEnumerable<BoardDto>? boards = null)
@@ -115,7 +122,7 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void A_board_link_points_at_the_board_route()
+    public void A_board_link_points_at_the_aliased_board_route()
     {
         Route(isSuperAdmin: false);
         var nav = RenderNav();
@@ -126,7 +133,7 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
             .First(a => a.TextContent.Contains("Main"))
             .GetAttribute("href");
 
-        Assert.Equal($"projects/{TestData.ProjectId}/boards/{TestData.BoardId}", href);
+        Assert.Equal("projects/SOLO/boards/MAIN", href);
     }
 
     // -- Create affordances --------------------------------------------------
@@ -174,10 +181,10 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Instance_settings_is_super_admin_only()
+    public void Admin_settings_is_super_admin_only()
     {
         Route(isSuperAdmin: false);
-        Assert.DoesNotContain(Links(RenderNav()), l => l.Contains("Instance settings"));
+        Assert.DoesNotContain(Links(RenderNav()), l => l.Contains("Admin settings"));
     }
 }
 
@@ -188,7 +195,7 @@ public class ProjectNavStoreTests
     public async Task Projects_are_fetched_once_however_many_callers_ask()
     {
         var http = new StubHttp();
-        http.RouteJson("/api/projects", new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", null, null, ProjectRole.Read, false) });
+        http.RouteJson("/api/projects", new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", "SOLO", null, null, ProjectRole.Read, false) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureProjectsAsync();
@@ -201,7 +208,7 @@ public class ProjectNavStoreTests
     public async Task Boards_are_cached_per_project()
     {
         var http = new StubHttp();
-        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", null, null, true, 1) });
+        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", "MAIN", null, null, true, 1) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureBoardsAsync(TestData.ProjectId);
@@ -215,7 +222,7 @@ public class ProjectNavStoreTests
     public async Task Refreshing_boards_refetches_them()
     {
         var http = new StubHttp();
-        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", null, null, true, 1) });
+        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", "MAIN", null, null, true, 1) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureBoardsAsync(TestData.ProjectId);
@@ -229,7 +236,7 @@ public class ProjectNavStoreTests
     {
         var http = new StubHttp();
         http.Respond(System.Net.HttpStatusCode.InternalServerError);
-        http.RespondJson(new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", null, null, ProjectRole.Read, false) });
+        http.RespondJson(new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", "SOLO", null, null, ProjectRole.Read, false) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureProjectsAsync();
@@ -247,7 +254,7 @@ public class ProjectNavStoreTests
     public void Add_board_permission_follows_the_APIs_write_rule(
         bool isSuperAdmin, ProjectRole role, bool isOwner, bool expected)
     {
-        var project = new ProjectSummaryDto(TestData.ProjectId, "Solo", null, null, role, isOwner);
+        var project = new ProjectSummaryDto(TestData.ProjectId, "Solo", "SOLO", null, null, role, isOwner);
 
         Assert.Equal(expected, ProjectNavStore.CanAddBoard(project, isSuperAdmin));
     }

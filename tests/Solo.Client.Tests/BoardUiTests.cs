@@ -61,8 +61,8 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
 
     private IRenderedComponent<Pages.Board> RenderBoard() =>
         Render<Pages.Board>(p => p
-            .Add(b => b.ProjectId, TestData.ProjectId)
-            .Add(b => b.BoardId, TestData.BoardId));
+            .Add(b => b.ProjectAlias, "PROJ")
+            .Add(b => b.BoardAlias, "BRD"));
 
     /// <summary>The drawer reads labels and members off a loaded store.</summary>
     private async Task LoadStoreAsync(BoardDetailDto board)

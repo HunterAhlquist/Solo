@@ -103,6 +103,11 @@ namespace Solo.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Alias")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("Icon")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -118,6 +123,9 @@ namespace Solo.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("NextTaskNumber")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
@@ -130,6 +138,9 @@ namespace Solo.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProjectId");
+
+                    b.HasIndex("ProjectId", "Alias")
+                        .IsUnique();
 
                     b.ToTable("Boards");
                 });
@@ -313,6 +324,11 @@ namespace Solo.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Alias")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("Icon")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -332,6 +348,9 @@ namespace Solo.Data.Migrations
                         .HasColumnName("xmin");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Alias")
+                        .IsUnique();
 
                     b.ToTable("Projects");
                 });
@@ -439,6 +458,9 @@ namespace Solo.Data.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
 
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("Rank")
                         .HasPrecision(18, 6)
                         .HasColumnType("numeric(18,6)");
@@ -461,6 +483,9 @@ namespace Solo.Data.Migrations
                     b.HasIndex("EpicId");
 
                     b.HasIndex("LabelId");
+
+                    b.HasIndex("BoardId", "Number")
+                        .IsUnique();
 
                     b.ToTable("Tasks", (string)null);
                 });

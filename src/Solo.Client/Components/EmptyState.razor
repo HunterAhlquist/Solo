@@ -5,13 +5,22 @@
           Style="border:1px dashed var(--mud-palette-lines-default);gap:.75rem">
     <MudIcon Icon="@Icon" Size="Size.Large" Color="Color.Secondary" />
     <MudText Typo="Typo.body1" Color="Color.Secondary">@Message</MudText>
-    @if (ActionText is not null && OnAction.HasDelegate)
-    {
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="@OnAction">
-            @ActionText
-        </MudButton>
-    }
+    <div class="d-flex align-center" style="gap:.75rem">
+        @if (SecondaryActionText is not null && OnSecondaryAction.HasDelegate)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@OnSecondaryAction">
+                @SecondaryActionText
+            </MudButton>
+        }
+        @if (ActionText is not null && OnAction.HasDelegate)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@OnAction">
+                @ActionText
+            </MudButton>
+        }
+    </div>
 </MudPaper>
 
 @code {
@@ -26,4 +35,11 @@
 
     [Parameter]
     public EventCallback OnAction { get; set; }
+
+    /// <summary>Optional second, outlined action beside the primary one.</summary>
+    [Parameter]
+    public string? SecondaryActionText { get; set; }
+
+    [Parameter]
+    public EventCallback OnSecondaryAction { get; set; }
 }

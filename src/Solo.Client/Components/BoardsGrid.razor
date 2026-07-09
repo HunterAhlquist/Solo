@@ -105,6 +105,10 @@ else
     [Parameter, EditorRequired]
     public Guid ProjectId { get; set; }
 
+    /// <summary>Board links are aliased routes, so the project's alias is needed here.</summary>
+    [Parameter, EditorRequired]
+    public string ProjectAlias { get; set; } = string.Empty;
+
     [Parameter]
     public bool CanWrite { get; set; }
 
@@ -128,7 +132,8 @@ else
         }
     }
 
-    private void Open(BoardDto board) => Navigation.NavigateTo($"projects/{ProjectId}/boards/{board.Id}");
+    private void Open(BoardDto board) =>
+        Navigation.NavigateTo($"projects/{ProjectAlias}/boards/{board.Alias}");
 
     private async Task CreateBoardAsync()
     {
@@ -144,7 +149,13 @@ else
         try
         {
             var board = await Api.CreateBoardAsync(ProjectId,
-                new CreateBoardRequest { Name = created.Name, Icon = created.Icon, ImageId = created.ImageId });
+                new CreateBoardRequest
+                {
+                    Name = created.Name,
+                    Alias = created.Alias,
+                    Icon = created.Icon,
+                    ImageId = created.ImageId,
+                });
             await Nav.RefreshBoardsAsync(ProjectId);
             Open(board);
         }
@@ -161,6 +172,7 @@ else
             new DialogParameters<NameIconDialog>
             {
                 { d => d.Name, board.Name },
+                { d => d.Alias, board.Alias },
                 { d => d.Icon, board.Icon },
                 { d => d.ImageId, board.ImageId },
                 { d => d.SaveText, "Save" },
@@ -176,6 +188,7 @@ else
             await Api.UpdateBoardAsync(board.Id, new UpdateBoardRequest
             {
                 Name = edited.Name,
+                Alias = edited.Alias,
                 Icon = edited.Icon,
                 ImageId = edited.ImageId,
                 Version = board.Version,

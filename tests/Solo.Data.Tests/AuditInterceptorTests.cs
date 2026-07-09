@@ -40,9 +40,9 @@ public sealed class AuditInterceptorTests : IDisposable
     private (Guid ProjectId, Guid BoardId, Guid TaskId) SeedHierarchy()
     {
         using var db = CreateContext();
-        var project = new Project { Name = "Game" };
-        var board = new Board { Project = project, Name = "Alpha" };
-        var task = new TaskItem { Board = board, Name = "Initial name" };
+        var project = new Project { Name = "Game", Alias = "GAME" };
+        var board = new Board { Project = project, Name = "Alpha", Alias = "ALPHA" };
+        var task = new TaskItem { Board = board, Name = "Initial name", Number = 1 };
         db.AddRange(project, board, task);
         db.SaveChanges();
         return (project.Id, board.Id, task.Id);

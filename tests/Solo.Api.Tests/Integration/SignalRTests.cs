@@ -51,9 +51,10 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
 
-        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Live" });
+        var project = await _admin.PostJson<ProjectDto>(
+            "/api/projects", new { name = "Live", alias = "LIVE" });
         var board = await _admin.PostJson<BoardDto>(
-            $"/api/projects/{project.Id}/boards", new { name = "Live board" });
+            $"/api/projects/{project.Id}/boards", new { name = "Live board", alias = "LIVEB" });
 
         await using var sender = Connect("admin", "admin@example.com", "Admin");
         await using var receiver = Connect("admin", "admin@example.com", "Admin");
@@ -91,9 +92,10 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
 
-        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Presence" });
+        var project = await _admin.PostJson<ProjectDto>(
+            "/api/projects", new { name = "Presence", alias = "PRESENCE" });
         var board = await _admin.PostJson<BoardDto>(
-            $"/api/projects/{project.Id}/boards", new { name = "Presence board" });
+            $"/api/projects/{project.Id}/boards", new { name = "Presence board", alias = "PRESB" });
         var epicId = (await _admin.PostJson<EpicDto>(
             $"/api/boards/{board.Id}/epics", new { name = "Watched" })).Id;
 
@@ -129,9 +131,10 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
 
-        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Locked" });
+        var project = await _admin.PostJson<ProjectDto>(
+            "/api/projects", new { name = "Locked", alias = "LOCKED" });
         var board = await _admin.PostJson<BoardDto>(
-            $"/api/projects/{project.Id}/boards", new { name = "Locked board" });
+            $"/api/projects/{project.Id}/boards", new { name = "Locked board", alias = "LOCKEDB" });
 
         // Provision the outsider, then try to join.
         var outsider = _factory.As("outsider", "outsider@example.com");

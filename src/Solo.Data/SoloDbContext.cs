@@ -37,7 +37,9 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
         modelBuilder.Entity<Project>(e =>
         {
             e.Property(p => p.Name).HasMaxLength(200);
+            e.Property(p => p.Alias).HasMaxLength(8);
             e.Property(p => p.Icon).HasMaxLength(100);
+            e.HasIndex(p => p.Alias).IsUnique();
         });
 
         modelBuilder.Entity<ProjectMember>(e =>
@@ -55,8 +57,11 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
         modelBuilder.Entity<Board>(e =>
         {
             e.Property(b => b.Name).HasMaxLength(200);
+            e.Property(b => b.Alias).HasMaxLength(8);
             e.Property(b => b.Icon).HasMaxLength(100);
             e.HasIndex(b => b.ProjectId);
+            // Sibling-unique: two projects may both have a "PW26" board.
+            e.HasIndex(b => new { b.ProjectId, b.Alias }).IsUnique();
             e.HasOne(b => b.Project).WithMany(p => p.Boards)
                 .HasForeignKey(b => b.ProjectId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -79,6 +84,8 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
             e.HasIndex(t => t.BoardId);
             e.HasIndex(t => t.EpicId);
             e.HasIndex(t => t.LabelId);
+            // Serial numbers must never collide or get reassigned after a delete.
+            e.HasIndex(t => new { t.BoardId, t.Number }).IsUnique();
             e.HasOne(t => t.Board).WithMany(b => b.Tasks)
                 .HasForeignKey(t => t.BoardId).OnDelete(DeleteBehavior.Cascade);
             // Epic deletion detaches child tasks to ad-hoc rather than deleting them.

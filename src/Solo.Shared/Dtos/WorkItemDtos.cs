@@ -15,6 +15,7 @@ public sealed record TaskDto(
     Guid Id,
     Guid BoardId,
     Guid? EpicId,
+    int Number,
     string Name,
     Guid? LabelId,
     string? Description,

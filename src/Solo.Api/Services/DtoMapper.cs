@@ -14,18 +14,18 @@ public static class DtoMapper
             m.Role, m.IsOwner, m.UserId is null);
 
     public static ProjectDto ToDto(this Project p) =>
-        new(p.Id, p.Name, p.Icon, p.ImageId, p.Version,
+        new(p.Id, p.Name, p.Alias, p.Icon, p.ImageId, p.Version,
             p.Members.Select(m => m.ToDto()).ToList());
 
     public static BoardDto ToDto(this Board b) =>
-        new(b.Id, b.ProjectId, b.Name, b.Icon, b.ImageId, b.IsOpen, b.Version);
+        new(b.Id, b.ProjectId, b.Name, b.Alias, b.Icon, b.ImageId, b.IsOpen, b.Version);
 
     public static EpicDto ToDto(this Epic e) =>
         new(e.Id, e.BoardId, e.Name, e.Description, e.Rank, e.Version,
             e.Assignments.Select(a => a.UserId).ToList());
 
     public static TaskDto ToDto(this TaskItem t) =>
-        new(t.Id, t.BoardId, t.EpicId, t.Name, t.LabelId, t.Description, t.Status,
+        new(t.Id, t.BoardId, t.EpicId, t.Number, t.Name, t.LabelId, t.Description, t.Status,
             t.Rank, t.Version,
             t.Assignments.Select(a => a.UserId).ToList(),
             t.SubTasks.OrderBy(s => s.Rank).Select(s => s.ToDto()).ToList());

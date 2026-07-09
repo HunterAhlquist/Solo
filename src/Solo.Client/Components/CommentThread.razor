@@ -7,7 +7,9 @@
 
 @*
     A flat chronological thread — no nesting, per the concept. Markdown via the
-    shared editor.
+    shared editor. Commenting needs membership, not write access, so there is no
+    CanWrite gate here: read-only members comment too, and authorship alone
+    decides who can edit or delete.
 *@
 
 <MudText Typo="Typo.subtitle2" Class="mb-2">Comments</MudText>
@@ -30,7 +32,7 @@ else
                     @comment.CreatedAt.ToLocalTime().ToString("g")
                 </MudText>
                 <MudSpacer />
-                @if (comment.AuthorId == Session.UserId && CanWrite)
+                @if (comment.AuthorId == Session.UserId)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                    OnClick="@(() => DeleteAsync(comment))" aria-label="Delete comment" />
@@ -45,7 +47,7 @@ else
             else
             {
                 <div @onclick="@(() => BeginEdit(comment))"
-                     style="@(comment.AuthorId == Session.UserId && CanWrite ? "cursor:text" : null)">
+                     style="@(comment.AuthorId == Session.UserId ? "cursor:text" : null)">
                     <MudMarkdown Value="@comment.Body" />
                 </div>
             }
@@ -57,11 +59,8 @@ else
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">No comments yet.</MudText>
     }
 
-    @if (CanWrite)
-    {
-        <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
-                        Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
-    }
+    <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
+                    Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
 }
 
 @code {
@@ -74,9 +73,6 @@ else
 
     [Parameter]
     public Guid? EpicId { get; set; }
-
-    [Parameter]
-    public bool CanWrite { get; set; }
 
     protected override void OnInitialized() => Store.CommentsChanged += OnCommentsChanged;
 
@@ -106,7 +102,7 @@ else
 
     private void BeginEdit(CommentDto comment)
     {
-        if (comment.AuthorId == Session.UserId && CanWrite)
+        if (comment.AuthorId == Session.UserId)
         {
             _editingId = comment.Id;
         }

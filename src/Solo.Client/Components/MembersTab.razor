@@ -75,14 +75,22 @@ else
                 }
             </MudTd>
             <MudTd DataLabel="Owner">
-                <MudSwitch T="bool" Value="@member.IsOwner" Color="Color.Primary" Disabled="@(!IsOwner)"
-                           ValueChanged="@(owner => SetRoleAsync(member, member.Role, owner))" />
+                @* The server refuses to demote or remove the last owner (409);
+                   mirror that rule here instead of offering a doomed toggle. *@
+                <MudTooltip Text="A project must keep at least one owner." Disabled="@(!IsLastOwner(member))">
+                    <MudSwitch T="bool" Value="@member.IsOwner" Color="Color.Primary"
+                               Disabled="@(!IsOwner || IsLastOwner(member))"
+                               ValueChanged="@(owner => SetRoleAsync(member, member.Role, owner))" />
+                </MudTooltip>
             </MudTd>
             <MudTd Style="text-align:right">
                 @if (IsOwner)
                 {
-                    <MudIconButton Icon="@Icons.Material.Filled.PersonRemove" Size="Size.Small" Color="Color.Error"
-                                   OnClick="@(() => RemoveAsync(member))" aria-label="Remove member" />
+                    <MudTooltip Text="A project must keep at least one owner." Disabled="@(!IsLastOwner(member))">
+                        <MudIconButton Icon="@Icons.Material.Filled.PersonRemove" Size="Size.Small" Color="Color.Error"
+                                       Disabled="@IsLastOwner(member)"
+                                       OnClick="@(() => RemoveAsync(member))" aria-label="Remove member" />
+                    </MudTooltip>
                 }
             </MudTd>
         </RowTemplate>
@@ -104,6 +112,10 @@ else
     /// <summary>Membership drives this page's own permissions, so the parent re-reads the project.</summary>
     [Parameter]
     public EventCallback OnMembersChanged { get; set; }
+
+    /// <summary>The one member the server would refuse to demote or remove.</summary>
+    private bool IsLastOwner(ProjectMemberDto member) =>
+        member.IsOwner && _members?.Count(m => m.IsOwner) == 1;
 
     protected override Task OnParametersSetAsync() => LoadAsync();
 

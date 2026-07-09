@@ -40,14 +40,14 @@ public class ProjectHomeTests : BunitContext, IAsyncLifetime
         _http.RouteJson("/members", new[] { member });
         _http.RouteJson("/boards", Array.Empty<BoardDto>());
         _http.RouteJson("/labels", Array.Empty<LabelDto>());
-        _http.RouteJson($"/api/projects/{TestData.ProjectId}",
-            new ProjectDto(TestData.ProjectId, "Solo", null, null, 1, [member]));
+        _http.RouteJson("/api/projects/by-alias/SOLO",
+            new ProjectDto(TestData.ProjectId, "Solo", "SOLO", null, null, 1, [member]));
     }
 
     private List<string> TabsFor(bool isSuperAdmin, bool isOwner)
     {
         Route(isSuperAdmin, isOwner);
-        var page = Render<Pages.ProjectHome>(p => p.Add(x => x.ProjectId, TestData.ProjectId));
+        var page = Render<Pages.ProjectHome>(p => p.Add(x => x.ProjectAlias, "SOLO"));
         return page.FindAll(".mud-tab").Select(t => t.TextContent.Trim()).ToList();
     }
 

@@ -29,8 +29,10 @@ public sealed class CommentsController(
     public Task<ActionResult<IReadOnlyList<CommentDto>>> ListForTask(Guid taskId, CancellationToken ct) =>
         List(c => c.TaskId == taskId, ct);
 
+    // Commenting needs membership, not write access: read-only members join the
+    // conversation even though they can't touch the board itself.
     [HttpPost("api/epics/{epicId:guid}/comments")]
-    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    [Authorize(Policy = AuthConstants.ProjectReadPolicy)]
     public async Task<ActionResult<CommentDto>> AddToEpic(
         Guid epicId, CreateCommentRequest request, CancellationToken ct)
     {
@@ -50,7 +52,7 @@ public sealed class CommentsController(
     }
 
     [HttpPost("api/tasks/{taskId:guid}/comments")]
-    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    [Authorize(Policy = AuthConstants.ProjectReadPolicy)]
     public async Task<ActionResult<CommentDto>> AddToTask(
         Guid taskId, CreateCommentRequest request, CancellationToken ct)
     {
@@ -71,7 +73,7 @@ public sealed class CommentsController(
 
     /// <summary>Authors edit their own comments.</summary>
     [HttpPut("api/comments/{commentId:guid}")]
-    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    [Authorize(Policy = AuthConstants.ProjectReadPolicy)]
     public async Task<ActionResult<CommentDto>> Update(
         Guid commentId, UpdateCommentRequest request, CancellationToken ct)
     {
@@ -104,7 +106,7 @@ public sealed class CommentsController(
 
     /// <summary>Authors delete their own comments; project owners can moderate any.</summary>
     [HttpDelete("api/comments/{commentId:guid}")]
-    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    [Authorize(Policy = AuthConstants.ProjectReadPolicy)]
     public async Task<IActionResult> Delete(Guid commentId, CancellationToken ct)
     {
         var comment = await db.Comments.FirstOrDefaultAsync(c => c.Id == commentId, ct);

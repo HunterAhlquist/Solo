@@ -5,6 +5,7 @@ namespace Solo.Shared.Dtos;
 public sealed record ProjectDto(
     Guid Id,
     string Name,
+    string Alias,
     string? Icon,
     Guid? ImageId,
     uint Version,
@@ -13,6 +14,7 @@ public sealed record ProjectDto(
 public sealed record ProjectSummaryDto(
     Guid Id,
     string Name,
+    string Alias,
     string? Icon,
     Guid? ImageId,
     ProjectRole Role,
@@ -33,6 +35,9 @@ public sealed class CreateProjectRequest
     [Required, MaxLength(200)]
     public required string Name { get; init; }
 
+    [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
+    public required string Alias { get; init; }
+
     [MaxLength(100)]
     public string? Icon { get; init; }
 
@@ -43,6 +48,9 @@ public sealed class UpdateProjectRequest
 {
     [Required, MaxLength(200)]
     public required string Name { get; init; }
+
+    [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
+    public required string Alias { get; init; }
 
     [MaxLength(100)]
     public string? Icon { get; init; }

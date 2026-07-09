@@ -1,18 +1,24 @@
 @*
-    Create/rename for the two things that have a name and an icon: projects and
-    boards. Dialog close is the save event.
+    Create/rename for the two things that have a name, an alias and an icon:
+    projects and boards. Dialog close is the save event.
 *@
 <MudDialog>
     <DialogContent>
         <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" AutoFocus="true" Class="mb-3"
                       OnKeyDown="@OnKeyDown" />
+        <MudTextField @bind-Value="_alias" Label="Alias" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" MaxLength="Aliases.MaxLength" Class="mb-3"
+                      HelperText="Stands in for the id in links and serial numbers — capital letters and digits, max 8."
+                      Error="@(!AliasEmpty && !AliasValid)"
+                      ErrorText="@Aliases.PatternError"
+                      OnKeyDown="@OnKeyDown" />
         <IconImagePicker @bind-Icon="_icon" @bind-ImageId="_imageId" />
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@Cancel">Cancel</MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled"
-                   Disabled="@string.IsNullOrWhiteSpace(_name)" OnClick="@Save">
+                   Disabled="@(!CanSave)" OnClick="@Save">
             @SaveText
         </MudButton>
     </DialogActions>
@@ -20,6 +26,7 @@
 
 @code {
     private string _name = string.Empty;
+    private string _alias = string.Empty;
     private string? _icon;
     private Guid? _imageId;
 
@@ -30,6 +37,9 @@
     public string? Name { get; set; }
 
     [Parameter]
+    public string? Alias { get; set; }
+
+    [Parameter]
     public string? Icon { get; set; }
 
     [Parameter]
@@ -38,9 +48,19 @@
     [Parameter]
     public string SaveText { get; set; } = "Create";
 
+    private string NormalizedAlias => Aliases.Normalize(_alias);
+
+    private bool AliasEmpty => string.IsNullOrWhiteSpace(_alias);
+
+    private bool AliasValid =>
+        System.Text.RegularExpressions.Regex.IsMatch(NormalizedAlias, Aliases.Pattern);
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(_name) && AliasValid;
+
     protected override void OnInitialized()
     {
         _name = Name ?? string.Empty;
+        _alias = Alias ?? string.Empty;
         _icon = Icon;
         _imageId = ImageId;
     }
@@ -48,15 +68,16 @@
     /// <summary>Enter commits a single-line edit.</summary>
     private void OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_name))
+        if (e.Key == "Enter" && CanSave)
         {
             Save();
         }
     }
 
-    private void Save() => Dialog.Close(DialogResult.Ok(new NameIcon(_name.Trim(), _icon, _imageId)));
+    private void Save() =>
+        Dialog.Close(DialogResult.Ok(new NameIcon(_name.Trim(), NormalizedAlias, _icon, _imageId)));
 
     private void Cancel() => Dialog.Cancel();
 
-    public sealed record NameIcon(string Name, string? Icon, Guid? ImageId);
+    public sealed record NameIcon(string Name, string Alias, string? Icon, Guid? ImageId);
 }

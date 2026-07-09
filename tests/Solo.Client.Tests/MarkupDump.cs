@@ -56,10 +56,10 @@ public class MarkupDump : BunitContext, IAsyncLifetime
         });
         _http.RouteJson("/members", new[] { member });
         _http.RouteJson("/boards", Array.Empty<BoardDto>());
-        _http.RouteJson($"/api/projects/{TestData.ProjectId}",
-            new ProjectDto(TestData.ProjectId, "Solo", "Games", null, 1, [member]));
+        _http.RouteJson("/api/projects/by-alias/SOLO",
+            new ProjectDto(TestData.ProjectId, "Solo", "SOLO", "Games", null, 1, [member]));
 
-        var page = Render<Pages.ProjectHome>(p => p.Add(x => x.ProjectId, TestData.ProjectId));
+        var page = Render<Pages.ProjectHome>(p => p.Add(x => x.ProjectAlias, "SOLO"));
 
         // Activate the Labels tab, exactly as a click does.
         var labelsTab = page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Labels"));

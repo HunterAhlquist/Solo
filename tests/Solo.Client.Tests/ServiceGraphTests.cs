@@ -97,7 +97,6 @@ public class ServiceGraphTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<SetupClient>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<BoardStore>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<UserSession>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<ThemeService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<SaveGuard>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IBoardHubClient>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<GoogleIdentityService>());

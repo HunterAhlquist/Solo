@@ -201,6 +201,34 @@ code {
     min-width: 0;
 }
 
+/* The whole epic gutter opens the epic's editor — a cursor change on the name
+   alone was invisible. The gutter tints on hover to show the click region, and
+   the name underlines to say what the click does. The controls inside (collapse
+   chevron, action icons) keep their own hit boxes via stopPropagation. */
+.kanban-lane__gutter--openable {
+    cursor: pointer;
+    /* Follow the lane's rounded left corners so the hover tint stays inside. */
+    border-radius: var(--mud-default-borderradius) 0 0 var(--mud-default-borderradius);
+}
+
+.kanban-lane__gutter--openable:hover {
+    background: color-mix(in srgb, var(--mud-palette-primary) 6%, transparent);
+}
+
+.kanban-lane__gutter--openable:hover .kanban-lane__title .mud-typography {
+    color: var(--mud-palette-primary);
+    text-decoration: underline;
+}
+
+/* Epic actions: icon buttons spaced along the foot of the gutter. The gutter is
+   a column flexbox, so margin-top:auto pins the row to the bottom of the lane. */
+.kanban-lane__actions {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
 .kanban-lane--adhoc {
     background: transparent;
     border-style: dashed;
@@ -326,6 +354,27 @@ code {
 
 @media (prefers-reduced-motion: reduce) {
     .presence-avatar--editing { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Footer — small and subtle; the quip below it, smaller and subtler still.
+   --------------------------------------------------------------------------- */
+.app-footer {
+    padding: 1.5rem 1rem 1rem;
+    text-align: center;
+}
+
+.app-footer__copyright {
+    font-size: 0.7rem;
+    color: var(--mud-palette-text-secondary);
+    opacity: 0.7;
+}
+
+.app-footer__quip {
+    margin-top: 0.15rem;
+    font-size: 0.6rem;
+    color: var(--mud-palette-text-secondary);
+    opacity: 0.45;
 }
 
 /* ---------------------------------------------------------------------------

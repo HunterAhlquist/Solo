@@ -46,7 +46,19 @@ public sealed class BoardStore(ApiClient api, IBoardHubClient hub, UserSession s
     public async Task LoadAsync(Guid boardId, CancellationToken ct = default)
     {
         Board = await api.GetBoardAsync(boardId, ct);
-        Members = await api.GetMembersAsync(Board.ProjectId, ct);
+        await AttachAsync(ct);
+    }
+
+    /// <summary>The aliased route's entry point; everything after the fetch is identical.</summary>
+    public async Task LoadAsync(string projectAlias, string boardAlias, CancellationToken ct = default)
+    {
+        Board = await api.GetBoardByAliasAsync(projectAlias, boardAlias, ct);
+        await AttachAsync(ct);
+    }
+
+    private async Task AttachAsync(CancellationToken ct)
+    {
+        Members = await api.GetMembersAsync(Board!.ProjectId, ct);
 
         if (!_subscribed)
         {
@@ -55,7 +67,7 @@ public sealed class BoardStore(ApiClient api, IBoardHubClient hub, UserSession s
             _subscribed = true;
         }
 
-        await hub.JoinBoard(boardId);
+        await hub.JoinBoard(Board.Id);
         Changed?.Invoke();
     }
 

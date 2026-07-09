@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Solo.Data;
 using Solo.Data.Domain;
+using Solo.Shared;
 
 namespace Solo.Api.Auth;
 
@@ -60,6 +61,17 @@ public sealed class ProjectAccessHandler(
     {
         var route = httpContext.GetRouteData().Values;
         var ct = httpContext.RequestAborted;
+
+        // The by-alias endpoints carry the project's alias where others carry
+        // its id; the board alias needs no lookup here because the project
+        // already scopes the access decision.
+        if (route.TryGetValue("projectAlias", out var rawAlias) &&
+            rawAlias?.ToString() is { Length: > 0 } aliasValue)
+        {
+            var alias = Aliases.Normalize(aliasValue);
+            return await FirstOrNull(
+                db.Projects.Where(p => p.Alias == alias).Select(p => p.Id), ct);
+        }
 
         if (TryGetGuid(route, "projectId", out var projectId))
         {

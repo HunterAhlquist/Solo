@@ -25,6 +25,8 @@ public class Project : IVersioned
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public required string Name { get; set; }
+    /// <summary>Short serial-number prefix (A-Z0-9, max 8), unique across projects.</summary>
+    public required string Alias { get; set; }
     public string? Icon { get; set; }
     /// <summary>An uploaded image used in place of the curated <see cref="Icon"/> when set.</summary>
     public Guid? ImageId { get; set; }
@@ -59,6 +61,13 @@ public class Board : IVersioned
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public Guid ProjectId { get; set; }
     public required string Name { get; set; }
+    /// <summary>Short serial-number segment (A-Z0-9, max 8), unique within the project.</summary>
+    public required string Alias { get; set; }
+    /// <summary>
+    /// The serial number the board's next task will take. A counter rather than
+    /// max+1 so a deleted task's number is never reassigned to a different task.
+    /// </summary>
+    public int NextTaskNumber { get; set; } = 1;
     public string? Icon { get; set; }
     /// <summary>An uploaded image used in place of the curated <see cref="Icon"/> when set.</summary>
     public Guid? ImageId { get; set; }
@@ -97,6 +106,12 @@ public class TaskItem : IVersioned
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public Guid BoardId { get; set; }
     public Guid? EpicId { get; set; }
+    /// <summary>
+    /// Per-board auto-increment, assigned on create and never reused. The
+    /// user-facing serial number PROJECT-BOARD-N is composed at runtime from the
+    /// two aliases and this value.
+    /// </summary>
+    public int Number { get; set; }
     public required string Name { get; set; }
     public Guid? LabelId { get; set; }
     /// <summary>Markdown.</summary>

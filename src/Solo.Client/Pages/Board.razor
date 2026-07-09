@@ -1,4 +1,4 @@
-@page "/projects/{ProjectId:guid}/boards/{BoardId:guid}"
+@page "/projects/{ProjectAlias}/boards/{BoardAlias}"
 @attribute [Authorize]
 @implements IAsyncDisposable
 @inject ApiClient Api
@@ -20,7 +20,7 @@ else
 {
     <div class="d-flex align-center mb-3" style="gap:.75rem">
         <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
-                       Href="@($"projects/{ProjectId}")" aria-label="Back to project" />
+                       Href="@($"projects/{ProjectAlias}")" aria-label="Back to project" />
         <EntityIcon ImageId="@Store.Board.ImageId" Icon="@Store.Board.Icon" Color="Color.Primary" />
         <MudText Typo="Typo.h1">@Store.Board.Name</MudText>
 
@@ -30,7 +30,7 @@ else
         }
 
         <MudSpacer />
-        <PresenceCluster Entries="@Store.PresenceOn(EntityTypes.Board, BoardId)" MaxVisible="5" />
+        <PresenceCluster Entries="@Store.PresenceOn(EntityTypes.Board, Store.Board.Id)" MaxVisible="5" />
 
         @if (CanWrite)
         {
@@ -68,22 +68,22 @@ else
             @foreach (var epic in Store.Board.Epics)
             {
                 <div class="kanban-lane">
-                    <div class="kanban-lane__gutter">
+                    @* The whole gutter is the "open epic" target; its own controls
+                       (collapse chevron, action icons) stop the click instead. *@
+                    <div class="kanban-lane__gutter kanban-lane__gutter--openable"
+                         @onclick="@(() => OpenEpic(epic))"
+                         role="button" aria-label="@($"Open epic {epic.Name}")">
                         <div class="kanban-lane__title">
-                            <MudIconButton Size="Size.Small" Class="pa-0"
-                                           Icon="@(IsCollapsed(epic.Id) ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
-                                           OnClick="@(() => ToggleCollapsed(epic.Id))"
-                                           aria-label="Collapse epic" />
-                            <MudText Typo="Typo.subtitle2" Class="text-truncate flex-grow-1"
-                                     Style="cursor:pointer" @onclick="@(() => OpenEpic(epic))">
-                                @epic.Name
-                            </MudText>
+                            <span class="d-inline-flex" @onclick:stopPropagation>
+                                <MudIconButton Size="Size.Small" Class="pa-0"
+                                               Icon="@(IsCollapsed(epic.Id) ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
+                                               OnClick="@(() => ToggleCollapsed(epic.Id))"
+                                               aria-label="Collapse epic" />
+                            </span>
+                            <MudText Typo="Typo.subtitle2" Class="text-truncate flex-grow-1">@epic.Name</MudText>
                         </div>
 
                         <div class="d-flex align-center" style="gap:.35rem">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @TasksOfEpic(epic.Id).Count
-                            </MudText>
                             <MudSpacer />
                             <PresenceCluster Entries="@Store.PresenceOn(EntityTypes.Epic, epic.Id)" MaxVisible="2" />
                             <span class="presence-cluster">
@@ -98,20 +98,26 @@ else
 
                         @if (CanWrite)
                         {
-                            <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" Dense="true"
-                                     AnchorOrigin="Origin.BottomLeft" aria-label="Epic actions">
-                                <MudMenuItem Icon="@Icons.Material.Filled.Add"
-                                             OnClick="@(() => CreateTaskAsync(epic.Id))">Add task</MudMenuItem>
-                                <MudMenuItem Icon="@Icons.Material.Filled.ArrowUpward"
-                                             Disabled="@(EpicIndex(epic.Id) == 0)"
-                                             OnClick="@(() => MoveEpicAsync(epic, -1))">Move up</MudMenuItem>
-                                <MudMenuItem Icon="@Icons.Material.Filled.ArrowDownward"
-                                             Disabled="@(EpicIndex(epic.Id) == Store.Board.Epics.Count - 1)"
-                                             OnClick="@(() => MoveEpicAsync(epic, 1))">Move down</MudMenuItem>
-                                <MudDivider />
-                                <MudMenuItem Icon="@Icons.Material.Filled.Delete"
-                                             OnClick="@(() => DeleteEpicAsync(epic))">Delete epic</MudMenuItem>
-                            </MudMenu>
+                            <div class="kanban-lane__actions" @onclick:stopPropagation>
+                                <MudTooltip Text="Add task">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                                   OnClick="@(() => CreateTaskAsync(epic.Id))" aria-label="Add task" />
+                                </MudTooltip>
+                                <MudTooltip Text="Move up">
+                                    <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small"
+                                                   Disabled="@(EpicIndex(epic.Id) == 0)"
+                                                   OnClick="@(() => MoveEpicAsync(epic, -1))" aria-label="Move up" />
+                                </MudTooltip>
+                                <MudTooltip Text="Move down">
+                                    <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small"
+                                                   Disabled="@(EpicIndex(epic.Id) == Store.Board.Epics.Count - 1)"
+                                                   OnClick="@(() => MoveEpicAsync(epic, 1))" aria-label="Move down" />
+                                </MudTooltip>
+                                <MudTooltip Text="Delete epic">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                   OnClick="@(() => DeleteEpicAsync(epic))" aria-label="Delete epic" />
+                                </MudTooltip>
+                            </div>
                         }
                     </div>
 
@@ -142,7 +148,6 @@ else
                         <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Small" Color="Color.Secondary" />
                         <MudText Typo="Typo.subtitle2" Color="Color.Secondary">No epic</MudText>
                     </div>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">@TasksOfEpic(null).Count</MudText>
                 </div>
 
                 @foreach (var status in BoardZones.Statuses)
@@ -158,15 +163,19 @@ else
                 <EmptyState Message="This board is empty."
                             Icon="@Icons.Material.Filled.ViewKanban"
                             ActionText="@(CanWrite ? "Add a task" : null)"
-                            OnAction="@(() => CreateTaskAsync(null))" />
+                            OnAction="@(() => CreateTaskAsync(null))"
+                            SecondaryActionText="@(CanWrite ? "Add an epic" : null)"
+                            OnSecondaryAction="@CreateEpicAsync" />
             }
         </ChildContent>
 
         <ItemRenderer>
+            @* Editors only: someone merely viewing a task shows in the drawer, not on the card. *@
             <TaskCard Task="@context"
+                      Serial="@SerialOf(context)"
                       Label="@LabelOf(context)"
                       Assignees="@MembersOf(context.AssigneeIds)"
-                      Presence="@Store.PresenceOn(EntityTypes.Task, context.Id)"
+                      Presence="@Store.EditorsOn(EntityTypes.Task, context.Id)"
                       Pulse="@_pulsing.Contains(context.Id)"
                       OnOpen="@OpenTask" />
         </ItemRenderer>
@@ -188,12 +197,14 @@ else
     private bool _canWrite;
 
     [Parameter]
-    public Guid ProjectId { get; set; }
+    public string ProjectAlias { get; set; } = string.Empty;
 
     [Parameter]
-    public Guid BoardId { get; set; }
+    public string BoardAlias { get; set; } = string.Empty;
 
     private bool CanWrite => _canWrite && (Store.Board?.IsOpen ?? false);
+
+    private Guid BoardId => Store.Board?.Id ?? Guid.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -215,14 +226,16 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        if (Store.BoardId == BoardId)
+        if (Store.Board is { } current &&
+            string.Equals(current.ProjectAlias, ProjectAlias, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(current.Alias, BoardAlias, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         try
         {
-            await Store.LoadAsync(BoardId);
+            await Store.LoadAsync(ProjectAlias, BoardAlias);
             var me = Store.Members.FirstOrDefault(m => m.UserId == Session.UserId);
             _canWrite = Session.IsSuperAdmin || (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
             Rebuild();
@@ -287,15 +300,16 @@ else
     /// <summary>Opening a board bubbles its project to the top of the sidebar's recents.</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_recordedProject == ProjectId)
+        // The route only carries aliases; the project's id arrives with the payload.
+        if (Store.Board is not { } board || _recordedProject == board.ProjectId)
         {
             return;
         }
 
-        _recordedProject = ProjectId;
+        _recordedProject = board.ProjectId;
         try
         {
-            await Recent.RecordAsync(ProjectId);
+            await Recent.RecordAsync(board.ProjectId);
         }
         catch (JSException)
         {
@@ -315,6 +329,9 @@ else
     }
 
     private List<TaskDto> TasksOfEpic(Guid? epicId) => _ordered.Where(t => t.EpicId == epicId).ToList();
+
+    private string SerialOf(TaskDto task) =>
+        Aliases.Serial(Store.Board!.ProjectAlias, Store.Board.Alias, task.Number);
 
     private LabelDto? LabelOf(TaskDto task) =>
         task.LabelId is null ? null : Store.Board?.Labels.FirstOrDefault(l => l.Id == task.LabelId);
