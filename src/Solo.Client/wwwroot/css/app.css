@@ -252,12 +252,29 @@ code {
 
 /* Vertical dividers between the three status columns, in both the sticky header
    and every lane. Child 1 is the gutter/blank cell; the columns are children
-   2-4, so a left border on 3 and 4 draws a rule between each pair. */
+   2-4, so a rule at the left edge of children 3 and 4 sits between each pair.
+   Drawn as a ::before line, not a border-left: .kanban-zone has a border-radius,
+   and a left border traces those rounded corners — bowing the divider to the
+   right at the top and bottom. A straight, absolutely-positioned line ignores it. */
 .kanban-header > *:nth-child(3),
 .kanban-header > *:nth-child(4),
 .kanban-lane > .kanban-zone:nth-child(3),
 .kanban-lane > .kanban-zone:nth-child(4) {
-    border-left: 1px solid var(--mud-palette-lines-default);
+    position: relative;
+}
+
+.kanban-header > *:nth-child(3)::before,
+.kanban-header > *:nth-child(4)::before,
+.kanban-lane > .kanban-zone:nth-child(3)::before,
+.kanban-lane > .kanban-zone:nth-child(4)::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: var(--mud-palette-lines-default);
+    pointer-events: none;
 }
 
 /* Custom uploaded icons: keep them square and lightly rounded wherever they

@@ -98,7 +98,9 @@ public static class SoloTheme
             Body2 = new Body2Typography { FontFamily = Mono },
             Subtitle1 = new Subtitle1Typography { FontFamily = Mono },
             Subtitle2 = new Subtitle2Typography { FontFamily = Mono },
-            Button = new ButtonTypography { FontFamily = Mono },
+            // Courier New at MudBlazor's default 500 reads thin, especially white-on-
+            // yellow on filled buttons; 700 gives the labels the weight the headings have.
+            Button = new ButtonTypography { FontFamily = Mono, FontWeight = "700" },
             Caption = new CaptionTypography { FontFamily = Mono },
             Overline = new OverlineTypography { FontFamily = Mono },
         },
