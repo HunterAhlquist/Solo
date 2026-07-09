@@ -70,7 +70,7 @@
                         Project settings
                     </MudNavLink>
 
-                    @if (ProjectNavStore.CanAddBoard(project, Session.IsSuperAdmin))
+                    @if (ProjectNavStore.CanAddBoard(project))
                     {
                         <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__add"
                                     OnClick="@(() => AddBoardAsync(project))">

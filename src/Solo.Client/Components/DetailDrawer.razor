@@ -75,7 +75,7 @@
                 <MudDivider Class="my-4" />
             }
 
-            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" />
+            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" CanModerate="@CanModerate" />
 
             @if (CanWrite)
             {
@@ -101,6 +101,10 @@
 
     [Parameter]
     public bool CanWrite { get; set; }
+
+    /// <summary>Project owner or super admin: may delete any comment.</summary>
+    [Parameter]
+    public bool CanModerate { get; set; }
 
     [Parameter]
     public EventCallback OnClose { get; set; }

@@ -181,7 +181,8 @@ else
         </ItemRenderer>
     </MudDropContainer>
 
-    <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite" OnClose="@CloseDrawerAsync" />
+    <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite"
+                  CanModerate="@_canModerate" OnClose="@CloseDrawerAsync" />
 }
 
 @code {
@@ -195,6 +196,7 @@ else
     private TaskDto? _openTask;
     private EpicDto? _openEpic;
     private bool _canWrite;
+    private bool _canModerate;
 
     [Parameter]
     public string ProjectAlias { get; set; } = string.Empty;
@@ -236,8 +238,12 @@ else
         try
         {
             await Store.LoadAsync(ProjectAlias, BoardAlias);
+            // The API's write policy accepts the owner flag or a read/write role;
+            // the super admin's blanket rights stop at the owner surface, which
+            // on a board means comment moderation only.
             var me = Store.Members.FirstOrDefault(m => m.UserId == Session.UserId);
-            _canWrite = Session.IsSuperAdmin || (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
+            _canWrite = (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
+            _canModerate = Session.IsSuperAdmin || (me?.IsOwner ?? false);
             Rebuild();
         }
         catch (ApiException e)

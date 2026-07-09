@@ -83,6 +83,15 @@ public class GoogleJwtTests
         Assert.False(GoogleJwt.IsExpired(Credential(DateTimeOffset.UtcNow.AddMinutes(5))));
     }
 
+    [Fact]
+    public void The_expiry_instant_is_read_so_renewal_can_be_scheduled_ahead_of_it()
+    {
+        var expires = DateTimeOffset.FromUnixTimeSeconds(
+            DateTimeOffset.UtcNow.AddMinutes(42).ToUnixTimeSeconds());
+
+        Assert.Equal(expires, GoogleJwt.Expiry(Credential(expires)));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -94,6 +103,7 @@ public class GoogleJwtTests
     {
         Assert.True(GoogleJwt.IsExpired(token));
         Assert.Null(GoogleJwt.ToPrincipal(token));
+        Assert.Null(GoogleJwt.Expiry(token));
     }
 
     [Fact]

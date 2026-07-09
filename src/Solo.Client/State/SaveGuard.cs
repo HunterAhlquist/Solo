@@ -1,3 +1,4 @@
+using System.Net;
 using MudBlazor;
 using Solo.Client.Api;
 
@@ -35,6 +36,13 @@ public sealed class SaveGuard(ISnackbar snackbar)
             snackbar.Add(
                 e.Detail ?? "Updated by someone else — your view was refreshed.",
                 Severity.Info);
+            return false;
+        }
+        catch (ApiException e) when (e.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            // The session died mid-save; the HTTP handler has already raised the
+            // re-sign-in dialog. Say why the save didn't land, not "try again".
+            snackbar.Add("Your session expired. Sign in again, then retry.", Severity.Warning);
             return false;
         }
         catch (ApiException e)

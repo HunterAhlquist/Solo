@@ -23,6 +23,7 @@ public static class SoloClientServices
         // HTTP: one authenticated client for the API, one bare client for the
         // setup scheme (static credentials, not a bearer token).
         services.AddSingleton<ConnectionIdAccessor>();
+        services.AddSingleton<SessionExpiry>();
         services.AddScoped<GoogleIdentityService>();
         services.AddScoped<IdTokenProvider>();
         services.AddScoped<IdTokenMessageHandler>();

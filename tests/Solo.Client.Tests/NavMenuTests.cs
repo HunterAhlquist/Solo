@@ -246,16 +246,17 @@ public class ProjectNavStoreTests
         Assert.Single(store.Projects);
     }
 
+    // The super admin's blanket rights stop at the owner surface, so being one
+    // plays no part here: only the caller's own membership grants write access.
     [Theory]
-    [InlineData(false, ProjectRole.Read, false, false)]
-    [InlineData(false, ProjectRole.ReadWrite, false, true)]
-    [InlineData(false, ProjectRole.Read, true, true)]   // owner
-    [InlineData(true, ProjectRole.Read, false, true)]   // super admin
+    [InlineData(ProjectRole.Read, false, false)]
+    [InlineData(ProjectRole.ReadWrite, false, true)]
+    [InlineData(ProjectRole.Read, true, true)]   // owner
     public void Add_board_permission_follows_the_APIs_write_rule(
-        bool isSuperAdmin, ProjectRole role, bool isOwner, bool expected)
+        ProjectRole role, bool isOwner, bool expected)
     {
         var project = new ProjectSummaryDto(TestData.ProjectId, "Solo", "SOLO", null, null, role, isOwner);
 
-        Assert.Equal(expected, ProjectNavStore.CanAddBoard(project, isSuperAdmin));
+        Assert.Equal(expected, ProjectNavStore.CanAddBoard(project));
     }
 }

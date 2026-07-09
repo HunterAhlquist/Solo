@@ -1,8 +1,11 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject UserSession Session
 @inject AppConfig Config
 @inject GoogleIdentityService Google
 @inject NavigationManager Navigation
+@inject SessionExpiry SessionExpiry
+@inject IDialogService Dialogs
 
 <MudThemeProvider Theme="@SoloTheme.Theme" IsDarkMode="true" />
 <MudPopoverProvider />
@@ -73,6 +76,38 @@
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private bool _expiryDialogOpen;
+
+    protected override void OnInitialized() => SessionExpiry.Expired += OnSessionExpired;
+
+    /// <summary>
+    /// Silent renewal failed or the API rejected our token: offer re-sign-in in
+    /// place, so an open edit isn't lost to a redirect. Google signs back in via
+    /// its callback with no navigation; the dialog just closes and work resumes.
+    /// </summary>
+    private void OnSessionExpired() => _ = InvokeAsync(async () =>
+    {
+        if (_expiryDialogOpen)
+        {
+            return;
+        }
+
+        _expiryDialogOpen = true;
+        try
+        {
+            var dialog = await Dialogs.ShowAsync<SessionExpiredDialog>(
+                "Session expired",
+                new DialogOptions { BackdropClick = false });
+            await dialog.Result;
+        }
+        finally
+        {
+            _expiryDialogOpen = false;
+        }
+    });
+
+    public void Dispose() => SessionExpiry.Expired -= OnSessionExpired;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

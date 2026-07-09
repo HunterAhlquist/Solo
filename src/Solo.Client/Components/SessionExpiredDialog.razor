@@ -1,0 +1,44 @@
+@inject AppConfig Config
+@inject NavigationManager Navigation
+
+@*
+    Raised by SessionExpiry when silent renewal fails or the API rejects a token.
+    Google re-auths in place — GIS calls back with a fresh credential and nothing
+    navigates, so whatever the user had open (an edit drawer, say) survives.
+*@
+<MudDialog>
+    <DialogContent>
+        <div class="d-flex flex-column align-center" style="gap:1rem">
+            <MudText Align="Align.Center">
+                Your session has expired. Sign in again to keep working —
+                anything you had open is still here.
+            </MudText>
+
+            @if (Config.IsGoogle)
+            {
+                <GoogleSignInButton OnSignedIn="@Close" />
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@BeginSignIn">
+                    Sign in with @Config.ProviderName
+                </MudButton>
+            }
+        </div>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = null!;
+
+    private void Close() => Dialog.Close(DialogResult.Ok(true));
+
+    /// <summary>The code+PKCE flow can't re-auth in place; round-trip and come back here.</summary>
+    private void BeginSignIn() =>
+        Navigation.NavigateToLogin("authentication/login", new InteractiveRequestOptions
+        {
+            Interaction = InteractionType.SignIn,
+            ReturnUrl = Navigation.Uri,
+        });
+}

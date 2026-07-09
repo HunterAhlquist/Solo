@@ -36,6 +36,7 @@ public class SetupWizardTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(new SetupClient(new HttpClient(_http) { BaseAddress = new Uri("https://solo.test/") }));
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(config);
+        Services.AddSingleton<SessionExpiry>();
         Services.AddScoped<GoogleIdentityService>();
     }
 

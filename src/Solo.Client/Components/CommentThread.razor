@@ -8,8 +8,8 @@
 @*
     A flat chronological thread — no nesting, per the concept. Markdown via the
     shared editor. Commenting needs membership, not write access, so there is no
-    CanWrite gate here: read-only members comment too, and authorship alone
-    decides who can edit or delete.
+    CanWrite gate here: read-only members comment too. Only the author edits a
+    comment; the author — or a moderator (project owner / super admin) — deletes it.
 *@
 
 <MudText Typo="Typo.subtitle2" Class="mb-2">Comments</MudText>
@@ -32,7 +32,7 @@ else
                     @comment.CreatedAt.ToLocalTime().ToString("g")
                 </MudText>
                 <MudSpacer />
-                @if (comment.AuthorId == Session.UserId)
+                @if (comment.AuthorId == Session.UserId || CanModerate)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                    OnClick="@(() => DeleteAsync(comment))" aria-label="Delete comment" />
@@ -73,6 +73,10 @@ else
 
     [Parameter]
     public Guid? EpicId { get; set; }
+
+    /// <summary>Project owner or super admin: may delete any comment.</summary>
+    [Parameter]
+    public bool CanModerate { get; set; }
 
     protected override void OnInitialized() => Store.CommentsChanged += OnCommentsChanged;
 

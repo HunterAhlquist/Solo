@@ -2,6 +2,7 @@
 @layout EmptyLayout
 @inject AppConfig Config
 @inject NavigationManager Navigation
+@inject GoogleIdentityService Google
 
 <PageTitle>Sign in · Solo</PageTitle>
 
@@ -22,6 +23,11 @@
         {
             @* Google renders its own button and calls back with an ID token. *@
             <GoogleSignInButton OnSignedIn="@GoToReturnUrl" />
+
+            @* Checked: the credential persists across browser restarts and is
+               renewed silently on return. Unchecked: it lives with the tab. *@
+            <MudCheckBox T="bool" Value="_staySignedIn" ValueChanged="@SetStaySignedIn"
+                         Label="Stay signed in on this device" Dense="true" />
         }
         else
         {
@@ -34,6 +40,22 @@
 </MudContainer>
 
 @code {
+    private bool _staySignedIn = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Config.IsGoogle)
+        {
+            _staySignedIn = await Google.GetRememberAsync();
+        }
+    }
+
+    private async Task SetStaySignedIn(bool value)
+    {
+        _staySignedIn = value;
+        await Google.SetRememberAsync(value);
+    }
+
     private string ProviderIcon => Config.Auth?.Provider?.ToLowerInvariant() switch
     {
         "google" => Icons.Custom.Brands.Google,

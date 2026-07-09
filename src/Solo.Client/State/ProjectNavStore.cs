@@ -90,7 +90,11 @@ public sealed class ProjectNavStore(ApiClient api)
         await EnsureBoardsAsync(projectId);
     }
 
-    /// <summary>Whether the signed-in user may add a board to this project.</summary>
-    public static bool CanAddBoard(ProjectSummaryDto project, bool isSuperAdmin) =>
-        isSuperAdmin || project.IsOwner || project.Role == ProjectRole.ReadWrite;
+    /// <summary>
+    /// Whether the signed-in user may add a board to this project. Mirrors the
+    /// API's write rule: owner flag or read/write role — being the instance
+    /// super admin grants no write access.
+    /// </summary>
+    public static bool CanAddBoard(ProjectSummaryDto project) =>
+        project.IsOwner || project.Role == ProjectRole.ReadWrite;
 }

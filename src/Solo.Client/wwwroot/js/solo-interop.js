@@ -49,8 +49,10 @@ window.solo = {
     // -----------------------------------------------------------------------
     google: {
         tokenKey: 'solo.google.idtoken',
+        rememberKey: 'solo.google.remember',
         _dotnet: null,
         _loading: null,
+        _renewResolve: null,
 
         // Loaded on demand: an instance signed in with Microsoft should never
         // fetch a script from Google.
@@ -84,8 +86,31 @@ window.solo = {
         },
 
         _onCredential(credential) {
-            sessionStorage.setItem(window.solo.google.tokenKey, credential);
+            window.solo.google._writeToken(credential);
             window.solo.google._dotnet?.invokeMethodAsync('OnCredentialReceived', credential);
+            window.solo.google._renewResolve?.(credential);
+        },
+
+        // "Stay signed in" routes the credential to localStorage so it survives
+        // a browser restart; otherwise sessionStorage scopes it to the tab.
+        // Defaults to on: this is a small-team tool, and silent renewal already
+        // keeps the session alive while the tab is open anyway.
+        remember: () => localStorage.getItem(window.solo.google.rememberKey) !== '0',
+
+        setRemember(value) {
+            localStorage.setItem(this.rememberKey, value ? '1' : '0');
+            const token = this.token();
+            if (token) {
+                this._writeToken(token);
+            }
+        },
+
+        _writeToken(credential) {
+            const [into, outOf] = this.remember()
+                ? [localStorage, sessionStorage]
+                : [sessionStorage, localStorage];
+            into.setItem(this.tokenKey, credential);
+            outOf.removeItem(this.tokenKey);
         },
 
         async renderButton(element, theme) {
@@ -103,10 +128,57 @@ window.solo = {
 
         // Reading the stored token must not drag in the GIS script: the auth
         // state is queried on every page load, sign-in happens once.
-        token: () => sessionStorage.getItem(window.solo.google.tokenKey),
+        token: () => sessionStorage.getItem(window.solo.google.tokenKey)
+            ?? localStorage.getItem(window.solo.google.tokenKey),
+
+        // Silent renewal: ask GIS to re-issue a credential. With a live Google
+        // session and auto_select, FedCM re-authenticates without a click.
+        // Resolves the fresh credential, or null when the prompt is skipped or
+        // nothing arrives in time (Google session gone, prompt suppressed).
+        prompt() {
+            return new Promise(resolve => {
+                let settled = false;
+                let timer = null;
+                const settle = credential => {
+                    if (settled) {
+                        return;
+                    }
+
+                    settled = true;
+                    clearTimeout(timer);
+                    if (window.solo.google._renewResolve === settle) {
+                        window.solo.google._renewResolve = null;
+                    }
+
+                    resolve(credential);
+                };
+
+                window.solo.google._renewResolve = settle;
+                timer = setTimeout(() => settle(null), 15000);
+
+                try {
+                    window.google.accounts.id.prompt(notification => {
+                        // Under FedCM most moment details are deprecated, but
+                        // "skipped" still means no credential is coming.
+                        if (notification?.isSkippedMoment?.()) {
+                            settle(null);
+                        }
+                    });
+                } catch {
+                    settle(null);
+                }
+            });
+        },
+
+        // Dropping a dead credential is not signing out: leave auto-select
+        // alone so the next sign-in can still be silent.
+        retire() {
+            sessionStorage.removeItem(this.tokenKey);
+            localStorage.removeItem(this.tokenKey);
+        },
 
         signOut() {
-            sessionStorage.removeItem(this.tokenKey);
+            this.retire();
             window.google?.accounts?.id?.disableAutoSelect();
         },
     },

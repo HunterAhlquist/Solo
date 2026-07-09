@@ -84,6 +84,18 @@ public class SaveGuardTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_expired_session_says_so_instead_of_try_again()
+    {
+        var ok = await _guard.RunAsync(
+            () => throw new ApiException(System.Net.HttpStatusCode.Unauthorized, "Unauthorized", null));
+
+        Assert.False(ok);
+        var shown = _snackbar.ShownSnackbars.Single();
+        Assert.Equal(Severity.Warning, shown.Severity);
+        Assert.Contains("session expired", shown.Message?.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task A_value_returning_save_hands_back_the_DTO_to_apply_optimistically()
     {
         var task = TestData.Task(status: TaskState.Finished);

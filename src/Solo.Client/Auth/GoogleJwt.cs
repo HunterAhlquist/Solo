@@ -53,16 +53,20 @@ public static class GoogleJwt
     /// that expires in flight comes back 401, and re-authenticating beats losing
     /// the user's edit.
     /// </summary>
-    public static bool IsExpired(string? token)
+    public static bool IsExpired(string? token) =>
+        Expiry(token) is not { } expiry || expiry <= DateTimeOffset.UtcNow.AddSeconds(60);
+
+    /// <summary>The token's <c>exp</c> as an instant, or null when unreadable.</summary>
+    public static DateTimeOffset? Expiry(string? token)
     {
         if (!TryReadPayload(token, out var payload) ||
             !payload.TryGetProperty("exp", out var exp) ||
             !exp.TryGetInt64(out var seconds))
         {
-            return true;
+            return null;
         }
 
-        return DateTimeOffset.FromUnixTimeSeconds(seconds) <= DateTimeOffset.UtcNow.AddSeconds(60);
+        return DateTimeOffset.FromUnixTimeSeconds(seconds);
     }
 
     private static bool TryReadPayload(string? token, out JsonElement payload)

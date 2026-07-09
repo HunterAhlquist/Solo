@@ -146,6 +146,39 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.Contains("Description", drawer.Markup);
     }
 
+    // -- Comment moderation mirrors the API: author, project owner or super admin --
+
+    private IRenderedComponent<CommentThread> RenderThread(bool canModerate)
+    {
+        var taskId = Guid.NewGuid();
+        _http.RouteJson("/comments", new[]
+        {
+            new CommentDto(Guid.NewGuid(), TestData.OtherId, "Someone Else", null,
+                "Nerf the shotgun", DateTime.UtcNow, null, taskId, 1),
+        });
+        return Render<CommentThread>(p => p
+            .Add(c => c.TaskId, taskId)
+            .Add(c => c.CanModerate, canModerate));
+    }
+
+    [Fact]
+    public void A_moderator_can_delete_someone_elses_comment()
+    {
+        var thread = RenderThread(canModerate: true);
+
+        Assert.Contains("Nerf the shotgun", thread.Markup);
+        Assert.NotEmpty(thread.FindAll("[aria-label='Delete comment']"));
+    }
+
+    [Fact]
+    public void A_plain_member_cannot_delete_someone_elses_comment()
+    {
+        var thread = RenderThread(canModerate: false);
+
+        Assert.Contains("Nerf the shotgun", thread.Markup);
+        Assert.Empty(thread.FindAll("[aria-label='Delete comment']"));
+    }
+
     /// <summary>The description must be a real editor, not a dead one-line label.</summary>
     [Fact]
     public async Task The_description_editor_opens_a_textarea_when_clicked()

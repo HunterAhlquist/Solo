@@ -105,11 +105,13 @@ else
         {
             _project = await Api.GetProjectByAliasAsync(ProjectAlias);
 
-            // Membership decides which tabs exist at all. The super admin has
-            // every right on every project without being a member of any.
+            // Membership decides which tabs exist at all. The super admin gets
+            // the owner surface (Audit, Settings, member management) on every
+            // project, but write access stays membership-only — the API's write
+            // policy accepts the owner flag or a read/write role, nothing else.
             var me = _project.Members.FirstOrDefault(m => m.UserId == Session.UserId);
             _isOwner = Session.IsSuperAdmin || (me?.IsOwner ?? false);
-            _canWrite = _isOwner || me?.Role == ProjectRole.ReadWrite;
+            _canWrite = (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
         }
         catch (ApiException e)
         {
