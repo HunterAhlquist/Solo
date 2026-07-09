@@ -107,6 +107,9 @@ namespace Solo.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<Guid?>("ImageId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsOpen")
                         .HasColumnType("boolean");
 
@@ -207,6 +210,29 @@ namespace Solo.Data.Migrations
                     b.ToTable("Epics");
                 });
 
+            modelBuilder.Entity("Solo.Data.Entities.ImageAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ImageAssets");
+                });
+
             modelBuilder.Entity("Solo.Data.Entities.InstanceSettings", b =>
                 {
                     b.Property<int>("Id")
@@ -246,6 +272,13 @@ namespace Solo.Data.Migrations
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");
 
+                    b.Property<string>("Icon")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("ImageId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -283,6 +316,9 @@ namespace Solo.Data.Migrations
                     b.Property<string>("Icon")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("ImageId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()

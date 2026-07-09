@@ -6,6 +6,7 @@ public sealed record ProjectDto(
     Guid Id,
     string Name,
     string? Icon,
+    Guid? ImageId,
     uint Version,
     IReadOnlyList<ProjectMemberDto> Members);
 
@@ -13,6 +14,7 @@ public sealed record ProjectSummaryDto(
     Guid Id,
     string Name,
     string? Icon,
+    Guid? ImageId,
     ProjectRole Role,
     bool IsOwner);
 
@@ -33,6 +35,8 @@ public sealed class CreateProjectRequest
 
     [MaxLength(100)]
     public string? Icon { get; init; }
+
+    public Guid? ImageId { get; init; }
 }
 
 public sealed class UpdateProjectRequest
@@ -42,6 +46,8 @@ public sealed class UpdateProjectRequest
 
     [MaxLength(100)]
     public string? Icon { get; init; }
+
+    public Guid? ImageId { get; init; }
 
     public uint Version { get; init; }
 }

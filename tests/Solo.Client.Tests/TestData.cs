@@ -39,7 +39,7 @@ internal static class TestData
         new(id ?? EpicId, BoardId, "Epic", null, rank, 1, []);
 
     public static LabelDto Label(Guid id, string name = "Bug", string color = "#f56565") =>
-        new(id, ProjectId, null, LabelKind.Task, name, color, 1);
+        new(id, ProjectId, null, LabelKind.Task, name, color, null, null, 1);
 
     public static ProjectMemberDto Member(Guid userId, string name = "Hunter") =>
         new(Guid.NewGuid(), userId, $"{name.ToLowerInvariant()}@example.com", name, null,
@@ -49,5 +49,5 @@ internal static class TestData
         IReadOnlyList<TaskDto>? tasks = null,
         IReadOnlyList<EpicDto>? epics = null,
         IReadOnlyList<LabelDto>? labels = null) =>
-        new(BoardId, ProjectId, "Board", null, true, 1, epics ?? [], tasks ?? [], labels ?? []);
+        new(BoardId, ProjectId, "Board", null, null, true, 1, epics ?? [], tasks ?? [], labels ?? []);
 }

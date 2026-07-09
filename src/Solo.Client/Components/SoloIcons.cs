@@ -1,4 +1,5 @@
 using MudBlazor;
+using Solo.Client.Api;
 
 namespace Solo.Client.Components;
 
@@ -52,4 +53,18 @@ public static class SoloIcons
         name is not null && ByName.TryGetValue(name, out var icon)
             ? icon
             : Icons.Material.Filled.Folder;
+
+    /// <summary>
+    /// Icon value for a MudBlazor <c>Icon</c> parameter that also honours an uploaded
+    /// image. MudBlazor renders the string as the inner content of an
+    /// <c>&lt;svg viewBox="0 0 24 24"&gt;</c>, so the image goes in as an SVG
+    /// <c>&lt;image&gt;</c> element — not an HTML <c>&lt;img&gt;</c> (MudBlazor
+    /// discussion #5737). This is how images reach surfaces that only take a string
+    /// icon, like the sidebar tree.
+    /// </summary>
+    public static string Resolve(Guid? imageId, string? name) =>
+        imageId is { } id
+            ? $"<image href=\"{ApiClient.ImageUrl(id)}\" x=\"0\" y=\"0\" width=\"24\" height=\"24\" " +
+              "preserveAspectRatio=\"xMidYMid slice\" />"
+            : Resolve(name);
 }

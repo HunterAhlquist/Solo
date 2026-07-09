@@ -23,7 +23,8 @@ else
         <MudPaper Elevation="0" Class="pa-2 mb-2"
                   Style="border:1px solid var(--mud-palette-lines-default)">
             <div class="d-flex align-center mb-1" style="gap:.5rem">
-                <UserAvatar UserId="@comment.AuthorId" DisplayName="@comment.AuthorDisplayName" />
+                <UserAvatar UserId="@comment.AuthorId" DisplayName="@comment.AuthorDisplayName"
+                            AvatarUrl="@comment.AuthorAvatarUrl" />
                 <MudText Typo="Typo.caption">@(comment.AuthorDisplayName ?? "Unknown")</MudText>
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
                     @comment.CreatedAt.ToLocalTime().ToString("g")

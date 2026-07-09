@@ -1,13 +1,37 @@
 @if (Label is not null)
 {
-    <MudChip T="string" Size="Size.Small" Label="true" Style="@ChipStyle" Class="ma-0">
-        @Label.Name
-    </MudChip>
+    @if (IconOnly && HasIcon)
+    {
+        @* Board view: just the icon, with the name in a tooltip to keep cards compact. *@
+        <MudTooltip Text="@Label.Name">
+            <span class="label-chip label-chip--icon-only" style="@ChipStyle">
+                <EntityIcon ImageId="@Label.ImageId" Icon="@Label.Icon" Size="Size.Small" Color="Color.Inherit" />
+            </span>
+        </MudTooltip>
+    }
+    else
+    {
+        <MudChip T="string" Size="Size.Small" Label="true" Style="@ChipStyle" Class="ma-0">
+            @if (HasIcon)
+            {
+                <span class="d-flex align-center mr-1">
+                    <EntityIcon ImageId="@Label.ImageId" Icon="@Label.Icon" Size="Size.Small" Color="Color.Inherit" />
+                </span>
+            }
+            @Label.Name
+        </MudChip>
+    }
 }
 
 @code {
     [Parameter]
     public LabelDto? Label { get; set; }
+
+    /// <summary>On the board, labels show as icon-only chips with a tooltip.</summary>
+    [Parameter]
+    public bool IconOnly { get; set; }
+
+    private bool HasIcon => Label is not null && (Label.ImageId is not null || Label.Icon is not null);
 
     /// <summary>
     /// Labels carry an arbitrary hex colour, so pick the text colour by relative

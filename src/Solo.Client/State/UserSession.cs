@@ -40,4 +40,14 @@ public sealed class UserSession(ApiClient api)
         Current = user;
         _load = Task.FromResult(user);
     }
+
+    /// <summary>
+    /// Drops the cached profile on sign-out, so signing in as a different account
+    /// re-hydrates from <c>/api/users/me</c> instead of reusing the memoized load.
+    /// </summary>
+    public void Clear()
+    {
+        Current = null;
+        _load = null;
+    }
 }

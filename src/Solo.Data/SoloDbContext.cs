@@ -17,6 +17,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
     public DbSet<Assignment> Assignments => Set<Assignment>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<InstanceSettings> InstanceSettings => Set<InstanceSettings>();
+    public DbSet<ImageAsset> ImageAssets => Set<ImageAsset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,6 +104,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
         {
             e.Property(l => l.Name).HasMaxLength(100);
             e.Property(l => l.Color).HasMaxLength(9);
+            e.Property(l => l.Icon).HasMaxLength(100);
             e.Property(l => l.Kind).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(l => new { l.ProjectId, l.BoardId });
             e.HasOne(l => l.Project).WithMany(p => p.Labels)
@@ -160,6 +162,11 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
             e.Property(s => s.Id).ValueGeneratedNever();
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_InstanceSettings_Singleton", $"\"Id\" = {Entities.InstanceSettings.SingletonId}"));
+        });
+
+        modelBuilder.Entity<ImageAsset>(e =>
+        {
+            e.Property(i => i.ContentType).HasMaxLength(100);
         });
 
         // xmin optimistic-concurrency token on all editable entities (Postgres only;

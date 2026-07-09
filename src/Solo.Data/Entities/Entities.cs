@@ -26,6 +26,8 @@ public class Project : IVersioned
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public required string Name { get; set; }
     public string? Icon { get; set; }
+    /// <summary>An uploaded image used in place of the curated <see cref="Icon"/> when set.</summary>
+    public Guid? ImageId { get; set; }
     public uint Version { get; set; }
 
     public List<Board> Boards { get; set; } = [];
@@ -58,6 +60,8 @@ public class Board : IVersioned
     public Guid ProjectId { get; set; }
     public required string Name { get; set; }
     public string? Icon { get; set; }
+    /// <summary>An uploaded image used in place of the curated <see cref="Icon"/> when set.</summary>
+    public Guid? ImageId { get; set; }
     public bool IsOpen { get; set; } = true;
     public uint Version { get; set; }
 
@@ -137,10 +141,27 @@ public class Label : IVersioned
     public LabelKind Kind { get; set; }
     public required string Name { get; set; }
     public required string Color { get; set; }
+    /// <summary>Curated icon name (see <c>SoloIcons</c>), or null.</summary>
+    public string? Icon { get; set; }
+    /// <summary>An uploaded image used in place of the curated <see cref="Icon"/> when set.</summary>
+    public Guid? ImageId { get; set; }
     public uint Version { get; set; }
 
     public Project? Project { get; set; }
     public Board? Board { get; set; }
+}
+
+/// <summary>
+/// An uploaded raster or vector image, stored inline in Postgres. Used as the
+/// custom icon for a project, board or label. Immutable once created — the id
+/// is the cache key, so content never changes under a given id.
+/// </summary>
+public class ImageAsset
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public required string ContentType { get; set; }
+    public required byte[] Data { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>One table; exactly one parent FK set (check constraint).</summary>

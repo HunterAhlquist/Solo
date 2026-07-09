@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Solo.Shared;
 using Solo.Shared.Dtos;
@@ -49,7 +50,7 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         var (project, _) = await CreateProjectWithBoard("Seeds");
 
         var labels = await _admin.GetJson<List<LabelDto>>($"/api/projects/{project.Id}/labels");
-        Assert.Equal(8, labels.Count);
+        Assert.Equal(7, labels.Count);
         Assert.Contains(labels, l => l.Kind == LabelKind.Task && l.Name == "Bug");
         Assert.Contains(labels, l => l.Kind == LabelKind.SubTask && l.Name == "Writing");
         Assert.All(labels, l => Assert.Null(l.BoardId));
@@ -79,7 +80,7 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         var detail = await _admin.GetJson<BoardDetailDto>($"/api/boards/{board.Id}");
         Assert.Single(detail.Epics);
         Assert.Equal(2, detail.Tasks.Count);
-        Assert.Equal(8, detail.Labels.Count);
+        Assert.Equal(7, detail.Labels.Count);
         Assert.Single(detail.Tasks.Single(t => t.Id == task.Id).SubTasks);
 
         var comments = await _admin.GetJson<List<CommentDto>>($"/api/tasks/{task.Id}/comments");
@@ -93,7 +94,7 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
-    public async Task SubTaskToggles_DriveDerivedTaskStatus()
+    public async Task ManualStatus_IsAllowed_WithSubtasks_AndTogglesDoNotDeriveIt()
     {
         postgres.SkipUnlessDockerAvailable();
         var (_, board) = await CreateProjectWithBoard("Rollup");
@@ -103,18 +104,71 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         var s1 = await _admin.PostJson<SubTaskDto>($"/api/tasks/{task.Id}/subtasks", new { name = "one" });
         var s2 = await _admin.PostJson<SubTaskDto>($"/api/tasks/{task.Id}/subtasks", new { name = "two" });
 
-        // Manual status writes are rejected while sub-tasks exist.
+        // Manual status writes are allowed even with sub-tasks — no column is locked.
         var manual = await _admin.PutAsJsonAsync(
             $"/api/tasks/{task.Id}/status", new { status = "Finished" }, TestClients.Json);
-        Assert.Equal(HttpStatusCode.Conflict, manual.StatusCode);
-
-        await _admin.PutJson<SubTaskDto>($"/api/subtasks/{s1.Id}/finished", new { isFinished = true });
+        Assert.Equal(HttpStatusCode.OK, manual.StatusCode);
         var current = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
-        Assert.Equal(TaskState.InProgress, current.Status);
+        Assert.Equal(TaskState.Finished, current.Status);
 
+        // Toggling sub-tasks no longer changes the task's status server-side; the
+        // client drives any auto-complete as a separate status call.
+        await _admin.PutJson<SubTaskDto>($"/api/subtasks/{s1.Id}/finished", new { isFinished = true });
         await _admin.PutJson<SubTaskDto>($"/api/subtasks/{s2.Id}/finished", new { isFinished = true });
         current = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
         Assert.Equal(TaskState.Finished, current.Status);
+
+        // And the card can be manually moved back out of Finished.
+        var back = await _admin.PutAsJsonAsync(
+            $"/api/tasks/{task.Id}/status", new { status = "Unstarted" }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.OK, back.StatusCode);
+        current = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
+        Assert.Equal(TaskState.Unstarted, current.Status);
+    }
+
+    [SkippableFact]
+    public async Task Images_UploadThenServeAnonymously_AndRejectBadTypes()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var bytes = new byte[] { 1, 2, 3, 4, 5 };
+        using var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(file, "file", "icon.png");
+
+        var post = await _admin.PostAsync("/api/images", form);
+        Assert.Equal(HttpStatusCode.Created, post.StatusCode);
+        var dto = await post.Content.ReadFromJsonAsync<ImageAssetDto>(TestClients.Json);
+        Assert.Equal("image/png", dto!.ContentType);
+
+        // Served anonymously so a plain <img src> resolves without an auth header.
+        using var anon = _factory.CreateClient();
+        var get = await anon.GetAsync($"/api/images/{dto.Id}");
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.Equal("image/png", get.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(bytes, await get.Content.ReadAsByteArrayAsync());
+
+        // Non-image content types are refused.
+        using var badForm = new MultipartFormDataContent();
+        var badFile = new ByteArrayContent(bytes);
+        badFile.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+        badForm.Add(badFile, "file", "x.txt");
+        var badPost = await _admin.PostAsync("/api/images", badForm);
+        Assert.Equal(HttpStatusCode.BadRequest, badPost.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task Avatar_ForUserWithoutPicture_IsAnonymousAnd404()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+
+        // Served anonymously so a plain <img> resolves (no 401); a user with no
+        // stored picture yields 404 so the client falls back to initials.
+        using var anon = _factory.CreateClient();
+        var resp = await anon.GetAsync($"/api/users/{me.Id}/avatar");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     [SkippableFact]

@@ -1,0 +1,118 @@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+@*
+    Pick a curated Material icon or upload a custom image (PNG/JPG/SVG). The two
+    are mutually exclusive: choosing an icon clears any uploaded image, and
+    uploading clears the icon. A live preview shows whichever wins.
+*@
+<div class="d-flex align-center mb-2" style="gap:.75rem">
+    <MudElement HtmlTag="div" Class="d-flex align-center justify-center"
+                Style="width:2.5rem;height:2.5rem;border:1px solid var(--mud-palette-lines-default);border-radius:var(--mud-default-borderradius)">
+        <EntityIcon ImageId="@ImageId" Icon="@Icon" Size="Size.Medium" />
+    </MudElement>
+
+    <div class="flex-grow-1">
+        <IconPicker Value="@Icon" ValueChanged="@OnIconChanged" Label="Icon" />
+    </div>
+</div>
+
+<div class="d-flex align-center" style="gap:.5rem">
+    <MudButton StartIcon="@Icons.Material.Filled.Upload" Variant="Variant.Outlined" Size="Size.Small"
+               Disabled="@_uploading" Class="position-relative">
+        @(_uploading ? "Uploading…" : "Upload image")
+        <InputFile OnChange="@OnFileSelected" accept=".png,.jpg,.jpeg,.svg"
+                   style="position:absolute;inset:0;opacity:0;cursor:pointer" />
+    </MudButton>
+
+    @if (ImageId is not null || Icon is not null)
+    {
+        <MudButton StartIcon="@Icons.Material.Filled.Clear" Variant="Variant.Text" Size="Size.Small"
+                   OnClick="@ClearAsync">Clear</MudButton>
+    }
+</div>
+
+@code {
+    /// <summary>1 MB, matching the API's limit.</summary>
+    private const long MaxBytes = 1024 * 1024;
+
+    private bool _uploading;
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> IconChanged { get; set; }
+
+    [Parameter]
+    public Guid? ImageId { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid?> ImageIdChanged { get; set; }
+
+    private async Task OnIconChanged(string? icon)
+    {
+        Icon = icon;
+        await IconChanged.InvokeAsync(icon);
+        if (icon is not null && ImageId is not null)
+        {
+            ImageId = null;
+            await ImageIdChanged.InvokeAsync(null);
+        }
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxBytes)
+        {
+            Snackbar.Add("Images must be 1 MB or smaller.", Severity.Error);
+            return;
+        }
+
+        _uploading = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxBytes);
+            var uploaded = await Api.UploadImageAsync(stream, file.Name, file.ContentType);
+
+            ImageId = uploaded.Id;
+            await ImageIdChanged.InvokeAsync(uploaded.Id);
+
+            // Image wins over any curated icon.
+            if (Icon is not null)
+            {
+                Icon = null;
+                await IconChanged.InvokeAsync(null);
+            }
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Detail ?? "Couldn't upload that image.", Severity.Error);
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        if (Icon is not null)
+        {
+            Icon = null;
+            await IconChanged.InvokeAsync(null);
+        }
+
+        if (ImageId is not null)
+        {
+            ImageId = null;
+            await ImageIdChanged.InvokeAsync(null);
+        }
+    }
+}

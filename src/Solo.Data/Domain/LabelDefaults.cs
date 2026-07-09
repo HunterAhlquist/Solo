@@ -11,7 +11,6 @@ public static class LabelDefaults
         new() { ProjectId = projectId, Kind = LabelKind.Task, Name = "Bug", Color = "#e5484d" },
         new() { ProjectId = projectId, Kind = LabelKind.Task, Name = "Feature", Color = "#46a758" },
         new() { ProjectId = projectId, Kind = LabelKind.Task, Name = "Improvement", Color = "#0091ff" },
-        new() { ProjectId = projectId, Kind = LabelKind.Task, Name = "Feedback Session", Color = "#f76b15" },
         new() { ProjectId = projectId, Kind = LabelKind.SubTask, Name = "Code", Color = "#8e4ec6" },
         new() { ProjectId = projectId, Kind = LabelKind.SubTask, Name = "Asset", Color = "#f5d90a" },
         new() { ProjectId = projectId, Kind = LabelKind.SubTask, Name = "Design", Color = "#e93d82" },

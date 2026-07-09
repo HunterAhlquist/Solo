@@ -10,7 +10,7 @@
     @* Edits commit on blur, never per keystroke. *@
     <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
                   Immediate="false" OnBlur="@SaveAsync" OnKeyDown="@OnKeyDown" Class="mb-3" />
-    <IconPicker Value="@_icon" ValueChanged="@OnIconChanged" />
+    <IconImagePicker Icon="@_icon" IconChanged="@OnIconChanged" ImageId="@_imageId" ImageIdChanged="@OnImageChanged" />
 
     <MudDivider Class="my-6" />
 
@@ -27,6 +27,7 @@
 @code {
     private string _name = string.Empty;
     private string? _icon;
+    private Guid? _imageId;
 
     [Parameter, EditorRequired]
     public required ProjectDto Project { get; set; }
@@ -38,6 +39,7 @@
     {
         _name = Project.Name;
         _icon = Project.Icon;
+        _imageId = Project.ImageId;
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -55,9 +57,17 @@
         await SaveAsync();
     }
 
+    /// <summary>Uploading or clearing an image commits immediately.</summary>
+    private async Task OnImageChanged(Guid? imageId)
+    {
+        _imageId = imageId;
+        await SaveAsync();
+    }
+
     private async Task SaveAsync()
     {
-        if (string.IsNullOrWhiteSpace(_name) || (_name == Project.Name && _icon == Project.Icon))
+        if (string.IsNullOrWhiteSpace(_name) ||
+            (_name == Project.Name && _icon == Project.Icon && _imageId == Project.ImageId))
         {
             return;
         }
@@ -68,6 +78,7 @@
             {
                 Name = _name.Trim(),
                 Icon = _icon,
+                ImageId = _imageId,
                 Version = Project.Version,
             });
             await OnSaved.InvokeAsync(updated);
@@ -83,6 +94,7 @@
             Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
             _name = Project.Name;
             _icon = Project.Icon;
+            _imageId = Project.ImageId;
         }
     }
 

@@ -15,7 +15,6 @@ public class DropPlanTests
 
         Assert.False(plan.ChangeEpic);
         Assert.False(plan.ChangeStatus);
-        Assert.False(plan.Rejected);
     }
 
     [Fact]
@@ -52,18 +51,19 @@ public class DropPlanTests
     }
 
     [Fact]
-    public void Auto_status_task_refuses_a_column_change()
+    public void Task_with_subtasks_may_still_change_columns()
     {
+        // Sub-tasks auto-complete a card but no longer lock its column: a manual
+        // move to any status is a plain status change now, never a rejection.
         var task = TestData.Task(status: TaskState.Unstarted, subTasks: [TestData.SubTask(false)]);
 
         var plan = DropPlan.For(task, null, TaskState.Finished);
 
-        Assert.True(plan.Rejected);
-        Assert.False(plan.ChangeStatus);
+        Assert.True(plan.ChangeStatus);
     }
 
     [Fact]
-    public void Auto_status_task_still_moves_between_swimlanes()
+    public void Task_with_subtasks_still_moves_between_swimlanes()
     {
         var task = TestData.Task(
             epicId: TestData.EpicId,
@@ -72,7 +72,7 @@ public class DropPlanTests
 
         var plan = DropPlan.For(task, null, TaskState.InProgress);
 
-        Assert.False(plan.Rejected);
+        Assert.False(plan.ChangeStatus);
         Assert.True(plan.ChangeEpic);
     }
 }

@@ -3,19 +3,21 @@
     outline once when a remote change lands on it.
 *@
 <MudPaper Elevation="1"
-          Class="@($"kanban-card pa-2 {(Pulse ? "solo-pulse" : string.Empty)} {(Shake ? "solo-shake" : string.Empty)}")"
+          Class="@($"kanban-card pa-2 {(Pulse ? "solo-pulse" : string.Empty)}")"
           @onclick="@(() => OnOpen.InvokeAsync(Task))">
 
-    <MudText Typo="Typo.body2" Class="mb-1">@Task.Name</MudText>
+    <div class="d-flex align-start mb-1" style="gap:.35rem">
+        <MudText Typo="Typo.body2" Class="flex-grow-1">@Task.Name</MudText>
 
-    <div class="d-flex align-center" style="gap:.35rem">
         @if (Label is not null)
         {
             <div class="kanban-card__labels">
-                <LabelChip Label="@Label" />
+                <LabelChip Label="@Label" IconOnly="true" />
             </div>
         }
+    </div>
 
+    <div class="d-flex align-center" style="gap:.35rem">
         <MudSpacer />
 
         @if (Task.SubTasks.Count > 0)
@@ -62,10 +64,6 @@
     /// <summary>A remote change just landed here.</summary>
     [Parameter]
     public bool Pulse { get; set; }
-
-    /// <summary>A drag this card can't accept was attempted.</summary>
-    [Parameter]
-    public bool Shake { get; set; }
 
     [Parameter]
     public EventCallback<TaskDto> OnOpen { get; set; }

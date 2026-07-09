@@ -7,7 +7,7 @@
         <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" AutoFocus="true" Class="mb-3"
                       OnKeyDown="@OnKeyDown" />
-        <IconPicker @bind-Value="_icon" />
+        <IconImagePicker @bind-Icon="_icon" @bind-ImageId="_imageId" />
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@Cancel">Cancel</MudButton>
@@ -21,6 +21,7 @@
 @code {
     private string _name = string.Empty;
     private string? _icon;
+    private Guid? _imageId;
 
     [CascadingParameter]
     private IMudDialogInstance Dialog { get; set; } = default!;
@@ -32,12 +33,16 @@
     public string? Icon { get; set; }
 
     [Parameter]
+    public Guid? ImageId { get; set; }
+
+    [Parameter]
     public string SaveText { get; set; } = "Create";
 
     protected override void OnInitialized()
     {
         _name = Name ?? string.Empty;
         _icon = Icon;
+        _imageId = ImageId;
     }
 
     /// <summary>Enter commits a single-line edit.</summary>
@@ -49,9 +54,9 @@
         }
     }
 
-    private void Save() => Dialog.Close(DialogResult.Ok(new NameIcon(_name.Trim(), _icon)));
+    private void Save() => Dialog.Close(DialogResult.Ok(new NameIcon(_name.Trim(), _icon, _imageId)));
 
     private void Cancel() => Dialog.Cancel();
 
-    public sealed record NameIcon(string Name, string? Icon);
+    public sealed record NameIcon(string Name, string? Icon, Guid? ImageId);
 }

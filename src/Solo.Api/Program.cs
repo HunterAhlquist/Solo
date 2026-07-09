@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
+using Solo.Api.Controllers;
 using Solo.Api.Realtime;
 using Solo.Api.Services;
 using Solo.Data;
@@ -92,6 +93,15 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 builder.Services.AddProblemDetails();
 builder.Services.AddSignalR();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
+// Server-side avatar fetch: SSO picture CDNs (Google) rate-limit direct browser
+// hotlinking at board-render volume (429), so the API fetches each avatar once and
+// caches it, and the browser only ever loads from our own origin.
+builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Solo-Avatar-Proxy/1.0");
+});
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();
 builder.Services.AddHostedService<AuditRetentionService>();

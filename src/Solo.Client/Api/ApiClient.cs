@@ -231,6 +231,29 @@ public sealed class ApiClient(HttpClient http)
     public Task DeleteLabelAsync(Guid projectId, Guid labelId, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"api/projects/{projectId}/labels/{labelId}", null, ct);
 
+    // -- Images -------------------------------------------------------------
+
+    /// <summary>Relative path the browser can put straight into an <c>&lt;img src&gt;</c>.</summary>
+    public static string ImageUrl(Guid imageId) => $"api/images/{imageId}";
+
+    /// <summary>
+    /// Same-origin path for a user's SSO profile picture, proxied and cached by the
+    /// API. Loading the provider CDN directly gets the browser rate-limited (429).
+    /// </summary>
+    public static string AvatarUrl(Guid userId) => $"api/users/{userId}/avatar";
+
+    /// <summary>Uploads a custom icon image; the returned id becomes an entity's <c>ImageId</c>.</summary>
+    public async Task<ImageAssetDto> UploadImageAsync(
+        Stream content, string fileName, string contentType, CancellationToken ct = default)
+    {
+        using var form = new MultipartFormDataContent();
+        var file = new StreamContent(content);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        form.Add(file, "file", fileName);
+        using var response = await http.PostAsync("api/images", form, ct);
+        return await ReadAsync<ImageAssetDto>(response, ct);
+    }
+
     // -- Audit --------------------------------------------------------------
     public Task<PagedResult<AuditEntryDto>> GetAuditAsync(
         Guid projectId,

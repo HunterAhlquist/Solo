@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using MudBlazor.Services;
@@ -36,6 +37,7 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(_store);
         Services.AddSingleton<IBoardHubClient>(_hub);
         Services.AddScoped<SaveGuard>();
+        Services.AddScoped<RecentProjectsStore>();
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
@@ -217,5 +219,74 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
             .Add(a => a.CanWrite, true));
 
         Assert.DoesNotContain(TestData.MeId.ToString(), picker.Markup);
+    }
+
+    // -- Bug: the sub-task label picker did nothing -----------------------------
+
+    /// <summary>
+    /// The sub-task label picker is a tag-icon MudMenu (built-in Icon activator, as
+    /// the epic menu uses) — clicking it must actually open and list the project's
+    /// sub-task labels. The earlier ActivatorContent activator rippled but never
+    /// opened; this renders it beside a popover provider and asserts it opens.
+    /// </summary>
+    [Fact]
+    public async Task Clicking_the_subtask_label_icon_opens_a_menu_of_subtask_labels()
+    {
+        var subLabel = TestData.Label(Guid.NewGuid(), "Design", "#e93d82") with { Kind = LabelKind.SubTask };
+        var taskId = Guid.NewGuid();
+        var task = TestData.Task(id: taskId, subTasks: [TestData.SubTask(false, taskId)]) with { Name = "T" };
+        await LoadStoreAsync(TestData.Board(tasks: [task], labels: [subLabel]));
+
+        // The MudMenu teleports its items into a MudPopoverProvider, so both must
+        // share one render tree for the opened items to appear in the markup.
+        var cut = Render(builder =>
+        {
+            builder.OpenComponent<MudPopoverProvider>(0);
+            builder.CloseComponent();
+            builder.OpenComponent<Components.SubTaskList>(1);
+            builder.AddAttribute(2, nameof(Components.SubTaskList.TaskId), task.Id);
+            builder.AddAttribute(3, nameof(Components.SubTaskList.SubTasks), task.SubTasks);
+            builder.AddAttribute(4, nameof(Components.SubTaskList.CanWrite), true);
+            builder.CloseComponent();
+        });
+
+        Assert.DoesNotContain("Design", cut.Markup); // closed: items are not shown yet
+
+        cut.Find(".subtask-label-menu button").Click();
+
+        Assert.Contains("Design", cut.Markup);   // the sub-task label is offered
+        Assert.Contains("No label", cut.Markup);  // and so is clearing it
+    }
+
+    // -- Bug: the top-right profile menu (ActivatorContent) stopped opening -------
+
+    /// <summary>
+    /// MainLayout's profile menu uses MudMenu's built-in Icon activator with the SSO
+    /// picture as an SVG image icon. Guards that this form opens on click (the
+    /// ActivatorContent form did not, which is what broke the logout menu).
+    /// </summary>
+    [Fact]
+    public void A_menu_with_an_image_icon_activator_opens_on_click()
+    {
+        var cut = Render(builder =>
+        {
+            builder.OpenComponent<MudPopoverProvider>(0);
+            builder.CloseComponent();
+            builder.OpenComponent<MudMenu>(1);
+            builder.AddAttribute(2, nameof(MudMenu.Icon),
+                "<image href=\"avatar\" width=\"24\" height=\"24\" />");
+            builder.AddAttribute(3, nameof(MudMenu.ChildContent), (RenderFragment)(b =>
+            {
+                b.OpenComponent<MudMenuItem>(0);
+                b.AddAttribute(1, nameof(MudMenuItem.ChildContent),
+                    (RenderFragment)(ib => ib.AddContent(0, "Sign out")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.DoesNotContain("Sign out", cut.Markup);
+        cut.Find("button").Click();
+        Assert.Contains("Sign out", cut.Markup);
     }
 }

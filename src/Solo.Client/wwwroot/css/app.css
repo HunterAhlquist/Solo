@@ -250,6 +250,39 @@ code {
     gap: 0.25rem;
 }
 
+/* Vertical dividers between the three status columns, in both the sticky header
+   and every lane. Child 1 is the gutter/blank cell; the columns are children
+   2-4, so a left border on 3 and 4 draws a rule between each pair. */
+.kanban-header > *:nth-child(3),
+.kanban-header > *:nth-child(4),
+.kanban-lane > .kanban-zone:nth-child(3),
+.kanban-lane > .kanban-zone:nth-child(4) {
+    border-left: 1px solid var(--mud-palette-lines-default);
+}
+
+/* Custom uploaded icons: keep them square and lightly rounded wherever they
+   stand in for a Material glyph. */
+.entity-icon {
+    object-fit: cover;
+    border-radius: 4px;
+    vertical-align: middle;
+}
+
+/* Icon-only label chip on the board: a small coloured coin carrying just the
+   icon, with the label name in a tooltip. */
+.label-chip--icon-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+}
+
+.label-chip--icon-only .entity-icon {
+    border-radius: 3px;
+}
+
 .mud-drop-item-preview-start {
     opacity: 0.35;
 }

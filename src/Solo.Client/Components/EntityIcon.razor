@@ -1,0 +1,45 @@
+@*
+    A project/board/label icon: an uploaded image when one is set, otherwise the
+    curated Material icon, otherwise a neutral fallback. One place so every
+    surface (sidebar, board header, chips) resolves icons the same way.
+*@
+@if (ImageId is { } id)
+{
+    <img src="@ApiClient.ImageUrl(id)" alt="@Alt" class="@($"entity-icon {Class}")"
+         style="@($"width:{Pixels}px;height:{Pixels}px;{Style}")" />
+}
+else
+{
+    <MudIcon Icon="@SoloIcons.Resolve(Icon)" Size="@Size" Color="@Color" Class="@Class" />
+}
+
+@code {
+    [Parameter]
+    public Guid? ImageId { get; set; }
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter]
+    public Size Size { get; set; } = Size.Medium;
+
+    [Parameter]
+    public Color Color { get; set; } = Color.Inherit;
+
+    [Parameter]
+    public string? Alt { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public string? Style { get; set; }
+
+    /// <summary>Image pixel size, matched to the MudIcon size it stands in for.</summary>
+    private int Pixels => Size switch
+    {
+        Size.Small => 18,
+        Size.Large => 32,
+        _ => 24,
+    };
+}

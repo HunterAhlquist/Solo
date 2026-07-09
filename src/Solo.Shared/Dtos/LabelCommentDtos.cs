@@ -9,6 +9,8 @@ public sealed record LabelDto(
     LabelKind Kind,
     string Name,
     string Color,
+    string? Icon,
+    Guid? ImageId,
     uint Version);
 
 public sealed class CreateLabelRequest
@@ -23,6 +25,11 @@ public sealed class CreateLabelRequest
 
     [Required, RegularExpression("^#[0-9a-fA-F]{6}$")]
     public required string Color { get; init; }
+
+    [MaxLength(100)]
+    public string? Icon { get; init; }
+
+    public Guid? ImageId { get; init; }
 }
 
 public sealed class UpdateLabelRequest
@@ -33,6 +40,11 @@ public sealed class UpdateLabelRequest
     [Required, RegularExpression("^#[0-9a-fA-F]{6}$")]
     public required string Color { get; init; }
 
+    [MaxLength(100)]
+    public string? Icon { get; init; }
+
+    public Guid? ImageId { get; init; }
+
     public uint Version { get; init; }
 }
 
@@ -40,6 +52,7 @@ public sealed record CommentDto(
     Guid Id,
     Guid AuthorId,
     string? AuthorDisplayName,
+    string? AuthorAvatarUrl,
     string Body,
     DateTime CreatedAt,
     Guid? EpicId,

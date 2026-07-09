@@ -115,6 +115,8 @@ else
             Kind = kind,
             Name = created.Name,
             Color = created.Color,
+            Icon = created.Icon,
+            ImageId = created.ImageId,
         }));
     }
 
@@ -126,6 +128,8 @@ else
             {
                 { d => d.Name, label.Name },
                 { d => d.HexColor, label.Color },
+                { d => d.Icon, label.Icon },
+                { d => d.ImageId, label.ImageId },
                 { d => d.SaveText, "Save" },
             });
 
@@ -138,6 +142,8 @@ else
         {
             Name = edited.Name,
             Color = edited.Color,
+            Icon = edited.Icon,
+            ImageId = edited.ImageId,
             Version = label.Version,
         }));
     }

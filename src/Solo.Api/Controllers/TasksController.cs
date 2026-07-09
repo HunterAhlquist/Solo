@@ -127,7 +127,11 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         return NoContent();
     }
 
-    /// <summary>Column move. Rejected when the task has sub-tasks (status is derived).</summary>
+    /// <summary>
+    /// Column move. Any status to any column is allowed, sub-tasks or not — the
+    /// checklist is a convenience that auto-completes the card client-side, not a
+    /// lock on where the user may place it.
+    /// </summary>
     [HttpPut("api/tasks/{taskId:guid}/status")]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> SetStatus(
@@ -137,14 +141,6 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         if (task is null)
         {
             return NotFound();
-        }
-
-        if (task.SubTasks.Count > 0)
-        {
-            return Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Status is derived",
-                detail: "This task has sub-tasks; its status is derived from them.");
         }
 
         task.Status = request.Status;

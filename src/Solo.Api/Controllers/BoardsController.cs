@@ -30,7 +30,13 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
     public async Task<ActionResult<BoardDto>> Create(
         Guid projectId, CreateBoardRequest request, CancellationToken ct)
     {
-        var board = new Board { ProjectId = projectId, Name = request.Name, Icon = request.Icon };
+        var board = new Board
+        {
+            ProjectId = projectId,
+            Name = request.Name,
+            Icon = request.Icon,
+            ImageId = request.ImageId,
+        };
         db.Boards.Add(board);
         await db.SaveChangesAsync(ct);
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Board, board.Id, ChangeKind.Created);
@@ -58,7 +64,7 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
             .ToListAsync(ct);
 
         return new BoardDetailDto(
-            board.Id, board.ProjectId, board.Name, board.Icon, board.IsOpen, board.Version,
+            board.Id, board.ProjectId, board.Name, board.Icon, board.ImageId, board.IsOpen, board.Version,
             board.Epics.OrderBy(e => e.Rank).Select(e => e.ToDto()).ToList(),
             board.Tasks.OrderBy(t => t.Rank).Select(t => t.ToDto()).ToList(),
             labels.Select(l => l.ToDto()).ToList());
@@ -77,6 +83,7 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
 
         board.Name = request.Name;
         board.Icon = request.Icon;
+        board.ImageId = request.ImageId;
         UseClientVersion(db, board, request.Version);
         var conflict = await SaveOrConflictAsync(db, ct);
         if (conflict is not null)
@@ -85,7 +92,7 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         }
 
         await notifier.BoardEntityChanged(boardId, EntityTypes.Board, boardId,
-            ChangeKind.Updated, nameof(board.Name), nameof(board.Icon));
+            ChangeKind.Updated, nameof(board.Name), nameof(board.Icon), nameof(board.ImageId));
         return board.ToDto();
     }
 

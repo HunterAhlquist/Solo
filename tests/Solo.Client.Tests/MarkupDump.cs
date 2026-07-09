@@ -32,6 +32,7 @@ public class MarkupDump : BunitContext, IAsyncLifetime
         Services.AddSingleton(api);
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
+        Services.AddScoped<RecentProjectsStore>();
         Services.AddScoped<SaveGuard>();
     }
 
@@ -56,7 +57,7 @@ public class MarkupDump : BunitContext, IAsyncLifetime
         _http.RouteJson("/members", new[] { member });
         _http.RouteJson("/boards", Array.Empty<BoardDto>());
         _http.RouteJson($"/api/projects/{TestData.ProjectId}",
-            new ProjectDto(TestData.ProjectId, "Solo", "Games", 1, [member]));
+            new ProjectDto(TestData.ProjectId, "Solo", "Games", null, 1, [member]));
 
         var page = Render<Pages.ProjectHome>(p => p.Add(x => x.ProjectId, TestData.ProjectId));
 

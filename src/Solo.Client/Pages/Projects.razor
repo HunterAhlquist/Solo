@@ -60,7 +60,7 @@ else
                     <MudCardContent>
                         <div class="d-flex align-center" style="gap:.75rem">
                             <MudAvatar Color="Color.Primary" Variant="Variant.Outlined">
-                                <MudIcon Icon="@SoloIcons.Resolve(project.Icon)" />
+                                <EntityIcon ImageId="@project.ImageId" Icon="@project.Icon" />
                             </MudAvatar>
                             <div class="flex-grow-1" style="min-width:0">
                                 <MudText Typo="Typo.h4" Class="text-truncate">@project.Name</MudText>
@@ -137,6 +137,7 @@ else
             {
                 Name = created.Name,
                 Icon = created.Icon,
+                ImageId = created.ImageId,
             });
             await Nav.RefreshProjectsAsync();
             Navigation.NavigateTo($"projects/{project.Id}");

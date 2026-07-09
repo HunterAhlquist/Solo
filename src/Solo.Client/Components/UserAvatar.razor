@@ -6,7 +6,12 @@
     <MudAvatar Size="@Size" Style="@Style" Class="@Class">
         @if (!string.IsNullOrEmpty(AvatarUrl))
         {
-            <MudImage Src="@AvatarUrl" Alt="@DisplayName" />
+            @* Load via the API's same-origin proxy, not the provider CDN directly:
+               hotlinking Google's avatar host at board-render volume gets the browser
+               403'd (referrer) and then 429'd (rate limit). The proxy fetches once and
+               caches. AvatarUrl here is just the "has a picture" flag. *@
+            <img src="@ApiClient.AvatarUrl(UserId)" alt="@DisplayName"
+                 style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
         }
         else
         {

@@ -29,6 +29,7 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(api);
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
+        Services.AddScoped<RecentProjectsStore>();
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
@@ -36,10 +37,10 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
     async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     private static ProjectSummaryDto Project(Guid id, string name, ProjectRole role, bool isOwner) =>
-        new(id, name, "Games", role, isOwner);
+        new(id, name, "Games", null, role, isOwner);
 
     private static BoardDto Board(Guid id, string name, bool isOpen = true) =>
-        new(id, TestData.ProjectId, name, "Rocket", isOpen, 1);
+        new(id, TestData.ProjectId, name, "Rocket", null, isOpen, 1);
 
     private void Route(bool isSuperAdmin, ProjectRole role = ProjectRole.ReadWrite, bool isOwner = false,
         IEnumerable<BoardDto>? boards = null)
@@ -187,7 +188,7 @@ public class ProjectNavStoreTests
     public async Task Projects_are_fetched_once_however_many_callers_ask()
     {
         var http = new StubHttp();
-        http.RouteJson("/api/projects", new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", null, ProjectRole.Read, false) });
+        http.RouteJson("/api/projects", new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", null, null, ProjectRole.Read, false) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureProjectsAsync();
@@ -200,7 +201,7 @@ public class ProjectNavStoreTests
     public async Task Boards_are_cached_per_project()
     {
         var http = new StubHttp();
-        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", null, true, 1) });
+        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", null, null, true, 1) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureBoardsAsync(TestData.ProjectId);
@@ -214,7 +215,7 @@ public class ProjectNavStoreTests
     public async Task Refreshing_boards_refetches_them()
     {
         var http = new StubHttp();
-        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", null, true, 1) });
+        http.RouteJson("/boards", new[] { new BoardDto(TestData.BoardId, TestData.ProjectId, "Main", null, null, true, 1) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureBoardsAsync(TestData.ProjectId);
@@ -228,7 +229,7 @@ public class ProjectNavStoreTests
     {
         var http = new StubHttp();
         http.Respond(System.Net.HttpStatusCode.InternalServerError);
-        http.RespondJson(new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", null, ProjectRole.Read, false) });
+        http.RespondJson(new[] { new ProjectSummaryDto(TestData.ProjectId, "Solo", null, null, ProjectRole.Read, false) });
         var store = new ProjectNavStore(http.CreateClient());
 
         await store.EnsureProjectsAsync();
@@ -246,7 +247,7 @@ public class ProjectNavStoreTests
     public void Add_board_permission_follows_the_APIs_write_rule(
         bool isSuperAdmin, ProjectRole role, bool isOwner, bool expected)
     {
-        var project = new ProjectSummaryDto(TestData.ProjectId, "Solo", null, role, isOwner);
+        var project = new ProjectSummaryDto(TestData.ProjectId, "Solo", null, null, role, isOwner);
 
         Assert.Equal(expected, ProjectNavStore.CanAddBoard(project, isSuperAdmin));
     }

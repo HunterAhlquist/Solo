@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject UserSession Session
+@inject RecentProjectsStore Recent
 @inject ISnackbar Snackbar
 
 <PageTitle>@(_project?.Name ?? "Project") · Solo</PageTitle>
@@ -13,7 +14,7 @@
 else
 {
     <div class="d-flex align-center mb-4" style="gap:.75rem">
-        <MudIcon Icon="@SoloIcons.Resolve(_project.Icon)" Color="Color.Primary" Size="Size.Large" />
+        <EntityIcon ImageId="@_project.ImageId" Icon="@_project.Icon" Color="Color.Primary" Size="Size.Large" />
         <MudText Typo="Typo.h1">@_project.Name</MudText>
     </div>
 
@@ -72,6 +73,27 @@ else
     }
 
     protected override Task OnParametersSetAsync() => LoadProjectAsync();
+
+    private Guid _recorded;
+
+    /// <summary>Opening a project bubbles it to the top of the sidebar's recents.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_recorded == ProjectId)
+        {
+            return;
+        }
+
+        _recorded = ProjectId;
+        try
+        {
+            await Recent.RecordAsync(ProjectId);
+        }
+        catch (JSException)
+        {
+            // Storage unavailable (private mode, say) — recents are best-effort.
+        }
+    }
 
     private async Task LoadProjectAsync()
     {

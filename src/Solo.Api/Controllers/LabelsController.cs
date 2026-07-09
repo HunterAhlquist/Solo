@@ -56,6 +56,8 @@ public sealed class LabelsController(SoloDbContext db, IBoardNotifier notifier) 
             Kind = request.Kind,
             Name = request.Name,
             Color = request.Color,
+            Icon = request.Icon,
+            ImageId = request.ImageId,
         };
         db.Labels.Add(label);
         await db.SaveChangesAsync(ct);
@@ -77,6 +79,8 @@ public sealed class LabelsController(SoloDbContext db, IBoardNotifier notifier) 
 
         label.Name = request.Name;
         label.Color = request.Color;
+        label.Icon = request.Icon;
+        label.ImageId = request.ImageId;
         UseClientVersion(db, label, request.Version);
         var conflict = await SaveOrConflictAsync(db, ct);
         if (conflict is not null)
@@ -85,7 +89,8 @@ public sealed class LabelsController(SoloDbContext db, IBoardNotifier notifier) 
         }
 
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Label, label.Id,
-            ChangeKind.Updated, nameof(label.Name), nameof(label.Color));
+            ChangeKind.Updated, nameof(label.Name), nameof(label.Color),
+            nameof(label.Icon), nameof(label.ImageId));
         return label.ToDto();
     }
 

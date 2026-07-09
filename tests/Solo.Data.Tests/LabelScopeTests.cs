@@ -50,11 +50,11 @@ public class LabelScopeTests
     }
 
     [Fact]
-    public void Defaults_SeedFourTaskAndFourSubTaskLabels()
+    public void Defaults_SeedThreeTaskAndFourSubTaskLabels()
     {
         var defaults = LabelDefaults.ForProject(ProjectId);
         Assert.Equal(
-            ["Bug", "Feature", "Improvement", "Feedback Session"],
+            ["Bug", "Feature", "Improvement"],
             defaults.Where(l => l.Kind == LabelKind.Task).Select(l => l.Name));
         Assert.Equal(
             ["Code", "Asset", "Design", "Writing"],

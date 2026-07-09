@@ -56,15 +56,9 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
         // row (UPDATE) instead of an insert.
         db.SubTasks.Add(subTask);
         task.SubTasks.Add(subTask);
-        var statusChanged = RollUpStatus(task);
         await db.SaveChangesAsync(ct);
 
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.SubTask, subTask.Id, ChangeKind.Created);
-        if (statusChanged)
-        {
-            await NotifyStatus(task);
-        }
-
         return CreatedAtAction(nameof(List), new { taskId }, subTask.ToDto());
     }
 
@@ -112,19 +106,16 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
         var task = subTask.Task!;
         task.SubTasks.Remove(subTask);
         db.SubTasks.Remove(subTask);
-        var statusChanged = RollUpStatus(task);
         await db.SaveChangesAsync(ct);
 
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.SubTask, subTaskId, ChangeKind.Deleted);
-        if (statusChanged)
-        {
-            await NotifyStatus(task);
-        }
-
         return NoContent();
     }
 
-    /// <summary>Checklist toggle; rolls the parent task's derived status up.</summary>
+    /// <summary>
+    /// Checklist toggle. Persists the tick only; the parent task's column is set
+    /// separately (the client auto-moves a fully-checked card to Finished).
+    /// </summary>
     [HttpPut("api/subtasks/{subTaskId:guid}/finished")]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<SubTaskDto>> SetFinished(
@@ -137,16 +128,10 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
         }
 
         subTask.IsFinished = request.IsFinished;
-        var statusChanged = RollUpStatus(subTask.Task!);
         await db.SaveChangesAsync(ct);
 
         await notifier.BoardEntityChanged(subTask.Task!.BoardId, EntityTypes.SubTask, subTaskId,
             ChangeKind.Updated, nameof(subTask.IsFinished));
-        if (statusChanged)
-        {
-            await NotifyStatus(subTask.Task!);
-        }
-
         return subTask.ToDto();
     }
 
@@ -184,26 +169,6 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
             ChangeKind.Updated, nameof(subTask.Rank));
         return subTask.ToDto();
     }
-
-    /// <summary>Recomputes the parent's derived status; returns true when it changed.</summary>
-    private static bool RollUpStatus(TaskItem task)
-    {
-        var derived = TaskStateCalculator.Derive(
-            task.SubTasks.Count,
-            task.SubTasks.Count(s => s.IsFinished),
-            task.Status);
-        if (derived == task.Status)
-        {
-            return false;
-        }
-
-        task.Status = derived;
-        return true;
-    }
-
-    private Task NotifyStatus(TaskItem task) =>
-        notifier.BoardEntityChanged(task.BoardId, EntityTypes.Task, task.Id,
-            ChangeKind.Updated, nameof(task.Status));
 
     private Task<SubTask?> LoadWithTask(Guid subTaskId, CancellationToken ct) =>
         db.SubTasks

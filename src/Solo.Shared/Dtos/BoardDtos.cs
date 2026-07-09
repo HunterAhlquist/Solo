@@ -7,6 +7,7 @@ public sealed record BoardDto(
     Guid ProjectId,
     string Name,
     string? Icon,
+    Guid? ImageId,
     bool IsOpen,
     uint Version);
 
@@ -16,6 +17,7 @@ public sealed record BoardDetailDto(
     Guid ProjectId,
     string Name,
     string? Icon,
+    Guid? ImageId,
     bool IsOpen,
     uint Version,
     IReadOnlyList<EpicDto> Epics,
@@ -29,6 +31,8 @@ public sealed class CreateBoardRequest
 
     [MaxLength(100)]
     public string? Icon { get; init; }
+
+    public Guid? ImageId { get; init; }
 }
 
 public sealed class UpdateBoardRequest
@@ -38,6 +42,8 @@ public sealed class UpdateBoardRequest
 
     [MaxLength(100)]
     public string? Icon { get; init; }
+
+    public Guid? ImageId { get; init; }
 
     public uint Version { get; init; }
 }

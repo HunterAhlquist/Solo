@@ -14,11 +14,11 @@ public static class DtoMapper
             m.Role, m.IsOwner, m.UserId is null);
 
     public static ProjectDto ToDto(this Project p) =>
-        new(p.Id, p.Name, p.Icon, p.Version,
+        new(p.Id, p.Name, p.Icon, p.ImageId, p.Version,
             p.Members.Select(m => m.ToDto()).ToList());
 
     public static BoardDto ToDto(this Board b) =>
-        new(b.Id, b.ProjectId, b.Name, b.Icon, b.IsOpen, b.Version);
+        new(b.Id, b.ProjectId, b.Name, b.Icon, b.ImageId, b.IsOpen, b.Version);
 
     public static EpicDto ToDto(this Epic e) =>
         new(e.Id, e.BoardId, e.Name, e.Description, e.Rank, e.Version,
@@ -34,11 +34,14 @@ public static class DtoMapper
         new(s.Id, s.TaskId, s.Name, s.LabelId, s.IsFinished, s.Rank, s.Version);
 
     public static LabelDto ToDto(this Label l) =>
-        new(l.Id, l.ProjectId, l.BoardId, l.Kind, l.Name, l.Color, l.Version);
+        new(l.Id, l.ProjectId, l.BoardId, l.Kind, l.Name, l.Color, l.Icon, l.ImageId, l.Version);
 
     public static CommentDto ToDto(this Comment c) =>
-        new(c.Id, c.AuthorId, c.Author?.DisplayName, c.Body, c.CreatedAt,
+        new(c.Id, c.AuthorId, c.Author?.DisplayName, c.Author?.AvatarUrl, c.Body, c.CreatedAt,
             c.EpicId, c.TaskId, c.Version);
+
+    public static ImageAssetDto ToDto(this ImageAsset i) =>
+        new(i.Id, i.ContentType);
 
     public static InstanceSettingsDto ToDto(this InstanceSettings s) =>
         new(s.AuditRetentionDays, s.SetupCompleted, s.Version);

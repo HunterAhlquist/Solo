@@ -37,7 +37,7 @@ public sealed class ProjectsController(
             .ToListAsync(ct);
         return memberships
             .Select(m => new ProjectSummaryDto(
-                m.ProjectId, m.Project!.Name, m.Project.Icon, m.Role, m.IsOwner))
+                m.ProjectId, m.Project!.Name, m.Project.Icon, m.Project.ImageId, m.Role, m.IsOwner))
             .ToList();
     }
 
@@ -47,7 +47,7 @@ public sealed class ProjectsController(
     public async Task<ActionResult<ProjectDto>> Create(CreateProjectRequest request, CancellationToken ct)
     {
         var user = currentUser.User!;
-        var project = new Project { Name = request.Name, Icon = request.Icon };
+        var project = new Project { Name = request.Name, Icon = request.Icon, ImageId = request.ImageId };
         project.Members.Add(new ProjectMember
         {
             Email = user.Email,
@@ -84,6 +84,7 @@ public sealed class ProjectsController(
 
         project.Name = request.Name;
         project.Icon = request.Icon;
+        project.ImageId = request.ImageId;
         UseClientVersion(db, project, request.Version);
         var conflict = await SaveOrConflictAsync(db, ct);
         if (conflict is not null)
@@ -92,7 +93,7 @@ public sealed class ProjectsController(
         }
 
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Project, projectId,
-            ChangeKind.Updated, nameof(project.Name), nameof(project.Icon));
+            ChangeKind.Updated, nameof(project.Name), nameof(project.Icon), nameof(project.ImageId));
         return project.ToDto();
     }
 

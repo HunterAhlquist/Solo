@@ -2,6 +2,7 @@
 @inject ProjectNavStore Nav
 @inject UserSession Session
 @inject ApiClient Api
+@inject RecentProjectsStore Recent
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -27,10 +28,10 @@
             </MudText>
         }
 
-        @foreach (var project in Nav.Projects)
+        @foreach (var project in OrderedProjects)
         {
             <MudNavGroup Title="@project.Name"
-                         Icon="@SoloIcons.Resolve(project.Icon)"
+                         Icon="@SoloIcons.Resolve(project.ImageId, project.Icon)"
                          Expanded="@_expanded.Contains(project.Id)"
                          ExpandedChanged="@(expanded => OnExpandedAsync(project.Id, expanded))">
 
@@ -49,7 +50,7 @@
                     {
                         <MudNavLink Href="@BoardHref(project.Id, board.Id)"
                                     Match="NavLinkMatch.All"
-                                    Icon="@SoloIcons.Resolve(board.Icon)">
+                                    Icon="@SoloIcons.Resolve(board.ImageId, board.Icon)">
                             @board.Name
                         </MudNavLink>
                     }
@@ -100,6 +101,8 @@
 
 @code {
     private readonly HashSet<Guid> _expanded = [];
+    private IReadOnlyList<Guid> _recent = [];
+    private bool _autoExpanded;
 
     protected override async Task OnInitializedAsync()
     {
@@ -121,6 +124,66 @@
 
         await Nav.EnsureProjectsAsync();
         ExpandProjectFromUrl();
+    }
+
+    /// <summary>
+    /// Recents live in localStorage, unreachable until the first render lands, so
+    /// they're read here rather than in init. Once known, the tree re-orders and
+    /// the most-recent few projects unfold themselves.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _recent = await Recent.GetAsync();
+            }
+            catch (JSException)
+            {
+                // Storage unavailable — the tree just keeps its default order.
+            }
+
+            StateHasChanged();
+        }
+
+        await TryAutoExpandAsync();
+    }
+
+    /// <summary>Projects most-recently opened float to the top; the rest keep A→Z.</summary>
+    private IEnumerable<ProjectSummaryDto> OrderedProjects
+    {
+        get
+        {
+            if (_recent.Count == 0)
+            {
+                return Nav.Projects;
+            }
+
+            var rank = _recent
+                .Select((id, index) => (id, index))
+                .ToDictionary(x => x.id, x => x.index);
+            return Nav.Projects.OrderBy(p => rank.TryGetValue(p.Id, out var r) ? r : int.MaxValue);
+        }
+    }
+
+    /// <summary>Unfold the last few opened projects — once, once both lists are ready.</summary>
+    private async Task TryAutoExpandAsync()
+    {
+        if (_autoExpanded || _recent.Count == 0 || Nav.Projects.Count == 0)
+        {
+            return;
+        }
+
+        _autoExpanded = true;
+        var toExpand = _recent
+            .Where(id => Nav.Projects.Any(p => p.Id == id))
+            .Take(RecentProjectsStore.AutoExpandCount)
+            .ToList();
+        foreach (var id in toExpand)
+        {
+            await OnExpandedAsync(id, true);
+        }
     }
 
     private static string BoardHref(Guid projectId, Guid boardId) =>
@@ -171,6 +234,7 @@
             {
                 Name = created.Name,
                 Icon = created.Icon,
+                ImageId = created.ImageId,
             });
             await Nav.RefreshProjectsAsync();
             Navigation.NavigateTo($"projects/{project.Id}");
@@ -195,7 +259,7 @@
         try
         {
             var board = await Api.CreateBoardAsync(project.Id,
-                new CreateBoardRequest { Name = created.Name, Icon = created.Icon });
+                new CreateBoardRequest { Name = created.Name, Icon = created.Icon, ImageId = created.ImageId });
             await Nav.RefreshBoardsAsync(project.Id);
             Navigation.NavigateTo(BoardHref(project.Id, board.Id));
         }

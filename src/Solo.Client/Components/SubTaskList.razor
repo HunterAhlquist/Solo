@@ -40,7 +40,37 @@ else
                         @subTask.Name
                     </MudText>
 
-                    <LabelChip Label="@LabelOf(subTask)" />
+                    @* Click the tag icon to pick a label; once set it shows the label's
+                       own icon, with the name in a tooltip. Uses MudMenu's built-in Icon
+                       activator (as the epic menu does) — its popover opens reliably in
+                       the drawer, unlike an ActivatorContent activator. *@
+                    @{
+                        var current = LabelOf(subTask);
+                    }
+                    @if (CanWrite)
+                    {
+                        <MudTooltip Text="@(current?.Name ?? "Set label")">
+                            <span class="subtask-label-menu d-flex align-center">
+                                <MudMenu Icon="@ActivatorIcon(current)" Size="Size.Small" Dense="true"
+                                         Color="@(current is null ? Color.Default : Color.Primary)"
+                                         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                                    <MudMenuItem OnClick="@(() => SetLabelAsync(subTask, null))">
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">No label</MudText>
+                                    </MudMenuItem>
+                                    @foreach (var label in SubTaskLabels)
+                                    {
+                                        <MudMenuItem OnClick="@(() => SetLabelAsync(subTask, label.Id))">
+                                            <LabelChip Label="@label" />
+                                        </MudMenuItem>
+                                    }
+                                </MudMenu>
+                            </span>
+                        </MudTooltip>
+                    }
+                    else if (current is not null)
+                    {
+                        <LabelChip Label="@current" IconOnly="true" />
+                    }
 
                     @if (CanWrite)
                     {
@@ -83,6 +113,40 @@ else
     private LabelDto? LabelOf(SubTaskDto subTask) =>
         subTask.LabelId is null ? null : Store.Board?.Labels.FirstOrDefault(l => l.Id == subTask.LabelId);
 
+    /// <summary>Only sub-task-kind labels apply to a checklist item.</summary>
+    private IEnumerable<LabelDto> SubTaskLabels =>
+        (Store.Board?.Labels ?? []).Where(l => l.Kind == LabelKind.SubTask);
+
+    /// <summary>
+    /// The picker's icon: the label's own icon/image when it has one, a filled tag
+    /// when a plain label is set, an outlined tag when there's no label yet.
+    /// </summary>
+    private static string ActivatorIcon(LabelDto? label) => label switch
+    {
+        null => Icons.Material.Outlined.Label,
+        { ImageId: not null } or { Icon: not null } => SoloIcons.Resolve(label.ImageId, label.Icon),
+        _ => Icons.Material.Filled.Label,
+    };
+
+    private async Task SetLabelAsync(SubTaskDto subTask, Guid? labelId)
+    {
+        if (subTask.LabelId == labelId)
+        {
+            return;
+        }
+
+        await Guard.RunAsync(
+            () => Api.UpdateSubTaskAsync(subTask.Id, new UpdateSubTaskRequest
+            {
+                Name = subTask.Name,
+                LabelId = labelId,
+                Version = subTask.Version,
+            }),
+            OnChanged.InvokeAsync);
+
+        await OnChanged.InvokeAsync();
+    }
+
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
@@ -105,39 +169,38 @@ else
         await OnChanged.InvokeAsync();
     }
 
+    /// <summary>
+    /// Ticking boxes no longer forces the column — status is manual now. The one
+    /// automatic move remains: completing the last box sends the card to Finished,
+    /// as a client-driven status change (the server just stores what it's told).
+    /// Un-ticking never moves it back out; that's a manual choice.
+    /// </summary>
     private async Task ToggleAsync(SubTaskDto subTask, bool isFinished)
     {
-        ApplyRollUpLocally(subTask, isFinished);
-
-        await Guard.RunAsync(() => Api.SetSubTaskFinishedAsync(subTask.Id, isFinished));
-
-        // Reconcile: the server is authoritative, and it also re-ranks nothing we
-        // guessed at. Same rule either way — TaskStateCalculator is shared.
-        await OnChanged.InvokeAsync();
-    }
-
-    /// <summary>
-    /// Ticking a box moves the card between columns immediately, before the round
-    /// trip. Uses the very same <see cref="TaskStateCalculator"/> the server does,
-    /// so the optimistic state and the reconciled state agree.
-    /// </summary>
-    private void ApplyRollUpLocally(SubTaskDto subTask, bool isFinished)
-    {
-        if (Store.Board?.Tasks.FirstOrDefault(t => t.Id == TaskId) is not { } task)
-        {
-            return;
-        }
-
-        var subTasks = task.SubTasks
+        var task = Store.Board?.Tasks.FirstOrDefault(t => t.Id == TaskId);
+        var updated = task?.SubTasks
             .Select(s => s.Id == subTask.Id ? s with { IsFinished = isFinished } : s)
             .ToList();
+        var allDone = updated is { Count: > 0 } && updated.TrueForAll(s => s.IsFinished);
+        var autoFinish = allDone && task!.Status != TaskState.Finished;
 
-        Store.ApplyTask(task with
+        // Optimistic: reflect the tick (and the auto-finish) before the round trip.
+        if (task is not null)
         {
-            SubTasks = subTasks,
-            Status = TaskStateCalculator.Derive(
-                subTasks.Count, subTasks.Count(s => s.IsFinished), task.Status),
-        });
+            Store.ApplyTask(task with
+            {
+                SubTasks = updated!,
+                Status = autoFinish ? TaskState.Finished : task.Status,
+            });
+        }
+
+        await Guard.RunAsync(() => Api.SetSubTaskFinishedAsync(subTask.Id, isFinished));
+        if (autoFinish)
+        {
+            await Guard.RunAsync(() => Api.SetTaskStatusAsync(TaskId, TaskState.Finished));
+        }
+
+        await OnChanged.InvokeAsync();
     }
 
     private async Task DeleteAsync(SubTaskDto subTask)

@@ -6,6 +6,12 @@
                         Variant="Variant.Outlined" Margin="Margin.Dense"
                         ColorPickerMode="ColorPickerMode.HEX" ShowAlpha="false" />
         <div class="mt-4">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Icon (optional)</MudText>
+            <div class="mt-1">
+                <IconImagePicker @bind-Icon="_icon" @bind-ImageId="_imageId" />
+            </div>
+        </div>
+        <div class="mt-4">
             <MudText Typo="Typo.caption" Color="Color.Secondary">Preview</MudText>
             <div class="mt-1">
                 <LabelChip Label="@Preview" />
@@ -24,6 +30,8 @@
 @code {
     private string _name = string.Empty;
     private MudColor _color = new("#8d7ffa");
+    private string? _icon;
+    private Guid? _imageId;
 
     [CascadingParameter]
     private IMudDialogInstance Dialog { get; set; } = default!;
@@ -36,26 +44,34 @@
     public string? HexColor { get; set; }
 
     [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter]
+    public Guid? ImageId { get; set; }
+
+    [Parameter]
     public string SaveText { get; set; } = "Save";
 
     /// <summary>The server validates <c>^#[0-9a-fA-F]{6}$</c>, so hand it exactly that — no alpha.</summary>
     private string Hex => $"#{_color.R:x2}{_color.G:x2}{_color.B:x2}";
 
     private LabelDto Preview => new(Guid.Empty, Guid.Empty, null, LabelKind.Task,
-        string.IsNullOrWhiteSpace(_name) ? "label" : _name, Hex, 0);
+        string.IsNullOrWhiteSpace(_name) ? "label" : _name, Hex, _icon, _imageId, 0);
 
     protected override void OnInitialized()
     {
         _name = Name ?? string.Empty;
+        _icon = Icon;
+        _imageId = ImageId;
         if (!string.IsNullOrWhiteSpace(HexColor))
         {
             _color = new MudColor(HexColor);
         }
     }
 
-    private void Save() => Dialog.Close(DialogResult.Ok(new LabelEdit(_name.Trim(), Hex)));
+    private void Save() => Dialog.Close(DialogResult.Ok(new LabelEdit(_name.Trim(), Hex, _icon, _imageId)));
 
     private void Cancel() => Dialog.Cancel();
 
-    public sealed record LabelEdit(string Name, string Color);
+    public sealed record LabelEdit(string Name, string Color, string? Icon, Guid? ImageId);
 }

@@ -8,6 +8,7 @@
 @inject SaveGuard Guard
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@inject RecentProjectsStore Recent
 
 <PageTitle>@(Store.Board?.Name ?? "Board") · Solo</PageTitle>
 
@@ -20,7 +21,7 @@ else
     <div class="d-flex align-center mb-3" style="gap:.75rem">
         <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
                        Href="@($"projects/{ProjectId}")" aria-label="Back to project" />
-        <MudIcon Icon="@SoloIcons.Resolve(Store.Board.Icon)" Color="Color.Primary" />
+        <EntityIcon ImageId="@Store.Board.ImageId" Icon="@Store.Board.Icon" Color="Color.Primary" />
         <MudText Typo="Typo.h1">@Store.Board.Name</MudText>
 
         @if (!Store.Board.IsOpen)
@@ -167,7 +168,6 @@ else
                       Assignees="@MembersOf(context.AssigneeIds)"
                       Presence="@Store.PresenceOn(EntityTypes.Task, context.Id)"
                       Pulse="@_pulsing.Contains(context.Id)"
-                      Shake="@_shaking.Contains(context.Id)"
                       OnOpen="@OpenTask" />
         </ItemRenderer>
     </MudDropContainer>
@@ -181,7 +181,6 @@ else
     private readonly HashSet<Guid> _collapsed = [];
     private readonly HashSet<Guid> _expandedFinished = [];
     private readonly HashSet<Guid> _pulsing = [];
-    private readonly HashSet<Guid> _shaking = [];
     private HashSet<Guid> _folded = [];
     private bool _refreshZones;
     private TaskDto? _openTask;
@@ -283,6 +282,27 @@ else
         _container?.Refresh();
     }
 
+    private Guid _recordedProject;
+
+    /// <summary>Opening a board bubbles its project to the top of the sidebar's recents.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_recordedProject == ProjectId)
+        {
+            return;
+        }
+
+        _recordedProject = ProjectId;
+        try
+        {
+            await Recent.RecordAsync(ProjectId);
+        }
+        catch (JSException)
+        {
+            // Storage unavailable — recents are best-effort.
+        }
+    }
+
     private int HiddenCount(Guid? epicId, TaskState status) =>
         status != TaskState.Finished
             ? 0
@@ -320,20 +340,8 @@ else
 
     // -- Drag & drop --------------------------------------------------------
 
-    /// <summary>
-    /// A task whose status is derived from its sub-tasks refuses a column change.
-    /// Refusing at drop-target time gives the user a red no-drop zone before they
-    /// let go, rather than an error after.
-    /// </summary>
-    private bool CanDrop(TaskDto task, string zoneId)
-    {
-        if (!BoardZones.TryParse(zoneId, out _, out var status))
-        {
-            return false;
-        }
-
-        return task.SubTasks.Count == 0 || status == task.Status;
-    }
+    /// <summary>Any card can be dropped in any parseable zone — no column is off-limits.</summary>
+    private static bool CanDrop(TaskDto task, string zoneId) => BoardZones.TryParse(zoneId, out _, out _);
 
     private async Task OnItemDroppedAsync(MudItemDropInfo<TaskDto> drop)
     {
@@ -344,12 +352,6 @@ else
         }
 
         var plan = DropPlan.For(task, epicId, status);
-        if (plan.Rejected)
-        {
-            await ShakeAsync(task.Id);
-            Snackbar.Add("Status follows sub-tasks — tick them off instead.", Severity.Info);
-            return;
-        }
 
         // Order matters: the task must belong to the target lane and column before
         // its rank is interpreted relative to that zone's neighbours.
@@ -403,15 +405,6 @@ else
         {
             Store.ApplyTask(ranked);
         }
-    }
-
-    private async Task ShakeAsync(Guid taskId)
-    {
-        _shaking.Add(taskId);
-        StateHasChanged();
-        await Task.Delay(340);
-        _shaking.Remove(taskId);
-        StateHasChanged();
     }
 
     // -- Epics --------------------------------------------------------------

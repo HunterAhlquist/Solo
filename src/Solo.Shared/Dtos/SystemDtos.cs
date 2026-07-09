@@ -65,3 +65,8 @@ public sealed record PagedResult<T>(
     int Page,
     int PageSize,
     int TotalCount);
+
+/// <summary>Identifies a stored image; the bytes are served from <c>GET /api/images/{id}</c>.</summary>
+public sealed record ImageAssetDto(
+    Guid Id,
+    string ContentType);

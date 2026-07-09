@@ -7,23 +7,15 @@ namespace Solo.Client.State;
 /// What a drop onto a given swimlane × column actually has to do. Pure, so the
 /// rule "which endpoint per drop zone" is testable without a browser.
 /// </summary>
-public readonly record struct DropPlan(bool ChangeEpic, bool ChangeStatus, bool Rejected)
+public readonly record struct DropPlan(bool ChangeEpic, bool ChangeStatus)
 {
     /// <summary>
     /// Within a column = re-rank only. Across columns = status. Across swimlanes =
-    /// epic (into the ad-hoc band = null). A task whose status is derived from its
-    /// sub-tasks refuses a column change outright.
+    /// epic (into the ad-hoc band = null). Any card may move to any column — even
+    /// one with sub-tasks; the checklist auto-completes the card but never locks it.
     /// </summary>
-    public static DropPlan For(TaskDto task, Guid? targetEpicId, TaskState targetStatus)
-    {
-        var changeStatus = task.Status != targetStatus;
-        if (task.SubTasks.Count > 0 && changeStatus)
-        {
-            return new DropPlan(false, false, Rejected: true);
-        }
-
-        return new DropPlan(task.EpicId != targetEpicId, changeStatus, Rejected: false);
-    }
+    public static DropPlan For(TaskDto task, Guid? targetEpicId, TaskState targetStatus) =>
+        new(task.EpicId != targetEpicId, task.Status != targetStatus);
 }
 
 /// <summary>
