@@ -32,6 +32,9 @@ services:
       #   Auth__Authority: "https://login.microsoftonline.com/<tenant-id>/v2.0"
       #   Auth__Provider:  "microsoft"
       # Any other OIDC-compliant issuer: use its authority URL + "generic".
+      # Google: use the FULL client ID ending in ".apps.googleusercontent.com".
+      # A truncated ID still signs in, but every API call 401s — the token's
+      # audience is the full string and won't match.
       Auth__Authority: "https://accounts.google.com"
       Auth__ClientId: "CHANGE_ME_OIDC_CLIENT_ID"
       Auth__Provider: "google"
@@ -49,6 +52,21 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # -- Optional: Cloudflare Tunnel for public access -------------------------
+  # Publishes the app at a public hostname with no port forwarding; TLS
+  # terminates at Cloudflare's edge. Create the tunnel under Zero Trust ->
+  # Networks -> Tunnels, paste its token below, then add a Public Hostname
+  # pointing at service HTTP  solo:8080  — container name and internal port,
+  # and the scheme must be http (the container serves no TLS itself).
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     TUNNEL_TOKEN: "CHANGE_ME_TUNNEL_TOKEN"
+  #   depends_on:
+  #     - solo
 
   postgres:
     image: postgres:17
