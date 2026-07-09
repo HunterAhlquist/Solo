@@ -21,6 +21,7 @@ public sealed class BoardStore(ApiClient api, IBoardHubClient hub, UserSession s
     private static readonly TimeSpan RefetchDebounce = TimeSpan.FromMilliseconds(150);
 
     private CancellationTokenSource? _debounce;
+    private Task _pendingRefetch = Task.CompletedTask;
     private bool _subscribed;
 
     public BoardDetailDto? Board { get; private set; }
@@ -42,6 +43,13 @@ public sealed class BoardStore(ApiClient api, IBoardHubClient hub, UserSession s
 
     /// <summary>A comment was added, edited, or removed somewhere on this board.</summary>
     public event Action? CommentsChanged;
+
+    /// <summary>
+    /// The in-flight debounced board refetch; a completed task while idle.
+    /// <see cref="DetachAsync"/> awaits it so a refetch can't land after
+    /// detach, and tests await it instead of polling wall-clock time.
+    /// </summary>
+    public Task PendingRefetch => _pendingRefetch;
 
     public async Task LoadAsync(Guid boardId, CancellationToken ct = default)
     {
@@ -229,12 +237,16 @@ public sealed class BoardStore(ApiClient api, IBoardHubClient hub, UserSession s
         var cts = new CancellationTokenSource();
         _debounce = cts;
 
-        _ = Task.Run(async () =>
+        // Read the token here: the next change may dispose cts before the
+        // task starts, and a disposed source no longer hands out its token.
+        var token = cts.Token;
+
+        _pendingRefetch = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(RefetchDebounce, cts.Token);
-                await RefreshAsync(cts.Token);
+                await Task.Delay(RefetchDebounce, token);
+                await RefreshAsync(token);
                 Pulsed?.Invoke(change.EntityType, change.EntityId);
             }
             catch (OperationCanceledException)
@@ -282,6 +294,11 @@ public sealed class BoardStore(ApiClient api, IBoardHubClient hub, UserSession s
         _debounce?.Cancel();
         _debounce?.Dispose();
         _debounce = null;
+
+        // Let a cancelled refetch unwind first, or its awaited fetch could
+        // hand Board back after this method cleared it.
+        await _pendingRefetch;
+        _pendingRefetch = Task.CompletedTask;
         Board = null;
         Members = [];
         Presence = [];

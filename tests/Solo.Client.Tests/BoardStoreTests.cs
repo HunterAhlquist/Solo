@@ -98,7 +98,7 @@ public class BoardStoreTests
     [Fact]
     public async Task A_structural_change_debounces_into_one_full_board_refetch()
     {
-        var (_, http, hub) = await LoadedStoreAsync();
+        var (store, http, hub) = await LoadedStoreAsync();
         http.RespondJson(TestData.Board());
         var callsBefore = http.Requests.Count;
 
@@ -107,7 +107,9 @@ public class BoardStoreTests
         await hub.RaiseEntityChanged(new EntityChangedEvent(EntityTypes.Label, Guid.NewGuid(), ChangeKind.Updated, ["Color"], TestData.OtherId));
         await hub.RaiseEntityChanged(new EntityChangedEvent(EntityTypes.Board, TestData.BoardId, ChangeKind.Updated, ["Name"], TestData.OtherId));
 
-        await WaitForAsync(() => http.Requests.Count > callsBefore);
+        // The store's own task, not a wall-clock poll: a starved CI runner
+        // can stretch the 150ms debounce past any deadline a poll would pick.
+        await store.PendingRefetch;
 
         Assert.Equal(callsBefore + 1, http.Requests.Count);
         Assert.Equal($"GET /api/boards/{TestData.BoardId}", http.Paths[^1]);
@@ -174,14 +176,5 @@ public class BoardStoreTests
             new EntityChangedEvent(EntityTypes.Task, task.Id, ChangeKind.Updated, ["Name"], TestData.OtherId));
 
         Assert.Equal($"GET /api/boards/{TestData.BoardId}", http.Paths[^1]);
-    }
-
-    private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 2000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition() && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(10);
-        }
     }
 }
