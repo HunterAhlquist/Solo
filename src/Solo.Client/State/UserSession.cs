@@ -1,3 +1,4 @@
+using System.Net;
 using Solo.Client.Api;
 using Solo.Shared.Dtos;
 
@@ -17,6 +18,13 @@ public sealed class UserSession(ApiClient api)
 
     public bool IsSuperAdmin => Current?.IsSuperAdmin ?? false;
 
+    /// <summary>
+    /// The API refused the profile outright (403): signed in, but allowed nothing.
+    /// Unlike <see cref="Auth.SessionExpiry"/> there is nothing to renew — the layout
+    /// listens and signs the user back out.
+    /// </summary>
+    public event Action? AccessDenied;
+
     /// <summary>Idempotent: concurrent callers share one in-flight request.</summary>
     public async Task<UserDto> LoadAsync(CancellationToken ct = default)
     {
@@ -26,10 +34,15 @@ public sealed class UserSession(ApiClient api)
             Current = await _load;
             return Current;
         }
-        catch
+        catch (Exception e)
         {
             // Don't cache a failure — a retry after re-auth should hit the API.
             _load = null;
+            if (e is ApiException { StatusCode: HttpStatusCode.Forbidden })
+            {
+                AccessDenied?.Invoke();
+            }
+
             throw;
         }
     }

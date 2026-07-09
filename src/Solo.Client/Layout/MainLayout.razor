@@ -78,8 +78,13 @@
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
     private bool _expiryDialogOpen;
+    private bool _signingOut;
 
-    protected override void OnInitialized() => SessionExpiry.Expired += OnSessionExpired;
+    protected override void OnInitialized()
+    {
+        SessionExpiry.Expired += OnSessionExpired;
+        Session.AccessDenied += OnAccessDenied;
+    }
 
     /// <summary>
     /// Silent renewal failed or the API rejected our token: offer re-sign-in in
@@ -107,7 +112,27 @@
         }
     });
 
-    public void Dispose() => SessionExpiry.Expired -= OnSessionExpired;
+    /// <summary>
+    /// Signed in, but the API says this account can reach nothing: there is no
+    /// dialog to offer and nothing to renew. Drop the credential and land back
+    /// on sign-in with the unauthorized notice.
+    /// </summary>
+    private void OnAccessDenied() => _ = InvokeAsync(async () =>
+    {
+        if (_signingOut)
+        {
+            return;
+        }
+
+        _signingOut = true;
+        await SignOutTo("signin?error=unauthorized");
+    });
+
+    public void Dispose()
+    {
+        SessionExpiry.Expired -= OnSessionExpired;
+        Session.AccessDenied -= OnAccessDenied;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -137,8 +162,10 @@
         }
     }
 
-    /// <summary>Google has no logout redirect: drop the credential and go home.</summary>
-    private async Task SignOut()
+    private Task SignOut() => SignOutTo("signin");
+
+    /// <summary>Google has no logout redirect: drop the credential and go to the destination.</summary>
+    private async Task SignOutTo(string destination)
     {
         Session.Clear();
 
@@ -148,10 +175,10 @@
             // forceLoad: a client-side nav would keep the running app — and its cached
             // session/avatar — alive, so signing in as someone else would still show
             // the previous user. A full reload resets everything cleanly.
-            Navigation.NavigateTo("signin", forceLoad: true);
+            Navigation.NavigateTo(destination, forceLoad: true);
             return;
         }
 
-        Navigation.NavigateToLogout("authentication/logout");
+        Navigation.NavigateToLogout("authentication/logout", destination);
     }
 }

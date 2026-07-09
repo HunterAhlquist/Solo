@@ -18,10 +18,28 @@ public static class AvatarConstants
 [Authorize]
 public sealed class UsersController : ApiControllerBase
 {
-    /// <summary>The provisioned profile of the signed-in user; the client's first call after sign-in.</summary>
+    /// <summary>
+    /// The provisioned profile of the signed-in user; the client's first call after
+    /// sign-in. A valid token alone is not enough: an account that can reach nothing —
+    /// no project membership and not super admin — is refused, which is the client's
+    /// cue to sign the user back out. Pending invites have already been activated by
+    /// provisioning when this runs, so an invited user's first sign-in still passes.
+    /// </summary>
     [HttpGet("me")]
-    public ActionResult<UserDto> Me([FromServices] CurrentUserAccessor currentUser) =>
-        currentUser.User is null ? Forbid() : currentUser.User.ToDto();
+    public async Task<ActionResult<UserDto>> Me(
+        [FromServices] CurrentUserAccessor currentUser,
+        [FromServices] SoloDbContext db,
+        CancellationToken ct)
+    {
+        if (currentUser.User is not { } user)
+        {
+            return Forbid();
+        }
+
+        var hasAnyAccess = user.IsSuperAdmin ||
+            await db.ProjectMembers.AsNoTracking().AnyAsync(m => m.UserId == user.Id, ct);
+        return hasAnyAccess ? user.ToDto() : Forbid();
+    }
 
     /// <summary>
     /// Proxies a user's SSO profile picture from our own origin. The client renders

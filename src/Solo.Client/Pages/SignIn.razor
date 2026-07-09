@@ -13,6 +13,14 @@
             Project management for game development.
         </MudText>
 
+        @if (Unauthorized)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">
+                Your account isn't authorized to use this instance. Ask an
+                administrator to invite you to a project, then sign in again.
+            </MudAlert>
+        }
+
         @if (!Config.ProviderConfigured)
         {
             <MudAlert Severity="Severity.Error" Dense="true">
@@ -62,6 +70,9 @@
         "microsoft" => Icons.Custom.Brands.Microsoft,
         _ => Icons.Material.Filled.Login,
     };
+
+    /// <summary>Set when the app signed the user out because their account can reach nothing.</summary>
+    private bool Unauthorized => QueryString.Value(Navigation.Uri, "error") == "unauthorized";
 
     /// <summary>Where the user was headed before the guard bounced them here.</summary>
     private string ReturnUrl => QueryString.Value(Navigation.Uri, "returnUrl") is { Length: > 0 } url ? url : "/";

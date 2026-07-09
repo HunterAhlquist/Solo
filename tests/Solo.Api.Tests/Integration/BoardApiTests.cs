@@ -331,11 +331,33 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
         var user = _factory.As("plain", "plain@example.com");
-        await user.GetJson<UserDto>("/api/users/me");
+        // Provisions the row; the profile itself is refused (member of nothing).
+        var me = await user.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Forbidden, me.StatusCode);
 
         var denied = await user.PostAsJsonAsync(
             "/api/projects", new { name = "Nope", alias = "NOPE" }, TestClients.Json);
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task Me_RefusesAccesslessAccounts_UntilTheyAreInvited()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, _) = await CreateProjectWithBoard("Gate");
+
+        // A valid token is not enough: member of nothing, not super admin -> 403.
+        var joiner = _factory.As("joiner", "joiner@example.com", "Joiner");
+        var refused = await joiner.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+
+        // An invite opens the door; the first call provisioned the row, so the
+        // invite matches the known user immediately.
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "joiner@example.com", role = "Read" });
+        var me = await joiner.GetJson<UserDto>("/api/users/me");
+        Assert.Equal("joiner@example.com", me.Email);
+        Assert.False(me.IsSuperAdmin);
     }
 
     // -- Aliases and serial numbers ------------------------------------------
@@ -408,7 +430,6 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
 
         // A member-less stranger is refused through the alias route too.
         var stranger = _factory.As("stranger2", "stranger2@example.com");
-        await stranger.GetJson<UserDto>("/api/users/me");
         var denied = await stranger.GetAsync($"/api/projects/by-alias/{project.Alias}");
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
     }

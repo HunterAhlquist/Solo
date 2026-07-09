@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -136,9 +137,11 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
         var board = await _admin.PostJson<BoardDto>(
             $"/api/projects/{project.Id}/boards", new { name = "Locked board", alias = "LOCKEDB" });
 
-        // Provision the outsider, then try to join.
+        // Provision the outsider (the accessless profile is refused, but the
+        // user row still lands), then try to join.
         var outsider = _factory.As("outsider", "outsider@example.com");
-        await outsider.GetJson<UserDto>("/api/users/me");
+        var me = await outsider.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Forbidden, me.StatusCode);
 
         await using var connection = Connect("outsider", "outsider@example.com", "Outsider");
         await connection.StartAsync();
