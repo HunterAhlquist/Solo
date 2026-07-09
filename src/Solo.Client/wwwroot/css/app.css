@@ -104,6 +104,32 @@ code {
 .grid-inset { padding-top: 24px; }
 
 /* ---------------------------------------------------------------------------
+   Add tile — square dashed affordance closing a card grid. height:100% picks
+   up the row height from the sibling cards; aspect-ratio keeps it square. The
+   min-height covers a row it has to itself (matches the card skeletons).
+   --------------------------------------------------------------------------- */
+.add-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 96px;
+    padding: 0;
+    cursor: pointer;
+    border: 1px dashed var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    background: transparent;
+    color: var(--mud-palette-text-secondary);
+}
+
+.add-card:hover,
+.add-card:focus-visible {
+    border-color: var(--mud-palette-primary);
+    color: var(--mud-palette-primary);
+}
+
+/* ---------------------------------------------------------------------------
    Markdown editor: the read view is the click target that opens the editor, so
    it needs to look and behave like a field rather than a stray line of text.
    --------------------------------------------------------------------------- */

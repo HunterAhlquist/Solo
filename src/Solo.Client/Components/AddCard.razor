@@ -1,0 +1,23 @@
+@*
+    Square dashed "add" tile that closes a card grid — it stretches to the
+    row's height, so it always matches the cards beside it. An affordance,
+    not a destination: quiet until hovered, like the sidebar's add actions.
+
+    Host it in a MudItem with the same breakpoints as the sibling cards: in a
+    size-less (shrink-to-fit) item the cell width is resolved before the
+    stretched height, so the aspect-ratio square overflows the cell.
+*@
+
+<MudTooltip Text="@Label" RootClass="h-100">
+    <button type="button" class="add-card" aria-label="@Label" @onclick="@OnClick">
+        <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Large" />
+    </button>
+</MudTooltip>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+}

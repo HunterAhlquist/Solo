@@ -11,14 +11,6 @@
 
 <div class="d-flex align-center mb-4">
     <MudText Typo="Typo.h1">Projects</MudText>
-    <MudSpacer />
-    @if (Session.IsSuperAdmin)
-    {
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateProjectAsync">
-            New project
-        </MudButton>
-    }
 </div>
 
 @if (_projects is null)
@@ -79,6 +71,12 @@ else
                         </div>
                     </MudCardContent>
                 </MudCard>
+            </MudItem>
+        }
+        @if (Session.IsSuperAdmin)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <AddCard Label="New project" OnClick="@CreateProjectAsync" />
             </MudItem>
         }
     </MudGrid>
