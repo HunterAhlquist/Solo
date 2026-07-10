@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Solo — Server Settings</title>
+  <style>
+    /* Matches the client's boot-splash aesthetic: black, #fff600, Courier. */
+    :root {
+      --bg: #000000;
+      --fg: #ffffff;
+      --dim: #9a9a9a;
+      --accent: #fff600;
+      --error: #ff5252;
+      --ok: #6fdc6f;
+      --line: #2a2a2a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Courier New", monospace;
+      user-select: none;
+    }
+
+    main {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      height: 100%;
+      padding: 1.5rem 1.75rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    p.hint {
+      margin: 0;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      color: var(--dim);
+    }
+
+    label {
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--dim);
+    }
+
+    input {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: #0a0a0a;
+      color: var(--fg);
+      font: inherit;
+      user-select: text;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    #status {
+      flex: 1;
+      min-height: 3.5rem;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      color: var(--dim);
+    }
+
+    #status.ok { color: var(--ok); }
+    #status.error { color: var(--error); }
+
+    .buttons {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+    }
+
+    button {
+      padding: 0.55rem 1.1rem;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--fg);
+      font: inherit;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #000;
+      font-weight: 700;
+    }
+
+    button.primary:hover:not(:disabled) {
+      background: transparent;
+      color: var(--accent);
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .origin {
+      color: var(--accent);
+      user-select: text;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Server</h1>
+  <p class="hint">
+    The address of the Solo instance this app connects to,
+    e.g. <span class="origin">https://solo.example.com</span>.
+  </p>
+
+  <div>
+    <label for="url">Instance address</label>
+    <input id="url" type="text" spellcheck="false" autocomplete="off"
+           placeholder="https://solo.example.com" />
+  </div>
+
+  <p class="hint">
+    Sign-in note: the instance's OAuth client must list
+    <span class="origin" id="origin">http://localhost:41321</span>
+    as an authorized JavaScript origin.
+  </p>
+
+  <div id="status"></div>
+
+  <div class="buttons">
+    <button id="cancel" type="button">Cancel</button>
+    <button id="test" type="button">Test</button>
+    <button id="save" type="button" class="primary">Save &amp; Connect</button>
+  </div>
+</main>
+
+<script>
+  const urlInput = document.getElementById('url');
+  const status = document.getElementById('status');
+  const testButton = document.getElementById('test');
+  const saveButton = document.getElementById('save');
+  const cancelButton = document.getElementById('cancel');
+
+  function setStatus(text, kind) {
+    status.textContent = text;
+    status.className = kind ?? '';
+  }
+
+  function setBusy(busy) {
+    for (const b of [testButton, saveButton, cancelButton]) {
+      b.disabled = busy;
+    }
+  }
+
+  async function test() {
+    setBusy(true);
+    setStatus('Testing…');
+    const result = await window.soloSettings.test(urlInput.value);
+    setBusy(false);
+    if (result.ok) {
+      const provider = result.provider
+          ? `Sign-in provider: ${result.provider}.`
+          : 'No sign-in provider configured yet.';
+      const setup = result.setupCompleted ? '' : ' Instance setup is not finished.';
+      setStatus(`Connected to ${result.url}\n${provider}${setup}`, 'ok');
+    } else {
+      setStatus(result.error, 'error');
+    }
+    return result.ok;
+  }
+
+  async function save() {
+    setBusy(true);
+    setStatus('Saving…');
+    const result = await window.soloSettings.save(urlInput.value);
+    if (!result.ok) {
+      setBusy(false);
+      setStatus(result.error, 'error');
+    }
+    // On success the main process closes this window.
+  }
+
+  testButton.addEventListener('click', test);
+  saveButton.addEventListener('click', save);
+  cancelButton.addEventListener('click', () => window.soloSettings.close());
+  urlInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') save();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') window.soloSettings.close();
+  });
+
+  window.soloSettings.get().then(({ instanceUrl, port, firstRun }) => {
+    if (instanceUrl) {
+      urlInput.value = instanceUrl;
+    }
+    document.getElementById('origin').textContent = `http://localhost:${port}`;
+    if (firstRun) {
+      cancelButton.textContent = 'Quit';
+      setStatus('Welcome. Point Solo at your instance to get started.');
+    }
+    urlInput.focus();
+  });
+</script>
+</body>
+</html>

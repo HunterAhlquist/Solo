@@ -178,9 +178,15 @@ public sealed class SoloApiFactory(string connectionString) : WebApplicationFact
         builder.ConfigureServices(services =>
         {
             // Auth:Authority is empty, so Program registered no "Bearer" scheme;
-            // supply the header-driven test scheme under that name.
+            // supply the header-driven test scheme under that name — with the
+            // same solo_ forward rule production's JwtBearer carries, so the
+            // session scheme is exercised exactly as deployed.
             services.AddAuthentication()
-                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Bearer", null);
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Bearer", options =>
+                    options.ForwardDefaultSelector = context =>
+                        Auth.SessionTokens.IsSessionToken(Auth.SessionTokens.FromRequest(context.Request))
+                            ? Auth.AuthConstants.SessionScheme
+                            : null);
         });
     }
 }

@@ -2,12 +2,33 @@
 @inject GoogleIdentityService Google
 
 @*
-    Google renders this button itself, inside the div below — its branding rules
-    require it, and it's what carries the FedCM/One Tap plumbing. Nothing here
-    posts a form or navigates: the credential arrives via a JS callback.
+    Two renderings of the same sign-in. On the web, Google renders the button
+    itself inside the div below — its branding rules require it, and it's what
+    carries the FedCM/One Tap plumbing; the credential arrives via a JS
+    callback. In the desktop shell, Google refuses to run its widget at all,
+    so a plain button hands the flow to the system browser and the shell
+    injects the credential into the same callback when the browser finishes.
 *@
 <div class="d-flex flex-column align-center" style="gap:.5rem">
-    <div @ref="_container"></div>
+    @if (_desktop)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.OpenInNew"
+                   OnClick="@BeginBrowserSignIn">
+            Authorize in browser
+        </MudButton>
+
+        @if (_browserOpened)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center">
+                Finish signing in in your browser — Solo picks it up automatically.
+            </MudText>
+        }
+    }
+    else
+    {
+        <div @ref="_container"></div>
+    }
 
     @if (_error is not null)
     {
@@ -18,16 +39,29 @@
 @code {
     private ElementReference _container;
     private string? _error;
+    private bool _desktop;
+    private bool _browserOpened;
 
     /// <summary>Fires once a credential has been received and stored.</summary>
     [Parameter]
     public EventCallback OnSignedIn { get; set; }
 
-    protected override void OnInitialized() => Google.SignedInChanged += OnSignedInChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        Google.SignedInChanged += OnSignedInChanged;
+
+        _desktop = await Google.IsDesktopAsync();
+        if (_desktop)
+        {
+            // Register the credential receiver up front: the browser flow can
+            // complete while this component is simply sitting here.
+            await Google.InitializeAsync();
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (!firstRender || _desktop)
         {
             return;
         }
@@ -43,6 +77,12 @@
             _error = "Couldn't load Google sign-in. Check your connection or any content blocker.";
             StateHasChanged();
         }
+    }
+
+    private async Task BeginBrowserSignIn()
+    {
+        _browserOpened = true;
+        await Google.BeginBrowserSignInAsync();
     }
 
     private void OnSignedInChanged() => _ = InvokeAsync(async () =>

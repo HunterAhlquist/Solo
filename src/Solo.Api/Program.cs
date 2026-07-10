@@ -27,8 +27,11 @@ builder.Services.AddDbContext<SoloDbContext>((sp, options) =>
 });
 
 // ---------------------------------------------------------------------------
-// Authentication: OIDC bearer tokens from a configurable provider, plus the
-// setup-only static-credential scheme used until first-run handoff.
+// Authentication. The default "Bearer" scheme validates OIDC ID tokens, but
+// forwards solo_ tokens to the session scheme — long-lived sessions minted by
+// POST api/auth/sessions for clients that can't renew provider tokens
+// silently (the desktop app). Plus the setup-only static-credential scheme
+// used until first-run handoff.
 // ---------------------------------------------------------------------------
 var authority = builder.Configuration["Auth:Authority"];
 var clientId = builder.Configuration["Auth:ClientId"];
@@ -39,6 +42,8 @@ var authBuilder = builder.Services.AddAuthentication(options =>
 });
 authBuilder.AddScheme<AuthenticationSchemeOptions, SetupAuthenticationHandler>(
     AuthConstants.SetupScheme, null);
+authBuilder.AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
+    AuthConstants.SessionScheme, null);
 if (!string.IsNullOrEmpty(authority))
 {
     authBuilder.AddJwtBearer(AuthConstants.BearerScheme, options =>
@@ -47,6 +52,11 @@ if (!string.IsNullOrEmpty(authority))
         options.MapInboundClaims = false;
         options.TokenValidationParameters.ValidAudience = clientId;
         options.TokenValidationParameters.NameClaimType = "name";
+        // solo_ tokens are Solo sessions, not JWTs — hand them to that scheme.
+        options.ForwardDefaultSelector = context =>
+            SessionTokens.IsSessionToken(SessionTokens.FromRequest(context.Request))
+                ? AuthConstants.SessionScheme
+                : null;
         // SignalR websocket connections carry the token as a query parameter.
         options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
         {

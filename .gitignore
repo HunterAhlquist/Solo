@@ -66,3 +66,8 @@ Icon[\r]
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
+# Solo.Desktop (Electron shell)
+src/Solo.Desktop/node_modules/
+src/Solo.Desktop/wwwroot/
+src/Solo.Desktop/publish/
+src/Solo.Desktop/dist/

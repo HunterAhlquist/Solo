@@ -1,0 +1,56 @@
+{
+  "name": "solo-desktop",
+  "productName": "Solo",
+  "version": "0.1.0",
+  "description": "Desktop shell for the Solo client. Serves the published Blazor WASM app on a local origin and proxies API traffic to a configurable Solo instance.",
+  "main": "main.js",
+  "private": true,
+  "license": "MIT",
+  "author": "Hunter Ahlquist <hunterxahlquist@gmail.com>",
+  "scripts": {
+    "start": "electron .",
+    "build:client": "node scripts/build-client.mjs",
+    "build:icon": "electron scripts/build-icon.mjs",
+    "dist": "npm run build:client && electron-builder"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.solo.desktop",
+    "productName": "Solo",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "main/**",
+      "preload/**",
+      "settings/**",
+      "auth/**",
+      "wwwroot/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": ["dmg", "zip"],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "ProjectManagement"
+    }
+  }
+}

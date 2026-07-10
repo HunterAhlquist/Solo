@@ -16,6 +16,22 @@ public sealed record AuthConfigDto(
     string Provider,
     bool SetupCompleted);
 
+public sealed class CreateSessionRequest
+{
+    /// <summary>Client label shown when listing sessions, e.g. "Solo Desktop (macOS)".</summary>
+    [StringLength(200)]
+    public string? Description { get; init; }
+}
+
+/// <summary>
+/// A minted API session. <see cref="Token"/> is shown exactly once — the
+/// server keeps only a hash.
+/// </summary>
+public sealed record SessionDto(
+    string Token,
+    DateTimeOffset ExpiresAt,
+    UserDto User);
+
 public sealed record InstanceSettingsDto(
     int AuditRetentionDays,
     bool SetupCompleted,

@@ -16,15 +16,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="c88647a2-cb6a-42af-bbb2-5a429c7018cf" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.github/workflows/ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Solo.slnx" beforeDir="false" afterPath="$PROJECT_DIR$/Solo.slnx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/frontend-plan.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/frontend-plan.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/Solo.Api/Program.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Api/Program.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/Solo.Api/Solo.Api.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Api/Solo.Api.csproj" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/Solo.Api/wwwroot/index.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/Solo.Data/Domain/TaskStateCalculator.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Shared/TaskStateCalculator.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/Solo.Data.Tests/TaskStateCalculatorTests.cs" beforeDir="false" afterPath="$PROJECT_DIR$/tests/Solo.Data.Tests/TaskStateCalculatorTests.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Client/Solo.Client.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/Solo.Client.csproj" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -35,19 +29,24 @@
     <option name="firstShow" value="false" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="1" />
+    <option name="cachedIndexableFilesCount" value="8" />
+    <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$USER_HOME$/.microsoft/usersecrets/4fceb2f8-d72b-4025-9056-abc6e3c24000/secrets.json" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$USER_HOME$/.microsoft/usersecrets/f5399124-267b-4d5a-bfb0-afe8c0241868/secrets.json" root0="FORCE_HIGHLIGHTING" />
   </component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 7,
-  "fromUser": false
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 7,
+  &quot;fromUser&quot;: false
+}</component>
   <component name="ProjectId" id="3GChepqxekd0M5xvVxk7dmvkIhc" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -68,7 +67,7 @@
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "cidr.known.project.marker": "true",
     "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "frontend",
+    "git-widget-placeholder": "desktop-app",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -141,6 +140,7 @@
       <option name="presentableId" value="Default" />
       <updated>1783481556764</updated>
       <workItem from="1783481557806" duration="3602000" />
+      <workItem from="1783705251149" duration="88000" />
     </task>
     <servers />
   </component>

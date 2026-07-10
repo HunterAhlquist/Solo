@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in to Solo</title>
+  <style>
+    /* Matches the client's boot-splash aesthetic: black, #fff600, Courier. */
+    :root {
+      --bg: #000000;
+      --fg: #ffffff;
+      --dim: #9a9a9a;
+      --accent: #fff600;
+      --error: #ff5252;
+      --ok: #6fdc6f;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: "Courier New", monospace;
+    }
+
+    main {
+      display: grid;
+      place-content: center;
+      gap: 1.5rem;
+      height: 100vh;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    p {
+      margin: 0;
+      max-width: 34rem;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: var(--dim);
+    }
+
+    #button {
+      display: flex;
+      justify-content: center;
+      min-height: 44px;
+    }
+
+    #status.ok { color: var(--ok); }
+    #status.error { color: var(--error); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Solo</h1>
+  <p id="lead">Sign in here in your browser — the desktop app picks it up automatically.</p>
+  <div id="button"></div>
+  <p id="status"></p>
+</main>
+
+<script>
+  const status = document.getElementById('status');
+  const lead = document.getElementById('lead');
+  const state = new URLSearchParams(location.search).get('state');
+
+  function fail(message) {
+    status.textContent = message;
+    status.className = 'error';
+  }
+
+  async function complete(credential) {
+    const response = await fetch('/desktop-auth/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state, credential }),
+    });
+
+    if (response.ok) {
+      lead.textContent = 'You’re signed in.';
+      document.getElementById('button').remove();
+      status.textContent = 'Return to the Solo app — this tab can be closed.';
+      status.className = 'ok';
+    } else if (response.status === 403) {
+      fail('This sign-in link has expired. Go back to Solo and try again.');
+    } else {
+      fail('Something went wrong handing the sign-in to the app. Try again from Solo.');
+    }
+  }
+
+  async function run() {
+    if (!state) {
+      fail('Missing sign-in state. Start the sign-in from the Solo app.');
+      return;
+    }
+
+    // Same-origin: the shell proxies this to the configured instance.
+    const config = await fetch('/api/config/auth').then(r => r.json())
+        .catch(() => null);
+    if (!config?.clientId || config.provider?.toLowerCase() !== 'google') {
+      fail('This Solo instance is not configured for Google sign-in.');
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.onload = () => {
+      google.accounts.id.initialize({
+        client_id: config.clientId,
+        callback: response => complete(response.credential),
+        auto_select: true,
+        use_fedcm_for_prompt: true,
+        cancel_on_tap_outside: false,
+      });
+      google.accounts.id.renderButton(document.getElementById('button'), {
+        type: 'standard',
+        theme: 'filled_black',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'pill',
+        logo_alignment: 'left',
+        width: 280,
+      });
+      // With a live Google session, One Tap can finish this without a click.
+      try { google.accounts.id.prompt(); } catch { /* button remains */ }
+    };
+    script.onerror = () => fail('Couldn’t load Google sign-in. Check your connection.');
+    document.head.appendChild(script);
+  }
+
+  run();
+</script>
+</body>
+</html>

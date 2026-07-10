@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 namespace Solo.Client.Auth;
 
 /// <summary>
-/// Derives the authentication state from the stored Google ID token. The claims are
+/// Derives the authentication state from the stored credentials. The claims are
 /// for display only — the API re-validates every token's signature, issuer and
 /// audience on each request, and is the sole authority on who you are.
 /// </summary>
@@ -23,10 +23,22 @@ public sealed class GoogleAuthenticationStateProvider : AuthenticationStateProvi
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        var token = await _google.GetTokenAsync();
-        return GoogleJwt.ToPrincipal(token) is { } principal
-            ? new AuthenticationState(principal)
-            : Anonymous;
+        var (signedIn, displayToken) = await _google.GetAuthStateAsync();
+        if (!signedIn)
+        {
+            return Anonymous;
+        }
+
+        if (GoogleJwt.ToPrincipal(displayToken) is { } principal)
+        {
+            return new AuthenticationState(principal);
+        }
+
+        // Desktop edge: a live session whose display credential is missing or
+        // unreadable. Still signed in — the API honours the session token —
+        // just without a name to show.
+        return new AuthenticationState(new ClaimsPrincipal(
+            new ClaimsIdentity([], authenticationType: "solo-session", nameType: "name", roleType: "role")));
     }
 
     private void OnSignedInChanged() =>

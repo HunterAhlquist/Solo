@@ -41,6 +41,103 @@ window.solo = {
     },
 
     // -----------------------------------------------------------------------
+    // Desktop shell (Solo.Desktop). window.soloDesktop exists only inside the
+    // Electron app, exposed by its preload. Google refuses to run its sign-in
+    // pages in Electron, so the shell signs in through the system browser and
+    // delivers the credential to `deliver` below — which trades it for a
+    // long-lived Solo session (see `session`) so the desktop app stays signed
+    // in past the credential's one-hour life.
+    // -----------------------------------------------------------------------
+    desktop: {
+        available: () => !!window.soloDesktop,
+
+        // Reuses the GIS callback plumbing: a browser-won credential flows to
+        // the same .NET handler an in-page GIS sign-in would reach.
+        init: dotnetRef => { window.solo.google._dotnet = dotnetRef; },
+
+        beginSignIn: () => window.soloDesktop.beginSignIn(),
+
+        // Called by the shell when the browser flow completes. Exchanges
+        // before notifying, so .NET reads a live session the moment it hears.
+        // The Google credential is kept purely for its display claims.
+        async deliver(credential) {
+            const google = window.solo.google;
+            google._writeToken(credential);
+            try {
+                await window.solo.session.exchange(credential);
+            } catch {
+                return 'exchange-failed';
+            }
+
+            if (google._dotnet) {
+                google._dotnet.invokeMethodAsync('OnCredentialReceived', credential);
+                return 'notified';
+            }
+
+            return 'stored';
+        },
+    },
+
+    // -----------------------------------------------------------------------
+    // Solo API sessions (desktop only). A fresh Google credential buys a
+    // long-lived `solo_` token from the instance; that token — not the Google
+    // one — is what goes on the wire, and the server slides its expiry on use.
+    // -----------------------------------------------------------------------
+    session: {
+        tokenKey: 'solo.session.token',
+
+        async exchange(credential) {
+            const response = await fetch('api/auth/sessions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${credential}`,
+                },
+                body: JSON.stringify({ description: 'Solo Desktop' }),
+            });
+            if (!response.ok) {
+                throw new Error(`Session exchange failed: ${response.status}`);
+            }
+
+            this._write((await response.json()).token);
+        },
+
+        // Same "stay signed in" routing as the Google credential.
+        _write(token) {
+            const [into, outOf] = window.solo.google.remember()
+                ? [localStorage, sessionStorage]
+                : [sessionStorage, localStorage];
+            into.setItem(this.tokenKey, token);
+            outOf.removeItem(this.tokenKey);
+        },
+
+        token: () => sessionStorage.getItem(window.solo.session.tokenKey)
+            ?? localStorage.getItem(window.solo.session.tokenKey),
+
+        clear() {
+            sessionStorage.removeItem(this.tokenKey);
+            localStorage.removeItem(this.tokenKey);
+        },
+
+        // Sign-out: revoke server-side, then forget locally regardless.
+        async revoke() {
+            const token = this.token();
+            if (token) {
+                try {
+                    await fetch('api/auth/sessions/current', {
+                        method: 'DELETE',
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                } catch {
+                    // Instance unreachable — the server sweep will expire it.
+                }
+            }
+
+            this.clear();
+        },
+    },
+
+    // -----------------------------------------------------------------------
     // Google Identity Services. Google's "Web application" OAuth clients require
     // a client_secret at the token endpoint even with PKCE, which a browser
     // cannot hold — so we never touch the token endpoint. GIS returns the ID
@@ -85,6 +182,9 @@ window.solo = {
             });
         },
 
+        // Also the desktop shell's hand-off point: Electron cannot host
+        // Google's sign-in pages, so Solo.Desktop completes GIS in the system
+        // browser and injects the credential here (src/Solo.Desktop/main.js).
         _onCredential(credential) {
             window.solo.google._writeToken(credential);
             window.solo.google._dotnet?.invokeMethodAsync('OnCredentialReceived', credential);

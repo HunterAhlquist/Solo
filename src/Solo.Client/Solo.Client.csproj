@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
     <StaticWebAssetProjectMode>Default</StaticWebAssetProjectMode>
+    <UserSecretsId>4fceb2f8-d72b-4025-9056-abc6e3c24000</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

@@ -24,6 +24,7 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
 
     private DotNetObjectReference<GoogleIdentityService>? _self;
     private string? _token;
+    private bool? _desktop;
     private Task<bool>? _renewal;
     private Timer? _renewalTimer;
     private DateTimeOffset? _renewalScheduledFor;
@@ -32,8 +33,18 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     public event Action? SignedInChanged;
 
     /// <summary>
-    /// Loads the GIS script and wires its callback. Called by the sign-in UI, and
-    /// lazily by silent renewal — everything else reads storage without the script.
+    /// True inside the Solo.Desktop Electron shell. Google refuses to host its
+    /// sign-in pages there, so the desktop path never loads the GIS script:
+    /// sign-in happens in the system browser and the shell injects the
+    /// credential back through the same callback plumbing.
+    /// </summary>
+    public async ValueTask<bool> IsDesktopAsync() =>
+        _desktop ??= await js.InvokeAsync<bool>("solo.desktop.available");
+
+    /// <summary>
+    /// Wires the credential callback. On the web this loads the GIS script; in
+    /// the desktop shell it only registers the .NET receiver — called by the
+    /// sign-in UI, and lazily by silent renewal.
     /// </summary>
     public async Task InitializeAsync()
     {
@@ -43,7 +54,24 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
         }
 
         _self = DotNetObjectReference.Create(this);
-        await js.InvokeVoidAsync("solo.google.init", config.Auth!.ClientId, _self);
+        if (await IsDesktopAsync())
+        {
+            await js.InvokeVoidAsync("solo.desktop.init", _self);
+        }
+        else
+        {
+            await js.InvokeVoidAsync("solo.google.init", config.Auth!.ClientId, _self);
+        }
+    }
+
+    /// <summary>
+    /// Desktop only: opens the browser sign-in flow. Registers the callback
+    /// first, so the credential can land the moment the browser completes.
+    /// </summary>
+    public async Task BeginBrowserSignInAsync()
+    {
+        await InitializeAsync();
+        await js.InvokeVoidAsync("solo.desktop.beginSignIn");
     }
 
     public ValueTask RenderButtonAsync(ElementReference element, bool darkMode) =>
@@ -54,24 +82,43 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
 
     public ValueTask SetRememberAsync(bool value) => js.InvokeVoidAsync("solo.google.setRemember", value);
 
-    /// <summary>Called from JS when the user completes the Google prompt.</summary>
+    /// <summary>
+    /// Called from JS when a credential lands — the GIS callback on the web, or
+    /// the shell's browser-flow delivery on desktop (which has already traded
+    /// the credential for a Solo session before invoking this).
+    /// </summary>
     [JSInvokable]
-    public Task OnCredentialReceived(string credential)
+    public async Task OnCredentialReceived(string credential)
     {
+        if (await IsDesktopAsync())
+        {
+            // The wire token is the Solo session, already in storage; the
+            // credential only refreshes display claims. Nothing to renew.
+            SignedInChanged?.Invoke();
+            return;
+        }
+
         _token = credential;
         ScheduleRenewal(credential);
         SignedInChanged?.Invoke();
-        return Task.CompletedTask;
     }
 
     /// <summary>
-    /// The stored credential, renewed silently if it can be, or null once it is
-    /// truly gone. Reads session storage directly — deliberately without loading
-    /// the GIS script, since this runs on every authentication-state query; the
-    /// script is only fetched when a renewal is actually attempted.
+    /// The bearer credential for API calls: on desktop the long-lived Solo
+    /// session token (no client-side expiry — the server slides it); on the
+    /// web the stored Google credential, renewed silently if it can be, or
+    /// null once it is truly gone. Reads storage directly — deliberately
+    /// without loading the GIS script, since this runs on every
+    /// authentication-state query; the script is only fetched when a renewal
+    /// is actually attempted.
     /// </summary>
     public async ValueTask<string?> GetTokenAsync()
     {
+        if (await IsDesktopAsync())
+        {
+            return await js.InvokeAsync<string?>("solo.session.token");
+        }
+
         _token ??= await js.InvokeAsync<string?>("solo.google.token");
 
         if (!GoogleJwt.IsExpired(_token))
@@ -130,6 +177,14 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     {
         try
         {
+            if (await IsDesktopAsync())
+            {
+                // No silent channel in the shell: GIS (and its FedCM prompt)
+                // can't run there. Fail fast so the re-sign-in dialog appears
+                // immediately; one click sends the user through the browser.
+                return false;
+            }
+
             await InitializeAsync();
             var credential = await js.InvokeAsync<string?>("solo.google.prompt");
             if (GoogleJwt.IsExpired(credential))
@@ -201,10 +256,37 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
         SignedInChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Whether the user counts as signed in, and the token whose claims say
+    /// who they are (display only). On desktop those differ: the session
+    /// token authenticates, while the stored — possibly long-expired — Google
+    /// credential still names the user.
+    /// </summary>
+    public async ValueTask<(bool SignedIn, string? DisplayToken)> GetAuthStateAsync()
+    {
+        if (!await IsDesktopAsync())
+        {
+            var token = await GetTokenAsync();
+            return (token is not null, token);
+        }
+
+        if (await GetTokenAsync() is null)
+        {
+            return (false, null);
+        }
+
+        return (true, await js.InvokeAsync<string?>("solo.google.token"));
+    }
+
     public async Task SignOutAsync()
     {
         _token = null;
         CancelScheduledRenewal();
+        if (await IsDesktopAsync())
+        {
+            await js.InvokeVoidAsync("solo.session.revoke");
+        }
+
         await js.InvokeVoidAsync("solo.google.signOut");
         SignedInChanged?.Invoke();
     }

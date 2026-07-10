@@ -45,6 +45,17 @@ public sealed class AuditRetentionService(
                     logger.LogInformation(
                         "Audit retention removed {Count} entries older than {Cutoff:u}.", deleted, cutoff);
                 }
+
+                // Same daily sweep tidies dead API sessions. Expired rows are
+                // already refused at authentication; this is just hygiene.
+                var expiredSessions = await db.AuthSessions
+                    .Where(s => s.ExpiresAt < DateTimeOffset.UtcNow)
+                    .ExecuteDeleteAsync(stoppingToken);
+                if (expiredSessions > 0)
+                {
+                    logger.LogInformation(
+                        "Removed {Count} expired API sessions.", expiredSessions);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

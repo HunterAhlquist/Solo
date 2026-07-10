@@ -18,6 +18,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
     public DbSet<InstanceSettings> InstanceSettings => Set<InstanceSettings>();
     public DbSet<ImageAsset> ImageAssets => Set<ImageAsset>();
+    public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,6 +33,17 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
             e.Property(u => u.AvatarUrl).HasMaxLength(2000);
             e.HasIndex(u => new { u.Issuer, u.Subject }).IsUnique();
             e.HasIndex(u => u.Email);
+        });
+
+        modelBuilder.Entity<AuthSession>(e =>
+        {
+            // SHA-256, hex-encoded: fixed 64 chars. Unique — the hash is the lookup key.
+            e.Property(s => s.TokenHash).HasMaxLength(64);
+            e.Property(s => s.Description).HasMaxLength(200);
+            e.HasIndex(s => s.TokenHash).IsUnique();
+            e.HasIndex(s => s.ExpiresAt);
+            e.HasOne(s => s.User).WithMany()
+                .HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Project>(e =>
