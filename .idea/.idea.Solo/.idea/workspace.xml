@@ -16,9 +16,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="c88647a2-cb6a-42af-bbb2-5a429c7018cf" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/Solo.Client/Solo.Client.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/Solo.Client.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Client/Auth/GoogleIdentityService.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/Auth/GoogleIdentityService.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Client/wwwroot/js/solo-interop.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/wwwroot/js/solo-interop.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -38,10 +38,73 @@
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$USER_HOME$/.microsoft/usersecrets/4fceb2f8-d72b-4025-9056-abc6e3c24000/secrets.json" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$USER_HOME$/.microsoft/usersecrets/f5399124-267b-4d5a-bfb0-afe8c0241868/secrets.json" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/src/Solo.Client/Program.cs" root0="FORCE_HIGHLIGHTING" />
   </component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0" />
+      <entry key="S2" value="1.0" />
+      <entry key="S5" value="1.0" />
+      <entry key="S10" value="1.0" />
+      <entry key="S30" value="1.0" />
+      <entry key="S60" value="1.0" />
+      <entry key="M2" value="1.0" />
+      <entry key="M5" value="1.0" />
+      <entry key="M10" value="1.0" />
+      <entry key="M15" value="1.0" />
+      <entry key="M30" value="1.0" />
+      <entry key="H1" value="1.0" />
+      <entry key="H2" value="1.0" />
+      <entry key="H4" value="1.0" />
+      <entry key="D1" value="1.0" />
+      <entry key="W1" value="1.0" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="0.0" />
+      <entry key="S60" value="0.0" />
+      <entry key="M2" value="0.0" />
+      <entry key="M5" value="0.0" />
+      <entry key="M10" value="0.0" />
+      <entry key="M15" value="0.0" />
+      <entry key="M30" value="0.0" />
+      <entry key="H1" value="0.0" />
+      <entry key="H2" value="0.0" />
+      <entry key="H4" value="0.0" />
+      <entry key="D1" value="0.0" />
+      <entry key="W1" value="0.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.6070974421975234" />
+      <entry key="MS500" value="0.9050064628829054" />
+      <entry key="S2" value="0.9753554615276419" />
+      <entry key="S5" value="0.9900683286467772" />
+      <entry key="S10" value="0.9950217729511135" />
+      <entry key="S30" value="0.9983378297043665" />
+      <entry key="S60" value="0.999168569213607" />
+      <entry key="M2" value="0.9995841981612189" />
+      <entry key="M5" value="0.9998336585129451" />
+      <entry key="M10" value="0.9999168257974986" />
+      <entry key="M15" value="0.9999445497629764" />
+      <entry key="M30" value="0.9999722744971364" />
+      <entry key="H1" value="0.999986137152479" />
+      <entry key="H2" value="0.999993068552217" />
+      <entry key="H4" value="0.9999965342701028" />
+      <entry key="D1" value="0.9999994223775164" />
+      <entry key="W1" value="0.999999917482482" />
+    </decayedShown>
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="Toolset" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 7,
@@ -54,7 +117,7 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
-    ".NET Launch Settings Profile.Solo.Api: http.executor": "Run",
+    ".NET Launch Settings Profile.Solo.Api: http.executor": "Debug",
     "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.MCP Project settings loaded": "true",
@@ -67,7 +130,7 @@
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "cidr.known.project.marker": "true",
     "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "desktop-app",
+    "git-widget-placeholder": "main",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",

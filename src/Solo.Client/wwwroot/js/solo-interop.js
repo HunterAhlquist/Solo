@@ -65,7 +65,11 @@ window.solo = {
             google._writeToken(credential);
             try {
                 await window.solo.session.exchange(credential);
-            } catch {
+            } catch (err) {
+                // Tell the sign-in UI why nothing happened — a silent return
+                // leaves the user staring at the login screen.
+                google._dotnet?.invokeMethodAsync('OnSignInFailed',
+                    String(err?.message ?? err));
                 return 'exchange-failed';
             }
 
@@ -95,11 +99,21 @@ window.solo = {
                 },
                 body: JSON.stringify({ description: 'Solo Desktop' }),
             });
-            if (!response.ok) {
-                throw new Error(`Session exchange failed: ${response.status}`);
+            // 404/405: the instance predates desktop sessions entirely.
+            if (response.status === 404 || response.status === 405) {
+                throw new Error('This Solo server does not support desktop sign-in yet — update the server and try again.');
             }
 
-            this._write((await response.json()).token);
+            if (!response.ok) {
+                throw new Error(`The server refused the sign-in (HTTP ${response.status}).`);
+            }
+
+            const session = await response.json().catch(() => null);
+            if (!session?.token) {
+                throw new Error('The server answered, but not with a session — update the server and try again.');
+            }
+
+            this._write(session.token);
         },
 
         // Same "stay signed in" routing as the Google credential.

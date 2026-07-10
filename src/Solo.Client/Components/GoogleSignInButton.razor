@@ -49,6 +49,7 @@
     protected override async Task OnInitializedAsync()
     {
         Google.SignedInChanged += OnSignedInChanged;
+        Google.SignInFailed += OnSignInFailed;
 
         _desktop = await Google.IsDesktopAsync();
         if (_desktop)
@@ -89,11 +90,23 @@
     {
         if (await Google.GetTokenAsync() is not null)
         {
+            _error = null;
             await OnSignedIn.InvokeAsync();
         }
 
         StateHasChanged();
     });
 
-    public void Dispose() => Google.SignedInChanged -= OnSignedInChanged;
+    private void OnSignInFailed(string message) => _ = InvokeAsync(() =>
+    {
+        _browserOpened = false;
+        _error = message;
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Google.SignedInChanged -= OnSignedInChanged;
+        Google.SignInFailed -= OnSignInFailed;
+    }
 }

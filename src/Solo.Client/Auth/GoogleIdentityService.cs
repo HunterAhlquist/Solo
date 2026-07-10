@@ -32,6 +32,10 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     /// <summary>Raised when a credential arrives or is cleared.</summary>
     public event Action? SignedInChanged;
 
+    /// <summary>Raised when a browser sign-in completed but could not take effect
+    /// (desktop: the session exchange with the instance failed).</summary>
+    public event Action<string>? SignInFailed;
+
     /// <summary>
     /// True inside the Solo.Desktop Electron shell. Google refuses to host its
     /// sign-in pages there, so the desktop path never loads the GIS script:
@@ -101,6 +105,14 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
         _token = credential;
         ScheduleRenewal(credential);
         SignedInChanged?.Invoke();
+    }
+
+    /// <summary>Called from JS when a browser sign-in couldn't be completed.</summary>
+    [JSInvokable]
+    public Task OnSignInFailed(string message)
+    {
+        SignInFailed?.Invoke(message);
+        return Task.CompletedTask;
     }
 
     /// <summary>
