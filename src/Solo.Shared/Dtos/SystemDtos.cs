@@ -32,6 +32,36 @@ public sealed record SessionDto(
     DateTimeOffset ExpiresAt,
     UserDto User);
 
+/// <summary>Opens a desktop browser sign-in flow (device-code style).</summary>
+public sealed class DesktopAuthStartRequest
+{
+    /// <summary>Label for the session this flow will mint, e.g. "Solo Desktop (macOS)".</summary>
+    [StringLength(200)]
+    public string? Description { get; init; }
+}
+
+/// <summary>
+/// A pending desktop sign-in. <see cref="State"/> rides in the browser URL and
+/// only identifies the flow; <see cref="DeviceCode"/> never leaves the desktop
+/// shell and is what redeems the session.
+/// </summary>
+public sealed record DesktopAuthFlowDto(
+    string State,
+    string DeviceCode,
+    DateTimeOffset ExpiresAt);
+
+public sealed class DesktopAuthCompleteRequest
+{
+    [Required]
+    public required string State { get; init; }
+}
+
+public sealed class DesktopAuthPollRequest
+{
+    [Required]
+    public required string DeviceCode { get; init; }
+}
+
 public sealed record InstanceSettingsDto(
     int AuditRetentionDays,
     bool SetupCompleted,

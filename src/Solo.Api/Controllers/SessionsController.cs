@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Api.Services;
 using Solo.Data;
-using Solo.Data.Entities;
 using Solo.Shared.Dtos;
 
 namespace Solo.Api.Controllers;
@@ -40,14 +39,7 @@ public sealed class SessionsController : ApiControllerBase
             return Forbid();
         }
 
-        var token = SessionTokens.Generate();
-        var session = new AuthSession
-        {
-            UserId = user.Id,
-            TokenHash = SessionTokens.Hash(token),
-            Description = request?.Description,
-            ExpiresAt = DateTimeOffset.UtcNow + SessionAuthenticationHandler.SessionLifetime(config),
-        };
+        var (session, token) = AuthSessionMinter.Mint(user.Id, request?.Description, config);
         db.AuthSessions.Add(session);
         await db.SaveChangesAsync(ct);
 

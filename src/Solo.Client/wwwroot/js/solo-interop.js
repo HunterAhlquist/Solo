@@ -43,94 +43,76 @@ window.solo = {
     // -----------------------------------------------------------------------
     // Desktop shell (Solo.Desktop). window.soloDesktop exists only inside the
     // Electron app, exposed by its preload. Google refuses to run its sign-in
-    // pages in Electron, so the shell signs in through the system browser and
-    // delivers the credential to `deliver` below — which trades it for a
-    // long-lived Solo session (see `session`) so the desktop app stays signed
-    // in past the credential's one-hour life.
+    // pages in Electron, so the shell signs in through the system browser on
+    // the instance's own origin; the instance verifies the sign-in, mints a
+    // long-lived Solo session (see `session`), and the shell delivers it to
+    // `deliverSession` below — no provider credential ever reaches the app.
     // -----------------------------------------------------------------------
     desktop: {
+        _dotnet: null,
+
         available: () => !!window.soloDesktop,
 
-        // Reuses the GIS callback plumbing: a browser-won credential flows to
-        // the same .NET handler an in-page GIS sign-in would reach.
-        init: dotnetRef => { window.solo.google._dotnet = dotnetRef; },
+        // Registers the .NET receiver the shell's delivery notifies.
+        init: dotnetRef => { window.solo.desktop._dotnet = dotnetRef; },
 
         beginSignIn: () => window.soloDesktop.beginSignIn(),
 
-        // Called by the shell when the browser flow completes. Exchanges
-        // before notifying, so .NET reads a live session the moment it hears.
-        // The Google credential is kept purely for its display claims.
-        async deliver(credential) {
-            const google = window.solo.google;
-            google._writeToken(credential);
-            try {
-                await window.solo.session.exchange(credential);
-            } catch (err) {
-                // Tell the sign-in UI why nothing happened — a silent return
-                // leaves the user staring at the login screen.
-                google._dotnet?.invokeMethodAsync('OnSignInFailed',
-                    String(err?.message ?? err));
-                return 'exchange-failed';
-            }
-
-            if (google._dotnet) {
-                google._dotnet.invokeMethodAsync('OnCredentialReceived', credential);
+        // Called by the shell when the browser flow completes: the session is
+        // already live server-side, so store it, then tell .NET.
+        deliverSession(token, user) {
+            window.solo.session.store(token, user);
+            if (window.solo.desktop._dotnet) {
+                window.solo.desktop._dotnet.invokeMethodAsync('OnDesktopSignedIn');
                 return 'notified';
             }
 
             return 'stored';
         },
+
+        // Called by the shell when the browser flow could not complete — a
+        // silent return leaves the user staring at the login screen.
+        signInFailed(message) {
+            window.solo.desktop._dotnet?.invokeMethodAsync('OnSignInFailed', message);
+        },
     },
 
     // -----------------------------------------------------------------------
-    // Solo API sessions (desktop only). A fresh Google credential buys a
-    // long-lived `solo_` token from the instance; that token — not the Google
-    // one — is what goes on the wire, and the server slides its expiry on use.
+    // Solo API sessions (desktop only). The browser sign-in buys a long-lived
+    // `solo_` token from the instance; that token is what goes on the wire,
+    // and the server slides its expiry on use. The profile delivered with it
+    // is kept for display — desktop has no provider credential to read
+    // claims from.
     // -----------------------------------------------------------------------
     session: {
         tokenKey: 'solo.session.token',
+        userKey: 'solo.session.user',
 
-        async exchange(credential) {
-            const response = await fetch('api/auth/sessions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${credential}`,
-                },
-                body: JSON.stringify({ description: 'Solo Desktop' }),
-            });
-            // 404/405: the instance predates desktop sessions entirely.
-            if (response.status === 404 || response.status === 405) {
-                throw new Error('This Solo server does not support desktop sign-in yet — update the server and try again.');
-            }
-
-            if (!response.ok) {
-                throw new Error(`The server refused the sign-in (HTTP ${response.status}).`);
-            }
-
-            const session = await response.json().catch(() => null);
-            if (!session?.token) {
-                throw new Error('The server answered, but not with a session — update the server and try again.');
-            }
-
-            this._write(session.token);
-        },
-
-        // Same "stay signed in" routing as the Google credential.
-        _write(token) {
+        // Same "stay signed in" routing as the web credential: localStorage
+        // survives restarts, sessionStorage scopes to the window.
+        store(token, user) {
             const [into, outOf] = window.solo.google.remember()
                 ? [localStorage, sessionStorage]
                 : [sessionStorage, localStorage];
             into.setItem(this.tokenKey, token);
             outOf.removeItem(this.tokenKey);
+            if (user) {
+                into.setItem(this.userKey, JSON.stringify(user));
+            }
+            outOf.removeItem(this.userKey);
         },
 
         token: () => sessionStorage.getItem(window.solo.session.tokenKey)
             ?? localStorage.getItem(window.solo.session.tokenKey),
 
+        user: () => sessionStorage.getItem(window.solo.session.userKey)
+            ?? localStorage.getItem(window.solo.session.userKey),
+
         clear() {
-            sessionStorage.removeItem(this.tokenKey);
-            localStorage.removeItem(this.tokenKey);
+            for (const key of [this.tokenKey, this.userKey]) {
+                sessionStorage.removeItem(key);
+                localStorage.removeItem(key);
+            }
         },
 
         // Sign-out: revoke server-side, then forget locally regardless.
@@ -196,9 +178,6 @@ window.solo = {
             });
         },
 
-        // Also the desktop shell's hand-off point: Electron cannot host
-        // Google's sign-in pages, so Solo.Desktop completes GIS in the system
-        // browser and injects the credential here (src/Solo.Desktop/main.js).
         _onCredential(credential) {
             window.solo.google._writeToken(credential);
             window.solo.google._dotnet?.invokeMethodAsync('OnCredentialReceived', credential);

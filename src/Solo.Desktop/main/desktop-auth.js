@@ -1,61 +1,134 @@
 // Google refuses to run its sign-in pages inside Electron ("this browser or
 // app may not be secure"), no matter how Chrome-like the user agent looks. So
 // the desktop shell signs in the way Google prescribes for installed apps: in
-// the user's real browser. The shell serves a page on its own local origin —
-// the same http://localhost:{port} the operator already registered with
-// Google — that runs the ordinary GIS flow and posts the resulting ID token
-// back. The shell then hands that credential to the running client exactly
-// where a GIS callback would have delivered it, so the client neither knows
-// nor cares which browser did the signing in.
+// the user's real browser — on the instance's own origin, which the operator
+// already registered with Google for the web client. The flow is device-code
+// shaped (see the API's DesktopAuthController):
 //
-// Each flow is armed with a single-use, expiring `state` nonce minted when
-// the user clicks the in-app button. Without a live nonce the completion
-// endpoint refuses — nothing on the machine can push a credential into the
-// app unless the app just asked for one.
-const crypto = require('crypto');
+//   1. POST {instance}/api/auth/desktop/start  → { state, deviceCode, expiresAt }
+//   2. open {instance}/desktop-auth?state=…    in the default browser
+//   3. POST {instance}/api/auth/desktop/poll   with the deviceCode until the
+//      browser sign-in completes; the answer is a ready-made solo_ session.
+//
+// The state only identifies the flow in the browser URL; the deviceCode never
+// leaves this process, and the instance hands out the session exactly once —
+// a snooped URL cannot redeem anything.
+const { net, shell } = require('electron');
 
-const STATE_TTL_MS = 10 * 60 * 1000;
+const POLL_INTERVAL_MS = 2000;
 
 class DesktopAuth {
     constructor() {
-        this.pending = new Map(); // state -> expiry epoch ms
+        // Bumped on every begin(): an older flow's poll loop sees a newer
+        // generation and stops silently, so only one flow is ever live.
+        this._generation = 0;
     }
 
-    /** Starts a flow: returns the state nonce for the browser sign-in URL. */
-    mint() {
-        this.sweep();
-        const state = crypto.randomBytes(16).toString('hex');
-        this.pending.set(state, Date.now() + STATE_TTL_MS);
-        return state;
-    }
+    /**
+     * Starts a browser sign-in against the instance. Resolves once the
+     * browser is open (or the flow failed to start); the session itself
+     * arrives later through onSession, a failure through onFailure.
+     */
+    async begin({ instanceUrl, onSession, onFailure }) {
+        const generation = ++this._generation;
+        if (!instanceUrl) {
+            onFailure('No Solo instance configured.');
+            return;
+        }
 
-    /** True while the state may still complete (does not consume it). */
-    isPending(state) {
-        this.sweep();
-        return typeof state === 'string' && this.pending.has(state);
-    }
-
-    /** Consumes the state; a second completion with the same nonce fails. */
-    consume(state) {
-        this.sweep();
-        return typeof state === 'string' && this.pending.delete(state);
-    }
-
-    sweep() {
-        const now = Date.now();
-        for (const [state, expiry] of this.pending) {
-            if (expiry < now) {
-                this.pending.delete(state);
+        let flow;
+        try {
+            const response = await postJson(`${instanceUrl}/api/auth/desktop/start`, {
+                description: `Solo Desktop (${platformLabel()})`,
+            });
+            if (response.status === 404 || response.status === 405) {
+                onFailure('This Solo server does not support desktop sign-in yet — update the server and try again.');
+                return;
             }
+
+            if (!response.ok) {
+                onFailure(`The server refused to start the sign-in (HTTP ${response.status}).`);
+                return;
+            }
+
+            flow = await response.json();
+        } catch (err) {
+            onFailure(`Could not reach the server: ${err.message}`);
+            return;
+        }
+
+        if (typeof flow?.state !== 'string' || typeof flow?.deviceCode !== 'string') {
+            onFailure('The server answered, but not with a sign-in flow — update the server and try again.');
+            return;
+        }
+
+        shell.openExternal(`${instanceUrl}/desktop-auth?state=${encodeURIComponent(flow.state)}`);
+        this._poll({ instanceUrl, flow, generation, onSession, onFailure });
+    }
+
+    async _poll({ instanceUrl, flow, generation, onSession, onFailure }) {
+        const deadline = Date.parse(flow.expiresAt) || Date.now() + 10 * 60 * 1000;
+
+        while (this._generation === generation && Date.now() < deadline) {
+            await sleep(POLL_INTERVAL_MS);
+            if (this._generation !== generation) {
+                return;
+            }
+
+            let response;
+            try {
+                response = await postJson(`${instanceUrl}/api/auth/desktop/poll`, {
+                    deviceCode: flow.deviceCode,
+                });
+            } catch {
+                continue; // Network blip; the flow may still complete.
+            }
+
+            if (response.status === 202) {
+                continue; // Still waiting on the browser.
+            }
+
+            if (!response.ok) {
+                onFailure('The sign-in expired before it completed. Try again.');
+                return;
+            }
+
+            const session = await response.json().catch(() => null);
+            if (typeof session?.token !== 'string') {
+                onFailure('The server answered, but not with a session — update the server and try again.');
+                return;
+            }
+
+            onSession(session);
+            return;
+        }
+
+        if (this._generation === generation) {
+            onFailure('The sign-in timed out. Try again.');
         }
     }
 }
 
-/** Shallow shape check only — real validation is the API's signature check. */
-function looksLikeJwt(credential) {
-    return typeof credential === 'string'
-        && credential.length < 8192
-        && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(credential);
+function postJson(url, body) {
+    return net.fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        cache: 'no-store',
+    });
 }
 
-module.exports = { DesktopAuth, looksLikeJwt };
+function platformLabel() {
+    switch (process.platform) {
+        case 'darwin': return 'macOS';
+        case 'win32': return 'Windows';
+        case 'linux': return 'Linux';
+        default: return process.platform;
+    }
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+module.exports = { DesktopAuth };

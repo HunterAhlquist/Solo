@@ -1,11 +1,13 @@
 // Solo desktop shell. The Blazor client is served from a local origin
 // (http://localhost:{port}) and all /api + /hubs traffic is proxied to the
 // Solo instance chosen in the settings window — the client itself is the
-// untouched web build. See README.md for the Google sign-in origin note.
+// untouched web build. Sign-in happens in the system browser on the
+// instance's own origin (main/desktop-auth.js).
 const { app, BrowserWindow, Menu, dialog, ipcMain, net, shell } = require('electron');
 const path = require('path');
 const settingsStore = require('./main/settings');
 const { createSoloServer } = require('./main/server');
+const { createMcpHandler } = require('./main/mcp');
 const { buildMenu } = require('./main/menu');
 const { DesktopAuth } = require('./main/desktop-auth');
 
@@ -95,8 +97,11 @@ function ensureServer() {
         server = createSoloServer({
             clientDir: clientDir(),
             getTarget: () => settings.instanceUrl,
-            desktopAuth,
-            onSignInCredential: deliverCredential,
+            mcpHandler: createMcpHandler({
+                getTarget: () => settings.instanceUrl,
+                getSessionToken,
+                isEnabled: () => settings.mcpEnabled,
+            }),
         });
         server.once('error', reject);
         server.listen(settings.port, '127.0.0.1', () => {
@@ -113,8 +118,9 @@ function ensureServer() {
 }
 
 function localUrl() {
-    // localhost rather than 127.0.0.1: this is the origin operators register
-    // with their OIDC provider, so it must be stable and predictable.
+    // localhost rather than 127.0.0.1: for non-Google OIDC providers this is
+    // still the redirect origin operators register, so it must be stable and
+    // predictable. (Google sign-in runs on the instance's own origin.)
     return `http://localhost:${listeningPort}/`;
 }
 
@@ -157,14 +163,19 @@ function createMainWindow() {
 }
 
 function beginBrowserSignIn() {
-    shell.openExternal(`${localUrl()}desktop-auth/signin?state=${desktopAuth.mint()}`);
+    return desktopAuth.begin({
+        instanceUrl: settings.instanceUrl,
+        onSession: deliverSession,
+        onFailure: notifySignInFailed,
+    });
 }
 
-// Hands a browser-won ID token to the running client via
-// `solo.desktop.deliver` (wwwroot/js/solo-interop.js), which trades it for a
-// long-lived Solo session before notifying Blazor — the desktop app then
-// stays signed in past the Google credential's one-hour life.
-async function deliverCredential(credential) {
+// Hands a browser-won Solo session to the running client via
+// `solo.desktop.deliverSession` (wwwroot/js/solo-interop.js): the instance
+// verified the sign-in and minted the session server-side, so the client
+// only stores it and refreshes — the desktop app then stays signed in on
+// the session's sliding expiry, no hourly Google credential involved.
+async function deliverSession(session) {
     if (!mainWindow) {
         return;
     }
@@ -178,7 +189,8 @@ async function deliverCredential(credential) {
     try {
         outcome = await contents.executeJavaScript(
             `window.solo?.desktop
-                ? window.solo.desktop.deliver(${JSON.stringify(credential)})
+                ? window.solo.desktop.deliverSession(
+                    ${JSON.stringify(session.token)}, ${JSON.stringify(session.user ?? null)})
                 : 'no-interop'`, true);
     } catch {
         // Renderer navigating or gone; the next sign-in attempt starts fresh.
@@ -191,12 +203,46 @@ async function deliverCredential(credential) {
         // signed-in state instead of leaving the UI stuck.
         contents.reload();
     }
-    // 'exchange-failed': nothing was stored — the sign-in page stays up and
-    // the user can retry; reloading would only lose state.
 
     mainWindow.show();
     mainWindow.focus();
     app.focus({ steal: true });
+}
+
+// Surfaces a failed browser flow in the sign-in UI — a silent return would
+// leave the user staring at "finish signing in in your browser" forever.
+async function notifySignInFailed(message) {
+    const contents = mainWindow?.webContents;
+    if (!contents || contents.isDestroyed()) {
+        return;
+    }
+
+    try {
+        await contents.executeJavaScript(
+            `window.solo?.desktop?.signInFailed(${JSON.stringify(message)})`, true);
+    } catch {
+        // Renderer navigating or gone — nowhere to show it.
+    }
+}
+
+// The MCP endpoint (main/mcp.js) authenticates its Solo API calls with the
+// session token the signed-in client keeps in web storage — read from the
+// renderer on demand rather than copied anywhere, so MCP access tracks the
+// app's sign-in state exactly: sign out (or close the window) and it's gone.
+async function getSessionToken() {
+    const contents = mainWindow?.webContents;
+    if (!contents || contents.isDestroyed() || contents.isLoading()) {
+        return null;
+    }
+
+    try {
+        const token = await contents.executeJavaScript(
+            'window.solo?.session?.token() ?? null', true);
+        return typeof token === 'string' && token.startsWith('solo_') ? token : null;
+    } catch {
+        // Renderer navigating or gone — same as not signed in.
+        return null;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +257,7 @@ function openSettingsWindow() {
 
     settingsWindow = new BrowserWindow({
         width: 520,
-        height: 460,
+        height: 580,
         resizable: false,
         minimizable: false,
         fullscreenable: false,
@@ -234,6 +280,7 @@ function registerIpc() {
     ipcMain.handle('settings:get', () => ({
         instanceUrl: settings.instanceUrl,
         port: settings.port,
+        mcpEnabled: settings.mcpEnabled,
         firstRun: !settings.instanceUrl,
     }));
 
@@ -271,20 +318,26 @@ function registerIpc() {
         }
     });
 
-    ipcMain.handle('settings:save', async (_event, rawUrl) => {
+    ipcMain.handle('settings:save', async (_event, rawUrl, mcpEnabled) => {
         const url = settingsStore.normalizeInstanceUrl(rawUrl);
         if (!url) {
             return { ok: false, error: 'Enter a valid http(s) address.' };
         }
 
+        const urlChanged = url !== settings.instanceUrl;
         settings.instanceUrl = url;
+        settings.mcpEnabled = mcpEnabled === true;
         settingsStore.save(settings);
 
         // Main window before closing settings: with quit-on-all-closed, the
         // reverse order would briefly leave zero windows and end the app.
         if (mainWindow) {
-            // New instance, fresh boot: the client fetches auth config on load.
-            mainWindow.webContents.loadURL(localUrl());
+            if (urlChanged) {
+                // New instance, fresh boot: the client fetches auth config on
+                // load. An MCP-only change needs nothing — the handler reads
+                // the flag per request.
+                mainWindow.webContents.loadURL(localUrl());
+            }
             mainWindow.focus();
         } else {
             await startShell();

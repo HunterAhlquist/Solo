@@ -6,6 +6,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('soloSettings', {
     get: () => ipcRenderer.invoke('settings:get'),
     test: url => ipcRenderer.invoke('settings:test', url),
-    save: url => ipcRenderer.invoke('settings:save', url),
+    save: (url, mcpEnabled) => ipcRenderer.invoke('settings:save', url, mcpEnabled),
     close: () => ipcRenderer.invoke('settings:close'),
 });

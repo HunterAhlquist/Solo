@@ -67,6 +67,10 @@
 </main>
 
 <script>
+  // Served by the API at GET /desktop-auth?state={flow} (DesktopAuthController)
+  // for the desktop shell's browser sign-in. Runs the ordinary GIS flow on this
+  // instance's own origin, then hands the credential to the complete endpoint,
+  // which pins the verified user to the flow the shell is polling.
   const status = document.getElementById('status');
   const lead = document.getElementById('lead');
   const state = new URLSearchParams(location.search).get('state');
@@ -77,10 +81,14 @@
   }
 
   async function complete(credential) {
-    const response = await fetch('/desktop-auth/complete', {
+    // Relative, like the client's own calls, so a sub-path instance works.
+    const response = await fetch('api/auth/desktop/complete', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, credential }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${credential}`,
+      },
+      body: JSON.stringify({ state }),
     });
 
     if (response.ok) {
@@ -88,7 +96,7 @@
       document.getElementById('button').remove();
       status.textContent = 'Return to the Solo app — this tab can be closed.';
       status.className = 'ok';
-    } else if (response.status === 403) {
+    } else if (response.status === 404) {
       fail('This sign-in link has expired. Go back to Solo and try again.');
     } else {
       fail('Something went wrong handing the sign-in to the app. Try again from Solo.');
@@ -101,8 +109,7 @@
       return;
     }
 
-    // Same-origin: the shell proxies this to the configured instance.
-    const config = await fetch('/api/config/auth').then(r => r.json())
+    const config = await fetch('api/config/auth').then(r => r.json())
         .catch(() => null);
     if (!config?.clientId || config.provider?.toLowerCase() !== 'google') {
       fail('This Solo instance is not configured for Google sign-in.');

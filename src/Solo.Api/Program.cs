@@ -76,6 +76,8 @@ if (!string.IsNullOrEmpty(authority))
 }
 
 builder.Services.AddScoped<UserProvisioningService>();
+// Desktop shell browser sign-in: pending device-code flows (see DesktopAuthController).
+builder.Services.AddSingleton<DesktopSignInFlows>();
 builder.Services.AddScoped<IAuthorizationHandler, ProjectAccessHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, SuperAdminHandler>();
 builder.Services.AddAuthorizationBuilder()

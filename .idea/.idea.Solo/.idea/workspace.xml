@@ -17,8 +17,8 @@
   <component name="ChangeListManager">
     <list default="true" id="c88647a2-cb6a-42af-bbb2-5a429c7018cf" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/Solo.Client/Auth/GoogleIdentityService.cs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/Auth/GoogleIdentityService.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/Solo.Client/wwwroot/js/solo-interop.js" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/wwwroot/js/solo-interop.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Desktop/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Desktop/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Desktop/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Desktop/package.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -130,13 +130,13 @@
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "cidr.known.project.marker": "true",
     "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "mcp",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "settings.editor.selected.configurable": "settings.qodana",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
@@ -231,5 +231,9 @@
         </breakpoint>
       </breakpoints>
     </breakpoint-manager>
+  </component>
+  <component name="XSLT-Support.FileAssociations.UIState">
+    <expand />
+    <select />
   </component>
 </project>

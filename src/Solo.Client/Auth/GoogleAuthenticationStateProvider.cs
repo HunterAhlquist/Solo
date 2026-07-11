@@ -23,18 +23,18 @@ public sealed class GoogleAuthenticationStateProvider : AuthenticationStateProvi
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        var (signedIn, displayToken) = await _google.GetAuthStateAsync();
+        var (signedIn, display) = await _google.GetAuthStateAsync();
         if (!signedIn)
         {
             return Anonymous;
         }
 
-        if (GoogleJwt.ToPrincipal(displayToken) is { } principal)
+        if (display is not null)
         {
-            return new AuthenticationState(principal);
+            return new AuthenticationState(display);
         }
 
-        // Desktop edge: a live session whose display credential is missing or
+        // Desktop edge: a live session whose stored profile is missing or
         // unreadable. Still signed in — the API honours the session token —
         // just without a name to show.
         return new AuthenticationState(new ClaimsPrincipal(

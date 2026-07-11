@@ -14,7 +14,9 @@
     "dist": "npm run build:client && electron-builder"
   },
   "dependencies": {
-    "http-proxy": "^1.18.1"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "http-proxy": "^1.18.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "electron": "^37.0.0",
@@ -31,14 +33,16 @@
       "main/**",
       "preload/**",
       "settings/**",
-      "auth/**",
       "wwwroot/**",
       "package.json"
     ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -46,10 +50,14 @@
       "notarize": true
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "ProjectManagement"
     }
   }
