@@ -65,9 +65,18 @@ public sealed class SetupFlowTests(PostgresFixture postgres) : IAsyncLifetime
         var deadVerify = await setupClient.PostAsync("/api/setup/verify", null);
         Assert.Equal(HttpStatusCode.Unauthorized, deadVerify.StatusCode);
 
-        // A second handoff attempt conflicts, even with valid credentials.
-        var second = _factory.As("intruder", "intruder@example.com");
-        var repeat = await second.PostAsJsonAsync("/api/setup/complete", new
+        // Once setup completes, an uninvited stranger is not even provisioned:
+        // the handoff refuses before the conflict check can be reached.
+        var intruder = _factory.As("intruder", "intruder@example.com");
+        var strangerRepeat = await intruder.PostAsJsonAsync("/api/setup/complete", new
+        {
+            setupUsername = SoloApiFactory.SetupUsername,
+            setupPassword = SoloApiFactory.SetupPassword,
+        }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Forbidden, strangerRepeat.StatusCode);
+
+        // A second handoff by a known user conflicts, even with valid credentials.
+        var repeat = await hunter.PostAsJsonAsync("/api/setup/complete", new
         {
             setupUsername = SoloApiFactory.SetupUsername,
             setupPassword = SoloApiFactory.SetupPassword,

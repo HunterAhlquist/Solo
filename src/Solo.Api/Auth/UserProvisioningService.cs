@@ -8,7 +8,9 @@ namespace Solo.Api.Auth;
 /// <summary>
 /// Finds or creates the <see cref="User"/> row for an SSO principal. Identity
 /// is the OIDC iss + sub pair; the first valid sign-in provisions the row and
-/// activates any pending project invites matching the token's email.
+/// activates any pending project invites matching the token's email. A valid
+/// token alone provisions nothing: an identity nobody invited resolves to null
+/// and leaves no row behind.
 /// </summary>
 public sealed class UserProvisioningService(SoloDbContext db, IConfiguration config)
 {
@@ -31,6 +33,17 @@ public sealed class UserProvisioningService(SoloDbContext db, IConfiguration con
 
         if (user is null)
         {
+            // Only an identity someone let in gets a row: a pending invite must
+            // match the token's email. First-run setup is the exception — the
+            // wizard's SSO user has to exist before SetupController.Complete
+            // can grant it super admin.
+            var invited = identity.Email is not null && await db.ProjectMembers.AsNoTracking()
+                .AnyAsync(m => m.UserId == null && m.Email == identity.Email, ct);
+            if (!invited && await SetupCompletedAsync(ct))
+            {
+                return null;
+            }
+
             user = new User
             {
                 Issuer = identity.Issuer,
@@ -78,4 +91,10 @@ public sealed class UserProvisioningService(SoloDbContext db, IConfiguration con
 
         return user;
     }
+
+    private Task<bool> SetupCompletedAsync(CancellationToken ct) =>
+        db.InstanceSettings.AsNoTracking()
+            .Where(s => s.Id == InstanceSettings.SingletonId)
+            .Select(s => s.SetupCompleted)
+            .FirstOrDefaultAsync(ct);
 }

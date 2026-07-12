@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Solo.Data;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Xunit;
@@ -14,6 +16,7 @@ namespace Solo.Api.Tests.Integration;
 [Collection("postgres")]
 public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
 {
+    private string _connectionString = null!;
     private SoloApiFactory _factory = null!;
     private HttpClient _admin = null!;
 
@@ -24,7 +27,8 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
             return;
         }
 
-        _factory = new SoloApiFactory(await postgres.CreateDatabaseAsync("board_api"));
+        _connectionString = await postgres.CreateDatabaseAsync("board_api");
+        _factory = new SoloApiFactory(_connectionString);
         _admin = _factory.As("admin", "admin@example.com", "Admin");
         await TestClients.CompleteSetupAsync(_admin);
     }
@@ -331,7 +335,7 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
         var user = _factory.As("plain", "plain@example.com");
-        // Provisions the row; the profile itself is refused (member of nothing).
+        // Member of nothing: the profile is refused and no row is provisioned.
         var me = await user.GetAsync("/api/users/me");
         Assert.Equal(HttpStatusCode.Forbidden, me.StatusCode);
 
@@ -351,13 +355,28 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         var refused = await joiner.GetAsync("/api/users/me");
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
 
-        // An invite opens the door; the first call provisioned the row, so the
-        // invite matches the known user immediately.
+        // An invite opens the door: the next sign-in provisions the row and
+        // activates the pending invite in one pass.
         await _admin.PostJson<ProjectMemberDto>(
             $"/api/projects/{project.Id}/members", new { email = "joiner@example.com", role = "Read" });
         var me = await joiner.GetJson<UserDto>("/api/users/me");
         Assert.Equal("joiner@example.com", me.Email);
         Assert.False(me.IsSuperAdmin);
+    }
+
+    [SkippableFact]
+    public async Task UninvitedSignIn_LeavesNoUserRow()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var drifter = _factory.As("drifter", "drifter@example.com", "Drifter");
+        var refused = await drifter.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+
+        var options = new DbContextOptionsBuilder<SoloDbContext>()
+            .UseNpgsql(_connectionString).Options;
+        await using var db = new SoloDbContext(options);
+        Assert.False(await db.Users.AnyAsync(u => u.Email == "drifter@example.com"));
     }
 
     // -- Aliases and serial numbers ------------------------------------------
