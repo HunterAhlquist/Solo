@@ -65,7 +65,9 @@ works depends on the provider's webview policy.
 Settings…* and the running app serves an MCP endpoint at
 `http://localhost:41321/mcp` (streamable HTTP, stateless), so an MCP client on
 the same machine — Claude Code, Claude Desktop — can browse projects/boards
-and create or edit tasks. The toggle applies on save without a restart; while
+and create or edit tasks. Task tools address a task by GUID or by full serial
+number (`DMD-PXW26-2`), so an agent holding a serial needs no id discovery.
+The toggle applies on save without a restart; while
 off, `/mcp` answers 404. The tools call the configured instance's REST API
 with the **signed-in user's own session token**, read from the running client
 per request: no separate credential, and MCP access ends the moment you sign

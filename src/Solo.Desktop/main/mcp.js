@@ -74,10 +74,12 @@ function createMcpHandler({ getTarget, getSessionToken, isEnabled }) {
 
 // ---------------------------------------------------------------------------
 // Tools. Read tools walk the hierarchy (projects → boards → tasks) to find
-// ids; write tools mirror the REST API. Updates are read-modify-write: the
-// API's PUTs replace the whole record and demand the current version for
-// optimistic concurrency, so each update fetches first and merges — callers
-// only pass the fields they mean to change.
+// ids; task tools also take a full serial number ("DMD-PXW26-2") in place of
+// the id, so a caller holding a serial skips the walk (see resolveTaskId).
+// Write tools mirror the REST API. Updates are read-modify-write: the API's
+// PUTs replace the whole record and demand the current version for optimistic
+// concurrency, so each update fetches first and merges — callers only pass
+// the fields they mean to change.
 // ---------------------------------------------------------------------------
 
 function buildServer(ctx) {
@@ -87,7 +89,9 @@ function buildServer(ctx) {
             instructions:
                 'Task tools for the Solo project-management app. Hierarchy: projects → ' +
                 'boards → tasks; a task may sit under an epic (same board) and carry ' +
-                'sub-tasks. Discover ids with list_projects → list_boards → list_tasks. ' +
+                'sub-tasks. Discover ids with list_projects → list_boards → list_tasks, ' +
+                'or skip discovery: every taskId parameter also accepts a full serial ' +
+                'number like "DMD-PXW26-2" (project alias, board alias, task number). ' +
                 'Every write acts as the user signed in to the Solo desktop app.',
         });
 
@@ -113,6 +117,8 @@ function buildServer(ctx) {
     };
 
     const guid = description => z.guid().describe(description);
+    const taskRef = role => z.string().min(1)
+        .describe(`${role}: id (GUID) or full serial number like "DMD-PXW26-2"`);
     const taskName = z.string().min(1).max(300).describe('Name (plain text, ≤300 chars)');
     const taskDescription = z.string().max(100_000)
         .describe('Description (Markdown, ≤100k chars)');
@@ -145,9 +151,10 @@ function buildServer(ctx) {
         ({ boardId }) => api(ctx, 'GET', `/api/boards/${boardId}/tasks`));
 
     tool('get_task', 'Get a task',
-        'Fetches one task by id, including its sub-tasks.',
-        { taskId: guid('Task id') },
-        ({ taskId }) => api(ctx, 'GET', `/api/tasks/${taskId}`));
+        'Fetches one task by id or serial number, including its sub-tasks.',
+        { taskId: taskRef('Task') },
+        async ({ taskId }) =>
+            api(ctx, 'GET', `/api/tasks/${await resolveTaskId(ctx, taskId)}`));
 
     tool('create_task', 'Create a task',
         'Creates a task on a board. New tasks start Unstarted and are appended ' +
@@ -168,12 +175,13 @@ function buildServer(ctx) {
         'their current value; pass null to clear the description or label. ' +
         'Status and epic have their own tools.',
         {
-            taskId: guid('Task id'),
+            taskId: taskRef('Task'),
             name: taskName.optional(),
             description: taskDescription.nullable().optional(),
             labelId: z.guid().nullable().optional().describe('Task label, or null to clear'),
         },
-        async ({ taskId, name, description, labelId }) => {
+        async ({ taskId: ref, name, description, labelId }) => {
+            const taskId = await resolveTaskId(ctx, ref);
             const current = await api(ctx, 'GET', `/api/tasks/${taskId}`);
             return api(ctx, 'PUT', `/api/tasks/${taskId}`, {
                 name: name ?? current.name,
@@ -186,42 +194,46 @@ function buildServer(ctx) {
     tool('set_task_status', 'Set task status',
         'Moves a task between the Kanban columns.',
         {
-            taskId: guid('Task id'),
+            taskId: taskRef('Task'),
             status: z.enum(['Unstarted', 'InProgress', 'Finished'])
                 .describe('Target column'),
         },
-        ({ taskId, status }) => api(ctx, 'PUT', `/api/tasks/${taskId}/status`, { status }));
+        async ({ taskId, status }) => api(ctx, 'PUT',
+            `/api/tasks/${await resolveTaskId(ctx, taskId)}/status`, { status }));
 
     tool('set_task_epic', 'Set task epic',
         'Attaches a task to an epic on its board, or detaches it to ad-hoc.',
         {
-            taskId: guid('Task id'),
+            taskId: taskRef('Task'),
             epicId: z.guid().nullable()
                 .describe('Epic on the same board, or null to detach'),
         },
-        ({ taskId, epicId }) => api(ctx, 'PUT', `/api/tasks/${taskId}/epic`, { epicId }));
+        async ({ taskId, epicId }) => api(ctx, 'PUT',
+            `/api/tasks/${await resolveTaskId(ctx, taskId)}/epic`, { epicId }));
 
     tool('create_subtask', 'Create a sub-task',
         'Adds a checklist sub-task to a task.',
         {
-            taskId: guid('Parent task id'),
+            taskId: taskRef('Parent task'),
             name: taskName,
             labelId: z.guid().optional()
                 .describe('Sub-task label from the project (see list_labels)'),
         },
-        ({ taskId, ...request }) => api(ctx, 'POST', `/api/tasks/${taskId}/subtasks`, request));
+        async ({ taskId, ...request }) => api(ctx, 'POST',
+            `/api/tasks/${await resolveTaskId(ctx, taskId)}/subtasks`, request));
 
     tool('update_subtask', 'Update a sub-task',
         'Edits a sub-task\'s name and/or label. Omitted fields keep their ' +
         'current value; pass null to clear the label.',
         {
-            taskId: guid('Parent task id'),
+            taskId: taskRef('Parent task'),
             subTaskId: guid('Sub-task id'),
             name: taskName.optional(),
             labelId: z.guid().nullable().optional().describe('Sub-task label, or null to clear'),
         },
         async ({ taskId, subTaskId, name, labelId }) => {
-            const siblings = await api(ctx, 'GET', `/api/tasks/${taskId}/subtasks`);
+            const siblings = await api(ctx, 'GET',
+                `/api/tasks/${await resolveTaskId(ctx, taskId)}/subtasks`);
             const current = siblings.find(s => s.id === subTaskId);
             if (!current) {
                 throw new Error('That task has no sub-task with this id.');
@@ -244,6 +256,42 @@ function buildServer(ctx) {
             api(ctx, 'PUT', `/api/subtasks/${subTaskId}/finished`, { isFinished }));
 
     return server;
+}
+
+// ---------------------------------------------------------------------------
+// Task references. Tools take tasks by GUID or by full serial number —
+// project alias, board alias (A-Z0-9, ≤8 each) and per-board task number,
+// e.g. "DMD-PXW26-2". A serial resolves through the board's alias route,
+// whose response carries every task on the board with its number.
+// ---------------------------------------------------------------------------
+
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SERIAL_PATTERN = /^([A-Z0-9]{1,8})-([A-Z0-9]{1,8})-([0-9]+)$/;
+
+async function resolveTaskId(ctx, ref) {
+    const value = String(ref).trim();
+    if (GUID_PATTERN.test(value)) {
+        return value;
+    }
+
+    const match = SERIAL_PATTERN.exec(value.toUpperCase());
+    if (!match) {
+        throw new Error(
+            `"${ref}" is neither a task id (GUID) nor a full serial number like "DMD-PXW26-2".`);
+    }
+
+    const [, projectAlias, boardAlias, digits] = match;
+    const board = await api(ctx, 'GET',
+        `/api/projects/by-alias/${projectAlias}/boards/${boardAlias}`);
+    const number = Number(digits);
+    const task = board.tasks.find(t => t.number === number);
+    if (!task) {
+        throw new Error(`Board ${projectAlias}-${boardAlias} has no task #${number}. ` +
+            'Numbers are permanent, so a missing one means the task was deleted ' +
+            'or the serial is mistyped.');
+    }
+
+    return task.id;
 }
 
 // ---------------------------------------------------------------------------
