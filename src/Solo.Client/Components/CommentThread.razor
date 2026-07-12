@@ -4,6 +4,7 @@
 @inject BoardStore Store
 @inject UserSession Session
 @inject IDialogService Dialogs
+@inject IJSRuntime Js
 
 @*
     A flat chronological thread — no nesting, per the concept. Markdown via the
@@ -42,13 +43,14 @@ else
             @if (_editingId == comment.Id)
             {
                 <MarkdownEditor Value="@comment.Body" CanWrite="true" AlwaysEditing="true" Lines="4"
+                                MaxLength="FieldLimits.Comment"
                                 SaveText="Save" OnSave="@(body => UpdateAsync(comment, body))" />
             }
             else
             {
-                <div @onclick="@(() => BeginEdit(comment))"
+                <div class="markdown-clickable" @onclick="@(() => BeginEditAsync(comment))"
                      style="@(comment.AuthorId == Session.UserId ? "cursor:text" : null)">
-                    <MudMarkdown Value="@comment.Body" />
+                    <SoloMarkdown Value="@comment.Body" />
                 </div>
             }
         </MudPaper>
@@ -60,6 +62,7 @@ else
     }
 
     <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
+                    MaxLength="FieldLimits.Comment"
                     Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
 }
 
@@ -104,9 +107,12 @@ else
         }
     }
 
-    private void BeginEdit(CommentDto comment)
+    private async Task BeginEditAsync(CommentDto comment)
     {
-        if (comment.AuthorId == Session.UserId)
+        // Following a link in a comment must not also open it for editing;
+        // solo-interop's capture-phase shim saw the click first.
+        if (comment.AuthorId == Session.UserId &&
+            !await Js.InvokeAsync<bool>("solo.markdown.wasLinkClick"))
         {
             _editingId = comment.Id;
         }

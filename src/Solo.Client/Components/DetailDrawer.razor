@@ -10,8 +10,9 @@
     reports Editing presence, which is what warns the next person off.
 *@
 
+@* While a description draft is open, clicking off must not throw it away. *@
 <MudDrawer Open="@IsOpen" Anchor="Anchor.Right" Elevation="3" Variant="DrawerVariant.Temporary"
-           Width="34rem" OverlayAutoClose="true" OpenChanged="@OnOpenChanged">
+           Width="34rem" OverlayAutoClose="@(!_editingDescription)" OpenChanged="@OnOpenChanged">
     @if (Entity is not null)
     {
         <MudDrawerHeader Class="d-flex align-center">
@@ -29,6 +30,7 @@
             @* -- Name: blur commits ------------------------------------------- *@
             <MudTextField T="string" Value="@_name" ValueChanged="@OnNameChanged" Label="Name"
                           Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="false"
+                          MaxLength="FieldLimits.ItemName"
                           Disabled="@(!CanWrite)" OnKeyDown="@OnNameKeyDown" Class="mb-3" />
 
             @if (Task is not null)
@@ -63,7 +65,9 @@
             </div>
 
             <MudText Typo="Typo.subtitle2" Class="mb-1">Description</MudText>
-            <MarkdownEditor Value="@Description" CanWrite="@CanWrite" OnSave="@OnDescriptionSaved"
+            @* Keyed so switching entity (e.g. via a task link) can't carry a draft across. *@
+            <MarkdownEditor @key="@EntityId" Value="@Description" CanWrite="@CanWrite"
+                            MaxLength="FieldLimits.Description" OnSave="@OnDescriptionSaved"
                             OnEditingChanged="@ReportEditingAsync" Class="mb-4" />
 
             <MudDivider Class="my-4" />
@@ -92,6 +96,7 @@
 @code {
     private string _name = string.Empty;
     private Guid? _boundTo;
+    private bool _editingDescription;
 
     [Parameter]
     public TaskDto? Task { get; set; }
@@ -146,6 +151,7 @@
         if (Entity is null)
         {
             _boundTo = null;
+            _editingDescription = false;
             return;
         }
 
@@ -153,20 +159,34 @@
         {
             _boundTo = EntityId;
             _name = Task?.Name ?? Epic!.Name;
+            _editingDescription = false;
         }
     }
 
     // -- Presence -----------------------------------------------------------
 
-    private Task ReportEditingAsync(bool editing) =>
-        Hub.SetPresence(EntityType, EntityId, editing ? PresenceMode.Editing : PresenceMode.Viewing);
+    private Task ReportEditingAsync(bool editing)
+    {
+        _editingDescription = editing;
+        return Hub.SetPresence(EntityType, EntityId, editing ? PresenceMode.Editing : PresenceMode.Viewing);
+    }
 
     private async Task OnOpenChanged(bool open)
     {
-        if (!open)
+        if (open)
         {
-            await CloseAsync();
+            return;
         }
+
+        // Belt to OverlayAutoClose's braces: whatever asked us to close mid-draft
+        // is refused, and the re-render re-asserts Open on the drawer.
+        if (_editingDescription)
+        {
+            StateHasChanged();
+            return;
+        }
+
+        await CloseAsync();
     }
 
     private async Task CloseAsync()

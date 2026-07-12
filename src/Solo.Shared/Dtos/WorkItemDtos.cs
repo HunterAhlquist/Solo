@@ -36,19 +36,19 @@ public sealed record SubTaskDto(
 
 public sealed class CreateEpicRequest
 {
-    [Required, MaxLength(300)]
+    [Required, MaxLength(FieldLimits.ItemName)]
     public required string Name { get; init; }
 
-    [MaxLength(100_000)]
+    [MaxLength(FieldLimits.Description)]
     public string? Description { get; init; }
 }
 
 public sealed class UpdateEpicRequest
 {
-    [Required, MaxLength(300)]
+    [Required, MaxLength(FieldLimits.ItemName)]
     public required string Name { get; init; }
 
-    [MaxLength(100_000)]
+    [MaxLength(FieldLimits.Description)]
     public string? Description { get; init; }
 
     public uint Version { get; init; }
@@ -56,7 +56,7 @@ public sealed class UpdateEpicRequest
 
 public sealed class CreateTaskRequest
 {
-    [Required, MaxLength(300)]
+    [Required, MaxLength(FieldLimits.ItemName)]
     public required string Name { get; init; }
 
     /// <summary>Null = ad-hoc task sitting directly on the board.</summary>
@@ -64,18 +64,18 @@ public sealed class CreateTaskRequest
 
     public Guid? LabelId { get; init; }
 
-    [MaxLength(100_000)]
+    [MaxLength(FieldLimits.Description)]
     public string? Description { get; init; }
 }
 
 public sealed class UpdateTaskRequest
 {
-    [Required, MaxLength(300)]
+    [Required, MaxLength(FieldLimits.ItemName)]
     public required string Name { get; init; }
 
     public Guid? LabelId { get; init; }
 
-    [MaxLength(100_000)]
+    [MaxLength(FieldLimits.Description)]
     public string? Description { get; init; }
 
     public uint Version { get; init; }
@@ -99,7 +99,7 @@ public sealed class SetAssigneesRequest
 
 public sealed class CreateSubTaskRequest
 {
-    [Required, MaxLength(300)]
+    [Required, MaxLength(FieldLimits.ItemName)]
     public required string Name { get; init; }
 
     public Guid? LabelId { get; init; }
@@ -107,7 +107,7 @@ public sealed class CreateSubTaskRequest
 
 public sealed class UpdateSubTaskRequest
 {
-    [Required, MaxLength(300)]
+    [Required, MaxLength(FieldLimits.ItemName)]
     public required string Name { get; init; }
 
     public Guid? LabelId { get; init; }

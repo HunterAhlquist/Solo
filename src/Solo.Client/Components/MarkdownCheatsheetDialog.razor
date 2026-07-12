@@ -1,0 +1,53 @@
+@*
+    Opened from the "Markdown" caption under the editor. A quick reference, not
+    a manual — one row per construct, including Solo's own task-link syntax.
+*@
+<MudDialog>
+    <DialogContent>
+        <MudSimpleTable Dense="true" Elevation="0" Class="cheatsheet">
+            <thead>
+                <tr>
+                    <th>Type this</th>
+                    <th>To get</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var (syntax, result) in Rows)
+                {
+                    <tr>
+                        <td><code>@syntax</code></td>
+                        <td>@result</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-3">
+            A task link uses the serial number shown at the top of the task's
+            drawer, and works across boards and projects.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Close())">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private static readonly (string Syntax, string Result)[] Rows =
+    [
+        ("# Heading", "Heading (## and ### go smaller)"),
+        ("**bold**", "Bold"),
+        ("*italic*", "Italic"),
+        ("~~struck~~", "Strikethrough"),
+        ("`code`", "Inline code"),
+        ("```  …  ```", "Code block (own lines)"),
+        ("- item", "Bulleted list"),
+        ("1. item", "Numbered list"),
+        ("> quote", "Block quote"),
+        ("[title](https://url)", "Link"),
+        ("||PROJ-BOARD-7||", "Link to a task by serial number"),
+    ];
+}

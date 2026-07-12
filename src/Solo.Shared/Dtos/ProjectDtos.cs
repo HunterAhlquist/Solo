@@ -32,13 +32,13 @@ public sealed record ProjectMemberDto(
 
 public sealed class CreateProjectRequest
 {
-    [Required, MaxLength(200)]
+    [Required, MaxLength(FieldLimits.EntityName)]
     public required string Name { get; init; }
 
     [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
     public required string Alias { get; init; }
 
-    [MaxLength(100)]
+    [MaxLength(FieldLimits.IconName)]
     public string? Icon { get; init; }
 
     public Guid? ImageId { get; init; }
@@ -46,13 +46,13 @@ public sealed class CreateProjectRequest
 
 public sealed class UpdateProjectRequest
 {
-    [Required, MaxLength(200)]
+    [Required, MaxLength(FieldLimits.EntityName)]
     public required string Name { get; init; }
 
     [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
     public required string Alias { get; init; }
 
-    [MaxLength(100)]
+    [MaxLength(FieldLimits.IconName)]
     public string? Icon { get; init; }
 
     public Guid? ImageId { get; init; }
@@ -62,7 +62,7 @@ public sealed class UpdateProjectRequest
 
 public sealed class InviteMemberRequest
 {
-    [Required, EmailAddress, MaxLength(320)]
+    [Required, EmailAddress, MaxLength(FieldLimits.Email)]
     public required string Email { get; init; }
 
     public ProjectRole Role { get; init; } = ProjectRole.Read;

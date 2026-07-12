@@ -50,9 +50,11 @@ else
                     @if (CanWrite)
                     {
                         <MudTooltip Text="@(current?.Name ?? "Set label")">
-                            <span class="subtask-label-menu d-flex align-center">
+                            @* The span carries the label's own colour; Inherit hands it to the icon. *@
+                            <span class="subtask-label-menu d-flex align-center"
+                                  style="@(current is null ? null : $"color:{current.Color}")">
                                 <MudMenu Icon="@ActivatorIcon(current)" Size="Size.Small" Dense="true"
-                                         Color="@(current is null ? Color.Default : Color.Primary)"
+                                         Color="@(current is null ? Color.Default : Color.Inherit)"
                                          AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                                     <MudMenuItem OnClick="@(() => SetLabelAsync(subTask, null))">
                                         <MudText Typo="Typo.body2" Color="Color.Secondary">No label</MudText>
@@ -87,7 +89,8 @@ else
 {
     <div class="d-flex align-center mt-2" style="gap:.5rem">
         <MudTextField @bind-Value="_newName" Placeholder="Add a sub-task…" Variant="Variant.Outlined"
-                      Margin="Margin.Dense" Immediate="true" OnKeyDown="@OnKeyDown" Class="flex-grow-1" />
+                      Margin="Margin.Dense" Immediate="true" MaxLength="FieldLimits.ItemName"
+                      OnKeyDown="@OnKeyDown" Class="flex-grow-1" />
         <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Size="Size.Small"
                        Disabled="@string.IsNullOrWhiteSpace(_newName)" OnClick="@AddAsync"
                        aria-label="Add sub-task" />

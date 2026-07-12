@@ -1,3 +1,6 @@
+@inject IDialogService Dialogs
+@inject IJSRuntime Js
+
 @*
     Write/preview toggle. The save event is an explicit Save (or drawer close);
     Esc cancels. Never per keystroke. Reused for descriptions and comments.
@@ -8,7 +11,7 @@
         <MudTabs Elevation="0" Rounded="true" Class="mb-2" @bind-ActivePanelIndex="_tab">
             <MudTabPanel Text="Write" Icon="@Icons.Material.Filled.Edit">
                 <MudTextField @bind-Value="_draft" Lines="@Lines" MaxLines="24" Variant="Variant.Outlined"
-                              Margin="Margin.Dense" Immediate="false"
+                              Margin="Margin.Dense" Immediate="false" MaxLength="@MaxLength" Counter="@MaxLength"
                               Style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem"
                               Placeholder="@Placeholder" @onkeydown="@OnKeyDown" />
             </MudTabPanel>
@@ -21,7 +24,8 @@
                     }
                     else
                     {
-                        <MudMarkdown Value="@_draft" />
+                        @* Locked: a task link in your own preview must not navigate away mid-draft. *@
+                        <SoloMarkdown Value="@_draft" NavigationLocked="true" />
                     }
                 </MudPaper>
             </MudTabPanel>
@@ -34,14 +38,16 @@
             <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@CancelAsync">Cancel</MudButton>
             <MudSpacer />
             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="align-self-center">
-                Markdown · Esc to cancel
+                <MudLink Typo="Typo.caption" Underline="Underline.Always" Color="Color.Secondary"
+                         OnClick="@ShowCheatsheetAsync">Markdown</MudLink> · Esc to cancel
             </MudText>
         </div>
     }
     else
     {
         @* A one-line label is a poor click target — give the reader a real box. *@
-        <div class="markdown-read @(CanWrite ? "markdown-read--editable" : null)" @onclick="@BeginEditAsync">
+        <div class="markdown-read markdown-clickable @(CanWrite ? "markdown-read--editable" : null)"
+             @onclick="@BeginEditAsync">
             @if (string.IsNullOrWhiteSpace(Value))
             {
                 <MudText Typo="Typo.body2" Color="Color.Secondary">
@@ -50,7 +56,7 @@
             }
             else
             {
-                <MudMarkdown Value="@Value" />
+                <SoloMarkdown Value="@Value" />
             }
         </div>
     }
@@ -73,6 +79,9 @@
 
     [Parameter]
     public int Lines { get; set; } = 6;
+
+    [Parameter]
+    public int MaxLength { get; set; } = FieldLimits.Description;
 
     [Parameter]
     public string Placeholder { get; set; } = "Write markdown…";
@@ -107,9 +116,20 @@
         }
     }
 
+    private Task ShowCheatsheetAsync() =>
+        Dialogs.ShowAsync<MarkdownCheatsheetDialog>("Markdown cheatsheet");
+
     private async Task BeginEditAsync()
     {
         if (!CanWrite || _editing)
+        {
+            return;
+        }
+
+        // Following a link in the rendered markdown must not also throw the
+        // reader into edit mode; solo-interop's capture-phase shim saw the
+        // click before Blazor dispatched it here.
+        if (await Js.InvokeAsync<bool>("solo.markdown.wasLinkClick"))
         {
             return;
         }

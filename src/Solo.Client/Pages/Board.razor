@@ -9,6 +9,7 @@
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject RecentProjectsStore Recent
+@inject NavigationManager Nav
 
 <PageTitle>@(Store.Board?.Name ?? "Board") · Solo</PageTitle>
 
@@ -204,6 +205,14 @@ else
     [Parameter]
     public string BoardAlias { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Landing spot for ||serial|| links: ?task=N opens that task's drawer.
+    /// Bound as a string — a mistyped URL must not crash the route binder.
+    /// </summary>
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "task")]
+    public string? TaskQuery { get; set; }
+
     private bool CanWrite => _canWrite && (Store.Board?.IsOpen ?? false);
 
     private Guid BoardId => Store.Board?.Id ?? Guid.Empty;
@@ -228,28 +237,60 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        if (Store.Board is { } current &&
+        var isCurrent = Store.Board is { } current &&
             string.Equals(current.ProjectAlias, ProjectAlias, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(current.Alias, BoardAlias, StringComparison.OrdinalIgnoreCase))
+            string.Equals(current.Alias, BoardAlias, StringComparison.OrdinalIgnoreCase);
+
+        if (!isCurrent)
+        {
+            try
+            {
+                await Store.LoadAsync(ProjectAlias, BoardAlias);
+                // The API's write policy accepts the owner flag or a read/write role;
+                // the super admin's blanket rights stop at the owner surface, which
+                // on a board means comment moderation only.
+                var me = Store.Members.FirstOrDefault(m => m.UserId == Session.UserId);
+                _canWrite = (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
+                _canModerate = Session.IsSuperAdmin || (me?.IsOwner ?? false);
+                Rebuild();
+            }
+            catch (ApiException e)
+            {
+                Snackbar.Add(e.Detail ?? "Couldn't open that board.", Severity.Error);
+                return;
+            }
+        }
+
+        await OpenLinkedTaskAsync();
+    }
+
+    /// <summary>
+    /// Resolves a ?task=N query to its drawer, then strips the query (replacing
+    /// the history entry) so the plain board URL remains — and so clicking the
+    /// same link again is a fresh navigation rather than a no-op.
+    /// </summary>
+    private async Task OpenLinkedTaskAsync()
+    {
+        if (TaskQuery is null || Store.Board is not { } board)
         {
             return;
         }
 
-        try
+        if (int.TryParse(TaskQuery, out var number))
         {
-            await Store.LoadAsync(ProjectAlias, BoardAlias);
-            // The API's write policy accepts the owner flag or a read/write role;
-            // the super admin's blanket rights stop at the owner surface, which
-            // on a board means comment moderation only.
-            var me = Store.Members.FirstOrDefault(m => m.UserId == Session.UserId);
-            _canWrite = (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
-            _canModerate = Session.IsSuperAdmin || (me?.IsOwner ?? false);
-            Rebuild();
+            if (board.Tasks.FirstOrDefault(t => t.Number == number) is { } task)
+            {
+                await OpenTask(task);
+            }
+            else
+            {
+                Snackbar.Add(
+                    $"{Aliases.Serial(board.ProjectAlias, board.Alias, number)} isn't on this board — " +
+                    "the task may have been deleted.", Severity.Warning);
+            }
         }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't open that board.", Severity.Error);
-        }
+
+        Nav.NavigateTo($"projects/{board.ProjectAlias}/boards/{board.Alias}", replace: true);
     }
 
     // -- Rendering ----------------------------------------------------------

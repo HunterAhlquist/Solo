@@ -33,13 +33,13 @@ public sealed record BoardDetailDto(
 
 public sealed class CreateBoardRequest
 {
-    [Required, MaxLength(200)]
+    [Required, MaxLength(FieldLimits.EntityName)]
     public required string Name { get; init; }
 
     [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
     public required string Alias { get; init; }
 
-    [MaxLength(100)]
+    [MaxLength(FieldLimits.IconName)]
     public string? Icon { get; init; }
 
     public Guid? ImageId { get; init; }
@@ -47,13 +47,13 @@ public sealed class CreateBoardRequest
 
 public sealed class UpdateBoardRequest
 {
-    [Required, MaxLength(200)]
+    [Required, MaxLength(FieldLimits.EntityName)]
     public required string Name { get; init; }
 
     [Required, RegularExpression(Aliases.Pattern, ErrorMessage = Aliases.PatternError)]
     public required string Alias { get; init; }
 
-    [MaxLength(100)]
+    [MaxLength(FieldLimits.IconName)]
     public string? Icon { get; init; }
 
     public Guid? ImageId { get; init; }

@@ -1,7 +1,7 @@
 <MudDialog>
     <DialogContent>
         <MudTextField @bind-Value="_text" Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      Immediate="true" AutoFocus="true" OnKeyDown="@OnKeyDown" />
+                      Immediate="true" AutoFocus="true" MaxLength="@MaxLength" OnKeyDown="@OnKeyDown" />
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@Cancel">Cancel</MudButton>
@@ -23,6 +23,10 @@
 
     [Parameter]
     public string SaveText { get; set; } = "Create";
+
+    /// <summary>Every current caller prompts for an epic/task name.</summary>
+    [Parameter]
+    public int MaxLength { get; set; } = FieldLimits.ItemName;
 
     /// <summary>Enter commits a single-line edit.</summary>
     private void OnKeyDown(KeyboardEventArgs e)

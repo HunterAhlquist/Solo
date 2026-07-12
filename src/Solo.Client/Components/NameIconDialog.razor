@@ -5,7 +5,7 @@
 <MudDialog>
     <DialogContent>
         <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      Immediate="true" AutoFocus="true" Class="mb-3"
+                      Immediate="true" AutoFocus="true" MaxLength="FieldLimits.EntityName" Class="mb-3"
                       OnKeyDown="@OnKeyDown" />
         <MudTextField @bind-Value="_alias" Label="Alias" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" MaxLength="Aliases.MaxLength" Class="mb-3"

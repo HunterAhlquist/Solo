@@ -1,7 +1,7 @@
 <MudDialog>
     <DialogContent>
         <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      Immediate="true" AutoFocus="true" Class="mb-3" />
+                      Immediate="true" AutoFocus="true" MaxLength="FieldLimits.LabelName" Class="mb-3" />
         <MudColorPicker Value="@_color" ValueChanged="@(c => _color = c)" Label="Colour"
                         Variant="Variant.Outlined" Margin="Margin.Dense"
                         ColorPickerMode="ColorPickerMode.HEX" ShowAlpha="false" />

@@ -23,4 +23,29 @@ public static class Aliases
     /// <summary>The user-facing serial number of a task, composed at runtime.</summary>
     public static string Serial(string projectAlias, string boardAlias, int number) =>
         $"{projectAlias}-{boardAlias}-{number}";
+
+    /// <summary>
+    /// Splits a serial number back into its parts. Aliases cannot contain
+    /// hyphens, so PROJECT-BOARD-N is unambiguous; case is normalized to upper.
+    /// </summary>
+    public static bool TryParseSerial(
+        string? serial, out string projectAlias, out string boardAlias, out int number)
+    {
+        projectAlias = string.Empty;
+        boardAlias = string.Empty;
+        number = 0;
+
+        var parts = serial?.Split('-');
+        if (parts is not { Length: 3 } ||
+            !System.Text.RegularExpressions.Regex.IsMatch(Normalize(parts[0]), Pattern) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(Normalize(parts[1]), Pattern) ||
+            !int.TryParse(parts[2], out number) || number <= 0)
+        {
+            return false;
+        }
+
+        projectAlias = Normalize(parts[0]);
+        boardAlias = Normalize(parts[1]);
+        return true;
+    }
 }

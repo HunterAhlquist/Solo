@@ -11,6 +11,17 @@ window.solo = {
         removeSession: key => sessionStorage.removeItem(key),
     },
 
+    // Rendered markdown link plumbing (see SoloMarkdown.razor). A capture-phase
+    // listener at the bottom of this file records link clicks inside
+    // .markdown-clickable containers, so click-to-edit hosts can tell a link
+    // click from a click on the text around it, and swallows clicks inside
+    // .markdown-locked so an editor's preview can't navigate a draft away.
+    markdown: {
+        _lastLinkClick: 0,
+
+        wasLinkClick: () => Date.now() - window.solo.markdown._lastLinkClick < 400,
+    },
+
     auth: {
         // The API expects the OIDC *ID token* (its ValidAudience is the client
         // id, and Google's access tokens aren't even JWTs). Blazor's token
@@ -276,3 +287,22 @@ window.solo = {
         },
     },
 };
+
+// Capture phase, so it runs before Blazor's router and event delegation see
+// the click (see window.solo.markdown above).
+document.addEventListener('click', e => {
+    const anchor = e.target instanceof Element ? e.target.closest('a') : null;
+    if (!anchor) {
+        return;
+    }
+
+    if (anchor.closest('.markdown-locked')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+
+    if (anchor.closest('.markdown-clickable')) {
+        window.solo.markdown._lastLinkClick = Date.now();
+    }
+}, true);

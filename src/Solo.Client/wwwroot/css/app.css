@@ -148,6 +148,11 @@ code {
     border-color: var(--mud-palette-primary);
 }
 
+/* The cheatsheet dialog: keep each syntax sample on one line. */
+.cheatsheet code {
+    white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------------------
    Sidebar: a scrolling project → board tree with a footer pinned to the bottom,
    so "Add project" stays reachable no matter how many projects there are.

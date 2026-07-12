@@ -120,8 +120,9 @@ function buildServer(ctx) {
     const taskRef = role => z.string().min(1)
         .describe(`${role}: id (GUID) or full serial number like "DMD-PXW26-2"`);
     const taskName = z.string().min(1).max(300).describe('Name (plain text, ≤300 chars)');
-    const taskDescription = z.string().max(100_000)
-        .describe('Description (Markdown, ≤100k chars)');
+    const taskDescription = z.string().max(20_000)
+        .describe('Description (Markdown, ≤20k chars). Link to another task by wrapping ' +
+            'its serial number in double pipes, e.g. ||DMD-PXW26-2||');
 
     tool('list_projects', 'List projects',
         'Lists every Solo project the signed-in user is a member of.',

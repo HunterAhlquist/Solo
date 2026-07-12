@@ -20,13 +20,13 @@ public sealed class CreateLabelRequest
 
     public LabelKind Kind { get; init; }
 
-    [Required, MaxLength(100)]
+    [Required, MaxLength(FieldLimits.LabelName)]
     public required string Name { get; init; }
 
     [Required, RegularExpression("^#[0-9a-fA-F]{6}$")]
     public required string Color { get; init; }
 
-    [MaxLength(100)]
+    [MaxLength(FieldLimits.IconName)]
     public string? Icon { get; init; }
 
     public Guid? ImageId { get; init; }
@@ -34,13 +34,13 @@ public sealed class CreateLabelRequest
 
 public sealed class UpdateLabelRequest
 {
-    [Required, MaxLength(100)]
+    [Required, MaxLength(FieldLimits.LabelName)]
     public required string Name { get; init; }
 
     [Required, RegularExpression("^#[0-9a-fA-F]{6}$")]
     public required string Color { get; init; }
 
-    [MaxLength(100)]
+    [MaxLength(FieldLimits.IconName)]
     public string? Icon { get; init; }
 
     public Guid? ImageId { get; init; }
@@ -61,13 +61,13 @@ public sealed record CommentDto(
 
 public sealed class CreateCommentRequest
 {
-    [Required, MaxLength(100_000)]
+    [Required, MaxLength(FieldLimits.Comment)]
     public required string Body { get; init; }
 }
 
 public sealed class UpdateCommentRequest
 {
-    [Required, MaxLength(100_000)]
+    [Required, MaxLength(FieldLimits.Comment)]
     public required string Body { get; init; }
 
     public uint Version { get; init; }

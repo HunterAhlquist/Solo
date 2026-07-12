@@ -11,10 +11,14 @@
             "id": "3812b587854c736b",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "Current Issues.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "New tab"
+              "title": "Current Issues"
             }
           }
         ]
@@ -181,8 +185,9 @@
   },
   "active": "3812b587854c736b",
   "lastOpenFiles": [
-    "frontend-plan.md",
+    "Serial Number.md",
     "Current Issues.md",
+    "frontend-plan.md",
     "Core Concept.md",
     "backend-plan.md",
     "Welcome.md"

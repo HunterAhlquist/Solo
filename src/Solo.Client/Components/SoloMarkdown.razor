@@ -1,0 +1,51 @@
+@*
+    MudMarkdown plus Solo's task-link syntax: ||PROJECT-BOARD-N|| becomes a link
+    to that task, served by the board page's ?task= handler. Task links render
+    as root-relative hrefs, so the Blazor router keeps them in-app — in the
+    browser and in the desktop shell alike; external links keep MudMarkdown's
+    default new-tab behaviour, which the desktop shell reroutes to the system
+    browser. (MudMarkdown's own link Command hook is off-limits: its
+    MudLinkButton is compiled against internal MudBlazor API and throws under
+    the MudBlazor version this app ships.)
+*@
+
+@if (NavigationLocked)
+{
+    <div class="markdown-locked">
+        <MudMarkdown Value="@Rendered" />
+    </div>
+}
+else
+{
+    <MudMarkdown Value="@Rendered" />
+}
+
+@code {
+    private static readonly System.Text.RegularExpressions.Regex TaskLink = new(
+        @"\|\|([A-Za-z0-9]{1,8})-([A-Za-z0-9]{1,8})-([0-9]{1,9})\|\|",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    [Parameter]
+    public string? Value { get; set; }
+
+    /// <summary>
+    /// Set while the surrounding editor holds an unsaved draft: solo-interop's
+    /// capture-phase click shim swallows link clicks inside .markdown-locked,
+    /// so a preview click can't navigate away and drop the draft.
+    /// </summary>
+    [Parameter]
+    public bool NavigationLocked { get; set; }
+
+    private string Rendered => Value is null ? string.Empty : LinkifySerials(Value);
+
+    /// <summary>Rewrites ||serial|| tokens into markdown links to the board's ?task= route.</summary>
+    public static string LinkifySerials(string markdown) =>
+        TaskLink.Replace(markdown, match =>
+        {
+            var project = Aliases.Normalize(match.Groups[1].Value);
+            var board = Aliases.Normalize(match.Groups[2].Value);
+            var number = int.Parse(match.Groups[3].Value);
+            return $"[{Aliases.Serial(project, board, number)}]" +
+                   $"(/projects/{project}/boards/{board}?task={number})";
+        });
+}

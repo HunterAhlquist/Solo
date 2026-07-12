@@ -9,7 +9,8 @@
 
     @* Edits commit on blur, never per keystroke. *@
     <MudTextField T="string" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
-                  Immediate="false" OnBlur="@SaveAsync" OnKeyDown="@OnKeyDown" Class="mb-3" />
+                  Immediate="false" MaxLength="FieldLimits.EntityName" OnBlur="@SaveAsync" OnKeyDown="@OnKeyDown"
+                  Class="mb-3" />
     <MudTextField T="string" @bind-Value="_alias" Label="Alias" Variant="Variant.Outlined" Margin="Margin.Dense"
                   Immediate="false" MaxLength="Aliases.MaxLength" OnBlur="@SaveAsync" OnKeyDown="@OnKeyDown"
                   HelperText="Stands in for the id in links and serial numbers — capital letters and digits, max 8."

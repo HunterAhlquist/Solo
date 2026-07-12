@@ -14,7 +14,8 @@ else
         <MudPaper Elevation="0" Class="pa-3 mb-4" Style="border:1px solid var(--mud-palette-lines-default)">
             <div class="d-flex align-end" style="gap:.75rem">
                 <MudTextField @bind-Value="_inviteEmail" Label="Invite by email" Variant="Variant.Outlined"
-                              Margin="Margin.Dense" Immediate="true" OnKeyDown="@OnInviteKeyDown" Class="flex-grow-1" />
+                              Margin="Margin.Dense" Immediate="true" MaxLength="FieldLimits.Email"
+                              OnKeyDown="@OnInviteKeyDown" Class="flex-grow-1" />
                 <MudSelect T="ProjectRole" @bind-Value="_inviteRole" Label="Role" Variant="Variant.Outlined"
                            Margin="Margin.Dense" Style="max-width:11rem">
                     <MudSelectItem T="ProjectRole" Value="ProjectRole.Read">Read only</MudSelectItem>
