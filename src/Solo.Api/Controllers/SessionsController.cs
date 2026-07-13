@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Api.Services;
@@ -19,6 +20,7 @@ namespace Solo.Api.Controllers;
 public sealed class SessionsController : ApiControllerBase
 {
     [HttpPost]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<ActionResult<SessionDto>> Create(
         [FromBody] CreateSessionRequest? request,
         [FromServices] CurrentUserAccessor currentUser,

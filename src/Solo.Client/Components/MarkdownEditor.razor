@@ -10,8 +10,9 @@
     {
         <MudTabs Elevation="0" Rounded="true" Class="mb-2" @bind-ActivePanelIndex="_tab">
             <MudTabPanel Text="Write" Icon="@Icons.Material.Filled.Edit">
+                @* Immediate keeps the counter honest per keystroke; saving stays explicit. *@
                 <MudTextField @bind-Value="_draft" Lines="@Lines" MaxLines="24" Variant="Variant.Outlined"
-                              Margin="Margin.Dense" Immediate="false" MaxLength="@MaxLength" Counter="@MaxLength"
+                              Margin="Margin.Dense" Immediate="true" MaxLength="@MaxLength" Counter="@MaxLength"
                               Style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.8rem"
                               Placeholder="@Placeholder" @onkeydown="@OnKeyDown" />
             </MudTabPanel>

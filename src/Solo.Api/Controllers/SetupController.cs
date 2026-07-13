@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Api.Services;
@@ -32,11 +33,13 @@ public sealed class SetupController(SoloDbContext db, IConfiguration config) : A
     /// <summary>Wizard step: confirm the static setup credentials work.</summary>
     [HttpPost("verify")]
     [Authorize(Policy = AuthConstants.SetupPolicy, AuthenticationSchemes = AuthConstants.SetupScheme)]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public IActionResult Verify() => NoContent();
 
     /// <summary>Wizard step: initial instance configuration via the static account.</summary>
     [HttpPut("settings")]
     [Authorize(Policy = AuthConstants.SetupPolicy, AuthenticationSchemes = AuthConstants.SetupScheme)]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<ActionResult<InstanceSettingsDto>> UpdateSettings(
         SetupSettingsRequest request, CancellationToken ct)
     {
@@ -55,6 +58,7 @@ public sealed class SetupController(SoloDbContext db, IConfiguration config) : A
     /// </summary>
     [HttpPost("complete")]
     [Authorize]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<ActionResult<UserDto>> Complete(
         CompleteSetupRequest request,
         [FromServices] CurrentUserAccessor currentUser,

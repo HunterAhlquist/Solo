@@ -1,7 +1,11 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Solo.Api;
 using Solo.Api.Auth;
 using Solo.Api.Controllers;
 using Solo.Api.Realtime;
@@ -119,8 +123,80 @@ builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();
 builder.Services.AddHostedService<AuditRetentionService>();
 builder.Services.AddHealthChecks().AddDbContextCheck<SoloDbContext>();
 
+// ---------------------------------------------------------------------------
+// Rate limiting. Production sits behind Nginx Proxy Manager, so per-IP
+// partitions need X-Forwarded-For applied first. Trusting the header from any
+// direct connection is acceptable here: the API is only reachable through the
+// proxy (or the LAN), and the worst a spoofed header buys is a fresh limit
+// partition. Limits are config-overridable mainly so tests can tighten them.
+// ---------------------------------------------------------------------------
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+builder.Services.AddRateLimiter(limiter =>
+{
+    limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    limiter.OnRejected = (context, _) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                Math.Ceiling(retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return ValueTask.CompletedTask;
+    };
+
+    // Everything under /api shares one generous bucket per caller — enough for
+    // a board render's burst of avatar/image loads, but a runaway client gets
+    // cut off. The rest of the host is exempt: the WASM client pulls dozens of
+    // framework files per cold load, the SignalR hub holds one long-lived
+    // connection, and /healthz answers infrastructure probes.
+    var apiBurst = builder.Configuration.GetValue("RateLimiting:Api:Burst", 300);
+    var apiTokensPerPeriod = builder.Configuration.GetValue("RateLimiting:Api:TokensPerPeriod", 100);
+    var apiPeriod = TimeSpan.FromSeconds(builder.Configuration.GetValue("RateLimiting:Api:PeriodSeconds", 10));
+    limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        context.Request.Path.StartsWithSegments("/api")
+            ? RateLimitPartition.GetTokenBucketLimiter(RateLimitPartitions.Client(context),
+                _ => new TokenBucketRateLimiterOptions
+                {
+                    TokenLimit = apiBurst,
+                    TokensPerPeriod = apiTokensPerPeriod,
+                    ReplenishmentPeriod = apiPeriod,
+                    QueueLimit = 0,
+                })
+            : RateLimitPartition.GetNoLimiter("exempt"));
+
+    var authPermits = builder.Configuration.GetValue("RateLimiting:Auth:PermitLimit", 10);
+    var authWindow = TimeSpan.FromSeconds(builder.Configuration.GetValue("RateLimiting:Auth:WindowSeconds", 60));
+    limiter.AddPolicy(RateLimitPolicies.Auth, context =>
+        RateLimitPartition.GetFixedWindowLimiter(RateLimitPartitions.Ip(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = authPermits,
+                Window = authWindow,
+                QueueLimit = 0,
+            }));
+
+    // 2s polling is 30/min per pending sign-in; allow a few flows per address.
+    var pollPermits = builder.Configuration.GetValue("RateLimiting:AuthPoll:PermitLimit", 120);
+    var pollWindow = TimeSpan.FromSeconds(builder.Configuration.GetValue("RateLimiting:AuthPoll:WindowSeconds", 60));
+    limiter.AddPolicy(RateLimitPolicies.AuthPoll, context =>
+        RateLimitPartition.GetFixedWindowLimiter(RateLimitPartitions.Ip(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = pollPermits,
+                Window = pollWindow,
+                QueueLimit = 0,
+            }));
+});
+
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -153,6 +229,9 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 app.UseAuthentication();
+// After authentication so authenticated callers are metered per user, before
+// CurrentUserMiddleware so a throttled request never costs a database lookup.
+app.UseRateLimiter();
 app.UseMiddleware<CurrentUserMiddleware>();
 app.UseAuthorization();
 

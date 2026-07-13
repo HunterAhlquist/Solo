@@ -175,6 +175,12 @@ public sealed class SoloApiFactory(string connectionString) : WebApplicationFact
         builder.UseSetting("Auth:Provider", "generic");
         builder.UseSetting("Setup:Username", SetupUsername);
         builder.UseSetting("Setup:Password", SetupPassword);
+        // The limiter middleware stays in the pipeline, but effectively
+        // unlimited: every test client shares one "IP", so production limits
+        // would trip on unrelated tests. RateLimitingTests tightens these.
+        builder.UseSetting("RateLimiting:Api:Burst", "1000000");
+        builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000000");
+        builder.UseSetting("RateLimiting:AuthPoll:PermitLimit", "1000000");
         builder.ConfigureServices(services =>
         {
             // Auth:Authority is empty, so Program registered no "Bearer" scheme;

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Api.Services;
@@ -29,6 +30,7 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
 {
     [HttpPost("start")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public ActionResult<DesktopAuthFlowDto> Start([FromBody] DesktopAuthStartRequest? request)
     {
         if (flows.Start(request?.Description) is not { } flow)
@@ -48,6 +50,7 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
     /// </summary>
     [HttpGet("/desktop-auth")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.AuthPoll)]
     public IActionResult SignInPage([FromQuery] string? state)
     {
         if (!flows.IsPending(state))
@@ -65,6 +68,7 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
     /// </summary>
     [HttpPost("complete")]
     [Authorize]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public IActionResult Complete(
         [FromBody] DesktopAuthCompleteRequest request,
         [FromServices] CurrentUserAccessor currentUser)
@@ -91,6 +95,7 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
 
     [HttpPost("poll")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.AuthPoll)]
     public async Task<ActionResult<SessionDto>> Poll(
         [FromBody] DesktopAuthPollRequest request,
         [FromServices] SoloDbContext db,

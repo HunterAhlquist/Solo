@@ -108,16 +108,21 @@ public class TaskCardTests : ComponentTestBase
 public class MarkdownEditorTests : ComponentTestBase
 {
     [Fact]
-    public void The_textarea_binds_no_per_keystroke_handler()
+    public void Typing_updates_the_character_counter_but_never_commits()
     {
+        var saves = new List<string>();
         var editor = Render<MarkdownEditor>(p => p
             .Add(c => c.CanWrite, true)
-            .Add(c => c.AlwaysEditing, true));
+            .Add(c => c.AlwaysEditing, true)
+            .Add(c => c.MaxLength, 500)
+            .Add(c => c.OnSave, body => saves.Add(body)));
 
-        // Immediate="false": there is literally no `oninput` to fire, which is
-        // what "edits never commit per keystroke" means at the DOM level.
-        Assert.Throws<Bunit.MissingEventHandlerException>(
-            () => editor.Find("textarea").Input("half-typed thought"));
+        // Immediate="true" binds per keystroke — that feeds the counter, and
+        // nothing else: the save callback must stay untouched.
+        editor.Find("textarea").Input("half-typed thought");
+
+        Assert.Empty(saves);
+        Assert.Contains("18 / 500", editor.Markup);
     }
 
     [Fact]
@@ -129,7 +134,7 @@ public class MarkdownEditorTests : ComponentTestBase
             .Add(c => c.AlwaysEditing, true)
             .Add(c => c.OnSave, body => saves.Add(body)));
 
-        editor.Find("textarea").Change("half-typed thought");
+        editor.Find("textarea").Input("half-typed thought");
 
         Assert.Empty(saves);
     }
@@ -144,7 +149,7 @@ public class MarkdownEditorTests : ComponentTestBase
             .Add(c => c.SaveText, "Save")
             .Add(c => c.OnSave, body => saves.Add(body)));
 
-        editor.Find("textarea").Change("## Design notes");
+        editor.Find("textarea").Input("## Design notes");
         editor.FindAll("button").First(b => b.TextContent.Contains("Save")).Click();
 
         Assert.Equal("## Design notes", Assert.Single(saves));
