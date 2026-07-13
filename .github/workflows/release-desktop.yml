@@ -56,6 +56,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # mac.icon is an Icon Composer bundle; electron-builder compiles it
+      # with actool, which only ships with Xcode 26+. The image's default
+      # Xcode selection can lag behind what's installed.
+      - name: Select Xcode 26+
+        if: runner.os == 'macOS'
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_2[6-9]*.app | sort -V | tail -1)"
+          xcrun actool --version | grep short-bundle-version
+
       # Installer filenames come from package.json's version; keep them in
       # step with the tag. Tags that aren't valid semver (e.g. v1.2.0rc)
       # can't be stamped — those builds keep the committed version.

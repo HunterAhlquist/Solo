@@ -38,7 +38,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "build/icon.icns",
+      "icon": "../../Icons/Solo.icon",
       "target": [
         "dmg",
         "zip"

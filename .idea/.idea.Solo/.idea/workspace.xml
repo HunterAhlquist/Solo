@@ -16,7 +16,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="c88647a2-cb6a-42af-bbb2-5a429c7018cf" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.Solo/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/.obsidian/workspace.json" beforeDir="false" afterPath="$PROJECT_DIR$/docs/.obsidian/workspace.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/Current Issues.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/Current Issues.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/Serial Number.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Client/wwwroot/apple-touch-icon.png" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/wwwroot/apple-touch-icon.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Client/wwwroot/favicon.svg" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Client/wwwroot/favicon.svg" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Desktop/build/icon.icns" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Desktop/build/icon.icns" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Desktop/build/icon.png" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Desktop/build/icon.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/Solo.Desktop/scripts/build-icon.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/src/Solo.Desktop/scripts/build-icon.mjs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,58 +55,58 @@
       <entry key="MS100" value="1.0" />
       <entry key="MS500" value="1.0" />
       <entry key="S2" value="1.0" />
-      <entry key="S5" value="1.0" />
-      <entry key="S10" value="1.0" />
-      <entry key="S30" value="1.0" />
-      <entry key="S60" value="1.0" />
-      <entry key="M2" value="1.0" />
-      <entry key="M5" value="1.0" />
-      <entry key="M10" value="1.0" />
-      <entry key="M15" value="1.0" />
-      <entry key="M30" value="1.0" />
-      <entry key="H1" value="1.0" />
-      <entry key="H2" value="1.0" />
-      <entry key="H4" value="1.0" />
-      <entry key="D1" value="1.0" />
-      <entry key="W1" value="1.0" />
+      <entry key="S5" value="1.0000000000028475" />
+      <entry key="S10" value="1.0000039414925188" />
+      <entry key="S30" value="1.0561376048383313" />
+      <entry key="S60" value="1.624616225799774" />
+      <entry key="M2" value="3.0891490579064897" />
+      <entry key="M5" value="5.314739412534305" />
+      <entry key="M10" value="6.495548291853102" />
+      <entry key="M15" value="6.957124024430132" />
+      <entry key="M30" value="7.457518320389755" />
+      <entry key="H1" value="7.7232834335734735" />
+      <entry key="H2" value="7.860244974174136" />
+      <entry key="H4" value="7.929769763193314" />
+      <entry key="D1" value="7.988245667867279" />
+      <entry key="W1" value="7.998319598554028" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
-      <entry key="MS500" value="0.0" />
-      <entry key="S2" value="0.0" />
-      <entry key="S5" value="0.0" />
-      <entry key="S10" value="0.0" />
-      <entry key="S30" value="0.0" />
-      <entry key="S60" value="0.0" />
-      <entry key="M2" value="0.0" />
-      <entry key="M5" value="0.0" />
-      <entry key="M10" value="0.0" />
-      <entry key="M15" value="0.0" />
-      <entry key="M30" value="0.0" />
-      <entry key="H1" value="0.0" />
-      <entry key="H2" value="0.0" />
-      <entry key="H4" value="0.0" />
-      <entry key="D1" value="0.0" />
-      <entry key="W1" value="0.0" />
+      <entry key="MS500" value="1.480891621632121E-124" />
+      <entry key="S2" value="1.5898325547121487E-31" />
+      <entry key="S5" value="7.136051307380939E-13" />
+      <entry key="S10" value="1.191019694877667E-6" />
+      <entry key="S30" value="0.016814999259163133" />
+      <entry key="S60" value="0.18336918765274568" />
+      <entry key="M2" value="0.6055763572111258" />
+      <entry key="M5" value="1.2401760430757678" />
+      <entry key="M10" value="1.5749120139904702" />
+      <entry key="M15" value="1.7054832043449943" />
+      <entry key="M30" value="1.8468800073864604" />
+      <entry key="H1" value="1.9219156692245813" />
+      <entry key="H2" value="1.9605691247389212" />
+      <entry key="H4" value="1.9801864149257036" />
+      <entry key="D1" value="1.9966840211153103" />
+      <entry key="W1" value="1.9995259517712387" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="0.6070974421975234" />
-      <entry key="MS500" value="0.9050064628829054" />
-      <entry key="S2" value="0.9753554615276419" />
-      <entry key="S5" value="0.9900683286467772" />
-      <entry key="S10" value="0.9950217729511135" />
-      <entry key="S30" value="0.9983378297043665" />
-      <entry key="S60" value="0.999168569213607" />
-      <entry key="M2" value="0.9995841981612189" />
-      <entry key="M5" value="0.9998336585129451" />
-      <entry key="M10" value="0.9999168257974986" />
-      <entry key="M15" value="0.9999445497629764" />
-      <entry key="M30" value="0.9999722744971364" />
-      <entry key="H1" value="0.999986137152479" />
-      <entry key="H2" value="0.999993068552217" />
-      <entry key="H4" value="0.9999965342701028" />
-      <entry key="D1" value="0.9999994223775164" />
-      <entry key="W1" value="0.999999917482482" />
+      <entry key="MS100" value="2.8734373875887534E-17" />
+      <entry key="MS500" value="4.916775146761324E-4" />
+      <entry key="S2" value="0.1489087050532338" />
+      <entry key="S5" value="0.4668399724605024" />
+      <entry key="S10" value="0.6832616158421468" />
+      <entry key="S30" value="0.9522014821563192" />
+      <entry key="S60" value="1.7385934692132068" />
+      <entry key="M2" value="3.650767204771184" />
+      <entry key="M5" value="6.532025043870931" />
+      <entry key="M10" value="8.057637936371439" />
+      <entry key="M15" value="8.653702602673395" />
+      <entry key="M30" value="9.299753510535899" />
+      <entry key="H1" value="9.642825704024105" />
+      <entry key="H2" value="9.819614277341952" />
+      <entry key="H4" value="9.909352938878564" />
+      <entry key="D1" value="9.984828682706357" />
+      <entry key="W1" value="9.997831109381087" />
     </decayedShown>
   </component>
   <component name="ProblemsViewState">
@@ -138,18 +146,6 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="QodanaHighlightedReportService">
-    <option name="localRunNotPublishedPersistedInfo">
-      <LocalReportPersistedInfo>
-        <option name="path" value="/private/var/folders/7h/gwff804n3cqbwj9w4jwfnj6c0000gn/T/qodana_output/qodana.sarif.json" />
-        <option name="reportGuid" value="5c6988ed-c0b4-4623-89c3-9a5e1c1c9846" />
-        <option name="reportName" value="Solo/qodana/2026-07-10" />
-      </LocalReportPersistedInfo>
-    </option>
-  </component>
-  <component name="QodanaIsSelectedPersistenceService">
-    <option name="selectedOrLoading" value="true" />
-  </component>
   <component name="QodanaReportsService">
     <option name="descriptions">
       <ReportDescription localRun="true" path="/private/var/folders/7h/gwff804n3cqbwj9w4jwfnj6c0000gn/T/qodana_output/qodana.sarif.json" reportGuid="5c6988ed-c0b4-4623-89c3-9a5e1c1c9846" reportId="Solo/qodana/2026-07-10" />
@@ -220,6 +216,7 @@
       <workItem from="1783481557806" duration="3602000" />
       <workItem from="1783705251149" duration="88000" />
       <workItem from="1783798554307" duration="2584000" />
+      <workItem from="1783965731406" duration="1701000" />
     </task>
     <servers />
   </component>
