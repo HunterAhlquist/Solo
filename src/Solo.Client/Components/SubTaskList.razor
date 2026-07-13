@@ -35,10 +35,23 @@ else
                                  Disabled="@(!CanWrite)"
                                  ValueChanged="@(finished => ToggleAsync(subTask, finished))" />
 
-                    <MudText Typo="Typo.body2" Class="flex-grow-1"
-                             Style="@(subTask.IsFinished ? "text-decoration:line-through;opacity:.6" : null)">
-                        @subTask.Name
-                    </MudText>
+                    @* Click the name to rename in place — the drawer's convention:
+                       blur or Enter commits, Escape throws the draft away. *@
+                    @if (_editingId == subTask.Id)
+                    {
+                        <MudTextField @bind-Value="_editName" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Immediate="true" MaxLength="FieldLimits.ItemName" AutoFocus="true"
+                                      Class="flex-grow-1" aria-label="Edit sub-task"
+                                      OnKeyDown="@(e => OnEditKeyDown(e, subTask))"
+                                      OnBlur="@(() => CommitEditAsync(subTask))" />
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Class="flex-grow-1" Style="@NameStyle(subTask)"
+                                 @onclick="@(() => BeginEdit(subTask))">
+                            @subTask.Name
+                        </MudText>
+                    }
 
                     @* Click the tag icon to pick a label; once set it shows the label's
                        own icon, with the name in a tooltip. Uses MudMenu's built-in Icon
@@ -99,6 +112,8 @@ else
 
 @code {
     private string _newName = string.Empty;
+    private Guid? _editingId;
+    private string _editName = string.Empty;
 
     [Parameter, EditorRequired]
     public Guid TaskId { get; set; }
@@ -130,6 +145,63 @@ else
         { ImageId: not null } or { Icon: not null } => SoloIcons.Resolve(label.ImageId, label.Icon),
         _ => Icons.Material.Filled.Label,
     };
+
+    private string? NameStyle(SubTaskDto subTask)
+    {
+        var strike = subTask.IsFinished ? "text-decoration:line-through;opacity:.6;" : null;
+        var cursor = CanWrite ? "cursor:text" : null;
+        return strike is null && cursor is null ? null : $"{strike}{cursor}";
+    }
+
+    private void BeginEdit(SubTaskDto subTask)
+    {
+        if (!CanWrite)
+        {
+            return;
+        }
+
+        _editingId = subTask.Id;
+        _editName = subTask.Name;
+    }
+
+    private async Task OnEditKeyDown(KeyboardEventArgs e, SubTaskDto subTask)
+    {
+        if (e.Key == "Enter")
+        {
+            await CommitEditAsync(subTask);
+        }
+        else if (e.Key == "Escape")
+        {
+            _editingId = null;
+        }
+    }
+
+    private async Task CommitEditAsync(SubTaskDto subTask)
+    {
+        // Enter commits and removes the field; a straggling blur must not re-commit.
+        if (_editingId != subTask.Id)
+        {
+            return;
+        }
+
+        _editingId = null;
+        var name = _editName.Trim();
+        if (name.Length == 0 || name == subTask.Name)
+        {
+            return;
+        }
+
+        await Guard.RunAsync(
+            () => Api.UpdateSubTaskAsync(subTask.Id, new UpdateSubTaskRequest
+            {
+                Name = name,
+                LabelId = subTask.LabelId,
+                Version = subTask.Version,
+            }),
+            OnChanged.InvokeAsync);
+
+        await OnChanged.InvokeAsync();
+    }
 
     private async Task SetLabelAsync(SubTaskDto subTask, Guid? labelId)
     {

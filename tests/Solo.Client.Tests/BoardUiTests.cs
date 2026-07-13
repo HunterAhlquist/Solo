@@ -291,6 +291,92 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.Contains("No label", cut.Markup);  // and so is clearing it
     }
 
+    // -- Sub-task names are editable in place -------------------------------------
+
+    private IRenderedComponent<Components.SubTaskList> RenderSubTasks(SubTaskDto subTask, bool canWrite = true) =>
+        Render<Components.SubTaskList>(p => p
+            .Add(l => l.TaskId, subTask.TaskId)
+            .Add(l => l.SubTasks, (IReadOnlyList<SubTaskDto>)[subTask])
+            .Add(l => l.CanWrite, canWrite));
+
+    private const string SubTaskName = ".mud-typography-body2.flex-grow-1";
+    private const string SubTaskEditor = "input[aria-label='Edit sub-task']";
+
+    /// <summary>
+    /// Clicking a sub-task's name swaps it for an inline editor; Enter commits
+    /// the new name through PUT /api/subtasks/{id}, keeping the label.
+    /// </summary>
+    [Fact]
+    public void Clicking_a_subtask_name_opens_an_editor_and_enter_saves_the_rename()
+    {
+        var subTask = TestData.SubTask(false);
+        var cut = RenderSubTasks(subTask);
+        _http.RespondJson(subTask with { Name = "Sharper name", Version = 2 });
+
+        cut.Find(SubTaskName).Click();
+        var input = cut.Find(SubTaskEditor);
+        input.Input("Sharper name");
+        input.KeyDown("Enter");
+
+        var put = $"PUT /api/subtasks/{subTask.Id}";
+        Assert.Contains(put, _http.Paths);
+        Assert.Contains("Sharper name", _http.Bodies[_http.Paths.IndexOf(put)]);
+    }
+
+    /// <summary>Blur is the drawer-wide save event, and it applies here too.</summary>
+    [Fact]
+    public void Clicking_away_from_a_subtask_rename_commits_it()
+    {
+        var subTask = TestData.SubTask(false);
+        var cut = RenderSubTasks(subTask);
+        _http.RespondJson(subTask with { Name = "Renamed on blur", Version = 2 });
+
+        cut.Find(SubTaskName).Click();
+        var input = cut.Find(SubTaskEditor);
+        input.Input("Renamed on blur");
+        input.Blur();
+
+        Assert.Contains($"PUT /api/subtasks/{subTask.Id}", _http.Paths);
+    }
+
+    [Fact]
+    public void Escape_abandons_a_subtask_rename_without_saving()
+    {
+        var subTask = TestData.SubTask(false);
+        var cut = RenderSubTasks(subTask);
+
+        cut.Find(SubTaskName).Click();
+        var input = cut.Find(SubTaskEditor);
+        input.Input("Discarded draft");
+        input.KeyDown("Escape");
+
+        Assert.Empty(_http.Paths);                       // nothing was sent
+        Assert.Contains(subTask.Name, cut.Markup);       // the original name is back
+        Assert.Empty(cut.FindAll(SubTaskEditor));
+    }
+
+    [Fact]
+    public void An_unchanged_subtask_name_is_not_saved()
+    {
+        var subTask = TestData.SubTask(false);
+        var cut = RenderSubTasks(subTask);
+
+        cut.Find(SubTaskName).Click();
+        cut.Find(SubTaskEditor).KeyDown("Enter");
+
+        Assert.Empty(_http.Paths);
+    }
+
+    [Fact]
+    public void A_read_only_member_cannot_rename_a_subtask()
+    {
+        var cut = RenderSubTasks(TestData.SubTask(false), canWrite: false);
+
+        cut.Find(SubTaskName).Click();
+
+        Assert.Empty(cut.FindAll(SubTaskEditor));
+    }
+
     // -- Bug: the top-right profile menu (ActivatorContent) stopped opening -------
 
     /// <summary>
