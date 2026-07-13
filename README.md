@@ -1,3 +1,24 @@
+# AI Usage Disclaimer
+
+<img width="376" height="214" alt="proompt" src="https://github.com/user-attachments/assets/046f15ed-2b9f-4b83-9b7c-2ed5b2ff2ac4" />
+
+This entire project is slopped up by my lazy ass because I hate Jira so much. 
+
+I freaking love PROOMPTING, I PROOMPT every day.
+- 10 billion lines of code
+- 10 billion proompts
+- 10 billion security vulnerability
+- 10 billion gallons of water GONE
+
+AI is melting my programmer brain, please take away my Claude(TM) Pro(TM) subscription, I am begging you.
+
+
+Le epic claug face:
+
+<img width="350" height="350" alt="image" src="https://github.com/user-attachments/assets/d1b33d69-bca9-4b2d-b283-2d15140a3248" />
+
+Nerd emoji lookin ahh
+
 # Solo
 
 A simple project management tool for small, trusted game-dev teams: Kanban boards with epics/tasks/sub-tasks, single-provider OIDC SSO, live editing over SignalR, and full audit logging.
