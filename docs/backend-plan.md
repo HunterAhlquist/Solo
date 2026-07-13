@@ -1,5 +1,14 @@
 # Solo — Backend Construction Plan
 
+> **Status (2026-07-13):** implemented in full; this document is the historical design record. Shipped since it was written and therefore not covered below:
+>
+> - **Serial-number aliases** (`Solo.Shared/Aliases.cs`): every project and board carries a short `A-Z0-9` handle that stands in for its GUID in routes and composes user-facing task serials like `ABC-MAIN-7`.
+> - **Image assets** (`/api/images`): small custom project/board/label icons stored inline in Postgres; anonymous reads keyed on the GUID.
+> - **Session tokens & desktop sign-in** (`/api/auth/sessions`, `/api/auth/desktop/*`): long-lived sliding-expiry `solo_` tokens minted from a fresh OIDC credential, plus a browser-hand-off flow for the Electron shell (`src/Solo.Desktop`) — see [../src/Solo.Desktop/README.md](../src/Solo.Desktop/README.md).
+> - **Rate limiting**: a global per-user/IP token bucket plus strict windows on the credential-checking and desktop-poll endpoints (`Solo.Api/RateLimiting.cs`, configured in `Program.cs`).
+>
+> The solution file is `Solo.slnx` (not `Solo.sln`), and the client planned as out of scope here now exists as `src/Solo.Client` — see [frontend-plan.md](frontend-plan.md). Deployment and configuration docs live in the root [README](../README.md).
+
 Derived from `Core Concept.md` (Obsidian: Solo Project Management vault). Solo is a low-configuration project management tool for small, trusted game-dev teams: Kanban boards with epics/tasks/sub-tasks, single-provider OIDC SSO (Google by default), live editing over SignalR, and full audit logging.
 
 **Backend stack:** ASP.NET Core Web API · EF Core + PostgreSQL (Npgsql) · SignalR · OIDC SSO (provider-configurable — Google, Microsoft, or any compliant issuer). The Blazor WASM + MudBlazor client consumes this API and is out of scope here, but shapes the DTO and hub contracts.

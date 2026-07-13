@@ -1,5 +1,11 @@
 # Solo — Frontend Construction Plan
 
+> **Status (2026-07-13):** implemented through phase 7, with one exception — the **Playwright E2E suite has not been built**; bUnit component tests (`tests/Solo.Client.Tests`) run in CI instead. Notable deltas from the plan:
+>
+> - The **Electron shell anticipated in §3/§12 now exists** (`src/Solo.Desktop`). It took a different shape than sketched: instead of CORS + a desktop OIDC redirect, the shell serves the published client from a local origin and reverse-proxies to the configured instance (same-origin everywhere), and signs in through the **system browser**, exchanging the provider credential for a long-lived Solo session token. It can also expose a localhost MCP endpoint for AI agents. See [../src/Solo.Desktop/README.md](../src/Solo.Desktop/README.md).
+> - Client routes use **project/board aliases** instead of GUIDs (`/projects/{alias}/boards/{alias}`), and tasks carry **serial numbers** (`PROJECT-BOARD-N`) shown on cards and usable as deep links to a task.
+> - Projects, boards, and labels support **custom image icons** in addition to Material icon names.
+
 Companion to `backend-plan.md`. The backend is fully implemented (API controllers, `BoardHub`, typed contracts in `Solo.Shared`), and `Solo.Api` already serves static files with an `index.html` fallback — the Dockerfile anticipates the published WASM client landing in its `wwwroot`. This plan covers building `Solo.Client` against that finished surface.
 
 **Frontend stack:** Blazor WASM (.NET 10) · MudBlazor · MudBlazor.Markdown · SignalR client · `Microsoft.AspNetCore.Components.WebAssembly.Authentication` (OIDC code + PKCE).

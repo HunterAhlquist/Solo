@@ -89,3 +89,10 @@ cross-origin requests by `Origin`.
 ```sh
 npm run dist   # electron-builder → dist/ (dmg/zip, nsis, AppImage)
 ```
+
+CI does this automatically: pushing a `v*` tag runs
+[release-desktop.yml](../../.github/workflows/release-desktop.yml), which
+packages macOS (x64 + arm64), Windows, and Linux installers and attaches them
+to the GitHub release for the tag. Builds are unsigned unless the Apple
+signing/notarization secrets are configured; a manual `workflow_dispatch` run
+uploads the installers as workflow artifacts without creating a release.

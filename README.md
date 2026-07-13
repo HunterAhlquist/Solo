@@ -77,3 +77,52 @@ All configuration is environment variables:
 | `Database__AutoMigrate` | Apply migrations on startup (default `true`) |
 
 Health endpoint: `GET /healthz` (checks the database connection).
+
+## Desktop app
+
+[src/Solo.Desktop](src/Solo.Desktop) is an Electron shell around the unmodified Solo web client. The shell serves the published Blazor WASM build from a local origin (`http://localhost:41321`) and reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to whichever Solo instance is configured in **Server Settings** — so the client runs byte-for-byte identical to the hosted build, same-origin, with no CORS anywhere and no changes to the API.
+
+### Running
+
+```sh
+cd src/Solo.Desktop
+npm install
+npm run build:client   # dotnet publish Solo.Client → ./wwwroot
+npm start
+```
+
+On first launch a settings window asks for the instance address (e.g. `https://solo.example.com`). **Test** performs an anonymous fetch of `/api/config/auth` to confirm the address is a Solo instance before you save. Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live in `settings.json` under Electron's `userData` directory; the local port (default `41321`) can be changed there if it clashes.
+
+During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start` serves client assets from anywhere without re-copying.
+
+### Sign-in
+
+Google refuses to run its sign-in pages inside Electron ("this browser or app may not be secure"), so the shell signs in through the **system browser** on the **instance's own origin** — device-code style:
+
+1. The in-app **Authorize in browser** button asks the instance to open a flow (`POST api/auth/desktop/start`), which returns a `state` for the browser URL and a `deviceCode` that never leaves the shell.
+2. The shell opens `https://<instance>/desktop-auth?state=…` in your default browser. That page runs the ordinary Google Identity Services flow — on the origin the operator already registered for the web client, so **no extra provider registration is needed** — and posts the credential back to the instance, which verifies it and pins the signed-in user to the flow (single-use, expires after 10 minutes).
+3. The shell polls `POST api/auth/desktop/poll` with the `deviceCode` and receives a freshly minted **long-lived Solo session token** (sliding expiry, default 30 days via `Auth__SessionDays`), exactly once. The client stores it and boots into the signed-in state — no hourly re-auth, and the Google credential never touches the shell.
+
+Signing out revokes the session server-side. Requires an instance running an API version with the desktop-auth endpoints; on older instances the sign-in fails at the start step with a message saying to update the server. (The client detects the shell via `window.soloDesktop`, exposed by the preload, and swaps the GIS widget for the plain button — Google's widget never loads inside the app.)
+
+For **other OIDC providers** (code + PKCE redirect) the flow runs in-app: add `http://localhost:41321/authentication/login-callback` as a redirect URI. These providers redirect the whole window rather than a popup; whether that works depends on the provider's webview policy.
+
+### MCP
+
+**Off by default.** Enable **Allow AI agents (MCP)** in *Solo → Server Settings…* and the running app serves an MCP endpoint at `http://localhost:41321/mcp` (streamable HTTP, stateless), so an MCP client on the same machine — Claude Code, Claude Desktop — can browse projects/boards and create or edit tasks. Task tools address a task by GUID or by full serial number (`DMD-PXW26-2`), so an agent holding a serial needs no id discovery. The toggle applies on save without a restart; while off, `/mcp` answers 404. The tools call the configured instance's REST API with the **signed-in user's own session token**, read from the running client per request: no separate credential, and MCP access ends the moment you sign out or close the app.
+
+Connect Claude Code with:
+
+```sh
+claude mcp add --transport http solo http://localhost:41321/mcp
+```
+
+(This repo's [.mcp.json](.mcp.json) already registers it for sessions inside the repo.) Only localhost clients can reach the endpoint: the local server rejects non-localhost `Host` headers, and `/mcp` additionally rejects browser cross-origin requests by `Origin`.
+
+### Packaging
+
+```sh
+npm run dist   # electron-builder → dist/ (dmg/zip, nsis, AppImage)
+```
+
+CI does this automatically: pushing a `v*` tag runs [release-desktop.yml](.github/workflows/release-desktop.yml), which packages macOS (x64 + arm64), Windows, and Linux installers and attaches them to the GitHub release for the tag. Builds are unsigned unless the Apple signing/notarization secrets are configured; a manual `workflow_dispatch` run uploads the installers as workflow artifacts without creating a release.
