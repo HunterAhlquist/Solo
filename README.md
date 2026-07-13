@@ -4,7 +4,9 @@ A simple project management tool for small, trusted game-dev teams: Kanban board
 
 **Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host — one container + Postgres is the whole deployment. Design details live in [docs/backend-plan.md](docs/backend-plan.md).
 
-# AI Usage Disclaimer
+<details>
+
+<summary>AI Usage Disclaimer</summary>
 
 <img width="376" height="214" alt="proompt" src="https://github.com/user-attachments/assets/046f15ed-2b9f-4b83-9b7c-2ed5b2ff2ac4" />
 
@@ -24,6 +26,9 @@ Le epic claug face:
 <img width="350" height="350" alt="image" src="https://github.com/user-attachments/assets/d1b33d69-bca9-4b2d-b283-2d15140a3248" />
 
 Nerd emoji lookin ahh
+
+</details>
+
 
 ## Development
 
