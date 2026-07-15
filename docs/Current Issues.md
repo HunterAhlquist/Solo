@@ -1,6 +1,6 @@
 ## Bugs
 - None
 ## Improvements
-- None
+- Add word-wrap to the epic's title on the board view
 ## Features
-- None
+- Allow board level overriding of the labels.

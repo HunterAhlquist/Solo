@@ -232,6 +232,14 @@ code {
     min-width: 0;
 }
 
+/* Epic titles wrap onto multiple lines rather than truncating with an ellipsis.
+   overflow-wrap keeps a long unbroken title from overflowing the gutter. */
+.kanban-lane__name {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 /* The whole epic gutter opens the epic's editor — a cursor change on the name
    alone was invisible. The gutter tints on hover to show the click region, and
    the name underlines to say what the click does. The controls inside (collapse
