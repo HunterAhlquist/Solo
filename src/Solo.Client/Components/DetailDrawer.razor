@@ -58,10 +58,12 @@
                     </MudTooltip>
                 </div>
 
+                @* Width via Class, not Style: MudPicker copies Style onto the calendar
+                   popup's paper too, where a max-width crops the Fri/Sat columns. *@
                 <MudDatePicker Date="@DeadlineDate" DateChanged="@OnDeadlineChanged" Label="Deadline"
                                Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
                                Editable="true" Placeholder="No deadline" Disabled="@(!CanWrite)"
-                               Class="mb-3" Style="max-width:14rem" />
+                               Class="deadline-picker mb-3" />
             }
 
             <div class="mb-4">

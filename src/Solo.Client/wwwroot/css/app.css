@@ -324,6 +324,14 @@ code {
     gap: 0.25rem;
 }
 
+/* Narrows the deadline field only. MudPicker re-applies its Style parameter to
+   the calendar popup's paper (which would crop the calendar to the field's
+   width), but custom classes stay on the field root — so the width limit must
+   live here, not in an inline style. */
+.deadline-picker {
+    max-width: 14rem;
+}
+
 /* ---------------------------------------------------------------------------
    Deadline countdown ring — bottom-left of a card, where the serial number
    used to sit. The arc is the time remaining; --deadline-color is set inline
