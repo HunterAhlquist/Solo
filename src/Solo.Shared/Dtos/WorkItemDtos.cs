@@ -20,6 +20,8 @@ public sealed record TaskDto(
     Guid? LabelId,
     string? Description,
     TaskState Status,
+    DateTime CreatedAt,
+    DateOnly? DeadlineAt,
     decimal Rank,
     uint Version,
     IReadOnlyList<Guid> AssigneeIds,
@@ -66,6 +68,8 @@ public sealed class CreateTaskRequest
 
     [MaxLength(FieldLimits.Description)]
     public string? Description { get; init; }
+
+    public DateOnly? DeadlineAt { get; init; }
 }
 
 public sealed class UpdateTaskRequest
@@ -77,6 +81,8 @@ public sealed class UpdateTaskRequest
 
     [MaxLength(FieldLimits.Description)]
     public string? Description { get; init; }
+
+    public DateOnly? DeadlineAt { get; init; }
 
     public uint Version { get; init; }
 }

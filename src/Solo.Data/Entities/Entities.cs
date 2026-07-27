@@ -141,6 +141,10 @@ public class TaskItem : IVersioned
     /// (see <c>TaskStateCalculator</c>) and manual writes are rejected by the API.
     /// </summary>
     public TaskState Status { get; set; }
+    /// <summary>Anchors the deadline countdown: progress runs from here to <see cref="DeadlineAt"/>.</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Optional due date. A date, not an instant — "due July 30" regardless of timezone.</summary>
+    public DateOnly? DeadlineAt { get; set; }
     public decimal Rank { get; set; }
     public uint Version { get; set; }
 

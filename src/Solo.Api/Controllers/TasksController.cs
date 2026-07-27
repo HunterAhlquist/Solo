@@ -68,6 +68,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             Name = request.Name,
             LabelId = request.LabelId,
             Description = request.Description,
+            DeadlineAt = request.DeadlineAt,
             Rank = Ranking.ForAppend(existingRanks),
         };
         db.Tasks.Add(task);
@@ -112,6 +113,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         task.Name = request.Name;
         task.LabelId = request.LabelId;
         task.Description = request.Description;
+        task.DeadlineAt = request.DeadlineAt;
         UseClientVersion(db, task, request.Version);
         var conflict = await SaveOrConflictAsync(db, ct);
         if (conflict is not null)
@@ -120,7 +122,8 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         }
 
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.Task, taskId,
-            ChangeKind.Updated, nameof(task.Name), nameof(task.LabelId), nameof(task.Description));
+            ChangeKind.Updated, nameof(task.Name), nameof(task.LabelId), nameof(task.Description),
+            nameof(task.DeadlineAt));
         return task.ToDto();
     }
 

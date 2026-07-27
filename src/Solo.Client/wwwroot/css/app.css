@@ -76,7 +76,7 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .solo-pulse, .solo-shake, .boot-splash__bar span { animation: none; }
+    .solo-pulse, .solo-shake, .boot-splash__bar span, .deadline-ring--overdue { animation: none; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -303,6 +303,13 @@ code {
     border: 1px solid var(--mud-palette-lines-default);
 }
 
+/* A card with a deadline tints its outline with the countdown colour set by the
+   component (--deadline-color, green sliding to red as the window burns down).
+   :hover below outranks this, so the primary hover highlight still wins. */
+.kanban-card--deadline {
+    border-color: var(--deadline-color);
+}
+
 .kanban-card:hover {
     border-color: var(--mud-palette-primary);
 }
@@ -315,6 +322,56 @@ code {
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Deadline countdown ring — bottom-left of a card, where the serial number
+   used to sit. The arc is the time remaining; --deadline-color is set inline
+   by TaskCard and shared with the card outline. Overdue rings blink.
+   --------------------------------------------------------------------------- */
+.deadline-ring {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.deadline-ring svg {
+    display: block;
+    /* Start the arc at 12 o'clock. */
+    transform: rotate(-90deg);
+}
+
+.deadline-ring__track {
+    fill: none;
+    stroke: var(--mud-palette-lines-default);
+    stroke-width: 2.5;
+}
+
+.deadline-ring__arc {
+    fill: none;
+    stroke: var(--deadline-color);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+}
+
+.deadline-ring__days {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.55rem;
+    line-height: 1;
+    color: var(--mud-palette-text-primary);
+}
+
+.deadline-ring--overdue {
+    animation: deadline-blink 1s ease-in-out infinite;
+}
+
+@keyframes deadline-blink {
+    50% { opacity: 0.25; }
 }
 
 /* Vertical dividers between the three status columns, in both the sticky header

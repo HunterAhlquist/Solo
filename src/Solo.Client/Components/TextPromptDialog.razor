@@ -1,7 +1,7 @@
 <MudDialog>
     <DialogContent>
         <MudTextField @bind-Value="_text" Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      Immediate="true" AutoFocus="true" MaxLength="@MaxLength" OnKeyDown="@OnKeyDown" />
+                      Immediate="true" AutoFocus="true" MaxLength="@MaxLength" OnKeyUp="@OnKeyUp" />
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@Cancel">Cancel</MudButton>
@@ -28,8 +28,12 @@
     [Parameter]
     public int MaxLength { get; set; } = FieldLimits.ItemName;
 
-    /// <summary>Enter commits a single-line edit.</summary>
-    private void OnKeyDown(KeyboardEventArgs e)
+    /// <summary>
+    /// Enter commits a single-line edit — on keyup, not keydown: closing on keydown
+    /// hands focus back to the button that opened the dialog while Enter is still
+    /// held, and the tail of the press clicks it and reopens the dialog.
+    /// </summary>
+    private void OnKeyUp(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_text))
         {

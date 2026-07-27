@@ -173,7 +173,6 @@ else
         <ItemRenderer>
             @* Editors only: someone merely viewing a task shows in the drawer, not on the card. *@
             <TaskCard Task="@context"
-                      Serial="@SerialOf(context)"
                       Label="@LabelOf(context)"
                       Assignees="@MembersOf(context.AssigneeIds)"
                       Presence="@Store.EditorsOn(EntityTypes.Task, context.Id)"
@@ -376,9 +375,6 @@ else
     }
 
     private List<TaskDto> TasksOfEpic(Guid? epicId) => _ordered.Where(t => t.EpicId == epicId).ToList();
-
-    private string SerialOf(TaskDto task) =>
-        Aliases.Serial(Store.Board!.ProjectAlias, Store.Board.Alias, task.Number);
 
     private LabelDto? LabelOf(TaskDto task) =>
         task.LabelId is null ? null : Store.Board?.Labels.FirstOrDefault(l => l.Id == task.LabelId);

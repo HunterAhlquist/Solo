@@ -1,9 +1,12 @@
+@using System.Globalization
+
 @*
-    A card is: name, label, assignees, sub-task progress, presence. It flashes its
-    outline once when a remote change lands on it.
+    A card is: name, label, deadline countdown, assignees, sub-task progress,
+    presence. It flashes its outline once when a remote change lands on it.
 *@
 <MudPaper Elevation="1"
-          Class="@($"kanban-card pa-2 {(Pulse ? "solo-pulse" : string.Empty)}")"
+          Class="@CardClass"
+          Style="@CardStyle"
           @onclick="@(() => OnOpen.InvokeAsync(Task))">
 
     <div class="d-flex align-start mb-1" style="gap:.35rem">
@@ -18,9 +21,22 @@
     </div>
 
     <div class="d-flex align-center" style="gap:.35rem">
-        @if (Serial is not null)
+        @if (Task.DeadlineAt is not null)
         {
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-size:.65rem">@Serial</MudText>
+            <MudTooltip Text="@DeadlineTooltip">
+                <div class="@($"deadline-ring{(IsOverdue ? " deadline-ring--overdue" : string.Empty)}")"
+                     aria-label="@DeadlineTooltip">
+                    <svg viewBox="0 0 22 22" width="22" height="22">
+                        <circle class="deadline-ring__track" cx="11" cy="11" r="9" />
+                        <circle class="deadline-ring__arc" cx="11" cy="11" r="9"
+                                stroke-dasharray="@ArcDash" />
+                    </svg>
+                    @if (DaysLeftText is not null)
+                    {
+                        <span class="deadline-ring__days">@DaysLeftText</span>
+                    }
+                </div>
+            </MudTooltip>
         }
         <MudSpacer />
 
@@ -56,10 +72,6 @@
     [Parameter, EditorRequired]
     public required TaskDto Task { get; set; }
 
-    /// <summary>The composed serial number (PROJECT-BOARD-N), shown under the title.</summary>
-    [Parameter]
-    public string? Serial { get; set; }
-
     [Parameter]
     public LabelDto? Label { get; set; }
 
@@ -82,4 +94,78 @@
         Task.SubTasks.Count == 0 ? 0 : FinishedCount * 100.0 / Task.SubTasks.Count;
 
     private Color ProgressColor => FinishedCount == Task.SubTasks.Count ? Color.Success : Color.Primary;
+
+    // -- Deadline countdown ---------------------------------------------------
+    // The ring sits bottom-left (where the serial number used to be) and drains
+    // as the creation→deadline window burns down; its colour — shared with the
+    // card outline via --deadline-color — slides green→red over the same window.
+
+    private const double RingCircumference = 2 * Math.PI * 9;
+
+    private DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
+
+    private int DaysLeft => Task.DeadlineAt!.Value.DayNumber - Today.DayNumber;
+
+    /// <summary>A deadline covers its whole day; it is only missed once the day ends.</summary>
+    private bool IsOverdue => DaysLeft < 0;
+
+    /// <summary>Fraction of the creation→end-of-deadline-day window already elapsed, clamped to [0,1].</summary>
+    private double ElapsedFraction
+    {
+        get
+        {
+            var start = Task.CreatedAt.ToLocalTime();
+            var end = Task.DeadlineAt!.Value.AddDays(1).ToDateTime(TimeOnly.MinValue);
+            var total = (end - start).TotalSeconds;
+            return total <= 0 ? 1 : Math.Clamp((DateTime.Now - start).TotalSeconds / total, 0, 1);
+        }
+    }
+
+    private string DeadlineColor => $"hsl({120 * (1 - ElapsedFraction):F0} 72% 45%)";
+
+    /// <summary>Overdue shows a full ring (and blinks); otherwise the arc is the time left.</summary>
+    private string ArcDash
+    {
+        get
+        {
+            var remaining = IsOverdue ? 1 : 1 - ElapsedFraction;
+            return string.Create(CultureInfo.InvariantCulture,
+                $"{remaining * RingCircumference:F2} {RingCircumference:F2}");
+        }
+    }
+
+    /// <summary>Only room for two digits; 100+ days out the ring speaks for itself.</summary>
+    private string? DaysLeftText
+    {
+        get
+        {
+            var days = Math.Max(DaysLeft, 0);
+            return days <= 99 ? days.ToString() : null;
+        }
+    }
+
+    private string DeadlineTooltip
+    {
+        get
+        {
+            var days = DaysLeft;
+            var when = days switch
+            {
+                < -1 => $"overdue by {-days} days",
+                -1 => "overdue by 1 day",
+                0 => "due today",
+                1 => "1 day left",
+                _ => $"{days} days left",
+            };
+            return $"Due {Task.DeadlineAt!.Value:d MMM yyyy} — {when}";
+        }
+    }
+
+    private string CardClass =>
+        "kanban-card pa-2" +
+        (Task.DeadlineAt is not null ? " kanban-card--deadline" : string.Empty) +
+        (Pulse ? " solo-pulse" : string.Empty);
+
+    private string? CardStyle =>
+        Task.DeadlineAt is null ? null : $"--deadline-color:{DeadlineColor}";
 }

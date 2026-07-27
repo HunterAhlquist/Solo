@@ -57,6 +57,11 @@
                         </MudSelect>
                     </MudTooltip>
                 </div>
+
+                <MudDatePicker Date="@DeadlineDate" DateChanged="@OnDeadlineChanged" Label="Deadline"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                               Editable="true" Placeholder="No deadline" Disabled="@(!CanWrite)"
+                               Class="mb-3" Style="max-width:14rem" />
             }
 
             <div class="mb-4">
@@ -131,6 +136,9 @@
     private string? Description => Task?.Description ?? Epic?.Description;
 
     private IReadOnlyList<Guid> AssigneeIds => Task?.AssigneeIds ?? Epic?.AssigneeIds ?? [];
+
+    /// <summary>MudDatePicker speaks DateTime; the deadline is a plain date.</summary>
+    private DateTime? DeadlineDate => Task?.DeadlineAt?.ToDateTime(TimeOnly.MinValue);
 
     private IReadOnlyList<PresenceEntry> PresenceEntries =>
         Entity is null ? [] : Store.PresenceOn(EntityType, EntityId);
@@ -229,6 +237,7 @@
                     Name = name,
                     LabelId = task.LabelId,
                     Description = description,
+                    DeadlineAt = task.DeadlineAt,
                     Version = task.Version,
                 }),
                 Store.RefreshAsync);
@@ -269,6 +278,32 @@
                 Name = task.Name,
                 LabelId = labelId,
                 Description = task.Description,
+                DeadlineAt = task.DeadlineAt,
+                Version = task.Version,
+            }),
+            Store.RefreshAsync);
+
+        if (saved is not null)
+        {
+            Store.ApplyTask(saved);
+        }
+    }
+
+    private async Task OnDeadlineChanged(DateTime? date)
+    {
+        var deadline = date is { } d ? DateOnly.FromDateTime(d) : (DateOnly?)null;
+        if (Task is not { } task || task.DeadlineAt == deadline)
+        {
+            return;
+        }
+
+        var saved = await Guard.RunAsync(
+            () => Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest
+            {
+                Name = task.Name,
+                LabelId = task.LabelId,
+                Description = task.Description,
+                DeadlineAt = deadline,
                 Version = task.Version,
             }),
             Store.RefreshAsync);

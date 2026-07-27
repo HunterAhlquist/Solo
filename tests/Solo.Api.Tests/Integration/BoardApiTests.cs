@@ -106,6 +106,36 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Deadline_DefaultsToNone_AndRoundTrips()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("Deadlines");
+
+        var task = await _admin.PostJson<TaskDto>(
+            $"/api/boards/{board.Id}/tasks", new { name = "Ship the demo" });
+        Assert.Null(task.DeadlineAt);
+        Assert.True(task.CreatedAt > DateTime.UtcNow.AddMinutes(-5));
+
+        // Set a deadline.
+        var due = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(14);
+        var updated = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}", new
+        {
+            name = task.Name,
+            deadlineAt = due,
+            version = task.Version,
+        });
+        Assert.Equal(due, updated.DeadlineAt);
+
+        // Clear it again — omitting the field means no deadline, not "keep".
+        updated = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}", new
+        {
+            name = task.Name,
+            version = updated.Version,
+        });
+        Assert.Null(updated.DeadlineAt);
+    }
+
+    [SkippableFact]
     public async Task ManualStatus_IsAllowed_WithSubtasks_AndTogglesDoNotDeriveIt()
     {
         postgres.SkipUnlessDockerAvailable();

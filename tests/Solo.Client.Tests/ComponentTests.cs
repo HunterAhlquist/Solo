@@ -102,6 +102,57 @@ public class TaskCardTests : ComponentTestBase
 
         Assert.NotEmpty(card.FindAll(".solo-pulse"));
     }
+
+    [Fact]
+    public void A_task_without_a_deadline_leaves_the_corner_blank()
+    {
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task()));
+
+        Assert.Empty(card.FindAll(".deadline-ring"));
+        Assert.Empty(card.FindAll(".kanban-card--deadline"));
+    }
+
+    [Fact]
+    public void A_near_deadline_shows_the_days_left_and_tints_the_outline()
+    {
+        var task = TestData.Task(
+            createdAt: DateTime.UtcNow.AddDays(-10),
+            deadline: DateOnly.FromDateTime(DateTime.Now).AddDays(5));
+
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
+
+        Assert.Equal("5", card.Find(".deadline-ring__days").TextContent);
+        Assert.NotEmpty(card.FindAll(".kanban-card--deadline"));
+        Assert.Contains("--deadline-color:hsl(", card.Markup);
+        Assert.Empty(card.FindAll(".deadline-ring--overdue"));
+    }
+
+    [Fact]
+    public void A_far_deadline_shows_the_ring_but_hides_the_three_digit_count()
+    {
+        var task = TestData.Task(
+            deadline: DateOnly.FromDateTime(DateTime.Now).AddDays(150));
+
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
+
+        Assert.NotEmpty(card.FindAll(".deadline-ring"));
+        Assert.Empty(card.FindAll(".deadline-ring__days"));
+    }
+
+    [Fact]
+    public void A_missed_deadline_blinks_red()
+    {
+        var task = TestData.Task(
+            createdAt: DateTime.UtcNow.AddDays(-10),
+            deadline: DateOnly.FromDateTime(DateTime.Now).AddDays(-3));
+
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
+
+        Assert.NotEmpty(card.FindAll(".deadline-ring--overdue"));
+        // Fully elapsed → hue 0, i.e. red — the outline shares the same variable.
+        Assert.Contains("--deadline-color:hsl(0", card.Markup);
+        Assert.Equal("0", card.Find(".deadline-ring__days").TextContent);
+    }
 }
 
 /// <summary>Save-event semantics: blur/explicit save commits, keystrokes never do.</summary>

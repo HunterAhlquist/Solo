@@ -6,13 +6,13 @@
     <DialogContent>
         <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" AutoFocus="true" MaxLength="FieldLimits.EntityName" Class="mb-3"
-                      OnKeyDown="@OnKeyDown" />
+                      OnKeyUp="@OnKeyUp" />
         <MudTextField @bind-Value="_alias" Label="Alias" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" MaxLength="Aliases.MaxLength" Class="mb-3"
                       HelperText="Stands in for the id in links and serial numbers — capital letters and digits, max 8."
                       Error="@(!AliasEmpty && !AliasValid)"
                       ErrorText="@Aliases.PatternError"
-                      OnKeyDown="@OnKeyDown" />
+                      OnKeyUp="@OnKeyUp" />
         <IconImagePicker @bind-Icon="_icon" @bind-ImageId="_imageId" />
     </DialogContent>
     <DialogActions>
@@ -65,8 +65,12 @@
         _imageId = ImageId;
     }
 
-    /// <summary>Enter commits a single-line edit.</summary>
-    private void OnKeyDown(KeyboardEventArgs e)
+    /// <summary>
+    /// Enter commits a single-line edit — on keyup, not keydown: closing on keydown
+    /// hands focus back to the button that opened the dialog while Enter is still
+    /// held, and the tail of the press clicks it and reopens the dialog.
+    /// </summary>
+    private void OnKeyUp(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && CanSave)
         {

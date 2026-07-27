@@ -483,6 +483,12 @@ namespace Solo.Data.Migrations
                     b.Property<Guid>("BoardId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("DeadlineAt")
+                        .HasColumnType("date");
+
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
