@@ -72,10 +72,19 @@ else
 
             @foreach (var epic in Store.Board.Epics)
             {
-                <div class="kanban-lane">
+                <div class="@LaneClass(epic)">
                     @* The whole gutter is the "open epic" target; its own controls
-                       (collapse chevron, action icons) stop the click instead. *@
-                    <div class="kanban-lane__gutter kanban-lane__gutter--openable"
+                       (collapse chevron, action icons) stop the click instead. It is
+                       also the reorder drag source and drop target — see the drag &
+                       drop region below for why this is hand-rolled HTML5 DnD. *@
+                    <div class="@GutterClass(epic)"
+                         draggable="@(CanWrite ? "true" : "false")"
+                         @ondragstart="@(() => StartEpicDrag(epic))"
+                         @ondragenter="@(() => EnterEpicDrag(epic))"
+                         @ondragover:preventDefault="@(_draggedEpic is not null)"
+                         @ondrop:preventDefault="true"
+                         @ondrop="@(() => DropEpicAsync(epic))"
+                         @ondragend="@EndEpicDrag"
                          @onclick="@(() => OpenEpic(epic))"
                          role="button" aria-label="@($"Open epic {epic.Name}")">
                         <div class="kanban-lane__title">
@@ -104,19 +113,15 @@ else
                         @if (CanWrite)
                         {
                             <div class="kanban-lane__actions" @onclick:stopPropagation>
+                                <MudTooltip Text="Drag to reorder">
+                                    <span class="kanban-lane__drag-handle" aria-hidden="true">
+                                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
+                                                 Size="Size.Small" Color="Color.Secondary" />
+                                    </span>
+                                </MudTooltip>
                                 <MudTooltip Text="Add task">
                                     <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
                                                    OnClick="@(() => CreateTaskAsync(epic.Id))" aria-label="Add task" />
-                                </MudTooltip>
-                                <MudTooltip Text="Move up">
-                                    <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small"
-                                                   Disabled="@(EpicIndex(epic.Id) == 0)"
-                                                   OnClick="@(() => MoveEpicAsync(epic, -1))" aria-label="Move up" />
-                                </MudTooltip>
-                                <MudTooltip Text="Move down">
-                                    <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small"
-                                                   Disabled="@(EpicIndex(epic.Id) == Store.Board.Epics.Count - 1)"
-                                                   OnClick="@(() => MoveEpicAsync(epic, 1))" aria-label="Move down" />
                                 </MudTooltip>
                                 <MudTooltip Text="Delete epic">
                                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
@@ -196,6 +201,8 @@ else
     private readonly HashSet<Guid> _expandedFinished = [];
     private readonly HashSet<Guid> _pulsing = [];
     private HashSet<Guid> _folded = [];
+    private EpicDto? _draggedEpic;
+    private Guid? _epicDropTarget;
     private bool _refreshZones;
     private TaskDto? _openTask;
     private EpicDto? _openEpic;
@@ -402,6 +409,13 @@ else
     private int EpicIndex(Guid epicId) =>
         Store.Board!.Epics.ToList().FindIndex(e => e.Id == epicId);
 
+    private string LaneClass(EpicDto epic) =>
+        "kanban-lane" + (_draggedEpic?.Id == epic.Id ? " kanban-lane--dragging" : string.Empty);
+
+    private string GutterClass(EpicDto epic) =>
+        "kanban-lane__gutter kanban-lane__gutter--openable" +
+        (_epicDropTarget == epic.Id ? " kanban-lane__gutter--drop-target" : string.Empty);
+
     // -- Drag & drop --------------------------------------------------------
 
     /// <summary>Any card can be dropped in any parseable zone — no column is off-limits.</summary>
@@ -517,27 +531,70 @@ else
         }
     }
 
-    /// <summary>
-    /// Epic bands reorder by menu rather than drag: a nested drop container inside
-    /// the task container fights it for the same pointer events. Same endpoint,
-    /// same fractional rank, and it works from the keyboard.
-    /// </summary>
-    private async Task MoveEpicAsync(EpicDto epic, int offset)
+    // -- Epic reordering ----------------------------------------------------
+    //
+    // Hand-rolled HTML5 drag & drop rather than a MudDropContainer: a nested
+    // container inside the task container fights it for the same pointer
+    // events. The gutters are outside every MudDropZone, so MudBlazor never
+    // sees these events — and because no MudBlazor transaction is open, the
+    // task zones ignore them in turn. The guards below are what keeps the two
+    // apart: a task drag leaves _draggedEpic null, so the gutter neither
+    // accepts the drop (no preventDefault on dragover) nor acts on one.
+
+    private void StartEpicDrag(EpicDto epic)
     {
-        var epics = Store.Board!.Epics.ToList();
-        var index = epics.FindIndex(e => e.Id == epic.Id);
-        var target = index + offset;
-        if (target < 0 || target >= epics.Count)
+        if (CanWrite)
+        {
+            _draggedEpic = epic;
+            _epicDropTarget = null;
+        }
+    }
+
+    /// <summary>
+    /// dragenter, not dragover: it fires once per element entered, and every
+    /// child of a gutter reports the same epic, so the highlight never flickers.
+    /// </summary>
+    private void EnterEpicDrag(EpicDto epic)
+    {
+        if (_draggedEpic is not null && _draggedEpic.Id != epic.Id)
+        {
+            _epicDropTarget = epic.Id;
+        }
+    }
+
+    private void EndEpicDrag()
+    {
+        _draggedEpic = null;
+        _epicDropTarget = null;
+    }
+
+    /// <summary>
+    /// Dropping on a band puts the dragged band in its place: dragging down
+    /// lands after the target, dragging up lands before it.
+    /// </summary>
+    private async Task DropEpicAsync(EpicDto target)
+    {
+        var dragged = _draggedEpic;
+        EndEpicDrag();
+
+        if (dragged is null || dragged.Id == target.Id || !CanWrite)
         {
             return;
         }
 
-        var others = epics.Where(e => e.Id != epic.Id).ToList();
-        var preceding = target > 0 ? others[target - 1].Id : (Guid?)null;
-        var following = target < others.Count ? others[target].Id : (Guid?)null;
+        var epics = Store.Board!.Epics.ToList();
+        var index = EpicIndex(target.Id);
+        var others = epics.Where(e => e.Id != dragged.Id).ToList();
+        if (index < 0 || others.Count != epics.Count - 1)
+        {
+            return;
+        }
+
+        var preceding = index > 0 ? others[index - 1].Id : (Guid?)null;
+        var following = index < others.Count ? others[index].Id : (Guid?)null;
 
         var moved = await Guard.RunAsync(
-            () => Api.RerankEpicAsync(epic.Id, preceding, following), Store.RefreshAsync);
+            () => Api.RerankEpicAsync(dragged.Id, preceding, following), Store.RefreshAsync);
         if (moved is not null)
         {
             Store.ApplyEpic(moved);

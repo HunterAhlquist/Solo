@@ -10,6 +10,11 @@
 <MudSnackbarProvider />
 
 <MudLayout>
+    @* Desktop shell only (see "Desktop shell chrome" in app.css): with no app
+       bar there is nothing to drag the frameless window by, so this fills the
+       band MudBlazor already leaves clear at the top. Inert in a browser. *@
+    <div class="solo-titlebar"></div>
+
     <MudMainContent>
         @Body
     </MudMainContent>

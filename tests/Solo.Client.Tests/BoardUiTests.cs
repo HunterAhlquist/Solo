@@ -115,6 +115,103 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.DoesNotContain("Delete me", page.Markup);
     }
 
+    // -- Epic bands reorder by dragging their gutter, not by move buttons --------
+
+    private static readonly Guid EpicA = Guid.Parse("a0000000-0000-0000-0000-000000000001");
+    private static readonly Guid EpicB = Guid.Parse("a0000000-0000-0000-0000-000000000002");
+    private static readonly Guid EpicC = Guid.Parse("a0000000-0000-0000-0000-000000000003");
+
+    private const string Gutter = ".kanban-lane__gutter--openable";
+
+    /// <summary>Three bands, ranked A → B → C, with a rerank reply waiting.</summary>
+    private IRenderedComponent<Pages.Board> RenderThreeBands()
+    {
+        QueueBoard(TestData.Board(epics:
+        [
+            TestData.Epic(EpicA, 1024m),
+            TestData.Epic(EpicB, 2048m),
+            TestData.Epic(EpicC, 3072m),
+        ]));
+        var page = RenderBoard();
+        _http.RespondJson(TestData.Epic(EpicC, 512m));
+        return page;
+    }
+
+    private (Guid? Preceding, Guid? Following) RerankOf(Guid epicId)
+    {
+        var put = $"PUT /api/epics/{epicId}/rank";
+        Assert.Contains(put, _http.Paths);
+        var body = System.Text.Json.JsonDocument.Parse(_http.Bodies[_http.Paths.IndexOf(put)]).RootElement;
+        static Guid? Read(System.Text.Json.JsonElement e) =>
+            e.ValueKind == System.Text.Json.JsonValueKind.Null ? null : e.GetGuid();
+        return (Read(body.GetProperty("precedingId")), Read(body.GetProperty("followingId")));
+    }
+
+    [Fact]
+    public void An_epic_band_is_a_drag_handle_and_has_no_move_buttons()
+    {
+        var page = RenderThreeBands();
+
+        Assert.Empty(page.FindAll("[aria-label='Move up']"));
+        Assert.Empty(page.FindAll("[aria-label='Move down']"));
+        Assert.Equal(3, page.FindAll(".kanban-lane__drag-handle").Count);
+        Assert.All(page.FindAll(Gutter), g => Assert.Equal("true", g.GetAttribute("draggable")));
+    }
+
+    [Fact]
+    public void Dragging_a_band_up_onto_another_ranks_it_before_that_band()
+    {
+        var page = RenderThreeBands();
+
+        page.FindAll(Gutter)[2].DragStart();
+        page.FindAll(Gutter)[0].Drop();
+
+        Assert.Equal((null, EpicA), RerankOf(EpicC));
+    }
+
+    [Fact]
+    public void Dragging_a_band_down_onto_another_ranks_it_after_that_band()
+    {
+        var page = RenderThreeBands();
+
+        page.FindAll(Gutter)[0].DragStart();
+        page.FindAll(Gutter)[2].Drop();
+
+        Assert.Equal((EpicC, (Guid?)null), RerankOf(EpicA));
+    }
+
+    /// <summary>
+    /// A task drag reaches the gutters too — they must ignore it, or dropping a
+    /// card on a band would silently reorder the epics instead.
+    /// </summary>
+    [Fact]
+    public void Dropping_on_a_band_with_no_band_being_dragged_reranks_nothing()
+    {
+        var page = RenderThreeBands();
+
+        page.FindAll(Gutter)[0].Drop();
+
+        Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
+    }
+
+    /// <summary>The band under the pointer is marked so the drop lands visibly.</summary>
+    [Fact]
+    public void The_band_under_the_pointer_is_highlighted_while_dragging()
+    {
+        var page = RenderThreeBands();
+
+        page.FindAll(Gutter)[2].DragStart();
+        page.FindAll(Gutter)[0].DragEnter();
+
+        Assert.Single(page.FindAll(".kanban-lane__gutter--drop-target"));
+        Assert.Single(page.FindAll(".kanban-lane--dragging"));
+
+        page.FindAll(Gutter)[2].DragEnd();
+
+        Assert.Empty(page.FindAll(".kanban-lane__gutter--drop-target"));
+        Assert.Empty(page.FindAll(".kanban-lane--dragging"));
+    }
+
     // -- Bug: opening a drawer threw on MarkdownEditor's missing Class parameter --
 
     [Fact]

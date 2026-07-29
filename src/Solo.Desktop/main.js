@@ -124,6 +124,14 @@ function localUrl() {
     return `http://localhost:${listeningPort}/`;
 }
 
+const isMac = process.platform === 'darwin';
+
+// The client's own app bar height (MudBlazor's --mud-appbar-height, 5em against
+// the theme's 0.875rem base). The window controls are drawn inside it, so both
+// sides have to agree on the number: see the "Desktop shell chrome" block in
+// Solo.Client/wwwroot/css/app.css.
+const TITLE_BAR_HEIGHT = 70;
+
 function createMainWindow() {
     if (mainWindow) {
         mainWindow.focus();
@@ -138,6 +146,25 @@ function createMainWindow() {
         show: false,
         backgroundColor: '#000000',
         title: 'Solo',
+        // No OS title bar: the platform's own window controls sit on the app
+        // bar instead, the way most Electron apps ship. macOS keeps its inset
+        // traffic lights on the left; Windows and Linux get the Window Controls
+        // Overlay on the right, whose geometry the renderer reads back through
+        // the env(titlebar-area-*) variables. The app bar itself is the drag
+        // region — the client marks it, keyed off the classes the preload sets.
+        titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+        ...(isMac
+            ? { trafficLightPosition: { x: 18, y: Math.round((TITLE_BAR_HEIGHT - 14) / 2) } }
+            : {
+                titleBarOverlay: {
+                    color: '#000000',
+                    symbolColor: '#fff600',
+                    height: TITLE_BAR_HEIGHT,
+                },
+                // Without a title bar the menu bar would drop into the client
+                // area and sit on top of the app bar. Alt still summons it.
+                autoHideMenuBar: true,
+            }),
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'desktop.js'),
         },
@@ -145,6 +172,12 @@ function createMainWindow() {
 
     mainWindow.once('ready-to-show', () => mainWindow.show());
     mainWindow.on('closed', () => { mainWindow = null; });
+
+    // Fullscreen takes the traffic lights away, so the app bar must stop
+    // reserving room for them. A reload asks for the state instead (below).
+    for (const [event, fullScreen] of [['enter-full-screen', true], ['leave-full-screen', false]]) {
+        mainWindow.on(event, () => mainWindow?.webContents.send('window:full-screen', fullScreen));
+    }
 
     // The client's "Authorize in browser" button starts sign-in over IPC, but
     // if Google's widget ever runs in-app anyway, its popup can never succeed
@@ -353,4 +386,8 @@ function registerIpc() {
     });
 
     ipcMain.handle('desktop-auth:begin', () => beginBrowserSignIn());
+
+    // Asked for once per page load: the window may already be fullscreen when
+    // the renderer boots, and the change events above only cover transitions.
+    ipcMain.handle('window:full-screen', () => mainWindow?.isFullScreen() ?? false);
 }

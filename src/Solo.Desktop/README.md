@@ -26,6 +26,19 @@ Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live 
 During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start`
 serves client assets from anywhere without re-copying.
 
+## Window chrome
+
+The window has no OS title bar. The platform draws its own controls over the
+client's app bar instead — inset traffic lights on macOS, the Window Controls
+Overlay on Windows and Linux (where the menu bar auto-hides behind `Alt`) — and
+the app bar is the region you drag the window by.
+
+That takes agreement from both sides: the preload puts `solo-desktop`,
+`solo-desktop--mac` / `solo-desktop--overlay` and `solo-desktop--fullscreen` on
+`<html>`, and the client's `app.css` keys its drag regions and its room for the
+buttons off them (see the *Desktop shell chrome* block there). The classes exist
+only inside the shell, so the hosted web build keeps an ordinary app bar.
+
 ## Sign-in
 
 Google refuses to run its sign-in pages inside Electron ("this browser or app

@@ -127,6 +127,27 @@ public class TaskCardTests : ComponentTestBase
         Assert.Empty(card.FindAll(".deadline-ring--overdue"));
     }
 
+    /// <summary>
+    /// The countdown ring is the sub-task rollup's own component, recoloured —
+    /// which is what keeps the two rings on a card the same size and weight.
+    /// </summary>
+    [Fact]
+    public void The_deadline_ring_is_the_same_progress_circle_as_the_subtask_rollup()
+    {
+        var task = TestData.Task(
+            createdAt: DateTime.UtcNow.AddDays(-10),
+            deadline: DateOnly.FromDateTime(DateTime.Now).AddDays(5),
+            subTasks: [TestData.SubTask(true), TestData.SubTask(false)]);
+
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
+
+        var rings = card.FindAll(".mud-progress-circular");
+        Assert.Equal(2, rings.Count);
+        Assert.All(rings, r => Assert.Contains("mud-progress-small", r.ClassName!));
+        Assert.Contains("color:var(--deadline-color)",
+            card.Find(".deadline-ring .mud-progress-circular").GetAttribute("style"));
+    }
+
     [Fact]
     public void A_far_deadline_shows_the_ring_but_hides_the_three_digit_count()
     {

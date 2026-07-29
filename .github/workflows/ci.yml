@@ -96,3 +96,34 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # GHCR keeps every version forever, and on a private repo those images bill
+  # against the same storage allowance as Actions artifacts. Nothing here
+  # touches a tag anything still points at: `latest` and the newest semver
+  # tags belong to the version this run just pushed, which is the newest of
+  # the ones kept.
+  prune-images:
+    name: Prune old GHCR versions
+    needs: publish-image
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      # Orphans, not releases: buildx leaves these behind, and no tag can
+      # reach them once a later push moves `latest`.
+      - name: Delete untagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: solo
+          package-type: container
+          delete-only-untagged-versions: true
+          min-versions-to-keep: 0
+
+      # Five releases of rollback headroom. Older images stay reachable as
+      # source — the tag is still on main and rebuilds them.
+      - name: Keep the five newest tagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: solo
+          package-type: container
+          min-versions-to-keep: 5
