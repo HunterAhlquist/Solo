@@ -21,11 +21,15 @@ I freaking love PROOMPTING, I PROOMPT every day.
 AI is melting my programmer brain, please take away my Claude(TM) Pro(TM) subscription, I am begging you.
 
 
-Le epic claug face:
+### Le epic claug face:
 
 <img width="350" height="350" alt="image" src="https://github.com/user-attachments/assets/d1b33d69-bca9-4b2d-b283-2d15140a3248" />
 
 Nerd emoji lookin ahh
+
+### Picture of Anthropic scanning books for their AI models:
+
+<img width="330" height="262" alt="image" src="https://github.com/user-attachments/assets/9e0a962d-faf3-4bcb-aada-1de1d8485239" />
 
 </details>
 
