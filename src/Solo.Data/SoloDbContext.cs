@@ -130,6 +130,10 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
                 .HasForeignKey(l => l.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(l => l.Board).WithMany()
                 .HasForeignKey(l => l.BoardId).OnDelete(DeleteBehavior.Cascade);
+            // Deleting a default only orphans the copies; they stay as the
+            // board's own labels and a reset then matches them by name.
+            e.HasOne(l => l.Source).WithMany()
+                .HasForeignKey(l => l.SourceId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Comment>(e =>

@@ -13,23 +13,26 @@ public class LabelScopeTests
 
     private static readonly List<Label> Labels =
     [
-        new() { ProjectId = ProjectId, BoardId = null, Kind = LabelKind.Task, Name = "Bug", Color = "#e5484d" },
-        new() { ProjectId = ProjectId, BoardId = BoardA, Kind = LabelKind.Task, Name = "Board-A only", Color = "#111111" },
-        new() { ProjectId = ProjectId, BoardId = null, Kind = LabelKind.SubTask, Name = "Code", Color = "#8e4ec6" },
+        new() { ProjectId = ProjectId, BoardId = null, Kind = LabelKind.Task, Name = "Default", Color = "#e5484d" },
+        new() { ProjectId = ProjectId, BoardId = BoardA, Kind = LabelKind.Task, Name = "Bug", Color = "#e5484d" },
+        new() { ProjectId = ProjectId, BoardId = BoardB, Kind = LabelKind.Task, Name = "Bug", Color = "#e5484d" },
+        new() { ProjectId = ProjectId, BoardId = BoardA, Kind = LabelKind.SubTask, Name = "Code", Color = "#8e4ec6" },
     ];
 
     [Fact]
-    public void GlobalLabels_VisibleOnEveryBoard()
+    public void ABoardSeesOnlyItsOwnLabels()
     {
-        Assert.Contains(LabelScope.ResolveForBoard(Labels, BoardA), l => l.Name == "Bug");
-        Assert.Contains(LabelScope.ResolveForBoard(Labels, BoardB), l => l.Name == "Bug");
+        var onA = LabelScope.ResolveForBoard(Labels, BoardA).ToList();
+        Assert.All(onA, l => Assert.Equal(BoardA, l.BoardId));
+        Assert.Equal(["Bug", "Code"], onA.Select(l => l.Name));
     }
 
+    /// <summary>Project defaults are a template for new boards, not labels a board carries.</summary>
     [Fact]
-    public void BoardLocalLabels_VisibleOnlyOnTheirBoard()
+    public void ProjectDefaults_AreVisibleOnNoBoard()
     {
-        Assert.Contains(LabelScope.ResolveForBoard(Labels, BoardA), l => l.Name == "Board-A only");
-        Assert.DoesNotContain(LabelScope.ResolveForBoard(Labels, BoardB), l => l.Name == "Board-A only");
+        Assert.DoesNotContain(LabelScope.ResolveForBoard(Labels, BoardA), l => l.Name == "Default");
+        Assert.DoesNotContain(LabelScope.ResolveForBoard(Labels, BoardB), l => l.Name == "Default");
     }
 
     [Fact]
@@ -41,12 +44,15 @@ public class LabelScopeTests
     }
 
     [Fact]
-    public void Assignability_RequiresMatchingKindAndScope()
+    public void Assignability_RequiresMatchingKindAndBoard()
     {
-        var boardLocal = Labels.Single(l => l.Name == "Board-A only");
-        Assert.True(LabelScope.IsAssignable(boardLocal, BoardA, LabelKind.Task));
-        Assert.False(LabelScope.IsAssignable(boardLocal, BoardB, LabelKind.Task));
-        Assert.False(LabelScope.IsAssignable(boardLocal, BoardA, LabelKind.SubTask));
+        var onBoardA = Labels.Single(l => l.BoardId == BoardA && l.Kind == LabelKind.Task);
+        Assert.True(LabelScope.IsAssignable(onBoardA, BoardA, LabelKind.Task));
+        Assert.False(LabelScope.IsAssignable(onBoardA, BoardB, LabelKind.Task));
+        Assert.False(LabelScope.IsAssignable(onBoardA, BoardA, LabelKind.SubTask));
+
+        var projectDefault = Labels.Single(l => l.BoardId is null);
+        Assert.False(LabelScope.IsAssignable(projectDefault, BoardA, LabelKind.Task));
     }
 
     [Fact]
@@ -60,5 +66,111 @@ public class LabelScopeTests
             ["Code", "Asset", "Design", "Writing"],
             defaults.Where(l => l.Kind == LabelKind.SubTask).Select(l => l.Name));
         Assert.All(defaults, l => Assert.Null(l.BoardId));
+    }
+}
+
+public class BoardLabelsTests
+{
+    private static readonly Guid ProjectId = Guid.NewGuid();
+    private static readonly Guid BoardId = Guid.NewGuid();
+
+    private static List<Label> Defaults() => LabelDefaults.ForProject(ProjectId);
+
+    [Fact]
+    public void CopyToBoard_ClonesEveryDefaultOntoTheBoard()
+    {
+        var defaults = Defaults();
+
+        var copies = BoardLabels.CopyToBoard(defaults, BoardId);
+
+        Assert.Equal(defaults.Select(l => l.Name), copies.Select(l => l.Name));
+        Assert.All(copies, l => Assert.Equal(BoardId, l.BoardId));
+        Assert.All(copies, l => Assert.Equal(ProjectId, l.ProjectId));
+        Assert.Equal(defaults.Select(l => (Guid?)l.Id), copies.Select(l => l.SourceId));
+        Assert.Empty(defaults.Select(l => l.Id).Intersect(copies.Select(l => l.Id)));
+    }
+
+    /// <summary>
+    /// The rename is the case that matters: the copy is tracked to the default it
+    /// came from, so it is restored rather than deleted and re-created, and the
+    /// items pointing at it keep their label.
+    /// </summary>
+    [Fact]
+    public void Reset_RestoresARenamedCopyInPlaceSoItsItemsKeepIt()
+    {
+        var defaults = Defaults();
+        var current = BoardLabels.CopyToBoard(defaults, BoardId);
+        var bug = current.Single(l => l.Name == "Bug");
+        var id = bug.Id;
+        bug.Name = "Defect";
+        bug.Color = "#010203";
+        bug.Icon = "wrench";
+
+        var result = BoardLabels.ResetToDefaults(defaults, current, BoardId);
+
+        Assert.Empty(result.Added);
+        Assert.Empty(result.Removed);
+        Assert.Equal(id, bug.Id);
+        Assert.Equal("Bug", bug.Name);
+        Assert.Equal("#e5484d", bug.Color);
+        Assert.Null(bug.Icon);
+    }
+
+    /// <summary>Labels predating origin tracking still match on kind and name.</summary>
+    [Fact]
+    public void Reset_FallsBackToNameMatchingForUntrackedLabels()
+    {
+        var defaults = Defaults();
+        var current = BoardLabels.CopyToBoard(defaults, BoardId);
+        var bug = current.Single(l => l.Name == "Bug");
+        bug.SourceId = null;
+        bug.Color = "#010203";
+
+        var result = BoardLabels.ResetToDefaults(defaults, current, BoardId);
+
+        Assert.Empty(result.Added);
+        Assert.Empty(result.Removed);
+        Assert.Equal("#e5484d", bug.Color);
+        Assert.Equal(defaults.Single(l => l.Name == "Bug").Id, bug.SourceId);
+    }
+
+    [Fact]
+    public void Reset_ReaddsAMissingDefaultAndDropsALabelTheDefaultsDontName()
+    {
+        var defaults = Defaults();
+        var current = BoardLabels.CopyToBoard(defaults, BoardId);
+        current.RemoveAll(l => l.Name == "Feature");
+        var invented = new Label
+        {
+            ProjectId = ProjectId, BoardId = BoardId, Kind = LabelKind.Task,
+            Name = "Playtest", Color = "#123456",
+        };
+        current.Add(invented);
+
+        var result = BoardLabels.ResetToDefaults(defaults, current, BoardId);
+
+        Assert.Equal(["Feature"], result.Added.Select(l => l.Name));
+        Assert.All(result.Added, l => Assert.Equal(BoardId, l.BoardId));
+        Assert.Equal([invented], result.Removed);
+    }
+
+    /// <summary>Kind is part of a label's identity: same name, different kind is a different label.</summary>
+    [Fact]
+    public void Reset_MatchesOnKindAsWellAsName()
+    {
+        var defaults = Defaults();
+        var current = new List<Label>
+        {
+            new()
+            {
+                ProjectId = ProjectId, BoardId = BoardId, Kind = LabelKind.SubTask,
+                Name = "Bug", Color = "#ffffff",
+            },
+        };
+
+        var result = BoardLabels.ResetToDefaults(defaults, current, BoardId);
+
+        Assert.Contains(result.Added, l => l.Kind == LabelKind.Task && l.Name == "Bug");
+        Assert.Equal(current, result.Removed);
     }
 }

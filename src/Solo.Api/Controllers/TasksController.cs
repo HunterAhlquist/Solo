@@ -285,7 +285,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             return Problem(
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid label",
-                detail: "The label must exist in this project, match the item kind, and be visible on this board.");
+                detail: "The label must belong to this board and match the item kind.");
         }
 
         return null;

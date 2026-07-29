@@ -78,16 +78,30 @@ public class ApiClientTests
         Assert.Equal($"PUT /api/tasks/{TestData.BoardId}/rank", http.Paths[0]);
     }
 
+    /// <summary>Labels live on the board; the project route holds only the defaults.</summary>
     [Fact]
-    public async Task Board_scoped_label_query_passes_the_board_id()
+    public async Task Label_queries_are_scoped_to_the_board_or_to_the_project_defaults()
+    {
+        var http = new StubHttp();
+        http.RespondJson(Array.Empty<object>());
+        http.RespondJson(Array.Empty<object>());
+
+        var client = http.CreateClient();
+        await client.GetBoardLabelsAsync(TestData.BoardId);
+        await client.GetLabelsAsync(TestData.ProjectId);
+
+        Assert.Equal($"GET /api/boards/{TestData.BoardId}/labels", http.Paths[0]);
+        Assert.Equal($"GET /api/projects/{TestData.ProjectId}/labels", http.Paths[1]);
+    }
+
+    [Fact]
+    public async Task Resetting_board_labels_posts_to_the_boards_reset_route()
     {
         var http = new StubHttp();
         http.RespondJson(Array.Empty<object>());
 
-        await http.CreateClient().GetLabelsAsync(TestData.ProjectId, TestData.BoardId);
+        await http.CreateClient().ResetBoardLabelsAsync(TestData.BoardId);
 
-        Assert.Equal(
-            $"GET /api/projects/{TestData.ProjectId}/labels?boardId={TestData.BoardId}",
-            http.Paths[0]);
+        Assert.Equal($"POST /api/boards/{TestData.BoardId}/labels/reset", http.Paths[0]);
     }
 }

@@ -3,11 +3,14 @@ using Solo.Shared;
 
 namespace Solo.Data.Domain;
 
-/// <summary>Resolves which labels apply on a given board: project-global + board-local.</summary>
+/// <summary>
+/// Resolves which labels apply on a given board. Labels live on boards; a label
+/// with no board is a project default — a template for new boards, never
+/// visible on one.
+/// </summary>
 public static class LabelScope
 {
-    public static bool IsVisibleOn(Label label, Guid boardId) =>
-        label.BoardId is null || label.BoardId == boardId;
+    public static bool IsVisibleOn(Label label, Guid boardId) => label.BoardId == boardId;
 
     public static IEnumerable<Label> ResolveForBoard(
         IEnumerable<Label> projectLabels, Guid boardId, LabelKind? kind = null) =>

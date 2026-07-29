@@ -15,9 +15,6 @@ public sealed record LabelDto(
 
 public sealed class CreateLabelRequest
 {
-    /// <summary>Null = project-global; non-null = board-local addition.</summary>
-    public Guid? BoardId { get; init; }
-
     public LabelKind Kind { get; init; }
 
     [Required, MaxLength(FieldLimits.LabelName)]

@@ -44,8 +44,9 @@ internal static class TestData
     public static EpicDto Epic(Guid? id = null, decimal rank = 1024m) =>
         new(id ?? EpicId, BoardId, "Epic", null, rank, 1, []);
 
+    /// <summary>A board's own label — the only kind an item can carry.</summary>
     public static LabelDto Label(Guid id, string name = "Bug", string color = "#f56565") =>
-        new(id, ProjectId, null, LabelKind.Task, name, color, null, null, 1);
+        new(id, ProjectId, BoardId, LabelKind.Task, name, color, null, null, 1);
 
     public static ProjectMemberDto Member(Guid userId, string name = "Hunter") =>
         new(Guid.NewGuid(), userId, $"{name.ToLowerInvariant()}@example.com", name, null,

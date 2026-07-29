@@ -68,7 +68,7 @@ All projects
 ├─ ▾ Side quest               ← expanded
 │    ├─ Main board            ← open boards only
 │    ├─ Prototype
-│    ├─ Project settings      ← members, labels, audit, closed boards
+│    ├─ Project settings      ← members, label defaults, audit, closed boards
 │    └─ + Add board           ← foot of this project's boards
 └─ ─────────────────
    + Add project              ← pinned to the foot of the sidebar
@@ -88,11 +88,11 @@ All projects
 | `/signin` | Sign-in | Provider button (label/icon from `AuthConfigDto.Provider`) |
 | `/setup` | First-run wizard | Stepper: static-credential check (`POST /api/setup/verify`) → retention (`PUT /api/setup/settings`) → SSO sign-in → handoff (`POST /api/setup/complete` re-proving static creds) |
 | `/` | Projects list | Cards with icon + role badge; create (super admin only). The sidebar (§5) is the primary navigation; this page stays as the overview and the empty-state entry point |
-| `/projects/{id}` | Project home | Boards grid — closed boards tucked in a faded foldout with one-click reopen — + tabs: Members, Labels, Audit, Settings |
+| `/projects/{id}` | Project home | Boards grid — closed boards tucked in a faded foldout with one-click reopen — + tabs: Members, Label defaults, Audit, Settings |
 | `/projects/{id}/boards/{boardId}` | **Kanban board** | The core surface (§7) |
 | `/settings` | Instance settings | Super admin: audit retention (`/api/settings`) |
 
-Project tabs: **Members** (invite by email, role toggle Read/ReadWrite, owner flag, pending badge), **Labels** (global + per-board task/subtask labels, color picker, defaults visible), **Audit** (paged `MudTable` over `/api/projects/{id}/audit` with user/table/date filters).
+Project tabs: **Members** (invite by email, role toggle Read/ReadWrite, owner flag, pending badge), **Label defaults** (the task/subtask labels new boards are stamped from, color picker; a board's own labels are edited from the board itself), **Audit** (paged `MudTable` over `/api/projects/{id}/audit` with user/table/date filters).
 
 ## 7. Kanban board layout
 
@@ -113,6 +113,7 @@ Three fixed status columns — **Unstarted / In Progress / Finished** — with *
 - **Task cards:** name, label chip (color from `LabelDto`), assignee avatars, sub-task progress ring (n/m), presence badge.
 - **Drag & drop:** within a column = re-rank (`PUT rank` with `PrecedingId`/`FollowingId` — the server computes the fractional rank); across columns = `PUT status`; across swimlanes = `PUT epic` (into the ad-hoc band = null). Start with `MudDropContainer`; if nested swimlane × column zones fight it, fall back to a small JS-interop drag layer — isolate DnD behind one component so the swap is contained.
 - **Auto-status tasks** (those with sub-tasks) refuse status drags with a shake + tooltip ("status follows sub-tasks"); the server recomputes their state from checklist changes.
+- **Board labels:** the label button in the board header opens the board's own task/subtask labels — the only ones its items can carry — with a one-click reset back to the project defaults.
 - **Epic bands** have name, assignee avatars, collapse toggle, and drag-to-reorder among bands (epic re-rank).
 - **Finished-column hygiene:** past 25 cards the Finished column folds the overflow behind a faded expander ("Show all N") — same pattern as closed boards: tucked away, never locked away.
 - **Detail drawer** (right side, epic or task): markdown description, label select, assignees, sub-task checklist (add/toggle/re-rank/label), comments thread. Sub-task toggles update task status locally via the same rollup rule for instant feedback, then reconcile from the server response.
@@ -141,7 +142,7 @@ Three fixed status columns — **Unstarted / In Progress / Finished** — with *
 | 0 | `Solo.Client` scaffold, hosted-WASM wiring, MudBlazor, CI build | `dotnet watch` on Api serves the client shell |
 | 1 | Auth: dynamic OIDC bootstrap, ID-token handler, guards, `/api/users/me` | Sign in against a real provider; authenticated API call succeeds |
 | 2 | Setup wizard | Fresh instance configurable end-to-end from the browser |
-| 3 | Projects list, project home: boards grid, members, labels, settings | Full project administration without touching the API directly |
+| 3 | Projects list, project home: boards grid, members, label defaults, settings | Full project administration without touching the API directly |
 | 4 | Kanban board: swimlane layout, cards, drag & drop (rank/status/epic) | Board fully drivable by mouse; ranks persist |
 | 5 | Detail drawers: markdown, sub-tasks, comments, assignees | Every concept feature editable via save events |
 | 6 | Realtime: hub client, refetch-on-change, presence, conflict UX | Two-browser test: live updates + editing warnings work |

@@ -3,7 +3,10 @@ using Solo.Shared;
 
 namespace Solo.Data.Domain;
 
-/// <summary>Label defaults seeded on project creation.</summary>
+/// <summary>
+/// The project-level label defaults seeded on project creation. They are the
+/// template every board's labels start from — see <see cref="BoardLabels"/>.
+/// </summary>
 public static class LabelDefaults
 {
     public static List<Label> ForProject(Guid projectId) =>

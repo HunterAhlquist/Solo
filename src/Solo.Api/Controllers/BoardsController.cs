@@ -5,6 +5,7 @@ using Solo.Api.Auth;
 using Solo.Api.Realtime;
 using Solo.Api.Services;
 using Solo.Data;
+using Solo.Data.Domain;
 using Solo.Data.Entities;
 using Solo.Shared;
 using Solo.Shared.Dtos;
@@ -39,6 +40,14 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
             ImageId = request.ImageId,
         };
         db.Boards.Add(board);
+
+        // A board owns its labels; it starts life with a copy of the project's
+        // defaults and is free to diverge from them afterwards.
+        var defaults = await db.Labels.AsNoTracking()
+            .Where(l => l.ProjectId == projectId && l.BoardId == null)
+            .ToListAsync(ct);
+        db.Labels.AddRange(BoardLabels.CopyToBoard(defaults, board.Id));
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -85,7 +94,7 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
     private async Task<BoardDetailDto> BuildDetailAsync(Board board, CancellationToken ct)
     {
         var labels = await db.Labels.AsNoTracking()
-            .Where(l => l.ProjectId == board.ProjectId && (l.BoardId == null || l.BoardId == board.Id))
+            .Where(l => l.BoardId == board.Id)
             .OrderBy(l => l.Kind).ThenBy(l => l.Name)
             .ToListAsync(ct);
 

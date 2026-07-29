@@ -56,16 +56,95 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
-    public async Task ProjectCreation_SeedsDefaultLabels()
+    public async Task ProjectCreation_SeedsLabelDefaults_AndBoardsCopyThem()
     {
         postgres.SkipUnlessDockerAvailable();
-        var (project, _) = await CreateProjectWithBoard("Seeds");
+        var (project, board) = await CreateProjectWithBoard("Seeds");
 
-        var labels = await _admin.GetJson<List<LabelDto>>($"/api/projects/{project.Id}/labels");
-        Assert.Equal(7, labels.Count);
-        Assert.Contains(labels, l => l.Kind == LabelKind.Task && l.Name == "Bug");
-        Assert.Contains(labels, l => l.Kind == LabelKind.SubTask && l.Name == "Writing");
-        Assert.All(labels, l => Assert.Null(l.BoardId));
+        var defaults = await _admin.GetJson<List<LabelDto>>($"/api/projects/{project.Id}/labels");
+        Assert.Equal(7, defaults.Count);
+        Assert.Contains(defaults, l => l.Kind == LabelKind.Task && l.Name == "Bug");
+        Assert.Contains(defaults, l => l.Kind == LabelKind.SubTask && l.Name == "Writing");
+        Assert.All(defaults, l => Assert.Null(l.BoardId));
+
+        // The board holds copies, not the defaults themselves.
+        var boardLabels = await _admin.GetJson<List<LabelDto>>($"/api/boards/{board.Id}/labels");
+        Assert.All(boardLabels, l => Assert.Equal(board.Id, l.BoardId));
+        Assert.Equal(
+            defaults.Select(l => (l.Kind, l.Name, l.Color)).OrderBy(x => x.Name),
+            boardLabels.Select(l => (l.Kind, l.Name, l.Color)).OrderBy(x => x.Name));
+        Assert.Empty(defaults.Select(l => l.Id).Intersect(boardLabels.Select(l => l.Id)));
+    }
+
+    [SkippableFact]
+    public async Task EditingProjectDefaults_LeavesExistingBoardsAlone()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Defaults");
+
+        var bug = (await _admin.GetJson<List<LabelDto>>($"/api/projects/{project.Id}/labels"))
+            .First(l => l.Name == "Bug");
+        await _admin.PutJson<LabelDto>($"/api/projects/{project.Id}/labels/{bug.Id}", new
+        {
+            name = "Defect",
+            color = "#000001",
+            version = bug.Version,
+        });
+
+        var boardLabels = await _admin.GetJson<List<LabelDto>>($"/api/boards/{board.Id}/labels");
+        Assert.Contains(boardLabels, l => l.Name == "Bug");
+        Assert.DoesNotContain(boardLabels, l => l.Name == "Defect");
+
+        // A board created afterwards starts from the edited defaults.
+        var later = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Later", alias = "LATER" });
+        var laterLabels = await _admin.GetJson<List<LabelDto>>($"/api/boards/{later.Id}/labels");
+        Assert.Contains(laterLabels, l => l.Name == "Defect");
+    }
+
+    [SkippableFact]
+    public async Task ResettingBoardLabels_RestoresTheDefaults_AndKeepsMatchingAssignments()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Reset");
+
+        var labels = await _admin.GetJson<List<LabelDto>>($"/api/boards/{board.Id}/labels");
+        var bug = labels.First(l => l.Name == "Bug");
+        var feature = labels.First(l => l.Name == "Feature");
+
+        var kept = await _admin.PostJson<TaskDto>(
+            $"/api/boards/{board.Id}/tasks", new { name = "Keeps its label", labelId = bug.Id });
+
+        // Rename one default, drop another, and add a label of the board's own.
+        await _admin.PutJson<LabelDto>($"/api/boards/{board.Id}/labels/{bug.Id}", new
+        {
+            name = "Defect",
+            color = "#010203",
+            version = bug.Version,
+        });
+        await _admin.DeleteAsync($"/api/boards/{board.Id}/labels/{feature.Id}");
+        var invented = await _admin.PostJson<LabelDto>($"/api/boards/{board.Id}/labels", new
+        {
+            kind = "Task",
+            name = "Playtest",
+            color = "#123456",
+        });
+        var orphaned = await _admin.PostJson<TaskDto>(
+            $"/api/boards/{board.Id}/tasks", new { name = "Loses its label", labelId = invented.Id });
+
+        var reset = await _admin.PostJson<List<LabelDto>>($"/api/boards/{board.Id}/labels/reset", new { });
+
+        Assert.Equal(7, reset.Count);
+        Assert.All(reset, l => Assert.Equal(board.Id, l.BoardId));
+        Assert.DoesNotContain(reset, l => l.Name == "Playtest");
+        Assert.DoesNotContain(reset, l => l.Name == "Defect");
+        Assert.Contains(reset, l => l.Name == "Feature");
+        Assert.Equal("#e5484d", reset.First(l => l.Name == "Bug").Color);
+
+        // The renamed copy is restored, not replaced, so its task keeps it; the
+        // invented label is gone, and its task is left unlabelled.
+        Assert.Equal(bug.Id, (await _admin.GetJson<TaskDto>($"/api/tasks/{kept.Id}")).LabelId);
+        Assert.Null((await _admin.GetJson<TaskDto>($"/api/tasks/{orphaned.Id}")).LabelId);
     }
 
     [SkippableFact]
@@ -324,24 +403,33 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         var otherBoard = await _admin.PostJson<BoardDto>(
             $"/api/projects/{project.Id}/boards", new { name = "Other", alias = "OTHER" });
 
-        var boardLocal = await _admin.PostJson<LabelDto>($"/api/projects/{project.Id}/labels", new
+        var otherBoardLabel = await _admin.PostJson<LabelDto>($"/api/boards/{otherBoard.Id}/labels", new
         {
-            boardId = otherBoard.Id,
             kind = "Task",
             name = "Local",
             color = "#123456",
         });
 
-        // Board-local label from another board is rejected.
+        // Another board's label is rejected.
         var rejected = await _admin.PostAsJsonAsync($"/api/boards/{board.Id}/tasks", new
         {
             name = "Bad label",
-            labelId = boardLocal.Id,
+            labelId = otherBoardLabel.Id,
         }, TestClients.Json);
         Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
 
+        // So is a project default: it is a template, not a label items can carry.
+        var projectDefault = (await _admin.GetJson<List<LabelDto>>($"/api/projects/{project.Id}/labels"))
+            .First(l => l.Kind == LabelKind.Task);
+        var templateRejected = await _admin.PostAsJsonAsync($"/api/boards/{board.Id}/tasks", new
+        {
+            name = "Template label",
+            labelId = projectDefault.Id,
+        }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, templateRejected.StatusCode);
+
         // A sub-task label can't be used on a task.
-        var labels = await _admin.GetJson<List<LabelDto>>($"/api/projects/{project.Id}/labels");
+        var labels = await _admin.GetJson<List<LabelDto>>($"/api/boards/{board.Id}/labels");
         var subTaskLabel = labels.First(l => l.Kind == LabelKind.SubTask);
         var wrongKind = await _admin.PostAsJsonAsync($"/api/boards/{board.Id}/tasks", new
         {

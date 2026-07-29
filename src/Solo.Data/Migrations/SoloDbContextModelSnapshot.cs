@@ -342,6 +342,9 @@ namespace Solo.Data.Migrations
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("SourceId")
+                        .HasColumnType("uuid");
+
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -351,6 +354,8 @@ namespace Solo.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BoardId");
+
+                    b.HasIndex("SourceId");
 
                     b.HasIndex("ProjectId", "BoardId");
 
@@ -679,9 +684,16 @@ namespace Solo.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Solo.Data.Entities.Label", "Source")
+                        .WithMany()
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Board");
 
                     b.Navigation("Project");
+
+                    b.Navigation("Source");
                 });
 
             modelBuilder.Entity("Solo.Data.Entities.ProjectMember", b =>

@@ -75,13 +75,13 @@ public class ProjectHomeTests : BunitContext, IAsyncLifetime
     public void A_super_admin_with_a_read_only_role_gets_the_owner_surface_but_no_write_ui()
     {
         // The API's write policy is membership-only: super admin opens the
-        // owner-surface tabs everywhere but gets no write UI (Labels) without
-        // a read/write role or the owner flag.
+        // owner-surface tabs everywhere but gets no write UI (label defaults)
+        // without a read/write role or the owner flag.
         var tabs = TabsFor(isSuperAdmin: true, isOwner: false, role: ProjectRole.Read);
 
         Assert.Contains(tabs, t => t.Contains("Audit"));
         Assert.Contains(tabs, t => t.Contains("Settings"));
-        Assert.DoesNotContain(tabs, t => t.Contains("Labels"));
+        Assert.DoesNotContain(tabs, t => t.Contains("Label defaults"));
     }
 
     [Fact]

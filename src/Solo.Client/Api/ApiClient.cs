@@ -222,13 +222,10 @@ public sealed class ApiClient(HttpClient http)
         SendAsync(HttpMethod.Delete, $"api/comments/{commentId}", null, ct);
 
     // -- Labels -------------------------------------------------------------
-    /// <summary>Project-global labels, plus the board-local additions when <paramref name="boardId"/> is given.</summary>
+    /// <summary>The project's label defaults — the template new boards copy.</summary>
     public Task<IReadOnlyList<LabelDto>> GetLabelsAsync(
-        Guid projectId, Guid? boardId = null, CancellationToken ct = default) =>
-        GetAsync<IReadOnlyList<LabelDto>>(
-            boardId is null
-                ? $"api/projects/{projectId}/labels"
-                : $"api/projects/{projectId}/labels?boardId={boardId}", ct);
+        Guid projectId, CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<LabelDto>>($"api/projects/{projectId}/labels", ct);
 
     public Task<LabelDto> CreateLabelAsync(
         Guid projectId, CreateLabelRequest request, CancellationToken ct = default) =>
@@ -240,6 +237,25 @@ public sealed class ApiClient(HttpClient http)
 
     public Task DeleteLabelAsync(Guid projectId, Guid labelId, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"api/projects/{projectId}/labels/{labelId}", null, ct);
+
+    /// <summary>The labels this board owns — the only ones its items can carry.</summary>
+    public Task<IReadOnlyList<LabelDto>> GetBoardLabelsAsync(Guid boardId, CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<LabelDto>>($"api/boards/{boardId}/labels", ct);
+
+    public Task<LabelDto> CreateBoardLabelAsync(
+        Guid boardId, CreateLabelRequest request, CancellationToken ct = default) =>
+        SendAsync<LabelDto>(HttpMethod.Post, $"api/boards/{boardId}/labels", request, ct);
+
+    public Task<LabelDto> UpdateBoardLabelAsync(
+        Guid boardId, Guid labelId, UpdateLabelRequest request, CancellationToken ct = default) =>
+        SendAsync<LabelDto>(HttpMethod.Put, $"api/boards/{boardId}/labels/{labelId}", request, ct);
+
+    public Task DeleteBoardLabelAsync(Guid boardId, Guid labelId, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Delete, $"api/boards/{boardId}/labels/{labelId}", null, ct);
+
+    /// <summary>Puts the board's labels back to the project defaults.</summary>
+    public Task<IReadOnlyList<LabelDto>> ResetBoardLabelsAsync(Guid boardId, CancellationToken ct = default) =>
+        SendAsync<IReadOnlyList<LabelDto>>(HttpMethod.Post, $"api/boards/{boardId}/labels/reset", null, ct);
 
     // -- Images -------------------------------------------------------------
 

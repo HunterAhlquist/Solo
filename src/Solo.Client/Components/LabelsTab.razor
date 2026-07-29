@@ -3,8 +3,10 @@
 @inject ISnackbar Snackbar
 
 @*
-    Project-global labels and board-local additions, split by what they apply to.
-    The defaults the server seeds are visible and editable like any other.
+    Labels, split by what they apply to. With a BoardId this edits that board's
+    own labels — the ones its items can carry — and offers a reset back to the
+    project defaults. Without one it edits the project defaults themselves: the
+    template new boards copy, which no existing board follows.
 *@
 
 @if (_labels is null)
@@ -15,6 +17,22 @@ else
 {
     @* grid-inset: without it MudGrid's negative top margin overlays the tab strip. *@
     <div class="grid-inset">
+    <div class="d-flex align-center mb-2" style="gap:.75rem">
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            @(IsBoardScoped
+                ? "Only this board uses these labels."
+                : "New boards start from these. Boards that already exist keep their own.")
+        </MudText>
+        <MudSpacer />
+        @if (IsBoardScoped && CanWrite)
+        {
+            <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.SettingsBackupRestore" OnClick="@ResetAsync">
+                Reset to project defaults
+            </MudButton>
+        }
+    </div>
+
     <MudGrid>
         @foreach (var kind in new[] { LabelKind.Task, LabelKind.SubTask })
         {
@@ -47,13 +65,6 @@ else
                                 <MudListItem T="string">
                                     <div class="d-flex align-center" style="gap:.6rem">
                                         <LabelChip Label="@label" />
-                                        @if (label.BoardId is not null)
-                                        {
-                                            <MudTooltip Text="Only available on one board.">
-                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
-                                                         Class="ma-0">board</MudChip>
-                                            </MudTooltip>
-                                        }
                                         <MudSpacer />
                                         @if (CanWrite)
                                         {
@@ -81,8 +92,18 @@ else
     [Parameter, EditorRequired]
     public Guid ProjectId { get; set; }
 
+    /// <summary>Set to edit one board's labels; null edits the project defaults.</summary>
+    [Parameter]
+    public Guid? BoardId { get; set; }
+
     [Parameter]
     public bool CanWrite { get; set; }
+
+    /// <summary>Raised after every change, so a host holding board state can refetch.</summary>
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private bool IsBoardScoped => BoardId is not null;
 
     protected override Task OnParametersSetAsync() => LoadAsync();
 
@@ -90,7 +111,9 @@ else
     {
         try
         {
-            _labels = await Api.GetLabelsAsync(ProjectId);
+            _labels = BoardId is { } boardId
+                ? await Api.GetBoardLabelsAsync(boardId)
+                : await Api.GetLabelsAsync(ProjectId);
         }
         catch (ApiException e)
         {
@@ -110,14 +133,18 @@ else
             return;
         }
 
-        await GuardAsync(() => Api.CreateLabelAsync(ProjectId, new CreateLabelRequest
+        var request = new CreateLabelRequest
         {
             Kind = kind,
             Name = created.Name,
             Color = created.Color,
             Icon = created.Icon,
             ImageId = created.ImageId,
-        }));
+        };
+
+        await GuardAsync(() => BoardId is { } boardId
+            ? Api.CreateBoardLabelAsync(boardId, request)
+            : Api.CreateLabelAsync(ProjectId, request));
     }
 
     private async Task EditAsync(LabelDto label)
@@ -138,14 +165,18 @@ else
             return;
         }
 
-        await GuardAsync(() => Api.UpdateLabelAsync(ProjectId, label.Id, new UpdateLabelRequest
+        var request = new UpdateLabelRequest
         {
             Name = edited.Name,
             Color = edited.Color,
             Icon = edited.Icon,
             ImageId = edited.ImageId,
             Version = label.Version,
-        }));
+        };
+
+        await GuardAsync(() => BoardId is { } boardId
+            ? Api.UpdateBoardLabelAsync(boardId, label.Id, request)
+            : Api.UpdateLabelAsync(ProjectId, label.Id, request));
     }
 
     private async Task DeleteAsync(LabelDto label)
@@ -162,7 +193,34 @@ else
             return;
         }
 
-        await GuardAsync(() => Api.DeleteLabelAsync(ProjectId, label.Id));
+        await GuardAsync(() => BoardId is { } boardId
+            ? Api.DeleteBoardLabelAsync(boardId, label.Id)
+            : Api.DeleteLabelAsync(ProjectId, label.Id));
+    }
+
+    private async Task ResetAsync()
+    {
+        if (BoardId is not { } boardId)
+        {
+            return;
+        }
+
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            "Reset labels",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message, "Put this board's labels back to the project defaults? " +
+                                  "Edits to them are undone; labels this board added itself are deleted, " +
+                                  "and items using those lose their label." },
+                { d => d.ConfirmText, "Reset" },
+            });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        await GuardAsync(() => Api.ResetBoardLabelsAsync(boardId));
     }
 
     private async Task GuardAsync(Func<Task> action)
@@ -181,5 +239,6 @@ else
         }
 
         await LoadAsync();
+        await Changed.InvokeAsync();
     }
 }

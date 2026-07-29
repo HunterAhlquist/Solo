@@ -191,7 +191,7 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
             return Problem(
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid label",
-                detail: "The label must exist in this project, be a sub-task label, and be visible on this board.");
+                detail: "The label must belong to this board and be a sub-task label.");
         }
 
         return null;

@@ -61,8 +61,8 @@ public class MarkupDump : BunitContext, IAsyncLifetime
 
         var page = Render<Pages.ProjectHome>(p => p.Add(x => x.ProjectAlias, "SOLO"));
 
-        // Activate the Labels tab, exactly as a click does.
-        var labelsTab = page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Labels"));
+        // Activate the label defaults tab, exactly as a click does.
+        var labelsTab = page.FindAll(".mud-tab").First(t => t.TextContent.Contains("Label defaults"));
         labelsTab.Click();
 
         Write("project-home-labels.html", page.Markup);

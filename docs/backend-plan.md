@@ -39,19 +39,19 @@ Hierarchy: **Project → Board → Epic → Task → SubTask**.
 | Entity | Key fields | Notes |
 |---|---|---|
 | `User` | Issuer, Subject, Email, DisplayName, AvatarUrl, IsSuperAdmin | Provisioned on first SSO sign-in; identity is the OIDC `iss` + `sub` pair (provider-agnostic); `IsSuperAdmin` granted by the setup handoff |
-| `Project` | Name, Icon | Owns access config and global label config |
+| `Project` | Name, Icon | Owns access config and the label defaults new boards copy |
 | `ProjectMember` | ProjectId, UserId, Role (`Read` \| `ReadWrite`), IsOwner | The whole access model — deliberately simple |
 | `Board` | ProjectId, Name, Icon, IsOpen | Open/Close status per concept |
 | `Epic` | BoardId, Name, Description (markdown), Rank | Renders as a visual container surrounding its child tasks on the board. Has comments + assignees |
 | `Task` | BoardId, EpicId (nullable), Name, LabelId, Description (markdown), Status (`Unstarted` \| `InProgress` \| `Finished`), Rank | Null `EpicId` ⇒ ad-hoc task sitting directly on the board; when set, the epic must belong to the same board. Status drives column placement. With sub-tasks, status is auto-derived: all finished ⇒ `Finished`, some finished ⇒ `InProgress`, none ⇒ `Unstarted` |
 | `SubTask` | TaskId, Name, LabelId, IsFinished, Rank | Checklist item |
-| `Label` | ProjectId, BoardId (nullable), Kind (`Task` \| `SubTask`), Name, Color | `BoardId = null` ⇒ project-global; non-null ⇒ board-local addition |
+| `Label` | ProjectId, BoardId (nullable), Kind (`Task` \| `SubTask`), Name, Color | `BoardId = null` ⇒ a project default: a template, never carried by an item; non-null ⇒ a board's own label, the only kind items can carry |
 | `Comment` | AuthorId, Body (markdown), CreatedAt, EpicId? / TaskId? | One table, exactly one parent FK set (check constraint) |
 | `Assignment` | UserId, EpicId? / TaskId? | Many-to-many user assignment |
 | `AuditEntry` | Timestamp (UTC), UserId, TableName, RowId, ColumnName, PreviousValue | Written by SaveChanges interceptor |
 | `InstanceSettings` | AuditRetentionDays, SetupCompleted | Single-row config table; retention is the only audit knob, per concept. `SetupCompleted` kills the static setup account |
 
-Seeded label defaults on project creation:
+Seeded label defaults on project creation, copied onto each board as it is created:
 - Task labels: **Bug, Feature, Improvement, Feedback Session**
 - SubTask labels: **Code, Asset, Design, Writing**
 
@@ -77,7 +77,8 @@ REST controllers using DTOs from `Solo.Shared` (never entities). Mutations follo
 /api/config/auth                       anonymous: OIDC authority + client ID for the WASM client
 /api/setup                             first-run wizard: static super-admin login, instance config, handoff
 /api/projects                          CRUD (create: super admin), members (invite/role/remove)
-/api/projects/{id}/labels              global + board-local label config
+/api/projects/{id}/labels              project label defaults (template for new boards)
+/api/boards/{id}/labels                the board's own labels, + reset to the project defaults
 /api/projects/{id}/boards              CRUD, open/close
 /api/boards/{id}/epics                 CRUD, re-rank
 /api/boards/{id}/tasks                 CRUD, re-rank, assign, set status (column move), set/clear epic
@@ -112,7 +113,7 @@ Single `BoardHub` with typed client contract in `Solo.Shared`:
 
 ## 8. Testing strategy
 
-- **Unit:** status rollup (manual status without sub-tasks; derived Unstarted/InProgress/Finished with them), label resolution (global + board-local), per-provider OIDC claim mapping (Google, Microsoft), audit interceptor output, access-role decisions.
+- **Unit:** status rollup (manual status without sub-tasks; derived Unstarted/InProgress/Finished with them), label resolution (board-owned labels, defaults copy/reset), per-provider OIDC claim mapping (Google, Microsoft), audit interceptor output, access-role decisions.
 - **Integration:** Testcontainers Postgres + `WebApplicationFactory` with a test auth handler — CRUD round-trips, authz denials (Read user attempting writes), audit rows produced per save event, concurrency 409s, SignalR broadcast received on save, setup handoff (static credentials rejected once `SetupCompleted` is true).
 
 ## 9. Build order
