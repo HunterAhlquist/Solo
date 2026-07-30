@@ -97,33 +97,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # GHCR keeps every version forever, and on a private repo those images bill
-  # against the same storage allowance as Actions artifacts. Nothing here
-  # touches a tag anything still points at: `latest` and the newest semver
-  # tags belong to the version this run just pushed, which is the newest of
-  # the ones kept.
-  prune-images:
-    name: Prune old GHCR versions
-    needs: publish-image
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    steps:
-      # Orphans, not releases: buildx leaves these behind, and no tag can
-      # reach them once a later push moves `latest`.
-      - name: Delete untagged versions
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: solo
-          package-type: container
-          delete-only-untagged-versions: true
-          min-versions-to-keep: 0
-
-      # Five releases of rollback headroom. Older images stay reachable as
-      # source — the tag is still on main and rebuilds them.
-      - name: Keep the five newest tagged versions
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: solo
-          package-type: container
-          min-versions-to-keep: 5
+  # NO AUTOMATIC GHCR PRUNING. A `prune-images` job lived here for exactly one
+  # release (v1.4.1, 2026-07-30) and took production down with
+  # `manifest unknown`.
+  #
+  # Why it cannot work as written: buildx pushes an OCI *image index*, not a
+  # single manifest — the real image and the provenance attestation that
+  # docker/build-push-action attaches by default are child manifests, and GHCR
+  # lists those children as untagged versions. "Delete untagged versions"
+  # therefore deletes the innards of the image `latest` points at. The tag
+  # survives, resolves to an index whose children are gone, and every pull
+  # fails. `min-versions-to-keep` has the same flaw: it counts those children
+  # as versions.
+  #
+  # If GHCR storage needs trimming, delete whole versions by digest after
+  # checking what each one's index references — by hand, or with a script that
+  # walks the index. Do not re-add a blanket untagged sweep.
