@@ -519,17 +519,30 @@ html.solo-desktop .mud-snackbar {
     -webkit-app-region: no-drag;
 }
 
-/* Room for the traffic lights (three buttons plus their inset). Fullscreen
-   takes them away, and with them the reason to indent. */
+/* Clear space between the OS window controls and the app bar's own controls.
+   Reserving only the buttons' width leaves them touching. */
+html.solo-desktop {
+    --solo-controls-gap: 24px;
+}
+
+/* Room for the traffic lights: the 18px inset set by trafficLightPosition in
+   Solo.Desktop/main.js, plus three 12px buttons on 8px centres = 70px. The gap
+   lands on the glyph rather than the button box — the toggle carries
+   Edge.Start (margin-left:-12px) against its own 12px of padding, so the two
+   cancel and its icon sits exactly at the toolbar's padding edge. Fullscreen
+   takes the lights away, and with them the reason to indent. */
 html.solo-desktop--mac:not(.solo-desktop--fullscreen) .mud-appbar .mud-toolbar {
-    padding-left: 78px;
+    padding-left: calc(70px + var(--solo-controls-gap));
 }
 
 /* The overlay buttons take everything to the right of the title-bar area the
-   browser reports; the fallback is Chromium's default overlay width. */
+   browser reports; the fallback is Chromium's default overlay width. The
+   right-hand control is the plain profile button, whose own 12px of padding
+   already stands off the edge, so only the rest of the gap goes here. */
 html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .mud-appbar .mud-toolbar {
     padding-right: calc(
-        100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100% - 140px)));
+        100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100% - 140px))
+        + var(--solo-controls-gap) - 12px);
 }
 
 /* Sign-in, setup and the auth redirects have no app bar to drag the window by.

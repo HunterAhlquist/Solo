@@ -161,6 +161,30 @@ public sealed class DesktopAuthApiTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.Equal(HttpStatusCode.NotFound, completed.StatusCode);
     }
 
+    /// <summary>
+    /// The page is nothing but its script — an inline one is dropped by the
+    /// instance CSP (script-src has no 'unsafe-inline'), which renders the
+    /// heading and no sign-in button at all. So: every script is external,
+    /// and the file it points at is really served.
+    /// </summary>
+    [SkippableFact]
+    public async Task SignInPage_LoadsItsScriptFromAFile()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var flow = await StartFlowAsync();
+        var page = await _anon.GetStringAsync($"/desktop-auth?state={flow.State}");
+
+        foreach (var tag in page.Split("<script").Skip(1))
+        {
+            Assert.Contains("src=", tag[..tag.IndexOf('>')]);
+        }
+
+        var script = await _anon.GetAsync("/desktop-auth.js");
+        Assert.Equal(HttpStatusCode.OK, script.StatusCode);
+        Assert.Contains("javascript", script.Content.Headers.ContentType?.MediaType ?? "");
+    }
+
     [Fact]
     public void ExpiredFlow_IsSweptEverywhere()
     {
