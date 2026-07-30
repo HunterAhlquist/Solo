@@ -78,6 +78,9 @@ public sealed class UsersController : ApiControllerBase
         return File(avatar.Bytes, avatar.ContentType);
     }
 
+    /// <summary>A profile picture that won't fit in 2 MB isn't one.</summary>
+    private const int MaxAvatarBytes = 2 * 1024 * 1024;
+
     private static async Task<CachedAvatar?> FetchAsync(
         Guid id, SoloDbContext db, IHttpClientFactory httpClientFactory, CancellationToken ct)
     {
@@ -93,10 +96,12 @@ public sealed class UsersController : ApiControllerBase
             return null;
         }
 
+        // A picture claim pointing at the instance's own network is refused at
+        // the socket, by the handler this client is built with (see Program.cs).
         try
         {
             var client = httpClientFactory.CreateClient(AvatarConstants.HttpClient);
-            using var response = await client.GetAsync(uri, ct);
+            using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!response.IsSuccessStatusCode)
             {
                 return null;
@@ -108,10 +113,31 @@ public sealed class UsersController : ApiControllerBase
                 return null;
             }
 
-            var bytes = await response.Content.ReadAsByteArrayAsync(ct);
-            return bytes.Length == 0 ? null : new CachedAvatar(bytes, contentType);
+            // Read through a bounded buffer rather than ReadAsByteArrayAsync:
+            // the response is cached for 12 hours, so an oversized (or
+            // endless) body would otherwise be pinned in memory.
+            if (response.Content.Headers.ContentLength > MaxAvatarBytes)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[16 * 1024];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, ct)) > 0)
+            {
+                if (buffer.Length + read > MaxAvatarBytes)
+                {
+                    return null;
+                }
+
+                buffer.Write(chunk, 0, read);
+            }
+
+            return buffer.Length == 0 ? null : new CachedAvatar(buffer.ToArray(), contentType);
         }
-        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or IOException)
         {
             return null;
         }

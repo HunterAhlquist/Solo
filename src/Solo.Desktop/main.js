@@ -126,6 +126,20 @@ function localUrl() {
 
 const isMac = process.platform === 'darwin';
 
+// Electron's current defaults already, spelled out so a future default change
+// — or a stray webPreferences edit — can't quietly hand a renderer Node.
+// The renderer runs a Blazor app that renders other people's markdown; it has
+// no business reaching past the context bridge in preload/.
+const HARDENED_WEB_PREFERENCES = {
+    contextIsolation: true,
+    nodeIntegration: false,
+    nodeIntegrationInSubFrames: false,
+    sandbox: true,
+    webSecurity: true,
+    allowRunningInsecureContent: false,
+    webviewTag: false,
+};
+
 // The client's own app bar height (MudBlazor's --mud-appbar-height, 5em against
 // the theme's 0.875rem base). The window controls are drawn inside it, so both
 // sides have to agree on the number: see the "Desktop shell chrome" block in
@@ -167,11 +181,24 @@ function createMainWindow() {
             }),
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'desktop.js'),
+            ...HARDENED_WEB_PREFERENCES,
         },
     });
 
     mainWindow.once('ready-to-show', () => mainWindow.show());
     mainWindow.on('closed', () => { mainWindow = null; });
+
+    // The window is the app; it never navigates off its own origin. Task
+    // descriptions and comments are user-written markdown rendered in this
+    // renderer, so a link in one is untrusted input — it goes to the system
+    // browser like any other external link, and never becomes a navigation
+    // here.
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        if (!isLocalUrl(url)) {
+            event.preventDefault();
+            openExternally(url);
+        }
+    });
 
     // Fullscreen takes the traffic lights away, so the app bar must stop
     // reserving room for them. A reload asks for the state instead (below).
@@ -184,15 +211,51 @@ function createMainWindow() {
     // (Google blocks sign-in inside Electron outright) — reroute it into the
     // same browser flow. Every other link belongs in the system browser too.
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        if (new URL(url).hostname === 'accounts.google.com') {
+        if (hostnameOf(url) === 'accounts.google.com') {
             beginBrowserSignIn();
         } else {
-            shell.openExternal(url);
+            openExternally(url);
         }
         return { action: 'deny' };
     });
 
     mainWindow.loadURL(localUrl());
+}
+
+// Hands a URL to the OS. Only ever http(s): openExternal asks the desktop to
+// act on whatever scheme it is given, and the URLs reaching here come from
+// markdown somebody else wrote — a file:, smb: or custom-scheme link would be
+// asking the OS to open a share or launch a handler on their say-so.
+function openExternally(url) {
+    try {
+        const { protocol } = new URL(url);
+        if (protocol === 'http:' || protocol === 'https:') {
+            shell.openExternal(url);
+        }
+    } catch {
+        // Not a URL at all; nothing to open.
+    }
+}
+
+function hostnameOf(url) {
+    try {
+        return new URL(url).hostname;
+    } catch {
+        return null;
+    }
+}
+
+// The shell's own origin — the local server, which is the only thing the main
+// window is ever allowed to be showing.
+function isLocalUrl(url) {
+    try {
+        const { protocol, hostname, port } = new URL(url);
+        return protocol === 'http:' &&
+            (hostname === 'localhost' || hostname === '127.0.0.1') &&
+            port === String(listeningPort);
+    } catch {
+        return false;
+    }
 }
 
 function beginBrowserSignIn() {
@@ -300,12 +363,16 @@ function openSettingsWindow() {
         parent: mainWindow ?? undefined,
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'settings.js'),
+            ...HARDENED_WEB_PREFERENCES,
         },
     });
 
     settingsWindow.once('ready-to-show', () => settingsWindow.show());
     settingsWindow.on('closed', () => { settingsWindow = null; });
     settingsWindow.setMenuBarVisibility(false);
+    // A local form with no links: it navigates nowhere and opens nothing.
+    settingsWindow.webContents.on('will-navigate', event => event.preventDefault());
+    settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     settingsWindow.loadFile(path.join(__dirname, 'settings', 'settings.html'));
 }
 

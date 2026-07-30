@@ -7,17 +7,21 @@
     browser. (MudMarkdown's own link Command hook is off-limits: its
     MudLinkButton is compiled against internal MudBlazor API and throws under
     the MudBlazor version this app ships.)
+
+    Every render goes through SoloMarkdownPipeline, which strips raw HTML and
+    neutralises javascript:/data: destinations — user markdown is hostile input
+    and MudMarkdown's default pipeline renders both verbatim.
 *@
 
 @if (NavigationLocked)
 {
     <div class="markdown-locked">
-        <MudMarkdown Value="@Rendered" />
+        <MudMarkdown Value="@Rendered" MarkdownPipeline="@SoloMarkdownPipeline.Instance" />
     </div>
 }
 else
 {
-    <MudMarkdown Value="@Rendered" />
+    <MudMarkdown Value="@Rendered" MarkdownPipeline="@SoloMarkdownPipeline.Instance" />
 }
 
 @code {

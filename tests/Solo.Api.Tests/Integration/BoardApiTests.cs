@@ -252,13 +252,8 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
 
-        var bytes = new byte[] { 1, 2, 3, 4, 5 };
-        using var form = new MultipartFormDataContent();
-        var file = new ByteArrayContent(bytes);
-        file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-        form.Add(file, "file", "icon.png");
-
-        var post = await _admin.PostAsync("/api/images", form);
+        var bytes = PngBytes();
+        var post = await UploadImage(bytes, "image/png", "icon.png");
         Assert.Equal(HttpStatusCode.Created, post.StatusCode);
         var dto = await post.Content.ReadFromJsonAsync<ImageAssetDto>(TestClients.Json);
         Assert.Equal("image/png", dto!.ContentType);
@@ -271,13 +266,65 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(bytes, await get.Content.ReadAsByteArrayAsync());
 
         // Non-image content types are refused.
-        using var badForm = new MultipartFormDataContent();
-        var badFile = new ByteArrayContent(bytes);
-        badFile.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
-        badForm.Add(badFile, "file", "x.txt");
-        var badPost = await _admin.PostAsync("/api/images", badForm);
+        var badPost = await UploadImage(bytes, "text/plain", "x.txt");
         Assert.Equal(HttpStatusCode.BadRequest, badPost.StatusCode);
     }
+
+    /// <summary>
+    /// The declared content type is echoed back on every read, so bytes that
+    /// don't match it would be served as a type they aren't — the classic route
+    /// to getting a scripted document served from the app's own origin.
+    /// </summary>
+    [SkippableFact]
+    public async Task Images_RejectBytesThatContradictTheDeclaredType()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var html = "<html><script>alert(1)</script></html>"u8.ToArray();
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await UploadImage(html, "image/png", "icon.png")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await UploadImage(html, "image/jpeg", "icon.jpg")).StatusCode);
+    }
+
+    /// <summary>
+    /// An SVG is a document, and this one is served from the app's own origin.
+    /// The isolation headers are what keep a scripted upload from running there
+    /// when somebody opens the image URL directly.
+    /// </summary>
+    [SkippableFact]
+    public async Task Images_AreServedUnderAnIsolationPolicy()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>"u8.ToArray();
+        var post = await UploadImage(svg, "image/svg+xml", "icon.svg");
+        Assert.Equal(HttpStatusCode.Created, post.StatusCode);
+        var dto = await post.Content.ReadFromJsonAsync<ImageAssetDto>(TestClients.Json);
+
+        using var anon = _factory.CreateClient();
+        var get = await anon.GetAsync($"/api/images/{dto!.Id}");
+
+        var csp = Assert.Single(get.Content.Headers.TryGetValues("Content-Security-Policy", out var contentCsp)
+            ? contentCsp
+            : get.Headers.GetValues("Content-Security-Policy"));
+        Assert.Contains("default-src 'none'", csp);
+        Assert.Contains("sandbox", csp);
+        Assert.Equal("nosniff", Assert.Single(get.Headers.GetValues("X-Content-Type-Options")));
+    }
+
+    private async Task<HttpResponseMessage> UploadImage(byte[] bytes, string contentType, string fileName)
+    {
+        using var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        form.Add(file, "file", fileName);
+        return await _admin.PostAsync("/api/images", form);
+    }
+
+    /// <summary>A PNG signature plus a token payload — enough to be a PNG.</summary>
+    private static byte[] PngBytes() =>
+        [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
 
     [SkippableFact]
     public async Task Avatar_ForUserWithoutPicture_IsAnonymousAnd404()

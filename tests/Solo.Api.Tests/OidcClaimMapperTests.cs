@@ -93,4 +93,56 @@ public class OidcClaimMapperTests
         Assert.Null(OidcClaimMapper.Map(Principal(("sub", "1")), OidcClaimMapper.Google));
         Assert.Null(OidcClaimMapper.Map(Principal(("iss", "x")), OidcClaimMapper.Google));
     }
+
+    /// <summary>
+    /// The email activates pending invites, so an address the issuer says it
+    /// never checked must not reach provisioning — otherwise anyone who can
+    /// register a self-asserted address at the configured issuer walks into
+    /// the project it was invited to.
+    /// </summary>
+    [Fact]
+    public void UnverifiedEmail_IsDropped()
+    {
+        var principal = Principal(
+            ("iss", "https://sso.example.com"),
+            ("sub", "u1"),
+            ("email", "victim@example.com"),
+            ("email_verified", "false"));
+
+        var mapped = OidcClaimMapper.Map(principal, OidcClaimMapper.Generic);
+
+        Assert.NotNull(mapped);
+        Assert.Null(mapped.Email);
+    }
+
+    [Fact]
+    public void UnverifiedPreferredUsername_IsDropped()
+    {
+        var principal = Principal(
+            ("iss", "https://login.microsoftonline.com/tenant/v2.0"),
+            ("sub", "abc123"),
+            ("preferred_username", "victim@contoso.com"),
+            ("email_verified", "false"));
+
+        Assert.Null(OidcClaimMapper.Map(principal, OidcClaimMapper.Microsoft)!.Email);
+    }
+
+    /// <summary>
+    /// Verified, or simply not mentioned — several compliant issuers omit the
+    /// claim, and Solo's own session scheme replays an address that was
+    /// already checked when the session was minted.
+    /// </summary>
+    [Theory]
+    [InlineData("true")]
+    [InlineData("True")]
+    public void VerifiedEmail_IsKept(string verified)
+    {
+        var principal = Principal(
+            ("iss", "https://sso.example.com"),
+            ("sub", "u1"),
+            ("email", "hunter@example.com"),
+            ("email_verified", verified));
+
+        Assert.Equal("hunter@example.com", OidcClaimMapper.Map(principal, OidcClaimMapper.Generic)!.Email);
+    }
 }

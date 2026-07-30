@@ -40,6 +40,8 @@ else
                             <MudCardActions>
                                 <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Settings"
                                            OnClick="@(() => RenameBoardAsync(board))">Board settings</MudButton>
+                                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Label"
+                                           OnClick="@(() => OpenLabelsAsync(board))">Labels</MudButton>
                                 <MudSpacer />
                                 <MudButton Size="Size.Small" Color="Color.Default"
                                            OnClick="@(() => SetOpenAsync(board, false))">
@@ -201,6 +203,26 @@ else
         {
             Snackbar.Add(e.Detail ?? "Couldn't rename the board.", Severity.Error);
         }
+    }
+
+    /// <summary>
+    /// Labels belong to the board, not the project, so each board gets its own
+    /// entry point here — the project's own tab edits the defaults instead. The
+    /// grid renders no labels, so there is nothing to reload afterwards.
+    /// </summary>
+    private async Task OpenLabelsAsync(BoardDto board)
+    {
+        var dialog = await Dialogs.ShowAsync<BoardLabelsDialog>(
+            $"{board.Name} labels",
+            new DialogParameters<BoardLabelsDialog>
+            {
+                { d => d.ProjectId, ProjectId },
+                { d => d.BoardId, board.Id },
+                { d => d.CanWrite, CanWrite },
+            },
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+
+        await dialog.Result;
     }
 
     private async Task SetOpenAsync(BoardDto board, bool isOpen)

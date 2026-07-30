@@ -1,7 +1,7 @@
 @*
-    The board's label config, reached from the board header. Labels belong to
-    the board, so this is where they are edited; the project only holds the
-    defaults a board is stamped from and can be reset to.
+    The board's label config, reached from the project's board listing. Labels
+    belong to the board, so this is where they are edited; the project only holds
+    the defaults a board is stamped from and can be reset to.
 *@
 <MudDialog>
     <DialogContent>
@@ -29,6 +29,6 @@
 
     private void OnChanged() => _changed = true;
 
-    /// <summary>Reports whether anything changed, so the board refetches only when it must.</summary>
+    /// <summary>Reports whether anything changed, so a host holding board state can refetch.</summary>
     private void Close() => Dialog.Close(DialogResult.Ok(_changed));
 }

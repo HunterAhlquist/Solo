@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
@@ -85,6 +87,11 @@ builder.Services.AddSingleton<DesktopSignInFlows>();
 builder.Services.AddScoped<IAuthorizationHandler, ProjectAccessHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, SuperAdminHandler>();
 builder.Services.AddAuthorizationBuilder()
+    // Endpoints carrying no authorization metadata of their own require a
+    // signed-in caller, so an action added without an [Authorize] fails closed
+    // instead of shipping as an anonymous hole. The handful of genuinely public
+    // endpoints say so with [AllowAnonymous], which still wins over this.
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
     .AddPolicy(AuthConstants.SetupPolicy, p => p
         .AddAuthenticationSchemes(AuthConstants.SetupScheme)
         .RequireRole(AuthConstants.SetupAdminRole))
@@ -117,7 +124,39 @@ builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Solo-Avatar-Proxy/1.0");
-});
+})
+    // This is the only place the server fetches a URL it did not choose — the
+    // picture claim out of an OIDC token. On a self-hosted instance the API can
+    // reach the database, the container network and the LAN, so the guard sits
+    // on the socket rather than on the URL: it holds for redirects (which
+    // HttpClient follows on its own) and leaves no window between resolving a
+    // name and connecting to it.
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        MaxAutomaticRedirections = 5,
+        ConnectCallback = async (context, ct) =>
+        {
+            var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, ct);
+            var reachable = addresses.Where(address => !TrustedProxies.IsPrivate(address)).ToArray();
+            if (reachable.Length == 0)
+            {
+                throw new HttpRequestException(
+                    $"Refusing to fetch from a non-public address ({context.DnsEndPoint.Host}).");
+            }
+
+            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            try
+            {
+                await socket.ConnectAsync(reachable, context.DnsEndPoint.Port, ct);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        },
+    });
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();
 builder.Services.AddHostedService<AuditRetentionService>();
@@ -125,16 +164,37 @@ builder.Services.AddHealthChecks().AddDbContextCheck<SoloDbContext>();
 
 // ---------------------------------------------------------------------------
 // Rate limiting. Production sits behind Nginx Proxy Manager, so per-IP
-// partitions need X-Forwarded-For applied first. Trusting the header from any
-// direct connection is acceptable here: the API is only reachable through the
-// proxy (or the LAN), and the worst a spoofed header buys is a fresh limit
-// partition. Limits are config-overridable mainly so tests can tighten them.
+// partitions need X-Forwarded-For applied first. Limits are config-overridable
+// mainly so tests can tighten them.
+//
+// X-Forwarded-For is only honoured from a peer we expect to be a reverse proxy:
+// loopback, or a private/link-local address (the container network the proxy
+// and the app share). A caller that reaches the app from a public address gets
+// its header ignored and is metered on the connection address instead —
+// otherwise anyone on the internet could rotate the header and hand themselves
+// an unlimited number of rate-limit partitions, which is the difference between
+// "10 setup-password guesses a minute" and "as many as you like". Deployments
+// whose proxy sits on a public address can name it in
+// ForwardedHeaders:KnownProxies (comma-separated).
 // ---------------------------------------------------------------------------
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
+    foreach (var network in TrustedProxies.Networks)
+    {
+        options.KnownIPNetworks.Add(network);
+    }
+
+    foreach (var proxy in TrustedProxies.Configured(builder.Configuration))
+    {
+        options.KnownProxies.Add(proxy);
+    }
+
+    // Chains longer than one hop (proxy in front of a tunnel) need this raised
+    // to match, or the near end of the chain is all that's read.
+    options.ForwardLimit = builder.Configuration.GetValue("ForwardedHeaders:ForwardLimit", 1);
 });
 builder.Services.AddRateLimiter(limiter =>
 {
@@ -197,6 +257,7 @@ builder.Services.AddRateLimiter(limiter =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseSoloSecurityHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
@@ -238,7 +299,8 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<BoardHub>(BoardHubConstants.Path);
 app.MapHealthChecks("/healthz").AllowAnonymous();
-app.MapFallbackToFile("index.html");
+// The SPA shell itself is public — the client boots, then authenticates.
+app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();
 

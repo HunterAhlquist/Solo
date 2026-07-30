@@ -16,6 +16,33 @@ const PROXY_EXACT = ['/healthz'];
 // Local MCP endpoint (see main/mcp.js) — handled here, never proxied.
 const MCP_PATH = '/mcp';
 
+// The client shipped inside the app renders the same user-written markdown the
+// hosted build does, so the local origin gets the same policy the API sends
+// (Solo.Api/SecurityHeaders.cs) — keep the two in step. 'wasm-unsafe-eval' is
+// Blazor's WebAssembly runtime; the accounts.google.com entries cover the
+// client's sign-in UI, which is loaded even though the shell completes sign-in
+// in the system browser.
+const CONTENT_SECURITY_POLICY = [
+    "default-src 'self'",
+    "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com",
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com",
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' ws: wss: https://accounts.google.com",
+    "frame-src https://accounts.google.com",
+    "worker-src 'self' blob:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+].join('; ');
+
+const SECURITY_HEADERS = {
+    'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+};
+
 const MIME = {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
@@ -134,7 +161,11 @@ function serveStatic(req, res, clientDir) {
     const type = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
     // Local origin, near-zero latency: skip caching entirely so a rebuilt
     // client is always picked up on reload.
-    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache' });
+    res.writeHead(200, {
+        'Content-Type': type,
+        'Cache-Control': 'no-cache',
+        ...SECURITY_HEADERS,
+    });
     if (req.method === 'HEAD') {
         res.end();
         return;

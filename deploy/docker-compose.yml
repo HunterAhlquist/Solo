@@ -41,9 +41,25 @@ services:
 
       # -- First-run setup account -------------------------------------------
       # Used only by the setup wizard; permanently disabled after the wizard
-      # hands super admin off to your SSO account.
+      # hands super admin off to your SSO account. Until that handoff these
+      # credentials are the way in, and only a per-IP rate limit stands in
+      # front of them — make the password a long random one.
       Setup__Username: "setup"
       Setup__Password: "CHANGE_ME_SETUP_PASSWORD"
+
+      # -- Reverse proxy ------------------------------------------------------
+      # X-Forwarded-For is what per-IP rate limiting reads, so it is only
+      # trusted from a peer that looks like a local reverse proxy: loopback or
+      # a private/link-local address. That covers the normal setups — this
+      # compose file, a Cloudflare tunnel sidecar, Nginx Proxy Manager on the
+      # LAN — and stops a caller on the internet from spoofing the header to
+      # mint itself fresh rate-limit buckets.
+      #
+      # Only needed if your proxy reaches the app from a PUBLIC address; name
+      # it here (comma-separated) or its forwarded header will be ignored:
+      #   ForwardedHeaders__KnownProxies: "203.0.113.10"
+      # Behind two hops (proxy in front of a tunnel), raise the chain depth:
+      #   ForwardedHeaders__ForwardLimit: "2"
 
     # The aspnet base image ships no curl/wget; probe the TCP port via bash.
     healthcheck:

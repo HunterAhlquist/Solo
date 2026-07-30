@@ -29,8 +29,17 @@ public static class OidcClaimMapper
             return null;
         }
 
-        var email = FirstClaim(principal, "email", ClaimTypes.Email);
-        if (email is null && provider.Equals(Microsoft, StringComparison.OrdinalIgnoreCase))
+        // The email is not just a display field: an invite is activated by
+        // matching it (UserProvisioningService), so an issuer that will mint a
+        // token for an address its owner never proved would otherwise hand out
+        // somebody else's project membership. Providers say so with
+        // email_verified — when it is present and false, there is no email
+        // here, and the identity provisions nothing.
+        var email = EmailVerified(principal)
+            ? FirstClaim(principal, "email", ClaimTypes.Email)
+            : null;
+        if (email is null && EmailVerified(principal) &&
+            provider.Equals(Microsoft, StringComparison.OrdinalIgnoreCase))
         {
             // Entra ID commonly puts the sign-in email here; only trust it when
             // it looks like an address.
@@ -60,6 +69,16 @@ public static class OidcClaimMapper
             name,
             FirstClaim(principal, "picture"));
     }
+
+    /// <summary>
+    /// False only when the token explicitly says the address is unverified.
+    /// An absent claim is treated as verified: several compliant issuers omit
+    /// it, and the session scheme's re-issued principal carries no such claim
+    /// either — the address it replays was already checked at sign-in.
+    /// </summary>
+    private static bool EmailVerified(ClaimsPrincipal principal) =>
+        FirstClaim(principal, "email_verified") is not { } value ||
+        !value.Equals("false", StringComparison.OrdinalIgnoreCase);
 
     private static string? FirstClaim(ClaimsPrincipal principal, params string[] types) =>
         types.Select(principal.FindFirstValue)

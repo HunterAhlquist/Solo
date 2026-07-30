@@ -35,10 +35,6 @@ else
 
         @if (CanWrite)
         {
-            <MudTooltip Text="Board labels">
-                <MudIconButton Icon="@Icons.Material.Filled.Label" Size="Size.Small"
-                               OnClick="@OpenLabelsAsync" aria-label="Board labels" />
-            </MudTooltip>
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateEpicAsync">
                 Epic
@@ -482,35 +478,6 @@ else
         if (ranked is not null)
         {
             Store.ApplyTask(ranked);
-        }
-    }
-
-    // -- Labels -------------------------------------------------------------
-
-    /// <summary>
-    /// Labels belong to the board, so they are configured from it. The board
-    /// payload carries them, so a change means a refetch.
-    /// </summary>
-    private async Task OpenLabelsAsync()
-    {
-        if (Store.Board is not { } board)
-        {
-            return;
-        }
-
-        var dialog = await Dialogs.ShowAsync<BoardLabelsDialog>(
-            "Board labels",
-            new DialogParameters<BoardLabelsDialog>
-            {
-                { d => d.ProjectId, board.ProjectId },
-                { d => d.BoardId, board.Id },
-                { d => d.CanWrite, CanWrite },
-            },
-            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
-
-        if (await dialog.Result is { Data: true })
-        {
-            await Store.RefreshAsync();
         }
     }
 

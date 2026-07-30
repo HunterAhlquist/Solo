@@ -28,6 +28,19 @@ public sealed class ImagesController(SoloDbContext db) : ApiControllerBase
         ["image/svg+xml"] = ".svg",
     };
 
+    /// <summary>
+    /// Uploads are served from the app's own origin, and an SVG opened as a
+    /// document — not through <c>&lt;img&gt;</c>, which never runs script — is a
+    /// document on that origin, so a scripted SVG would be stored XSS against
+    /// whoever follows the link, with the session token one localStorage read
+    /// away. Any authenticated member can upload one. This is what stops it:
+    /// <c>default-src 'none'</c> blocks every subresource and script the file
+    /// might reach for, and <c>sandbox</c> drops the response into an opaque
+    /// origin so even inline script has nothing to steal. Neither affects the
+    /// <c>&lt;img&gt;</c> path the app actually uses.
+    /// </summary>
+    private const string IsolationPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
     [HttpPost]
     [Authorize]
     [RequestSizeLimit(MaxBytes + 4096)]
@@ -59,11 +72,23 @@ public sealed class ImagesController(SoloDbContext db) : ApiControllerBase
 
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer, ct);
+        var bytes = buffer.ToArray();
+
+        // The declared content type is the uploader's word for it, and it is
+        // what every later response echoes back. Check the bytes agree, so a
+        // file cannot be stored under a type it isn't.
+        if (!LooksLike(file.ContentType, bytes))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Not an image",
+                detail: "The file contents don't match the declared image type.");
+        }
 
         var image = new ImageAsset
         {
             ContentType = file.ContentType,
-            Data = buffer.ToArray(),
+            Data = bytes,
         };
         db.ImageAssets.Add(image);
         await db.SaveChangesAsync(ct);
@@ -84,6 +109,43 @@ public sealed class ImagesController(SoloDbContext db) : ApiControllerBase
         // Immutable: the content under an id never changes, so cache aggressively.
         Response.Headers.CacheControl = "public, max-age=31536000, immutable";
         Response.Headers.XContentTypeOptions = "nosniff";
+        Response.Headers.ContentSecurityPolicy = IsolationPolicy;
         return File(image.Data, image.ContentType);
+    }
+
+    /// <summary>
+    /// Cheap sniff that the bytes are the type they claim. PNG and JPEG have
+    /// fixed signatures; SVG is XML, so require it to open like one.
+    /// </summary>
+    private static bool LooksLike(string contentType, ReadOnlySpan<byte> bytes) =>
+        contentType.ToLowerInvariant() switch
+        {
+            "image/png" => bytes.StartsWith(PngSignature),
+            "image/jpeg" => bytes.StartsWith(JpegSignature),
+            "image/svg+xml" => IsXml(bytes),
+            _ => false,
+        };
+
+    private static ReadOnlySpan<byte> PngSignature => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A];
+
+    private static ReadOnlySpan<byte> JpegSignature => [0xFF, 0xD8, 0xFF];
+
+    private static ReadOnlySpan<byte> Utf8Bom => [0xEF, 0xBB, 0xBF];
+
+    private static bool IsXml(ReadOnlySpan<byte> bytes)
+    {
+        // Skip a UTF-8 BOM and any leading whitespace before the first tag.
+        if (bytes.StartsWith(Utf8Bom))
+        {
+            bytes = bytes[3..];
+        }
+
+        var start = 0;
+        while (start < bytes.Length && char.IsWhiteSpace((char)bytes[start]))
+        {
+            start++;
+        }
+
+        return start < bytes.Length && bytes[start] == (byte)'<';
     }
 }
