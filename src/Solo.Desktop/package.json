@@ -11,6 +11,7 @@
     "start": "electron .",
     "build:client": "node scripts/build-client.mjs",
     "build:icon": "node scripts/build-icon.mjs",
+    "stage:icon": "node scripts/stage-icon.mjs",
     "dist": "npm run build:client && electron-builder"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
   "build": {
     "appId": "com.solo.desktop",
     "productName": "Solo",
+    "beforePack": "scripts/before-pack.mjs",
     "directories": {
       "output": "dist"
     },
@@ -38,7 +40,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "../../Icons/Solo.icon",
+      "icon": "build/Solo.icon",
       "target": [
         "dmg",
         "zip"

@@ -56,9 +56,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # mac.icon is an Icon Composer bundle; electron-builder compiles it
-      # with actool, which only ships with Xcode 26+. The image's default
-      # Xcode selection can lag behind what's installed.
+      # mac.icon is an Icon Composer bundle, staged by the beforePack hook and
+      # compiled by electron-builder with actool, which only ships with Xcode
+      # 26+. The image's default Xcode selection can lag behind what's
+      # installed, and a newer actool means fewer icon features get dropped.
       - name: Select Xcode 26+
         if: runner.os == 'macOS'
         run: |

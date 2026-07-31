@@ -1,4 +1,7 @@
 {
+  "features" : [
+    "refractivity"
+  ],
   "fill" : {
     "linear-gradient" : [
       "srgb:1.00000,1.00000,1.00000,1.00000",
@@ -7,6 +10,49 @@
   },
   "groups" : [
     {
+      "blur-material" : 0.1,
+      "layers" : [
+        {
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "YAY.png",
+          "name" : "YAY",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 1.5,
+            "translation-in-points" : [
+              307.5033947222223,
+              269.8498902
+            ]
+          }
+        }
+      ],
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "refractivity" : {
+        "depth" : 0.6270703125,
+        "enabled" : true,
+        "strength" : 0.4542578125
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : 0.1,
+      "hidden" : false,
       "layers" : [
         {
           "blend-mode" : "screen",
@@ -41,7 +87,36 @@
               "value" : 0.3
             }
           ]
-        },
+        }
+      ],
+      "lighting" : "individual",
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "refractivity" : {
+        "depth" : 0.08515625,
+        "enabled" : true,
+        "strength" : 0.34546875
+      },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.4
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : 0.1,
+      "hidden" : false,
+      "layers" : [
         {
           "blend-mode" : "screen",
           "fill-specializations" : [
@@ -66,22 +141,36 @@
           "image-name" : "Rounded Rectangle2 2.svg",
           "name" : "Rounded Rectangle2 2",
           "opacity" : 0.6
-        },
-        {
-          "fill" : "none",
-          "glass" : false,
-          "hidden" : false,
-          "image-name" : "YAY.png",
-          "name" : "YAY",
-          "opacity" : 1,
-          "position" : {
-            "scale" : 1.5,
-            "translation-in-points" : [
-              307.5033947222223,
-              269.8498902
-            ]
-          }
-        },
+        }
+      ],
+      "lighting" : "individual",
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "refractivity" : {
+        "depth" : 0.08515625,
+        "enabled" : true,
+        "strength" : 0.34546875
+      },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.4
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : 0.1,
+      "hidden" : false,
+      "layers" : [
         {
           "blend-mode" : "screen",
           "fill-specializations" : [
@@ -115,21 +204,27 @@
           }
         }
       ],
-      "opacity" : 1,
+      "lighting" : "individual",
       "position" : {
-        "scale" : 0.85,
+        "scale" : 0.9,
         "translation-in-points" : [
           0,
           0
         ]
       },
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.6
+      "refractivity" : {
+        "depth" : 0.08515625,
+        "enabled" : true,
+        "strength" : 0.34546875
       },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.4
+      },
+      "specular" : true,
       "translucency" : {
         "enabled" : true,
-        "value" : 0.2
+        "value" : 0.25
       }
     }
   ],

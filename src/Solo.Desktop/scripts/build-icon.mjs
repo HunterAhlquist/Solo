@@ -5,10 +5,10 @@
 //   src/Solo.Client/wwwroot/apple-touch-icon.png   180px, iOS/Safari home screen
 //   src/Solo.Client/wwwroot/favicon.svg        64px light + dark, swapped by media query
 //
-// macOS is deliberately not in that list. electron-builder hands Icons/Solo.icon
-// straight to actool and ships the compiled Assets.car in the bundle, so macOS
-// renders the Liquid Glass icon live — dynamic appearance, specular highlights,
-// the Dock's own masking. Baking a flat .icns for macOS would throw that away.
+// macOS is deliberately not in that list. electron-builder compiles the .icon
+// with actool and ships the resulting Assets.car in the bundle, so macOS renders
+// the Liquid Glass icon live — dynamic appearance, specular highlights, the
+// Dock's own masking. Baking a flat .icns for macOS would throw that away.
 //
 // Requires macOS with Xcode 26+ (actool + swiftc), same as packaging the mac app.
 import fs from 'node:fs';
@@ -16,12 +16,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { compileIcon, reportDropped, stageIcon } from './stage-icon.mjs';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.dirname(scriptsDir);
 const repoRoot = path.join(desktopDir, '..', '..');
 
-const iconSrc = path.join(repoRoot, 'Icons', 'Solo.icon');
 const desktopBuildDir = path.join(desktopDir, 'build');
 const clientWwwroot = path.join(repoRoot, 'src', 'Solo.Client', 'wwwroot');
 
@@ -49,28 +49,13 @@ if (process.platform !== 'darwin') {
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'solo-icon-'));
 try {
-    // 1. Compile the .icon the same way electron-builder does when packaging.
-    //    The catalog names the asset after the bundle's filename, and --app-icon
-    //    below looks it up by that name, so the source has to be copied to
-    //    Icon.icon first — compiling Solo.icon in place yields an asset called
-    //    "Solo" that nothing then finds.
+    // 1. Compile the .icon the same way electron-builder does when packaging,
+    //    from the same staged copy it consumes — so these assets and the mac
+    //    app agree on which effects the local actool supports.
     const catalogDir = path.join(tmpDir, 'catalog');
     const stagedIcon = path.join(tmpDir, 'Icon.icon');
-    fs.mkdirSync(catalogDir);
-    fs.cpSync(iconSrc, stagedIcon, { recursive: true });
-    run('actool', [
-        stagedIcon,
-        '--compile', catalogDir,
-        '--output-format', 'human-readable-text',
-        '--output-partial-info-plist', path.join(catalogDir, 'partial.plist'),
-        '--app-icon', 'Icon',
-        '--include-all-app-icons',
-        '--enable-on-demand-resources', 'NO',
-        '--development-region', 'en',
-        '--target-device', 'mac',
-        '--minimum-deployment-target', '26.0',
-        '--platform', 'macosx',
-    ]);
+    reportDropped(stageIcon(stagedIcon));
+    compileIcon(stagedIcon, catalogDir);
 
     // 2. Wrap the catalog in a throwaway bundle. Both render paths resolve the
     //    icon through a bundle, and IconServices caches per path, so this lives
