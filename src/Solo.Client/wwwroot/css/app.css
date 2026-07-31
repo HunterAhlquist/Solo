@@ -1,17 +1,42 @@
+/* Splash colours, before any theme has loaded. js/theme-boot.js overwrites
+   these with the active theme's, cached from the previous visit; the values
+   here are the first-run fallback and the default theme's own. */
+:root {
+    --solo-boot-bg: #000000;
+    --solo-boot-fg: #fff600;
+    --solo-boot-surface: #101010;
+    --solo-code-color: var(--mud-palette-secondary);
+}
+
+:root[data-color-scheme="light"] {
+    --solo-boot-bg: #f5f4ef;
+    --solo-boot-fg: #6d6600;
+    --solo-boot-surface: #e5e2d6;
+}
+
 html, body {
     margin: 0;
     height: 100%;
 }
 
-/* Monospace everywhere, matching the theme — covers plain HTML the MudBlazor
-   typography variables don't reach (e.g. the boot splash and raw <code>). */
-body {
-    font-family: "Courier New", monospace;
+/* Carries past the app's own surfaces, so overscroll and the gap behind a short
+   page don't flash white on a dark theme. */
+html {
+    background: var(--solo-boot-bg);
 }
 
-/* Inline code picks up the sibling site's pink so it stands off the yellow. */
+/* MudBlazor's own `body` rule is `var(--mud-typography-default-family)`, and
+   app.css loads after it at equal specificity — so a literal font-family here
+   would pin the whole document to one theme's face. Repeat the variable, with
+   the default theme's stack as the pre-boot fallback. */
+body {
+    font-family: var(--mud-typography-default-family, "Courier New", monospace);
+}
+
+/* Themes set --solo-code-color; the fallback keeps inline code off the body
+   colour so it still reads as code on a theme that doesn't. */
 code {
-    color: #c02d76;
+    color: var(--solo-code-color);
 }
 
 /* ---------------------------------------------------------------------------
@@ -22,8 +47,8 @@ code {
     place-content: center;
     gap: 1.25rem;
     height: 100vh;
-    background: #000000;
-    color: #fff600;
+    background: var(--solo-boot-bg);
+    color: var(--solo-boot-fg);
     font: 700 1.75rem/1 "Courier New", monospace;
     letter-spacing: 0.35em;
     text-transform: uppercase;
@@ -33,14 +58,14 @@ code {
     width: 12rem;
     height: 2px;
     overflow: hidden;
-    background: #101010;
+    background: var(--solo-boot-surface);
 }
 
 .boot-splash__bar span {
     display: block;
     width: 40%;
     height: 100%;
-    background: #fff600;
+    background: var(--solo-boot-fg);
     animation: boot-slide 1.1s ease-in-out infinite;
 }
 
@@ -572,7 +597,51 @@ html.solo-desktop .solo-titlebar {
     left: 0;
     right: 0;
     height: var(--mud-appbar-height, 5em);
+    /* Above the sign-in backdrop, which is fixed and later in the DOM; without
+       this the frameless window would lose its drag handle on /signin. */
+    z-index: 1;
     -webkit-app-region: drag;
+}
+
+/* ---------------------------------------------------------------------------
+   Sign-in backdrop — a theme's login background image.
+
+   The image and its fit arrive as custom properties from the theme package
+   (see ThemeBackgroundFit); nothing here is hard-coded to a particular theme,
+   and a theme with no image simply renders the palette background.
+   --------------------------------------------------------------------------- */
+.signin-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background-color: var(--signin-color, var(--mud-palette-background));
+    background-image: var(--signin-image, none);
+    background-size: var(--signin-size, cover);
+    background-position: var(--signin-position, center);
+    background-repeat: no-repeat;
+}
+
+/* Flat wash in the palette background colour, so a busy photo can't cost the
+   sign-in card its contrast. Opacity is the theme's `scrim`. */
+.signin-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--mud-palette-background);
+    opacity: var(--signin-scrim, 0);
+}
+
+/* The card itself, lifted clear of the backdrop. */
+.signin-content {
+    position: relative;
+    z-index: 1;
+}
+
+.signin-logo {
+    max-width: 14rem;
+    max-height: 5rem;
+    width: auto;
+    height: auto;
 }
 
 /* ---------------------------------------------------------------------------

@@ -1,0 +1,90 @@
+{
+  "formatVersion": 1,
+  "id": "arcade",
+  "name": "Arcade",
+  "description": "Neon cabinet. Magenta and cyan over a synthwave horizon.",
+  "author": "Solo",
+
+  "stylesheet": "content/theme.css",
+
+  "typography": {
+    "fontFamily": ["Inter", "Segoe UI", "system-ui", "-apple-system", "sans-serif"],
+    "headingFontFamily": ["Impact", "Haettenschweiler", "Arial Narrow Bold", "sans-serif"],
+    "fontSize": "0.875rem",
+    "headingWeight": "700",
+    "buttonWeight": "700",
+    "letterSpacing": "0.02em"
+  },
+
+  "layout": {
+    "borderRadius": "2px",
+    "appbarHeight": "4.5em",
+    "drawerWidth": "20em"
+  },
+
+  "login": {
+    "background": {
+      "image": "content/login-dark.svg",
+      "imageLight": "content/login-light.svg",
+      "fit": "cover",
+      "position": "center bottom",
+      "scrim": 0.3
+    }
+  },
+
+  "dark": {
+    "primary": "#ff2e88",
+    "secondary": "#22d3ee",
+    "tertiary": "#a855f7",
+    "background": "#0a0712",
+    "backgroundGray": "#120c1d",
+    "surface": "#17102a",
+    "appbarBackground": "#12081f",
+    "appbarText": "#ff4d9a",
+    "drawerBackground": "#120c1d",
+    "drawerText": "#f4ecff",
+    "drawerIcon": "#22d3ee",
+    "textPrimary": "#f4ecff",
+    "textSecondary": "#b9a8d4",
+    "textDisabled": "#6f5f8c",
+    "actionDefault": "#b9a8d4",
+    "divider": "#3a2b55",
+    "dividerLight": "#2a1f40",
+    "linesDefault": "#3a2b55",
+    "linesInputs": "#54407a",
+    "tableLines": "#2a1f40",
+    "tableHover": "#ff2e8814",
+    "success": "#22c55e",
+    "warning": "#fbbf24",
+    "error": "#fb4d5d",
+    "info": "#22d3ee"
+  },
+
+  "light": {
+    "primary": "#b0186b",
+    "secondary": "#0f6f86",
+    "tertiary": "#6b21a8",
+    "background": "#f6f2fb",
+    "backgroundGray": "#ece4f6",
+    "surface": "#fdfbff",
+    "appbarBackground": "#1b0b2b",
+    "appbarText": "#ff9dc8",
+    "drawerBackground": "#fdfbff",
+    "drawerText": "#22162e",
+    "drawerIcon": "#b0186b",
+    "textPrimary": "#22162e",
+    "textSecondary": "#5d4a70",
+    "textDisabled": "#8b7aa0",
+    "actionDefault": "#5d4a70",
+    "divider": "#ddd0ea",
+    "dividerLight": "#eae1f4",
+    "linesDefault": "#cfbede",
+    "linesInputs": "#b49fc8",
+    "tableLines": "#e6dcf0",
+    "tableHover": "#b0186b10",
+    "success": "#12693f",
+    "warning": "#8a4b00",
+    "error": "#b0203a",
+    "info": "#0f6f86"
+  }
+}

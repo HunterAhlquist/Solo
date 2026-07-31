@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+  <!-- A drafting sheet: fine and coarse rules, a title block bottom right, and
+       a half-drawn isometric solid. Line weights only — no fills to fight the
+       sign-in card for attention. -->
+  <defs>
+    <pattern id="fine" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#58c7e8" stroke-opacity="0.10" stroke-width="1"/>
+    </pattern>
+    <pattern id="coarse" width="120" height="120" patternUnits="userSpaceOnUse">
+      <path d="M120 0H0V120" fill="none" stroke="#58c7e8" stroke-opacity="0.20" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="wash" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b2136" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#071019" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#040a11" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#071019"/>
+  <rect width="1600" height="1000" fill="url(#fine)"/>
+  <rect width="1600" height="1000" fill="url(#coarse)"/>
+
+  <!-- Isometric block, drawn in construction lines. -->
+  <g fill="none" stroke="#58c7e8" stroke-width="2" stroke-opacity="0.42">
+    <path d="M240 620 L420 516 L600 620 L420 724 Z"/>
+    <path d="M240 620 L240 452 L420 348 L600 452 L600 620"/>
+    <path d="M420 348 L420 516"/>
+    <path d="M240 452 L420 556 L600 452" stroke-opacity="0.22" stroke-dasharray="6 8"/>
+  </g>
+  <g fill="none" stroke="#58c7e8" stroke-width="1" stroke-opacity="0.20" stroke-dasharray="4 10">
+    <path d="M120 348 H660"/>
+    <path d="M120 724 H660"/>
+    <path d="M420 240 V820"/>
+  </g>
+
+  <!-- Title block. -->
+  <g fill="none" stroke="#58c7e8" stroke-opacity="0.30" stroke-width="2">
+    <rect x="1120" y="740" width="380" height="160"/>
+    <path d="M1120 800 H1500"/>
+    <path d="M1300 800 V900"/>
+  </g>
+  <g fill="#58c7e8" fill-opacity="0.26">
+    <rect x="1144" y="762" width="180" height="8" rx="4"/>
+    <rect x="1144" y="826" width="112" height="6" rx="3"/>
+    <rect x="1144" y="848" width="86" height="6" rx="3"/>
+    <rect x="1324" y="826" width="132" height="6" rx="3"/>
+    <rect x="1324" y="848" width="96" height="6" rx="3"/>
+  </g>
+
+  <rect width="1600" height="1000" fill="url(#wash)"/>
+</svg>

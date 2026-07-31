@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+  <!-- Terminal grid: faint yellow rules on pure black, with a soft glow low and
+       right of centre so the sign-in card sits in the darker half. -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#fff600" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+    <pattern id="coarse" width="200" height="200" patternUnits="userSpaceOnUse">
+      <path d="M200 0H0V200" fill="none" stroke="#fff600" stroke-opacity="0.10" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="glow" cx="72%" cy="78%" r="60%">
+      <stop offset="0%" stop-color="#fff600" stop-opacity="0.16"/>
+      <stop offset="55%" stop-color="#fff600" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#fff600" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.65"/>
+      <stop offset="45%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.75"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#000000"/>
+  <rect width="1600" height="1000" fill="url(#grid)"/>
+  <rect width="1600" height="1000" fill="url(#coarse)"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
+
+  <!-- Scattered "active cells", like occupied slots on a board. -->
+  <g fill="#fff600">
+    <rect x="200" y="240" width="40" height="40" fill-opacity="0.10"/>
+    <rect x="240" y="240" width="40" height="40" fill-opacity="0.18"/>
+    <rect x="240" y="280" width="40" height="40" fill-opacity="0.07"/>
+    <rect x="1160" y="600" width="40" height="40" fill-opacity="0.14"/>
+    <rect x="1200" y="640" width="40" height="40" fill-opacity="0.09"/>
+    <rect x="1160" y="640" width="40" height="40" fill-opacity="0.20"/>
+    <rect x="1320" y="200" width="40" height="40" fill-opacity="0.08"/>
+    <rect x="440" y="760" width="40" height="40" fill-opacity="0.12"/>
+    <rect x="480" y="760" width="40" height="40" fill-opacity="0.06"/>
+  </g>
+
+  <rect width="1600" height="1000" fill="url(#vignette)"/>
+</svg>

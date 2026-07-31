@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+  <!-- The same grid on warm paper. Olive rules rather than yellow: yellow on a
+       light ground is close to invisible and reads as a smudge where it isn't. -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#6d6600" stroke-opacity="0.07" stroke-width="1"/>
+    </pattern>
+    <pattern id="coarse" width="200" height="200" patternUnits="userSpaceOnUse">
+      <path d="M200 0H0V200" fill="none" stroke="#6d6600" stroke-opacity="0.14" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="glow" cx="72%" cy="78%" r="60%">
+      <stop offset="0%" stop-color="#c9a800" stop-opacity="0.18"/>
+      <stop offset="55%" stop-color="#c9a800" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#c9a800" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4bfa6" stop-opacity="0.30"/>
+      <stop offset="45%" stop-color="#c4bfa6" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#a8a389" stop-opacity="0.32"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#f0eee4"/>
+  <rect width="1600" height="1000" fill="url(#grid)"/>
+  <rect width="1600" height="1000" fill="url(#coarse)"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
+
+  <g fill="#6d6600">
+    <rect x="200" y="240" width="40" height="40" fill-opacity="0.09"/>
+    <rect x="240" y="240" width="40" height="40" fill-opacity="0.15"/>
+    <rect x="240" y="280" width="40" height="40" fill-opacity="0.06"/>
+    <rect x="1160" y="600" width="40" height="40" fill-opacity="0.12"/>
+    <rect x="1200" y="640" width="40" height="40" fill-opacity="0.08"/>
+    <rect x="1160" y="640" width="40" height="40" fill-opacity="0.17"/>
+    <rect x="1320" y="200" width="40" height="40" fill-opacity="0.07"/>
+    <rect x="440" y="760" width="40" height="40" fill-opacity="0.10"/>
+    <rect x="480" y="760" width="40" height="40" fill-opacity="0.05"/>
+  </g>
+
+  <rect width="1600" height="1000" fill="url(#vignette)"/>
+</svg>

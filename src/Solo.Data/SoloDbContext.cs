@@ -183,6 +183,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
         modelBuilder.Entity<InstanceSettings>(e =>
         {
             e.Property(s => s.Id).ValueGeneratedNever();
+            e.Property(s => s.ThemeId).HasMaxLength(64);
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_InstanceSettings_Singleton", $"\"Id\" = {Entities.InstanceSettings.SingletonId}"));
         });

@@ -21,6 +21,21 @@ public sealed class ApiClient(HttpClient http)
     public Task<SetupStatusDto> GetSetupStatusAsync(CancellationToken ct = default) =>
         GetAsync<SetupStatusDto>("api/setup/status", ct);
 
+    /// <summary>
+    /// The instance's theme. Anonymous, and fetched during bootstrap, because
+    /// the sign-in screen is themed too.
+    /// </summary>
+    public Task<ThemeDto> GetActiveThemeAsync(CancellationToken ct = default) =>
+        GetAsync<ThemeDto>("api/themes/active", ct);
+
+    /// <summary>The installed themes, for the admin picker. Super admin only.</summary>
+    public Task<ThemeScanResultDto> GetThemesAsync(CancellationToken ct = default) =>
+        GetAsync<ThemeScanResultDto>("api/themes", ct);
+
+    /// <summary>Re-reads the themes volume so a newly dropped-in package is picked up.</summary>
+    public Task<ThemeScanResultDto> RescanThemesAsync(CancellationToken ct = default) =>
+        SendAsync<ThemeScanResultDto>(HttpMethod.Post, "api/themes/rescan", null, ct);
+
     public Task<UserDto> GetCurrentUserAsync(CancellationToken ct = default) =>
         GetAsync<UserDto>("api/users/me", ct);
 

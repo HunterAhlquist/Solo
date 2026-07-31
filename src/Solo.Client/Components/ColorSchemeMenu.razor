@@ -1,0 +1,39 @@
+@implements IDisposable
+@inject ThemeState Theme
+
+@*
+    Light / Dark / Match system, as three rows in the profile menu. A toggle
+    would be shorter, but "match system" isn't a third state on the way to
+    anywhere — it's a distinct choice, and it deserves to look like one.
+*@
+<MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 pt-2 d-block">Appearance</MudText>
+
+@foreach (var (preference, label, icon) in Options)
+{
+    <MudMenuItem Icon="@icon" OnClick="@(() => SetAsync(preference))" AutoClose="false">
+        <div class="d-flex align-center" style="gap:0.5rem">
+            <span>@label</span>
+            @if (Theme.Preference == preference)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Primary" />
+            }
+        </div>
+    </MudMenuItem>
+}
+
+@code {
+    private static readonly (ColorSchemePreference Preference, string Label, string Icon)[] Options =
+    [
+        (ColorSchemePreference.Light, "Light", Icons.Material.Filled.LightMode),
+        (ColorSchemePreference.Dark, "Dark", Icons.Material.Filled.DarkMode),
+        (ColorSchemePreference.System, "Match system", Icons.Material.Filled.Contrast),
+    ];
+
+    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+
+    private Task SetAsync(ColorSchemePreference preference) => Theme.SetPreferenceAsync(preference);
+
+    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

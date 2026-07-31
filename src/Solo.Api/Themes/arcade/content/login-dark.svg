@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+  <!-- Synthwave horizon: a magenta sun over a perspective grid, cyan starfield
+       above. Positioned "center bottom" so the grid runs off the lower edge and
+       the sign-in card sits in the clear sky. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0712"/>
+      <stop offset="55%" stop-color="#2a0f3f"/>
+      <stop offset="72%" stop-color="#5c1450"/>
+      <stop offset="100%" stop-color="#0a0712"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffd166"/>
+      <stop offset="45%" stop-color="#ff2e88"/>
+      <stop offset="100%" stop-color="#a01a6a"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.65"/>
+    </linearGradient>
+    <radialGradient id="haze" cx="50%" cy="72%" r="45%">
+      <stop offset="0%" stop-color="#ff2e88" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ff2e88" stop-opacity="0"/>
+    </radialGradient>
+    <!-- The sun's banding: horizontal cuts widening toward the horizon. -->
+    <mask id="bands">
+      <rect width="1600" height="1000" fill="#ffffff"/>
+      <g fill="#000000">
+        <rect x="600" y="612" width="400" height="6"/>
+        <rect x="600" y="628" width="400" height="9"/>
+        <rect x="600" y="649" width="400" height="12"/>
+        <rect x="600" y="673" width="400" height="16"/>
+        <rect x="600" y="701" width="400" height="20"/>
+      </g>
+    </mask>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+
+  <!-- Starfield. -->
+  <g fill="#e9d5ff">
+    <circle cx="180" cy="120" r="2.5" fill-opacity="0.8"/>
+    <circle cx="410" cy="78" r="1.8" fill-opacity="0.5"/>
+    <circle cx="700" cy="150" r="2" fill-opacity="0.65"/>
+    <circle cx="980" cy="96" r="1.6" fill-opacity="0.45"/>
+    <circle cx="1240" cy="164" r="2.4" fill-opacity="0.7"/>
+    <circle cx="1480" cy="88" r="1.8" fill-opacity="0.5"/>
+    <circle cx="320" cy="250" r="1.5" fill-opacity="0.4"/>
+    <circle cx="1120" cy="272" r="1.7" fill-opacity="0.45"/>
+    <circle cx="860" cy="320" r="1.4" fill-opacity="0.35"/>
+    <circle cx="1380" cy="330" r="1.5" fill-opacity="0.35"/>
+  </g>
+
+  <circle cx="800" cy="640" r="200" fill="url(#sun)" mask="url(#bands)"/>
+  <rect width="1600" height="1000" fill="url(#haze)"/>
+
+  <!-- Horizon line. -->
+  <rect x="0" y="700" width="1600" height="2" fill="#22d3ee" fill-opacity="0.55"/>
+
+  <!-- Perspective grid: verticals converging on the vanishing point, horizontals
+       spaced to compress toward it. -->
+  <g stroke="url(#fade)" stroke-width="2" fill="none">
+    <path d="M800 700 L-560 1000"/>
+    <path d="M800 700 L-180 1000"/>
+    <path d="M800 700 L120 1000"/>
+    <path d="M800 700 L360 1000"/>
+    <path d="M800 700 L560 1000"/>
+    <path d="M800 700 L700 1000"/>
+    <path d="M800 700 L900 1000"/>
+    <path d="M800 700 L1040 1000"/>
+    <path d="M800 700 L1240 1000"/>
+    <path d="M800 700 L1480 1000"/>
+    <path d="M800 700 L1780 1000"/>
+    <path d="M800 700 L2160 1000"/>
+  </g>
+  <g stroke="#22d3ee" fill="none" stroke-width="2">
+    <path d="M0 712 H1600" stroke-opacity="0.16"/>
+    <path d="M0 730 H1600" stroke-opacity="0.22"/>
+    <path d="M0 756 H1600" stroke-opacity="0.28"/>
+    <path d="M0 792 H1600" stroke-opacity="0.34"/>
+    <path d="M0 840 H1600" stroke-opacity="0.42"/>
+    <path d="M0 902 H1600" stroke-opacity="0.5"/>
+    <path d="M0 980 H1600" stroke-opacity="0.58"/>
+  </g>
+</svg>

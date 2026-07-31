@@ -1,0 +1,74 @@
+@implements IDisposable
+@inject ThemeState Theme
+
+@*
+    The instance's theme and the user's colour scheme, in one place so both
+    layouts — the app shell and the chrome-free sign-in shell — stay in step.
+
+    ObserveSystemDarkModeChange is off deliberately: left on, MudBlazor drives
+    IsDarkMode from the media query and an explicit Light or Dark choice would be
+    overwritten the moment the OS changed. Instead the system preference is read
+    and watched here, and ThemeState decides what it means (see
+    ColorSchemePreference).
+*@
+<MudThemeProvider @ref="_provider" Theme="@Theme.MudTheme" IsDarkMode="@Theme.IsDarkMode"
+                  ObserveSystemDarkModeChange="false" />
+
+@* Both are same-origin, so style-src 'self' covers them; the font files they
+   pull are same-origin too, under font-src 'self'. Fonts go first so a theme's
+   own stylesheet can rely on the faces already being declared. *@
+<HeadContent>
+    @if (Theme.Theme?.FontStylesheet is { Length: > 0 } fonts)
+    {
+        <link rel="stylesheet" href="@fonts" />
+    }
+
+    @if (Theme.Theme?.Stylesheet is { Length: > 0 } stylesheet)
+    {
+        @* Last stylesheet in the document, so a theme can override app.css and
+           MudBlazor alike. *@
+        <link rel="stylesheet" href="@stylesheet" />
+    }
+</HeadContent>
+
+@code {
+    private MudThemeProvider? _provider;
+
+    protected override void OnInitialized()
+    {
+        Theme.Changed += OnThemeChanged;
+
+        // Synchronous, so the first render is already in the stored scheme.
+        Theme.LoadPreference();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _provider is null)
+        {
+            return;
+        }
+
+        Theme.SetSystemPreference(await _provider.GetSystemDarkModeAsync());
+        await _provider.WatchSystemDarkModeAsync(OnSystemDarkModeChanged);
+
+        // Now that the theme has resolved, leave its splash colours behind for
+        // the next cold boot.
+        await Theme.CacheBootStyleAsync();
+
+        // Logged on the server too; this is the client-side half, so a missing
+        // theme is diagnosable from whichever end you're looking at.
+        await Theme.ReportFallbackAsync();
+
+        StateHasChanged();
+    }
+
+    private Task OnSystemDarkModeChanged(bool isDark) => InvokeAsync(() =>
+    {
+        Theme.SetSystemPreference(isDark);
+    });
+
+    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

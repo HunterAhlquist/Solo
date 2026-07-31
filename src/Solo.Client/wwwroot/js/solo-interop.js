@@ -11,6 +11,10 @@ window.solo = {
         removeSession: key => sessionStorage.removeItem(key),
     },
 
+    // Read synchronously at startup so a "match system" user never sees one
+    // frame of the wrong scheme. MudThemeProvider watches for later changes.
+    systemPrefersDark: () => window.matchMedia('(prefers-color-scheme: dark)').matches,
+
     // Rendered markdown link plumbing (see SoloMarkdown.razor). A capture-phase
     // listener at the bottom of this file records link clicks inside
     // .markdown-clickable containers, so click-to-edit hosts can tell a link

@@ -1,0 +1,88 @@
+{
+  "formatVersion": 1,
+  "id": "ahlquist-interactive",
+  "name": "Ahlquist Interactive",
+  "description": "Black-and-yellow monospace terminal. The original Solo look.",
+  "author": "Ahlquist Interactive",
+
+  "stylesheet": "content/theme.css",
+
+  "typography": {
+    "fontFamily": ["Courier New", "monospace"],
+    "fontSize": "0.875rem",
+    "headingWeight": "700",
+    "buttonWeight": "700"
+  },
+
+  "layout": {
+    "borderRadius": "8px",
+    "appbarHeight": "5em",
+    "drawerWidth": "20em"
+  },
+
+  "login": {
+    "background": {
+      "image": "content/login-dark.svg",
+      "imageLight": "content/login-light.svg",
+      "fit": "cover",
+      "position": "center",
+      "scrim": 0.35
+    }
+  },
+
+  "dark": {
+    "primary": "#fff600",
+    "secondary": "#c9c400",
+    "tertiary": "#8a8600",
+    "background": "#000000",
+    "backgroundGray": "#080808",
+    "surface": "#101010",
+    "appbarBackground": "#000000",
+    "appbarText": "#fff600",
+    "drawerBackground": "#080808",
+    "drawerText": "#ffffff",
+    "drawerIcon": "#fff600",
+    "textPrimary": "#ffffff",
+    "textSecondary": "#b0b0a0",
+    "textDisabled": "#6f6f64",
+    "actionDefault": "#c9c400",
+    "divider": "#fff60040",
+    "dividerLight": "#fff60026",
+    "linesDefault": "#fff60040",
+    "linesInputs": "#fff60059",
+    "tableLines": "#fff60026",
+    "tableHover": "#fff6000f",
+    "success": "#5ad469",
+    "warning": "#ffb300",
+    "error": "#ff5252",
+    "info": "#fff600"
+  },
+
+  "light": {
+    "primary": "#6d6600",
+    "secondary": "#7a5c00",
+    "tertiary": "#4f4a00",
+    "background": "#f5f4ef",
+    "backgroundGray": "#eceae1",
+    "surface": "#fbfaf6",
+    "appbarBackground": "#17160f",
+    "appbarText": "#ffe000",
+    "drawerBackground": "#fbfaf6",
+    "drawerText": "#1f1d15",
+    "drawerIcon": "#6d6600",
+    "textPrimary": "#1f1d15",
+    "textSecondary": "#55503f",
+    "textDisabled": "#8b8574",
+    "actionDefault": "#55503f",
+    "divider": "#d9d5c4",
+    "dividerLight": "#e5e2d6",
+    "linesDefault": "#cfcbb8",
+    "linesInputs": "#b8b39d",
+    "tableLines": "#e0dccd",
+    "tableHover": "#6d660010",
+    "success": "#1f6f43",
+    "warning": "#8a5a00",
+    "error": "#b3261e",
+    "info": "#2f5d8a"
+  }
+}

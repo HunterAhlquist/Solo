@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000">
+  <!-- Daytime cabinet: the same horizon in candy colours on a pale sky, so a
+       light-scheme sign-in card still has somewhere restful to sit. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f6f2fb"/>
+      <stop offset="55%" stop-color="#f3dcef"/>
+      <stop offset="72%" stop-color="#f6c9dd"/>
+      <stop offset="100%" stop-color="#f6f2fb"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffb703"/>
+      <stop offset="45%" stop-color="#f2529a"/>
+      <stop offset="100%" stop-color="#c02d76"/>
+    </linearGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f6f86" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#0f6f86" stop-opacity="0.45"/>
+    </linearGradient>
+    <radialGradient id="haze" cx="50%" cy="72%" r="45%">
+      <stop offset="0%" stop-color="#f2529a" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#f2529a" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="bands">
+      <rect width="1600" height="1000" fill="#ffffff"/>
+      <g fill="#000000">
+        <rect x="600" y="612" width="400" height="6"/>
+        <rect x="600" y="628" width="400" height="9"/>
+        <rect x="600" y="649" width="400" height="12"/>
+        <rect x="600" y="673" width="400" height="16"/>
+        <rect x="600" y="701" width="400" height="20"/>
+      </g>
+    </mask>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+
+  <!-- Clouds stand in for the starfield. -->
+  <g fill="#ffffff" fill-opacity="0.6">
+    <ellipse cx="300" cy="150" rx="120" ry="34"/>
+    <ellipse cx="360" cy="132" rx="80" ry="28"/>
+    <ellipse cx="1180" cy="220" rx="140" ry="38"/>
+    <ellipse cx="1250" cy="200" rx="90" ry="30"/>
+    <ellipse cx="760" cy="110" rx="96" ry="26"/>
+  </g>
+
+  <circle cx="800" cy="640" r="200" fill="url(#sun)" mask="url(#bands)"/>
+  <rect width="1600" height="1000" fill="url(#haze)"/>
+
+  <rect x="0" y="700" width="1600" height="2" fill="#0f6f86" fill-opacity="0.45"/>
+
+  <g stroke="url(#fade)" stroke-width="2" fill="none">
+    <path d="M800 700 L-560 1000"/>
+    <path d="M800 700 L-180 1000"/>
+    <path d="M800 700 L120 1000"/>
+    <path d="M800 700 L360 1000"/>
+    <path d="M800 700 L560 1000"/>
+    <path d="M800 700 L700 1000"/>
+    <path d="M800 700 L900 1000"/>
+    <path d="M800 700 L1040 1000"/>
+    <path d="M800 700 L1240 1000"/>
+    <path d="M800 700 L1480 1000"/>
+    <path d="M800 700 L1780 1000"/>
+    <path d="M800 700 L2160 1000"/>
+  </g>
+  <g stroke="#0f6f86" fill="none" stroke-width="2">
+    <path d="M0 712 H1600" stroke-opacity="0.12"/>
+    <path d="M0 730 H1600" stroke-opacity="0.16"/>
+    <path d="M0 756 H1600" stroke-opacity="0.2"/>
+    <path d="M0 792 H1600" stroke-opacity="0.25"/>
+    <path d="M0 840 H1600" stroke-opacity="0.3"/>
+    <path d="M0 902 H1600" stroke-opacity="0.36"/>
+    <path d="M0 980 H1600" stroke-opacity="0.42"/>
+  </g>
+</svg>

@@ -1,8 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Solo.Client.Api;
 using Solo.Client.Auth;
 using Solo.Client.Realtime;
 using Solo.Client.State;
+using Solo.Client.Theming;
 
 namespace Solo.Client;
 
@@ -42,6 +44,15 @@ public static class SoloClientServices
         services.AddScoped<UserSession>();
         services.AddScoped<RecentProjectsStore>();
         services.AddScoped<SaveGuard>();
+
+        // The site theme arrives with the bootstrap config; the colour scheme is
+        // read from localStorage on first render (see SoloThemeProvider).
+        services.AddScoped(sp =>
+        {
+            var state = new ThemeState(sp.GetRequiredService<IJSRuntime>());
+            state.SetTheme(config.Theme);
+            return state;
+        });
 
         return services;
     }

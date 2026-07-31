@@ -1,0 +1,39 @@
+/* -----------------------------------------------------------------------------
+   Blueprint — custom stylesheet.
+
+   The drafting grid the palette alone can't express: a faint two-scale rule
+   behind the page body, and square-cornered technical chrome.
+   -------------------------------------------------------------------------- */
+
+:root {
+    --solo-code-color: var(--mud-palette-secondary);
+    --solo-grid-line: color-mix(in srgb, var(--mud-palette-primary) 9%, transparent);
+    --solo-grid-line-strong: color-mix(in srgb, var(--mud-palette-primary) 16%, transparent);
+}
+
+/* Fine 24px rule with a heavier 120px rule over it — drafting-paper spacing.
+   Attached to the main content only, so the drawer and app bar stay flat. */
+.mud-main-content {
+    background-image:
+        linear-gradient(to right, var(--solo-grid-line-strong) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--solo-grid-line-strong) 1px, transparent 1px),
+        linear-gradient(to right, var(--solo-grid-line) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--solo-grid-line) 1px, transparent 1px);
+    background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+}
+
+/* Cards and papers sit on the grid rather than in it: opaque, hard-edged. */
+.mud-paper {
+    border: 1px solid var(--mud-palette-lines-default);
+}
+
+.mud-appbar {
+    border-bottom: 2px solid var(--mud-palette-primary);
+}
+
+/* Monospace, tracked-out headings: title-block lettering. */
+.mud-typography-h1,
+.mud-typography-h2 {
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}

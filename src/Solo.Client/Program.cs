@@ -87,13 +87,36 @@ static async Task<AppConfig> LoadConfigAsync(InstanceConnection instance)
     using var http = new HttpClient { BaseAddress = instance.BaseAddress };
     try
     {
-        var auth = await new ApiClient(http).GetAuthConfigAsync();
-        return new AppConfig { Auth = auth, SetupCompleted = auth.SetupCompleted };
+        var api = new ApiClient(http);
+
+        // Both calls are anonymous and independent, so they overlap rather than
+        // adding a second round trip to a startup that already blocks on one.
+        var authTask = api.GetAuthConfigAsync();
+        var themeTask = LoadThemeAsync(api);
+
+        var auth = await authTask;
+        return new AppConfig { Auth = auth, Theme = await themeTask, SetupCompleted = auth.SetupCompleted };
     }
     catch (Exception e) when (e is HttpRequestException or TaskCanceledException or ApiException)
     {
         // The instance is unreachable or still starting. App.razor renders a
         // dead-end error screen rather than a half-configured router.
         return new AppConfig { LoadError = e.Message };
+    }
+}
+
+/// <summary>
+/// Branding is not worth failing a boot over: an instance that answers the auth
+/// config but not this still starts, on <c>MudThemeFactory.Fallback</c>.
+/// </summary>
+static async Task<ThemeDto?> LoadThemeAsync(ApiClient api)
+{
+    try
+    {
+        return await api.GetActiveThemeAsync();
+    }
+    catch (Exception e) when (e is HttpRequestException or TaskCanceledException or ApiException)
+    {
+        return null;
     }
 }

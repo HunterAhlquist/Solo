@@ -1,9 +1,11 @@
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using MudBlazor;
 using MudBlazor.Services;
 using Solo.Client.Components;
 using Solo.Client.Realtime;
+using Solo.Client.Theming;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Solo.Shared.Hubs;
@@ -24,6 +26,11 @@ public abstract class ComponentTestBase : BunitContext, IAsyncLifetime
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
+
+        // Both layouts and the sign-in page inject it. No theme is set, so
+        // components see the built-in fallback — which is what a test asserting
+        // markup wants anyway.
+        Services.AddScoped(sp => new ThemeState(sp.GetRequiredService<IJSRuntime>()));
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;

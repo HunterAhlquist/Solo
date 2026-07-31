@@ -6,8 +6,10 @@
 @inject NavigationManager Navigation
 @inject SessionExpiry SessionExpiry
 @inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject ThemeState Theme
 
-<MudThemeProvider Theme="@SoloTheme.Theme" IsDarkMode="true" />
+<SoloThemeProvider />
 <MudPopoverProvider />
 <MudDialogProvider CloseButton="true" CloseOnEscapeKey="true" MaxWidth="MaxWidth.Small" FullWidth="true" />
 <MudSnackbarProvider />
@@ -31,6 +33,8 @@
                 <MudMenu Icon="@ProfileIcon" Color="Color.Inherit"
                          AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                     <MudText Typo="Typo.body2" Class="px-4 py-2">@auth.User.Identity?.Name</MudText>
+                    <MudDivider />
+                    <ColorSchemeMenu />
                     <MudDivider />
                     <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@SignOut">Sign out</MudMenuItem>
                 </MudMenu>
@@ -159,6 +163,18 @@
                     // bounce them to sign-in on the next navigation.
                 }
             }
+        }
+
+        // The instance's theme package has gone missing. Told to the super admin
+        // only: they are the one who can restore it or choose another, and for
+        // everyone else it is an unactionable complaint about the app looking
+        // slightly different. Everyone does get it in the browser console.
+        if (Session.IsSuperAdmin && Theme.TryClaimFallbackNotice())
+        {
+            Snackbar.Add(
+                $"{Theme.FallbackMessage} Choose a theme in Admin settings.",
+                Severity.Warning,
+                config => config.RequireInteraction = true);
         }
     }
 

@@ -294,6 +294,10 @@ namespace Solo.Data.Migrations
                     b.Property<bool>("SetupCompleted")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ThemeId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()

@@ -1,14 +1,29 @@
 @page "/signin"
 @layout EmptyLayout
+@using System.Globalization
+@implements IDisposable
 @inject AppConfig Config
 @inject NavigationManager Navigation
 @inject GoogleIdentityService Google
+@inject ThemeState Theme
 
 <PageTitle>Sign in · Solo</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="d-flex align-center justify-center" Style="height:100vh">
+@* Fixed backdrop behind the card. Redraws when the colour scheme changes, so a
+   theme shipping a per-scheme image swaps with the toggle. *@
+<div class="signin-backdrop" style="@BackdropStyle"></div>
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="d-flex align-center justify-center signin-content"
+              Style="height:100vh">
     <MudPaper Elevation="2" Class="pa-8 width-100 d-flex flex-column align-center" Style="gap:1.5rem">
-        <MudText Typo="Typo.h1">Solo</MudText>
+        @if (Theme.LoginLogo is { Length: > 0 } logo)
+        {
+            <img src="@logo" alt="Solo" class="signin-logo" />
+        }
+        else
+        {
+            <MudText Typo="Typo.h1">Solo</MudText>
+        }
         <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
             Project management for game development.
         </MudText>
@@ -52,11 +67,75 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Theme.Changed += OnThemeChanged;
+
         if (Config.IsGoogle)
         {
             _staySignedIn = await Google.GetRememberAsync();
         }
     }
+
+    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+
+    /// <summary>
+    /// The theme's login background as custom properties for
+    /// <c>.signin-backdrop</c>. Empty when the theme ships no image, which
+    /// leaves the CSS on the palette background.
+    /// </summary>
+    private string BackdropStyle
+    {
+        get
+        {
+            if (Theme.LoginBackground is not { Image: { Length: > 0 } image } background)
+            {
+                return string.Empty;
+            }
+
+            // Absolute, not the app-relative path the API returns. A relative
+            // url() inside a custom property resolves against the stylesheet
+            // that *consumes* the variable — app.css, under /css/ — rather than
+            // the document base, so the relative form 404s.
+            //
+            // The URL comes from the instance's own theme catalog, which only
+            // ever yields api/themes/... paths, so there is nothing here for a
+            // quote to break out of.
+            var url = Navigation.ToAbsoluteUri(image);
+            var style = $"--signin-image:url('{url}');--signin-size:{Size(background.Fit)};";
+
+            if (background.Position is { Length: > 0 } position)
+            {
+                style += $"--signin-position:{position};";
+            }
+
+            if (background.Scrim > 0)
+            {
+                style += $"--signin-scrim:{background.Scrim.ToString(CultureInfo.InvariantCulture)};";
+            }
+
+            if (background.Color is { Length: > 0 } color)
+            {
+                style += $"--signin-color:{color};";
+            }
+
+            return style;
+        }
+    }
+
+    /// <summary>
+    /// Fit mode to <c>background-size</c>. Width and Height pin one axis and let
+    /// the other follow the aspect ratio; Cover and Contain let the browser
+    /// choose which axis that is.
+    /// </summary>
+    private static string Size(ThemeBackgroundFit fit) => fit switch
+    {
+        ThemeBackgroundFit.Contain => "contain",
+        ThemeBackgroundFit.Width => "100% auto",
+        ThemeBackgroundFit.Height => "auto 100%",
+        ThemeBackgroundFit.Stretch => "100% 100%",
+        _ => "cover",
+    };
 
     private async Task SetStaySignedIn(bool value)
     {

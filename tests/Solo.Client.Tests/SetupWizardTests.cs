@@ -120,7 +120,7 @@ public class SetupWizardTests : BunitContext, IAsyncLifetime
     public void Accepted_credentials_advance_to_the_retention_step()
     {
         _http.Respond(System.Net.HttpStatusCode.NoContent);   // verify
-        _http.RespondJson(new InstanceSettingsDto(90, false, 1)); // settings, if reached
+        _http.RespondJson(new InstanceSettingsDto(90, false, null, 1)); // settings, if reached
 
         var wizard = RenderWizard();
         Fill(wizard, "setup", "s3cret");
@@ -133,7 +133,7 @@ public class SetupWizardTests : BunitContext, IAsyncLifetime
     public void The_second_Next_saves_the_retention_setting()
     {
         _http.Respond(System.Net.HttpStatusCode.NoContent);
-        _http.RespondJson(new InstanceSettingsDto(90, false, 1));
+        _http.RespondJson(new InstanceSettingsDto(90, false, null, 1));
 
         var wizard = RenderWizard();
         Fill(wizard, "setup", "s3cret");

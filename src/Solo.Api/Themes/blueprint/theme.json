@@ -1,0 +1,90 @@
+{
+  "formatVersion": 1,
+  "id": "blueprint",
+  "name": "Blueprint",
+  "description": "Drafting-table blues. Cyan rules on deep navy, or ink on blueprint paper.",
+  "author": "Solo",
+
+  "stylesheet": "content/theme.css",
+
+  "typography": {
+    "fontFamily": ["Inter", "Segoe UI", "system-ui", "-apple-system", "sans-serif"],
+    "headingFontFamily": ["IBM Plex Mono", "Cascadia Mono", "Consolas", "monospace"],
+    "fontSize": "0.875rem",
+    "headingWeight": "600",
+    "buttonWeight": "600",
+    "letterSpacing": "0.01em"
+  },
+
+  "layout": {
+    "borderRadius": "3px",
+    "appbarHeight": "4.5em",
+    "drawerWidth": "20em"
+  },
+
+  "login": {
+    "background": {
+      "image": "content/login-dark.svg",
+      "imageLight": "content/login-light.svg",
+      "fit": "cover",
+      "position": "center",
+      "scrim": 0.25
+    }
+  },
+
+  "dark": {
+    "primary": "#58c7e8",
+    "secondary": "#7f9cf5",
+    "tertiary": "#2c7fa5",
+    "background": "#071019",
+    "backgroundGray": "#0a1520",
+    "surface": "#0e1c2a",
+    "appbarBackground": "#061019",
+    "appbarText": "#9fdcf2",
+    "drawerBackground": "#0a1520",
+    "drawerText": "#dbe9f2",
+    "drawerIcon": "#58c7e8",
+    "textPrimary": "#dbe9f2",
+    "textSecondary": "#90a9bd",
+    "textDisabled": "#5d7183",
+    "actionDefault": "#90a9bd",
+    "divider": "#1c3d55",
+    "dividerLight": "#16344a",
+    "linesDefault": "#1c3d55",
+    "linesInputs": "#2a5773",
+    "tableLines": "#16344a",
+    "tableHover": "#58c7e80f",
+    "success": "#3fbf87",
+    "warning": "#e0a33e",
+    "error": "#ef6b6b",
+    "info": "#58c7e8"
+  },
+
+  "light": {
+    "primary": "#0f5f7a",
+    "secondary": "#3c5a8c",
+    "tertiary": "#0b4256",
+    "background": "#eef3f7",
+    "backgroundGray": "#e2eaf1",
+    "surface": "#f8fbfd",
+    "appbarBackground": "#0f2a3d",
+    "appbarText": "#b8dcea",
+    "drawerBackground": "#f8fbfd",
+    "drawerText": "#10222e",
+    "drawerIcon": "#0f5f7a",
+    "textPrimary": "#10222e",
+    "textSecondary": "#4a6273",
+    "textDisabled": "#7d94a5",
+    "actionDefault": "#4a6273",
+    "divider": "#c9d8e3",
+    "dividerLight": "#dce7ee",
+    "linesDefault": "#bccedb",
+    "linesInputs": "#9db6c8",
+    "tableLines": "#dae5ed",
+    "tableHover": "#0f5f7a10",
+    "success": "#1c6b4b",
+    "warning": "#8a5300",
+    "error": "#a8281f",
+    "info": "#0f5f7a"
+  }
+}

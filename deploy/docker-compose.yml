@@ -47,6 +47,12 @@ services:
       Setup__Username: "setup"
       Setup__Password: "CHANGE_ME_SETUP_PASSWORD"
 
+      # -- Themes -------------------------------------------------------------
+      # Directory scanned for theme packages (*.zip), backed by the volume
+      # mounted below. The three built-in themes ship inside the image and are
+      # always available; this is only for ones you add. See docs/themes.md.
+      Themes__Directory: "/data/themes"
+
       # -- Reverse proxy ------------------------------------------------------
       # X-Forwarded-For is what per-IP rate limiting reads, so it is only
       # trusted from a peer that looks like a local reverse proxy: loopback or
@@ -60,6 +66,14 @@ services:
       #   ForwardedHeaders__KnownProxies: "203.0.113.10"
       # Behind two hops (proxy in front of a tunnel), raise the chain depth:
       #   ForwardedHeaders__ForwardLimit: "2"
+
+    volumes:
+      # Drop theme .zip files here, then hit Rescan in Admin settings — no
+      # restart, and they survive an image update. Named volume by default; to
+      # keep them on a specific dataset (which is what makes them easy to copy
+      # into), replace with a host path exactly as for the database below:
+      #   - /mnt/tank/apps/solo/themes:/data/themes
+      - solo-themes:/data/themes
 
     # The aspnet base image ships no curl/wget; probe the TCP port via bash.
     healthcheck:
@@ -104,3 +118,4 @@ services:
 
 volumes:
   solo-pgdata:
+  solo-themes:

@@ -11,6 +11,14 @@ public sealed class AppConfig
 {
     public AuthConfigDto? Auth { get; init; }
 
+    /// <summary>
+    /// The instance's theme, fetched alongside the auth config so the very first
+    /// paint is already themed. Null if the instance answered the auth call but
+    /// not this one — the client falls back to a built-in palette rather than
+    /// refusing to boot over branding.
+    /// </summary>
+    public ThemeDto? Theme { get; init; }
+
     /// <summary>Set when the instance could not be reached at startup.</summary>
     public string? LoadError { get; init; }
 

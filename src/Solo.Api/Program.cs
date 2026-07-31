@@ -12,6 +12,7 @@ using Solo.Api.Auth;
 using Solo.Api.Controllers;
 using Solo.Api.Realtime;
 using Solo.Api.Services;
+using Solo.Api.Theming;
 using Solo.Data;
 using Solo.Data.Auditing;
 using Solo.Data.Domain;
@@ -117,6 +118,11 @@ builder.Services.AddProblemDetails();
 builder.Services.AddSignalR();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
+
+// Themes: built-ins from the image plus whatever is in the themes volume, read
+// once into memory at startup (see ThemeCatalog) and re-read on admin request.
+builder.Services.Configure<ThemeOptions>(builder.Configuration.GetSection(ThemeOptions.Section));
+builder.Services.AddSingleton<ThemeCatalog>();
 // Server-side avatar fetch: SSO picture CDNs (Google) rate-limit direct browser
 // hotlinking at board-render volume (429), so the API fetches each avatar once and
 // caches it, and the browser only ever loads from our own origin.

@@ -272,5 +272,11 @@ public class InstanceSettings : IVersioned
     public int AuditRetentionDays { get; set; } = 90;
     /// <summary>Once true, the static setup account is permanently disabled.</summary>
     public bool SetupCompleted { get; set; }
+    /// <summary>
+    /// Site-wide theme id (see the theme catalog). Null means the built-in
+    /// default; so does a value naming a theme that is no longer installed —
+    /// removing a theme package must not leave the instance unrenderable.
+    /// </summary>
+    public string? ThemeId { get; set; }
     public uint Version { get; set; }
 }

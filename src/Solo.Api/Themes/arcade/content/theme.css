@@ -1,0 +1,47 @@
+/* -----------------------------------------------------------------------------
+   Arcade — custom stylesheet.
+
+   The neon: glow on the brand marks, a magenta-to-cyan rule under the app bar,
+   and cabinet-bezel edges on raised surfaces.
+
+   Glow is applied to the app bar title and headings only. Putting a text-shadow
+   on body copy is what makes neon themes unreadable, and no amount of contrast
+   ratio in theme.json rescues it.
+   -------------------------------------------------------------------------- */
+
+:root {
+    --solo-code-color: var(--mud-palette-secondary);
+}
+
+.mud-appbar {
+    border-bottom: 2px solid transparent;
+    border-image: linear-gradient(90deg, var(--mud-palette-primary), var(--mud-palette-secondary)) 1;
+}
+
+.mud-appbar .mud-typography-h5 {
+    text-shadow:
+        0 0 8px color-mix(in srgb, var(--mud-palette-primary) 60%, transparent),
+        0 0 22px color-mix(in srgb, var(--mud-palette-primary) 30%, transparent);
+}
+
+.mud-typography-h1 {
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-shadow: 0 0 14px color-mix(in srgb, var(--mud-palette-primary) 35%, transparent);
+}
+
+/* Cabinet bezel: a thin lit edge rather than a drop shadow. */
+.mud-paper-outlined,
+.mud-card {
+    border: 1px solid color-mix(in srgb, var(--mud-palette-primary) 28%, var(--mud-palette-lines-default));
+}
+
+.mud-button-filled:hover {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--mud-palette-primary) 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mud-button-filled:hover {
+        box-shadow: none;
+    }
+}

@@ -2,6 +2,8 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ThemeState Theme
 
 <PageTitle>Admin settings · Solo</PageTitle>
 
@@ -17,7 +19,7 @@ else if (_settings is null)
 }
 else
 {
-    <MudPaper Elevation="1" Class="pa-4" Style="max-width:32rem">
+    <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:32rem">
         <MudText Typo="Typo.h4" Class="mb-1">Audit retention</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             Audit entries older than this are pruned automatically.
@@ -31,11 +33,86 @@ else
             Setup completed: @(_settings.SetupCompleted ? "yes" : "no")
         </MudText>
     </MudPaper>
+
+    <MudPaper Elevation="1" Class="pa-4" Style="max-width:32rem">
+        <div class="d-flex align-center mb-1">
+            <MudText Typo="Typo.h4">Theme</MudText>
+            <MudSpacer />
+            <MudTooltip Text="Re-read the themes directory">
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                               Disabled="@_rescanning" OnClick="@RescanAsync" aria-label="Rescan themes" />
+            </MudTooltip>
+        </div>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Applies to everyone on this instance. Each person still chooses light
+            or dark for themselves, from their profile menu.
+        </MudText>
+
+        @* The chosen theme's package is gone from the themes directory. The
+           setting is deliberately left pointing at it: restore the package and
+           it comes back, whereas silently rewriting the choice would lose it. *@
+        @if (Theme.IsFallback)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
+                @Theme.FallbackMessage Restore its package in the themes directory
+                and rescan, or choose another theme below.
+            </MudAlert>
+        }
+
+        @if (_themes is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudRadioGroup T="string" Value="@_themeId" ValueChanged="@SelectThemeAsync">
+                @foreach (var theme in _themes.Themes)
+                {
+                    <MudRadio T="string" Value="@theme.Id" Dense="true" Class="mb-2">
+                        <div>
+                            <MudText Typo="Typo.body1">
+                                @theme.Name
+                                @if (theme.IsBuiltIn)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-2">built-in</MudText>
+                                }
+                            </MudText>
+                            @if (theme.Description is { Length: > 0 })
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@theme.Description</MudText>
+                            }
+                        </div>
+                    </MudRadio>
+                }
+            </MudRadioGroup>
+
+            @* A rejected package is invisible otherwise: the operator dropped a
+               file in and nothing appeared. Say which file and why. *@
+            @if (_themes.Errors.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                    <MudText Typo="Typo.body2" Class="mb-1">Some packages were not loaded:</MudText>
+                    @foreach (var failure in _themes.Errors)
+                    {
+                        <MudText Typo="Typo.caption" Class="d-block"><b>@failure.File</b> — @failure.Message</MudText>
+                    }
+                </MudAlert>
+            }
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4 d-block">
+                Add a theme by copying its .zip into the instance's themes directory,
+                then rescanning. Reload the page to see a change applied.
+            </MudText>
+        }
+    </MudPaper>
 }
 
 @code {
     private InstanceSettingsDto? _settings;
+    private ThemeScanResultDto? _themes;
     private int _retentionDays;
+    private string? _themeId;
+    private bool _rescanning;
     private string? _error;
 
     protected override async Task OnInitializedAsync()
@@ -44,6 +121,10 @@ else
         {
             _settings = await Api.GetInstanceSettingsAsync();
             _retentionDays = _settings.AuditRetentionDays;
+            _themes = await Api.GetThemesAsync();
+            // Null means "the default": show which theme that resolved to rather
+            // than an empty radio group.
+            _themeId = _settings.ThemeId ?? _themes.Themes.FirstOrDefault(t => t.IsActive)?.Id;
         }
         catch (ApiException e)
         {
@@ -54,11 +135,38 @@ else
         }
     }
 
-    private async Task SaveAsync()
+    private async Task SelectThemeAsync(string themeId)
     {
-        if (_settings is null || _retentionDays == _settings.AuditRetentionDays)
+        if (_settings is null || themeId == _themeId)
         {
             return;
+        }
+
+        var previous = _themeId;
+        _themeId = themeId;
+
+        if (!await SaveAsync())
+        {
+            _themeId = previous;
+            return;
+        }
+
+        // The theme is fetched once during bootstrap, so the running app is
+        // still on the old one. Reload rather than leave the admin looking at a
+        // setting that hasn't visibly taken.
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    }
+
+    private async Task<bool> SaveAsync()
+    {
+        if (_settings is null)
+        {
+            return false;
+        }
+
+        if (_retentionDays == _settings.AuditRetentionDays && _themeId == _settings.ThemeId)
+        {
+            return false;
         }
 
         try
@@ -66,21 +174,50 @@ else
             _settings = await Api.UpdateInstanceSettingsAsync(new UpdateInstanceSettingsRequest
             {
                 AuditRetentionDays = _retentionDays,
+                ThemeId = _themeId,
                 Version = _settings.Version,
             });
             _retentionDays = _settings.AuditRetentionDays;
+            _themeId = _settings.ThemeId ?? _themeId;
             Snackbar.Add("Saved.", Severity.Success);
+            return true;
         }
         catch (ApiConflictException)
         {
-            _settings = await Api.GetInstanceSettingsAsync();
-            _retentionDays = _settings.AuditRetentionDays;
+            await ReloadAsync();
             Snackbar.Add("Updated by someone else — your view was refreshed.", Severity.Info);
+            return false;
         }
         catch (ApiException e)
         {
             Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
-            _retentionDays = _settings.AuditRetentionDays;
+            await ReloadAsync();
+            return false;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _settings = await Api.GetInstanceSettingsAsync();
+        _retentionDays = _settings.AuditRetentionDays;
+        _themeId = _settings.ThemeId ?? _themes?.Themes.FirstOrDefault(t => t.IsActive)?.Id;
+    }
+
+    private async Task RescanAsync()
+    {
+        _rescanning = true;
+        try
+        {
+            _themes = await Api.RescanThemesAsync();
+            Snackbar.Add($"{_themes.Themes.Count} theme(s) available.", Severity.Success);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't rescan themes.", Severity.Error);
+        }
+        finally
+        {
+            _rescanning = false;
         }
     }
 }

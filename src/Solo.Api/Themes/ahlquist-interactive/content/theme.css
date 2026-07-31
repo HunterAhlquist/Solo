@@ -1,0 +1,25 @@
+/* -----------------------------------------------------------------------------
+   Ahlquist Interactive — custom stylesheet.
+
+   Loaded after app.css, so anything here wins. Everything a theme can express
+   through theme.json is already in theme.json; this file is for the rest — the
+   handful of details MudBlazor's palette has no property for.
+   -------------------------------------------------------------------------- */
+
+:root {
+    /* Inline code sits off-palette on purpose: the sibling site's pink, which
+       reads clearly against both the yellow accent and the paper light scheme. */
+    --solo-code-color: #c02d76;
+}
+
+/* A hairline of brand colour under the app bar, so the black header separates
+   from a black page body without a drop shadow doing the work. */
+.mud-appbar {
+    border-bottom: 1px solid var(--mud-palette-divider);
+}
+
+/* Uppercase, widely tracked headings — the terminal banner look. */
+.mud-typography-h1 {
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}

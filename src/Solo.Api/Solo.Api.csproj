@@ -6,6 +6,15 @@
     <ProjectReference Include="..\Solo.Shared\Solo.Shared.csproj" />
   </ItemGroup>
 
+  <!-- Built-in theme packages. Loaded from the content root at runtime through
+       the same reader that handles dropped-in zips (see ThemePackageLoader), so
+       these folders are also the worked example for authoring one. -->
+  <ItemGroup>
+    <!-- Remove first: the Web SDK already globs theme.json in as Content. -->
+    <Content Remove="Themes\**" />
+    <Content Include="Themes\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.9" />
