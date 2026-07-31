@@ -233,7 +233,7 @@ public sealed class ThemeState(IJSRuntime js)
         var style = new
         {
             dark = Colors(_theme.Dark, "#000000", "#fff600"),
-            light = Colors(_theme.Light, "#f7f3ee", "#b45309"),
+            light = Colors(_theme.Light, "#fdf9f3", "#df6610"),
         };
 
         try

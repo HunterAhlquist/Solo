@@ -9,32 +9,6 @@
     {
       "layers" : [
         {
-          "fill" : "none",
-          "glass" : false,
-          "hidden" : false,
-          "image-name" : "YAY.png",
-          "name" : "YAY",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
-              304.625,
-              278.9140625
-            ]
-          }
-        }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.6
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.2
-      }
-    },
-    {
-      "layers" : [
-        {
           "blend-mode" : "screen",
           "fill-specializations" : [
             {
@@ -94,6 +68,21 @@
           "opacity" : 0.6
         },
         {
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "YAY.png",
+          "name" : "YAY",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 1.5,
+            "translation-in-points" : [
+              307.5033947222223,
+              269.8498902
+            ]
+          }
+        },
+        {
           "blend-mode" : "screen",
           "fill-specializations" : [
             {
@@ -128,7 +117,7 @@
       ],
       "opacity" : 1,
       "position" : {
-        "scale" : 0.9,
+        "scale" : 0.85,
         "translation-in-points" : [
           0,
           0

@@ -4,29 +4,29 @@
        invisible and reads as a smudge where it isn't. -->
   <defs>
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M40 0H0V40" fill="none" stroke="#b45309" stroke-opacity="0.07" stroke-width="1"/>
+      <path d="M40 0H0V40" fill="none" stroke="#df6610" stroke-opacity="0.07" stroke-width="1"/>
     </pattern>
     <pattern id="coarse" width="200" height="200" patternUnits="userSpaceOnUse">
-      <path d="M200 0H0V200" fill="none" stroke="#b45309" stroke-opacity="0.14" stroke-width="1"/>
+      <path d="M200 0H0V200" fill="none" stroke="#df6610" stroke-opacity="0.14" stroke-width="1"/>
     </pattern>
     <radialGradient id="glow" cx="72%" cy="78%" r="60%">
-      <stop offset="0%" stop-color="#e0801a" stop-opacity="0.20"/>
-      <stop offset="55%" stop-color="#e0801a" stop-opacity="0.06"/>
-      <stop offset="100%" stop-color="#e0801a" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#f0862b" stop-opacity="0.20"/>
+      <stop offset="55%" stop-color="#f0862b" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#f0862b" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#c8bcae" stop-opacity="0.30"/>
-      <stop offset="45%" stop-color="#c8bcae" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#ab9d8c" stop-opacity="0.32"/>
+      <stop offset="0%" stop-color="#cfc0aa" stop-opacity="0.30"/>
+      <stop offset="45%" stop-color="#cfc0aa" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#b3a189" stop-opacity="0.32"/>
     </linearGradient>
   </defs>
 
-  <rect width="1600" height="1000" fill="#f2eee6"/>
+  <rect width="1600" height="1000" fill="#faf4ea"/>
   <rect width="1600" height="1000" fill="url(#grid)"/>
   <rect width="1600" height="1000" fill="url(#coarse)"/>
   <rect width="1600" height="1000" fill="url(#glow)"/>
 
-  <g fill="#b45309">
+  <g fill="#df6610">
     <rect x="200" y="240" width="40" height="40" fill-opacity="0.09"/>
     <rect x="240" y="240" width="40" height="40" fill-opacity="0.15"/>
     <rect x="240" y="280" width="40" height="40" fill-opacity="0.06"/>
