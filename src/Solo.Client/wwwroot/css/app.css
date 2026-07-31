@@ -9,9 +9,9 @@
 }
 
 :root[data-color-scheme="light"] {
-    --solo-boot-bg: #f5f4ef;
-    --solo-boot-fg: #6d6600;
-    --solo-boot-surface: #e5e2d6;
+    --solo-boot-bg: #f7f3ee;
+    --solo-boot-fg: #b45309;
+    --solo-boot-surface: #e8e0d8;
 }
 
 html, body {

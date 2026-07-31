@@ -1,75 +1,139 @@
 {
   "fill" : {
     "linear-gradient" : [
-      "extended-gray:0.00000,1.00000",
-      "display-p3:0.09994,0.08341,0.02857,1.00000"
+      "srgb:1.00000,1.00000,1.00000,1.00000",
+      "gray:0.85236,1.00000"
     ]
   },
   "groups" : [
     {
       "layers" : [
         {
-          "fill" : {
-            "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
-          },
-          "image-name" : "Lines.png",
-          "name" : "Lines",
-          "opacity-specializations" : [
-            {
-              "value" : 1
-            },
-            {
-              "appearance" : "dark",
-              "value" : 0.75
-            }
-          ],
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "YAY.png",
+          "name" : "YAY",
           "position" : {
-            "scale" : 0.35,
+            "scale" : 1,
             "translation-in-points" : [
-              0,
-              0
+              304.625,
+              278.9140625
             ]
           }
-        },
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    },
+    {
+      "layers" : [
         {
-          "blend-mode" : "normal",
-          "fill" : {
-            "solid" : "srgb:0.00000,0.00000,0.00000,1.00000"
-          },
-          "glass" : true,
-          "image-name" : "Rectangle.svg",
-          "name" : "Rectangle",
-          "opacity" : 0.6
-        },
-        {
-          "blend-mode" : "normal",
+          "blend-mode" : "screen",
           "fill-specializations" : [
             {
               "value" : {
-                "solid" : "srgb:0.99942,0.98555,0.00000,1.00000"
+                "linear-gradient" : [
+                  "display-p3:0.94039,0.72495,0.49502,1.00000",
+                  "display-p3:1.00000,0.44275,0.00000,1.00000"
+                ]
               }
             },
             {
               "appearance" : "dark",
               "value" : {
-                "solid" : "srgb:0.99942,0.98555,0.00000,0.50000"
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.90636,0.00000,1.00000",
+                  "display-p3:0.40943,0.38161,0.00000,1.00000"
+                ]
               }
             }
           ],
           "glass" : true,
-          "image-name" : "Crescent.svg",
-          "name" : "Crescent",
+          "image-name" : "Rounded Rectangle.svg",
+          "name" : "Rounded Rectangle",
           "opacity-specializations" : [
             {
-              "value" : 0.8
+              "value" : 0.2
             },
             {
-              "appearance" : "tinted",
-              "value" : 0.8
+              "appearance" : "dark",
+              "value" : 0.3
             }
           ]
+        },
+        {
+          "blend-mode" : "screen",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.94039,0.72495,0.49502,1.00000",
+                  "display-p3:1.00000,0.44275,0.00000,1.00000"
+                ]
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.90636,0.00000,1.00000",
+                  "display-p3:0.40943,0.38161,0.00000,1.00000"
+                ]
+              }
+            }
+          ],
+          "image-name" : "Rounded Rectangle2 2.svg",
+          "name" : "Rounded Rectangle2 2",
+          "opacity" : 0.6
+        },
+        {
+          "blend-mode" : "screen",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.94039,0.72495,0.49502,1.00000",
+                  "display-p3:1.00000,0.44275,0.00000,1.00000"
+                ]
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:1.00000,0.90636,0.00000,1.00000",
+                  "display-p3:0.40943,0.38161,0.00000,1.00000"
+                ]
+              }
+            }
+          ],
+          "image-name" : "Rounded Rectangle3.svg",
+          "name" : "Rounded Rectangle3",
+          "opacity" : 0.8,
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0.5034722222221717,
+              -10.243055555555543
+            ]
+          }
         }
       ],
+      "opacity" : 1,
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.6
@@ -81,6 +145,9 @@
     }
   ],
   "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
     "squares" : "shared"
   }
 }
