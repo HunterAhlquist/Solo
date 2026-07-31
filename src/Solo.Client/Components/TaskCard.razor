@@ -19,7 +19,7 @@
     </div>
 
     <div class="d-flex align-center" style="gap:.35rem">
-        @if (Task.DeadlineAt is not null)
+        @if (ShowDeadline)
         {
             <MudTooltip Text="@DeadlineTooltip">
                 <div class="@($"deadline-ring{(IsOverdue ? " deadline-ring--overdue" : string.Empty)}")"
@@ -94,10 +94,16 @@
 
     private Color ProgressColor => FinishedCount == Task.SubTasks.Count ? Color.Success : Color.Primary;
 
+    /// <summary>A finished card has nothing left to run down, so it dims and drops its deadline.</summary>
+    private bool IsFinished => Task.Status == TaskState.Finished;
+
     // -- Deadline countdown ---------------------------------------------------
     // The ring sits bottom-left (where the serial number used to be) and drains
     // as the creation→deadline window burns down; its colour — shared with the
     // card outline via --deadline-color — slides green→red over the same window.
+
+    /// <summary>The deadline is only news while the task is still open.</summary>
+    private bool ShowDeadline => Task.DeadlineAt is not null && !IsFinished;
 
     private DateOnly Today => DateOnly.FromDateTime(DateTime.Now);
 
@@ -152,9 +158,10 @@
 
     private string CardClass =>
         "kanban-card pa-2" +
-        (Task.DeadlineAt is not null ? " kanban-card--deadline" : string.Empty) +
+        (ShowDeadline ? " kanban-card--deadline" : string.Empty) +
+        (IsFinished ? " kanban-card--finished" : string.Empty) +
         (Pulse ? " solo-pulse" : string.Empty);
 
     private string? CardStyle =>
-        Task.DeadlineAt is null ? null : $"--deadline-color:{DeadlineColor}";
+        ShowDeadline ? $"--deadline-color:{DeadlineColor}" : null;
 }

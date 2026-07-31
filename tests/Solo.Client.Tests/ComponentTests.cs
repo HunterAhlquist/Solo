@@ -174,6 +174,37 @@ public class TaskCardTests : ComponentTestBase
         Assert.Contains("--deadline-color:hsl(0", card.Markup);
         Assert.Equal("0", card.Find(".deadline-ring__days").TextContent);
     }
+
+    /// <summary>
+    /// Once a task lands in Finished the countdown is moot — ring, tint and all —
+    /// even when the deadline came and went while the task was still open.
+    /// </summary>
+    [Fact]
+    public void A_finished_task_drops_every_trace_of_its_deadline()
+    {
+        var task = TestData.Task(
+            status: TaskState.Finished,
+            createdAt: DateTime.UtcNow.AddDays(-10),
+            deadline: DateOnly.FromDateTime(DateTime.Now).AddDays(-3));
+
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
+
+        Assert.Empty(card.FindAll(".deadline-ring"));
+        Assert.Empty(card.FindAll(".kanban-card--deadline"));
+        Assert.DoesNotContain("--deadline-color", card.Markup);
+    }
+
+    [Fact]
+    public void A_finished_task_fades_back_and_an_open_one_does_not()
+    {
+        var finished = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task(status: TaskState.Finished)));
+        var open = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task(status: TaskState.InProgress)));
+
+        Assert.NotEmpty(finished.FindAll(".kanban-card--finished"));
+        Assert.Empty(open.FindAll(".kanban-card--finished"));
+    }
 }
 
 /// <summary>Save-event semantics: blur/explicit save commits, keystrokes never do.</summary>

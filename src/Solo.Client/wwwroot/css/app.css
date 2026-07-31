@@ -336,8 +336,20 @@ code {
     border-color: var(--deadline-color);
 }
 
+/* Finished work recedes: over the near-black lane the fade reads as a grey,
+   darkened card, so the live columns hold the eye first. Hover brings it back
+   to full strength — a done card is still readable, draggable and openable. */
+.kanban-card--finished {
+    opacity: 0.55;
+    transition: opacity 120ms ease-in-out;
+}
+
 .kanban-card:hover {
     border-color: var(--mud-palette-primary);
+}
+
+.kanban-card--finished:hover {
+    opacity: 1;
 }
 
 .kanban-card:active {
