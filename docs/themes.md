@@ -25,6 +25,18 @@ A package that fails to load is listed there with the reason. The instance keeps
 serving the previous set until a scan succeeds, so a half-copied zip can't take
 the site down.
 
+### The directory has to be readable by the app
+
+The container runs as a **non-root user**, so a themes directory it cannot read
+means no packages load. The app still starts and still renders — built-in themes
+only — and names the problem in Admin settings and in the startup log.
+
+- **Named volume** (the compose default): handled. The image creates
+  `/data/themes` owned by the app user, and Docker seeds the volume from it.
+- **Host path** (`/mnt/tank/apps/solo/themes:/data/themes`): the host's own
+  ownership wins, so make the path readable by UID `1654` — or world-readable.
+  `Permission denied` in the startup log is this.
+
 Removing a package is the same in reverse. If the active theme disappears, the
 instance falls back to the default rather than failing to render.
 

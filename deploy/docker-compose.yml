@@ -73,6 +73,11 @@ services:
       # keep them on a specific dataset (which is what makes them easy to copy
       # into), replace with a host path exactly as for the database below:
       #   - /mnt/tank/apps/solo/themes:/data/themes
+      #
+      # If you do use a host path: the app runs as a non-root user (UID 1654),
+      # and the host's ownership wins over the image's, so make the directory
+      # readable by that UID. Otherwise no packages load — the app still runs on
+      # its built-in themes and says why in Admin settings and the startup log.
       - solo-themes:/data/themes
 
     # The aspnet base image ships no curl/wget; probe the TCP port via bash.

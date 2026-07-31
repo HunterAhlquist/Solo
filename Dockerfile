@@ -22,6 +22,19 @@ RUN dotnet publish src/Solo.Api/Solo.Api.csproj -c Release -o /app /p:UseAppHost
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
+
+# Themes volume mount point (Themes__Directory). Created here, owned by the user
+# the app runs as, because Docker seeds a *named* volume from the image — so the
+# volume inherits this ownership and the non-root app can read it. A volume
+# mounted over a path that doesn't exist in the image is created root-owned
+# instead, which the app cannot list at all.
+#
+# This does nothing for a HOST PATH mount (`/mnt/tank/...:/data/themes`), where
+# the host's own ownership wins: make that path readable by UID $APP_UID
+# yourself. Either way the app degrades to built-in themes and reports the
+# problem in Admin settings rather than failing.
+RUN mkdir -p /data/themes && chown -R $APP_UID:$APP_UID /data
+
 EXPOSE 8080
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Solo.Api.dll"]

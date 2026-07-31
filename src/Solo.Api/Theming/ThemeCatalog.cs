@@ -129,13 +129,31 @@ public sealed class ThemeCatalog
     }
 
     /// <summary>Reloads built-ins and the themes volume, replacing the snapshot only once it's complete.</summary>
+    /// <remarks>
+    /// Never throws. Theming is decoration: a themes directory the app cannot
+    /// read is a problem to report, not a reason to fail a request. This runs
+    /// from the constructor, and this type is a lazily-built singleton, so an
+    /// escaping exception would surface as a 500 on whichever endpoint happened
+    /// to resolve it first — which is exactly how a permissions problem on the
+    /// volume once took out the admin settings page.
+    /// </remarks>
     public void Rescan()
     {
         var themes = new List<ThemePackage>();
         var failures = new List<ThemeLoadFailure>();
 
-        LoadBuiltIns(themes, failures);
-        LoadVolume(themes, failures);
+        try
+        {
+            LoadBuiltIns(themes, failures);
+            LoadVolume(themes, failures);
+        }
+        catch (Exception e)
+        {
+            // The steps below report anything they anticipate; this is the net
+            // under the rest, so no theming fault can ever reach a caller.
+            _logger.LogError(e, "Loading themes failed unexpectedly; continuing with what loaded.");
+            failures.Add(new ThemeLoadFailure("(theme catalog)", e.Message));
+        }
 
         _snapshot = new Snapshot(themes, failures);
         _logger.LogInformation(
@@ -150,7 +168,8 @@ public sealed class ThemeCatalog
             return;
         }
 
-        foreach (var directory in Directory.EnumerateDirectories(_builtInDirectory).OrderBy(d => d, StringComparer.Ordinal))
+        foreach (var directory in Enumerate(
+            () => Directory.EnumerateDirectories(_builtInDirectory), _builtInDirectory, failures))
         {
             Add(themes, failures, Path.GetFileName(directory),
                 () => ThemePackageLoader.LoadDirectory(directory, isBuiltIn: true));
@@ -171,9 +190,39 @@ public sealed class ThemeCatalog
             return;
         }
 
-        foreach (var file in Directory.EnumerateFiles(_options.Directory, "*.zip").OrderBy(f => f, StringComparer.Ordinal))
+        foreach (var file in Enumerate(
+            () => Directory.EnumerateFiles(_options.Directory!, "*.zip"), _options.Directory!, failures))
         {
             Add(themes, failures, Path.GetFileName(file), () => ThemePackageLoader.LoadZip(file));
+        }
+    }
+
+    /// <summary>
+    /// Lists a directory, turning a failure to read it into a reported problem
+    /// rather than an exception.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Directory.Exists(string)"/> answering true does not mean the
+    /// directory can be listed: a mounted volume owned by root is present and
+    /// unreadable to the non-root user the container runs as, and enumeration is
+    /// where that surfaces. The result is materialized here so the failure
+    /// happens inside this try rather than midway through the caller's loop.
+    /// </remarks>
+    private IReadOnlyList<string> Enumerate(
+        Func<IEnumerable<string>> enumerate, string directory, List<ThemeLoadFailure> failures)
+    {
+        try
+        {
+            return [.. enumerate().OrderBy(p => p, StringComparer.Ordinal)];
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogError(e, "Cannot read the themes directory {Directory}.", directory);
+            failures.Add(new ThemeLoadFailure(
+                directory,
+                $"The directory could not be read ({e.Message}). Check that it is readable by the user the "
+                + "app runs as; in the container that is a non-root user, so a root-owned mount will not be."));
+            return [];
         }
     }
 

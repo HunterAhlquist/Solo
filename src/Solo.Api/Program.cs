@@ -281,6 +281,12 @@ if (app.Configuration.GetValue("Database:AutoMigrate", true))
     }
 }
 
+// Build the theme catalog now rather than on whichever request first asks for a
+// theme. It reads the filesystem, so anything wrong with the themes volume
+// belongs in the startup log next to the migration, where an operator looks —
+// not in the middle of an unrelated request. Rescan() handles its own failures.
+app.Services.GetRequiredService<ThemeCatalog>();
+
 // Serves the Blazor WASM client: framework files (_framework/*) first, then the
 // client's own wwwroot assets, with index.html as the SPA fallback below.
 app.UseBlazorFrameworkFiles();

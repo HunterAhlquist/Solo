@@ -65,8 +65,81 @@ public class ThemeCatalogTests
         Assert.False(catalog.TryGetContent("blueprint", "0000000000000000", path, out _));
     }
 
-    private static ThemeCatalog Build(string defaultThemeId = "ahlquist-interactive") =>
-        new(Options.Create(new ThemeOptions { Directory = null, DefaultThemeId = defaultThemeId }),
+    /// <summary>
+    /// A themes directory that exists but cannot be listed — a volume mounted
+    /// root-owned under the non-root user the container runs as. This took out
+    /// the admin settings page once: the catalog is a lazily-built singleton, so
+    /// the exception surfaced as a 500 on the first request to resolve it.
+    /// </summary>
+    [SkippableFact]
+    public void An_unreadable_themes_directory_does_not_break_the_catalog()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "solo-theme-perms", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            Skip.IfNot(TryDenyAccess(directory), "Could not make a directory unreadable on this platform.");
+
+            // Constructing is what used to throw.
+            var catalog = Build(themesDirectory: directory);
+
+            Assert.NotEmpty(catalog.Themes);
+            Assert.Equal("ahlquist-interactive", catalog.Resolve(null).Id);
+
+            // And the operator is told which directory, rather than left guessing.
+            var failure = Assert.Single(catalog.Failures);
+            Assert.Equal(directory, failure.File);
+            Assert.Contains("could not be read", failure.Message);
+        }
+        finally
+        {
+            TryRestoreAccess(directory);
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Temp litter isn't worth failing a run over.
+            }
+        }
+    }
+
+    private static bool TryDenyAccess(string directory)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        File.SetUnixFileMode(directory, UnixFileMode.None);
+
+        // Root ignores the mode bits, so confirm the denial actually happens
+        // before asserting on behaviour that depends on it.
+        try
+        {
+            Directory.EnumerateFiles(directory).FirstOrDefault();
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    private static void TryRestoreAccess(string directory)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                directory,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
+
+    private static ThemeCatalog Build(
+        string defaultThemeId = "ahlquist-interactive", string? themesDirectory = null) =>
+        new(Options.Create(new ThemeOptions { Directory = themesDirectory, DefaultThemeId = defaultThemeId }),
             new StubEnvironment(FindRepositoryRoot()),
             NullLogger<ThemeCatalog>.Instance);
 
