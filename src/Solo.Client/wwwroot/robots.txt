@@ -1,0 +1,87 @@
+# Solo is a private application. It is not intended for public search
+# indexing, AI/LLM training, or inclusion in AI answer engines.
+#
+# Design of this file:
+#  * Major search engines are ALLOWED to fetch, on purpose. Every response
+#    carries `X-Robots-Tag: noindex` (Solo.Api/SecurityHeaders.cs); a crawler
+#    has to be able to fetch a URL to see that header and drop it from the
+#    index. A blanket Disallow would instead leave a bare-URL listing they
+#    never fetch and so never learn is noindex.
+#  * AI/LLM crawlers honour Disallow but ignore noindex, so they are blocked
+#    from crawling outright.
+#  * Everything else is blocked by the wildcard.
+#
+# robots.txt is advisory. Crawlers that ignore it are handled at the edge
+# (Cloudflare "Block AI bots" / Bot Fight Mode) and by the app's own SSO gate.
+
+# -- Search engines: allowed to fetch so noindex takes effect ---------------
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+# -- AI / LLM crawlers and training bots: blocked from crawling -------------
+User-agent: GPTBot
+Disallow: /
+
+User-agent: OAI-SearchBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: meta-externalagent
+Disallow: /
+
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: cohere-ai
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+User-agent: Omgilibot
+Disallow: /
+
+User-agent: Timpibot
+Disallow: /
+
+# -- Everything else: no crawling -------------------------------------------
+User-agent: *
+Disallow: /

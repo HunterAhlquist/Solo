@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Solo is a private application: keep it out of search indexes and AI
+       overviews. The X-Robots-Tag response header (Solo.Api/SecurityHeaders.cs)
+       is the authoritative control; this tag covers the initial shell before
+       the app boots. -->
+  <meta name="robots" content="noindex, nofollow" />
   <title>Solo</title>
   <base href="/" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />

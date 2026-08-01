@@ -43,6 +43,9 @@ const SECURITY_HEADERS = {
     'Content-Security-Policy': CONTENT_SECURITY_POLICY,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
+    // Kept in step with the API (Solo.Api/SecurityHeaders.cs). Inert on the
+    // localhost origin, but keeps the served shell identical to the hosted one.
+    'X-Robots-Tag': 'noindex, nofollow',
     // The client needs none of these powerful features. (No HSTS here on
     // purpose: this origin is plain-HTTP localhost, and an HSTS header for
     // 'localhost' would force every other local dev server on the machine to

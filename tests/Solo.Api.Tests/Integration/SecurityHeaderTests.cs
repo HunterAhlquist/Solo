@@ -67,5 +67,8 @@ public sealed class SecurityHeaderTests(PostgresFixture postgres) : IAsyncLifeti
         // Powerful features the app never uses are denied.
         Assert.Contains("camera=()",
             Assert.Single(response.Headers.GetValues("Permissions-Policy")));
+        // Private app: every response tells crawlers not to index it.
+        Assert.Equal("noindex, nofollow",
+            Assert.Single(response.Headers.GetValues("X-Robots-Tag")));
     }
 }

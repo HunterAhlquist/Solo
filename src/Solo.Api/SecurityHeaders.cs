@@ -59,6 +59,14 @@ public static class SecurityHeaders
                 }
 
                 headers.XContentTypeOptions = "nosniff";
+                // Solo is a private application: keep every response out of
+                // search indexes and AI overviews. Unlike a <meta> tag this
+                // covers non-HTML responses (JSON, files) too, and unlike
+                // robots.txt it actually forces de-indexing — a crawler allowed
+                // to fetch the URL sees this and drops it. robots.txt names the
+                // AI crawlers that ignore it; the edge (Cloudflare) catches the
+                // ones that ignore both.
+                headers["X-Robots-Tag"] = "noindex, nofollow";
                 // frame-ancestors covers this for current browsers; the legacy
                 // header is free and still honoured by some proxies.
                 headers.XFrameOptions = "DENY";
