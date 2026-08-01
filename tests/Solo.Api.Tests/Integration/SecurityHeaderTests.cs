@@ -49,9 +49,23 @@ public sealed class SecurityHeaderTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.Contains("'wasm-unsafe-eval'", csp);
         Assert.DoesNotContain("script-src 'self' 'unsafe-eval'", csp);
 
+        // Same-origin connections only. No bare ws:/wss: scheme source that
+        // would let an injected script open a socket to any host.
+        Assert.Contains("connect-src 'self' https://accounts.google.com", csp);
+        Assert.DoesNotContain("ws:", csp);
+        Assert.DoesNotContain("wss:", csp);
+
         Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
         Assert.Equal("DENY", Assert.Single(response.Headers.GetValues("X-Frame-Options")));
         Assert.Equal("strict-origin-when-cross-origin",
             Assert.Single(response.Headers.GetValues("Referrer-Policy")));
+
+        // HSTS must ride out even though the app serves plain HTTP behind the
+        // TLS-terminating proxy (so UseHsts() would suppress it).
+        Assert.Equal("max-age=63072000; includeSubDomains",
+            Assert.Single(response.Headers.GetValues("Strict-Transport-Security")));
+        // Powerful features the app never uses are denied.
+        Assert.Contains("camera=()",
+            Assert.Single(response.Headers.GetValues("Permissions-Policy")));
     }
 }

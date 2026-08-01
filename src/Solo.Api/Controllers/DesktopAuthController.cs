@@ -33,7 +33,11 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public ActionResult<DesktopAuthFlowDto> Start([FromBody] DesktopAuthStartRequest? request)
     {
-        if (flows.Start(request?.Description) is not { } flow)
+        // Key the per-client pending cap on the caller's IP. UseForwardedHeaders
+        // has already resolved the real client address from a trusted proxy, so
+        // this matches how the rate limiter partitions callers.
+        var clientKey = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (flows.Start(request?.Description, clientKey) is not { } flow)
         {
             return Problem(
                 statusCode: StatusCodes.Status429TooManyRequests,

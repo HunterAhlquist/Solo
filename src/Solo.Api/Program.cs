@@ -311,6 +311,14 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<BoardHub>(BoardHubConstants.Path);
 app.MapHealthChecks("/healthz").AllowAnonymous();
+// An unknown route under the API namespace is a 404, not the SPA shell: a
+// client calling a route that doesn't exist should get JSON it can read, not a
+// 200 of index.html that masks the mistake. This is more specific than the SPA
+// fallback below, so it wins for /api paths; the rest still boot the client.
+// Anonymous so a genuinely-missing route answers 404 rather than the fallback
+// policy's 401 — real endpoints match first and keep enforcing their own auth.
+app.MapFallback("/api/{**_}", () => Results.Problem(statusCode: StatusCodes.Status404NotFound))
+    .AllowAnonymous();
 // The SPA shell itself is public — the client boots, then authenticates.
 app.MapFallbackToFile("index.html").AllowAnonymous();
 

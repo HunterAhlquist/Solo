@@ -191,11 +191,28 @@ public sealed class DesktopAuthApiTests(PostgresFixture postgres) : IAsyncLifeti
         // Unit-level: the registry is in-memory, so expiry is easiest to pin
         // down directly rather than by waiting out the TTL over HTTP.
         var flows = new DesktopSignInFlows(TimeSpan.FromMilliseconds(-1));
-        var flow = flows.Start("test")!;
+        var flow = flows.Start("test", "ip:test")!;
 
         Assert.False(flows.IsPending(flow.State));
         Assert.False(flows.TryComplete(flow.State, Guid.NewGuid()));
         Assert.Equal(DesktopSignInFlows.PollStatus.Unknown, flows.Poll(flow.DeviceCode, out _, out _));
+    }
+
+    [Fact]
+    public void Start_CapsPendingFlowsPerClient()
+    {
+        // A single source cannot fill the whole pool: once it holds the
+        // per-client maximum, further starts from that client are refused —
+        // but a different client is unaffected.
+        var flows = new DesktopSignInFlows();
+
+        for (var i = 0; i < 10; i++)
+        {
+            Assert.NotNull(flows.Start("test", "ip:same"));
+        }
+
+        Assert.Null(flows.Start("test", "ip:same"));
+        Assert.NotNull(flows.Start("test", "ip:other"));
     }
 
     [SkippableFact]

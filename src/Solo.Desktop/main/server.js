@@ -28,7 +28,9 @@ const CONTENT_SECURITY_POLICY = [
     "style-src 'self' 'unsafe-inline' https://accounts.google.com",
     "img-src 'self' data: https:",
     "font-src 'self' data:",
-    "connect-src 'self' ws: wss: https://accounts.google.com",
+    // 'self' covers the same-origin SignalR WebSocket (CSP3 resolves it to the
+    // page origin's ws/wss); no bare ws:/wss: wildcard to any host.
+    "connect-src 'self' https://accounts.google.com",
     "frame-src https://accounts.google.com",
     "worker-src 'self' blob:",
     "frame-ancestors 'none'",
@@ -41,6 +43,14 @@ const SECURITY_HEADERS = {
     'Content-Security-Policy': CONTENT_SECURITY_POLICY,
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
+    // The client needs none of these powerful features. (No HSTS here on
+    // purpose: this origin is plain-HTTP localhost, and an HSTS header for
+    // 'localhost' would force every other local dev server on the machine to
+    // HTTPS — a footgun with no benefit where there is no TLS to enforce.)
+    'Permissions-Policy':
+        'accelerometer=(), autoplay=(), camera=(), display-capture=(), ' +
+        'encrypted-media=(), geolocation=(), gyroscope=(), magnetometer=(), ' +
+        'microphone=(), midi=(), payment=(), usb=()',
 };
 
 const MIME = {

@@ -21,9 +21,12 @@ public static class SecurityHeaders
     /// stylesheet, and the calls it makes. They cost nothing on an instance
     /// configured for another provider, which never loads that script.</para>
     ///
-    /// <para><c>connect-src</c> spells out ws/wss as well as <c>'self'</c>
-    /// because the SignalR hub falls back to a WebSocket on the same origin,
-    /// and not every browser resolves <c>'self'</c> to the ws scheme.</para>
+    /// <para><c>connect-src</c> is <c>'self'</c> only. The SignalR hub's
+    /// WebSocket is same-origin, and CSP Level 3 resolves that through
+    /// <c>'self'</c> — it matches the ws/wss form of the page's own origin.
+    /// Bare <c>ws:</c>/<c>wss:</c> scheme sources are deliberately avoided:
+    /// they permit a socket to <em>any</em> host, which would hand a script
+    /// that slipped past the other controls a ready exfiltration channel.</para>
     /// </summary>
     private const string ContentSecurityPolicy =
         "default-src 'self'; " +
@@ -31,7 +34,7 @@ public static class SecurityHeaders
         "style-src 'self' 'unsafe-inline' https://accounts.google.com; " +
         "img-src 'self' data: https:; " +
         "font-src 'self' data:; " +
-        "connect-src 'self' ws: wss: https://accounts.google.com; " +
+        "connect-src 'self' https://accounts.google.com; " +
         "frame-src https://accounts.google.com; " +
         "worker-src 'self' blob:; " +
         // Nothing here is meant to be framed, submit off-site, or rebase its
@@ -63,6 +66,21 @@ public static class SecurityHeaders
                 // Google Identity Services signs in through a popup, which a
                 // plain same-origin COOP would sever.
                 headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
+                // HSTS. TLS terminates at the reverse proxy, so the app itself
+                // serves plain HTTP and Request.IsHttps is false here — the
+                // stock UseHsts() middleware would never emit this. Set it
+                // directly: the proxy forwards it to the browser over HTTPS,
+                // where it is honoured (a user agent ignores an HSTS header
+                // received over plain HTTP, so this is harmless behind the
+                // proxy too). No 'preload' — that is a hard-to-reverse
+                // commitment the operator should opt into deliberately.
+                headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains";
+                // The app uses none of these powerful features; deny them so a
+                // script injected anywhere on the origin cannot reach for them.
+                headers["Permissions-Policy"] =
+                    "accelerometer=(), autoplay=(), camera=(), display-capture=(), " +
+                    "encrypted-media=(), geolocation=(), gyroscope=(), magnetometer=(), " +
+                    "microphone=(), midi=(), payment=(), usb=()";
                 return Task.CompletedTask;
             }, context);
 

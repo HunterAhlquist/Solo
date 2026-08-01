@@ -18,6 +18,16 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
     /// <summary>Anonymous callers can open flows; cap them so they can't grow memory.</summary>
     private const int MaxPending = 100;
 
+    /// <summary>
+    /// Pending flows a single client (keyed by IP) may hold at once. Without
+    /// this, one source could fill <see cref="MaxPending"/> by itself: the
+    /// per-IP request limit still lets it open flows steadily, and over the
+    /// 10-minute TTL that is enough to reach 100 and lock out every other
+    /// user's desktop sign-in. The per-client cap keeps one address to a small
+    /// slice of the pool, so exhausting it takes many distinct addresses.
+    /// </summary>
+    private const int MaxPendingPerClient = 10;
+
     private readonly TimeSpan _ttl = ttl ?? DefaultTtl;
     private readonly Lock _lock = new();
     private readonly Dictionary<string, Flow> _byState = new();
@@ -28,14 +38,22 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
         public required DateTimeOffset ExpiresAt { get; init; }
         public string? Description { get; init; }
 
+        /// <summary>Which client opened the flow, for the per-client pending cap.</summary>
+        public required string ClientKey { get; init; }
+
         /// <summary>Set when the browser sign-in verified this user; null while pending.</summary>
         public Guid? UserId { get; set; }
     }
 
     public enum PollStatus { Unknown, Pending, Completed }
 
-    /// <summary>Opens a flow, or returns null when the pending cap is hit.</summary>
-    public DesktopAuthFlowDto? Start(string? description)
+    /// <summary>
+    /// Opens a flow for the given client, or returns null when the global or
+    /// per-client pending cap is hit. <paramref name="clientKey"/> is the
+    /// caller's IP (see the controller), so no single source can monopolise
+    /// the pool.
+    /// </summary>
+    public DesktopAuthFlowDto? Start(string? description, string clientKey)
     {
         lock (_lock)
         {
@@ -43,6 +61,15 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
             if (_byState.Count >= MaxPending)
             {
                 return null;
+            }
+
+            var fromClient = 0;
+            foreach (var existing in _byState.Values)
+            {
+                if (existing.ClientKey == clientKey && ++fromClient >= MaxPendingPerClient)
+                {
+                    return null;
+                }
             }
 
             var flow = new DesktopAuthFlowDto(
@@ -54,6 +81,7 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
                 DeviceCode = flow.DeviceCode,
                 ExpiresAt = flow.ExpiresAt,
                 Description = description,
+                ClientKey = clientKey,
             });
             return flow;
         }
