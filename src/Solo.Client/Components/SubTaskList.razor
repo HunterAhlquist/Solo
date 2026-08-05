@@ -27,10 +27,28 @@
 else
 {
     <MudList T="string" Dense="true" Class="pa-0">
-        @foreach (var subTask in SubTasks.OrderBy(s => s.Rank))
+        @foreach (var subTask in Ordered)
         {
             <MudListItem T="string" Class="pa-0">
-                <div class="d-flex align-center" style="gap:.35rem">
+                @* The row is a reorder drop target; the handle beside it is the drag
+                   source. See the reordering region below for why this is hand-rolled. *@
+                <div class="@RowClass(subTask)"
+                     @ondragenter="@(() => EnterDrag(subTask))"
+                     @ondragover:preventDefault="@(_dragged is not null)"
+                     @ondrop:preventDefault="true"
+                     @ondrop="@(() => DropAsync(subTask))">
+                    @if (CanReorder)
+                    {
+                        <MudTooltip Text="Drag to reorder">
+                            <span class="subtask-drag-handle" draggable="true" aria-hidden="true"
+                                  @ondragstart="@(() => StartDrag(subTask))"
+                                  @ondragend="@EndDrag">
+                                <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
+                                         Size="Size.Small" Color="Color.Secondary" />
+                            </span>
+                        </MudTooltip>
+                    }
+
                     <MudCheckBox T="bool" Value="@subTask.IsFinished" Dense="true" Color="Color.Primary"
                                  Disabled="@(!CanWrite)"
                                  ValueChanged="@(finished => ToggleAsync(subTask, finished))" />
@@ -114,6 +132,8 @@ else
     private string _newName = string.Empty;
     private Guid? _editingId;
     private string _editName = string.Empty;
+    private SubTaskDto? _dragged;
+    private Guid? _dropTarget;
 
     [Parameter, EditorRequired]
     public Guid TaskId { get; set; }
@@ -127,6 +147,12 @@ else
     /// <summary>Sub-task edits change the parent task's status, so the drawer refetches it.</summary>
     [Parameter]
     public EventCallback OnChanged { get; set; }
+
+    /// <summary>Rank is the checklist's order; everything renders from it.</summary>
+    private List<SubTaskDto> Ordered => SubTasks.OrderBy(s => s.Rank).ToList();
+
+    /// <summary>A single item has nothing to swap with, so it gets no handle.</summary>
+    private bool CanReorder => CanWrite && SubTasks.Count > 1;
 
     private LabelDto? LabelOf(SubTaskDto subTask) =>
         subTask.LabelId is null ? null : Store.Board?.Labels.FirstOrDefault(l => l.Id == subTask.LabelId);
@@ -281,6 +307,83 @@ else
     private async Task DeleteAsync(SubTaskDto subTask)
     {
         await Guard.RunAsync(() => Api.DeleteSubTaskAsync(subTask.Id));
+        await OnChanged.InvokeAsync();
+    }
+
+    // -- Reordering ---------------------------------------------------------
+    //
+    // Hand-rolled HTML5 drag & drop, as the epic bands use: a MudDropContainer
+    // here would be a nested container inside the board's, and the two fight
+    // for the same pointer events. Only the handle is draggable, so the row's
+    // own controls (checkbox, label menu, rename field) keep their gestures.
+
+    private string RowClass(SubTaskDto subTask)
+    {
+        var dragging = _dragged?.Id == subTask.Id ? " subtask-row--dragging" : null;
+        var target = _dropTarget == subTask.Id ? " subtask-row--drop-target" : null;
+        return $"subtask-row d-flex align-center{dragging}{target}";
+    }
+
+    private void StartDrag(SubTaskDto subTask)
+    {
+        if (CanReorder)
+        {
+            _dragged = subTask;
+            _dropTarget = null;
+        }
+    }
+
+    /// <summary>
+    /// dragenter, not dragover: it fires once per element entered, and every child
+    /// of a row reports the same sub-task, so the highlight never flickers.
+    /// </summary>
+    private void EnterDrag(SubTaskDto subTask)
+    {
+        if (_dragged is not null && _dragged.Id != subTask.Id)
+        {
+            _dropTarget = subTask.Id;
+        }
+    }
+
+    private void EndDrag()
+    {
+        _dragged = null;
+        _dropTarget = null;
+    }
+
+    /// <summary>
+    /// Dropping on a row puts the dragged item in its place: dragging down lands
+    /// after the target, dragging up lands before it. The parent task refetches,
+    /// which is what re-sorts the list.
+    /// </summary>
+    private async Task DropAsync(SubTaskDto target)
+    {
+        var dragged = _dragged;
+        EndDrag();
+
+        if (dragged is null || dragged.Id == target.Id || !CanReorder)
+        {
+            return;
+        }
+
+        var ordered = Ordered;
+        var index = ordered.FindIndex(s => s.Id == target.Id);
+        var others = ordered.Where(s => s.Id != dragged.Id).Select(s => s.Id).ToList();
+        if (index < 0 || others.Count != ordered.Count - 1)
+        {
+            return;
+        }
+
+        var (preceding, following) = RankNeighbors.Compute(others, index);
+        if (preceding is null && following is null)
+        {
+            return;
+        }
+
+        await Guard.RunAsync(
+            () => Api.RerankSubTaskAsync(dragged.Id, preceding, following),
+            OnChanged.InvokeAsync);
+
         await OnChanged.InvokeAsync();
     }
 }

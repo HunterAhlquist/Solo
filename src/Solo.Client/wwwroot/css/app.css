@@ -482,6 +482,42 @@ code {
     opacity: 0.35;
 }
 
+/* ---------------------------------------------------------------------------
+   Sub-task checklist — rows reorder by dragging
+   --------------------------------------------------------------------------- */
+.subtask-row {
+    gap: 0.35rem;
+    border-radius: var(--mud-default-borderradius);
+}
+
+/* Same signals as the epic bands: the dragged row fades, and the row under the
+   pointer takes an inset ring (a border would nudge the row's contents). */
+.subtask-row--dragging {
+    opacity: 0.5;
+}
+
+.subtask-row--drop-target {
+    background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
+    box-shadow: inset 0 0 0 2px var(--mud-palette-primary);
+}
+
+/* The handle is the drag source, so the row's own controls keep their gestures.
+   No pointer-events on the icon: it must not become the drag source itself, or
+   the drag starts on a child and dragend never reaches the handle. */
+.subtask-drag-handle {
+    display: inline-flex;
+    align-items: center;
+    cursor: grab;
+}
+
+.subtask-drag-handle:active {
+    cursor: grabbing;
+}
+
+.subtask-drag-handle .mud-icon-root {
+    pointer-events: none;
+}
+
 /* Presence avatars sit tight; they're ambient, not a focal point. */
 .presence-cluster {
     display: inline-flex;

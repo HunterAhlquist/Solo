@@ -138,9 +138,12 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         return page;
     }
 
-    private (Guid? Preceding, Guid? Following) RerankOf(Guid epicId)
+    private (Guid? Preceding, Guid? Following) RerankOf(Guid epicId) =>
+        NeighborsSentTo($"PUT /api/epics/{epicId}/rank");
+
+    /// <summary>The neighbours a rerank asked the server to slot the item between.</summary>
+    private (Guid? Preceding, Guid? Following) NeighborsSentTo(string put)
     {
-        var put = $"PUT /api/epics/{epicId}/rank";
         Assert.Contains(put, _http.Paths);
         var body = System.Text.Json.JsonDocument.Parse(_http.Bodies[_http.Paths.IndexOf(put)]).RootElement;
         static Guid? Read(System.Text.Json.JsonElement e) =>
@@ -565,6 +568,101 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         cut.Find(SubTaskName).Click();
 
         Assert.Empty(cut.FindAll(SubTaskEditor));
+    }
+
+    // -- Sub-tasks reorder by dragging their handle -------------------------------
+
+    private const string SubTaskRow = ".subtask-row";
+    private const string SubTaskHandle = ".subtask-drag-handle";
+
+    /// <summary>Three sub-tasks, ranked first → second → third, with a rerank reply waiting.</summary>
+    private (IRenderedComponent<Components.SubTaskList> Page, List<SubTaskDto> Items) RenderChecklist(
+        bool canWrite = true)
+    {
+        var taskId = Guid.NewGuid();
+        List<SubTaskDto> items =
+        [
+            TestData.SubTask(false, taskId) with { Name = "First", Rank = 1024m },
+            TestData.SubTask(false, taskId) with { Name = "Second", Rank = 2048m },
+            TestData.SubTask(false, taskId) with { Name = "Third", Rank = 3072m },
+        ];
+
+        var page = Render<Components.SubTaskList>(p => p
+            .Add(l => l.TaskId, taskId)
+            .Add(l => l.SubTasks, (IReadOnlyList<SubTaskDto>)items)
+            .Add(l => l.CanWrite, canWrite));
+        _http.RespondJson(items[0] with { Rank = 4096m });
+        return (page, items);
+    }
+
+    [Fact]
+    public void Dragging_a_subtask_down_onto_another_ranks_it_after_that_row()
+    {
+        var (page, items) = RenderChecklist();
+
+        page.FindAll(SubTaskHandle)[0].DragStart();
+        page.FindAll(SubTaskRow)[2].Drop();
+
+        Assert.Equal((items[2].Id, (Guid?)null),
+            NeighborsSentTo($"PUT /api/subtasks/{items[0].Id}/rank"));
+    }
+
+    [Fact]
+    public void Dragging_a_subtask_up_onto_another_ranks_it_before_that_row()
+    {
+        var (page, items) = RenderChecklist();
+
+        page.FindAll(SubTaskHandle)[2].DragStart();
+        page.FindAll(SubTaskRow)[0].Drop();
+
+        Assert.Equal((null, items[0].Id),
+            NeighborsSentTo($"PUT /api/subtasks/{items[2].Id}/rank"));
+    }
+
+    /// <summary>The row under the pointer is marked so the drop lands visibly.</summary>
+    [Fact]
+    public void The_subtask_row_under_the_pointer_is_highlighted_while_dragging()
+    {
+        var (page, _) = RenderChecklist();
+
+        page.FindAll(SubTaskHandle)[2].DragStart();
+        page.FindAll(SubTaskRow)[0].DragEnter();
+
+        Assert.Single(page.FindAll(".subtask-row--drop-target"));
+        Assert.Single(page.FindAll(".subtask-row--dragging"));
+
+        page.FindAll(SubTaskHandle)[2].DragEnd();
+
+        Assert.Empty(page.FindAll(".subtask-row--drop-target"));
+        Assert.Empty(page.FindAll(".subtask-row--dragging"));
+    }
+
+    /// <summary>A drop with nothing being dragged must not reorder the checklist.</summary>
+    [Fact]
+    public void Dropping_on_a_subtask_with_none_being_dragged_reranks_nothing()
+    {
+        var (page, _) = RenderChecklist();
+
+        page.FindAll(SubTaskRow)[0].Drop();
+
+        Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_read_only_member_gets_no_subtask_drag_handles()
+    {
+        var (page, _) = RenderChecklist(canWrite: false);
+
+        Assert.Empty(page.FindAll(SubTaskHandle));
+    }
+
+    /// <summary>A lone sub-task has nothing to swap with, so it offers no handle.</summary>
+    [Fact]
+    public void A_single_subtask_has_no_drag_handle()
+    {
+        var cut = RenderSubTasks(TestData.SubTask(false));
+
+        Assert.Empty(cut.FindAll(SubTaskHandle));
     }
 
     // -- Bug: the top-right profile menu (ActivatorContent) stopped opening -------
