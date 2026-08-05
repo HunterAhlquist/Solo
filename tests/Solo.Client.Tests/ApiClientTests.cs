@@ -104,4 +104,31 @@ public class ApiClientTests
 
         Assert.Equal($"POST /api/boards/{TestData.BoardId}/labels/reset", http.Paths[0]);
     }
+
+    /// <summary>A board transfer names the destination board and, optionally, a lane on it.</summary>
+    [Fact]
+    public async Task Moving_a_task_puts_the_destination_board_in_the_body_not_the_route()
+    {
+        var http = new StubHttp();
+        var taskId = Guid.NewGuid();
+        var destination = Guid.NewGuid();
+        http.RespondJson(TestData.Task());
+
+        await http.CreateClient().MoveTaskAsync(taskId, destination, TestData.EpicId);
+
+        Assert.Equal($"PUT /api/tasks/{taskId}/board", http.Paths[0]);
+        Assert.Contains(destination.ToString(), http.Bodies[0]);
+        Assert.Contains(TestData.EpicId.ToString(), http.Bodies[0]);
+    }
+
+    [Fact]
+    public async Task Moving_a_task_with_no_epic_sends_a_null_so_it_lands_ad_hoc()
+    {
+        var http = new StubHttp();
+        http.RespondJson(TestData.Task());
+
+        await http.CreateClient().MoveTaskAsync(Guid.NewGuid(), TestData.BoardId, null);
+
+        Assert.Contains("\"epicId\":null", http.Bodies[0]);
+    }
 }

@@ -3,6 +3,7 @@
 @inject IBoardHubClient Hub
 @inject SaveGuard Guard
 @inject IDialogService Dialogs
+@inject NavigationManager Nav
 
 @*
     The right-hand detail drawer for a task or an epic. Every field commits on a
@@ -91,10 +92,19 @@
             @if (CanWrite)
             {
                 <MudDivider Class="my-4" />
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.Delete" OnClick="@DeleteAsync">
-                    Delete @(Task is not null ? "task" : "epic")
-                </MudButton>
+                <div class="d-flex flex-wrap" style="gap:.5rem">
+                    @if (Task is not null)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.DriveFileMove" OnClick="@MoveAsync">
+                            Move to board
+                        </MudButton>
+                    }
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Delete" OnClick="@DeleteAsync">
+                        Delete @(Task is not null ? "task" : "epic")
+                    </MudButton>
+                </div>
             }
         </div>
     }
@@ -359,6 +369,46 @@
         {
             Store.ApplyTask(await Api.GetTaskAsync(task.Id));
         }
+    }
+
+    /// <summary>
+    /// Transfer to another board in the project, then follow the task there. The
+    /// serial number moved with it, so the destination's ?task= link is what
+    /// still points at the card — and landing on the board it went to is the
+    /// only way to see that the move did what was asked.
+    /// </summary>
+    private async Task MoveAsync()
+    {
+        if (Task is not { } task || Store.Board is not { } board)
+        {
+            return;
+        }
+
+        var dialog = await Dialogs.ShowAsync<MoveTaskDialog>(
+            "Move task",
+            new DialogParameters<MoveTaskDialog>
+            {
+                { d => d.ProjectId, board.ProjectId },
+                { d => d.CurrentBoardId, board.Id },
+            });
+
+        if (await dialog.Result is not { Canceled: false, Data: MoveTaskDialog.Target target })
+        {
+            return;
+        }
+
+        var moved = await Guard.RunAsync(
+            () => Api.MoveTaskAsync(task.Id, target.Board.Id, target.EpicId), Store.RefreshAsync);
+        if (moved is null)
+        {
+            return;
+        }
+
+        // Drop the card from the board being left before navigating, so it can't
+        // flash back in the frame between the save and the new board's load.
+        Store.RemoveTask(task.Id);
+        await CloseAsync();
+        Nav.NavigateTo($"projects/{board.ProjectAlias}/boards/{target.Board.Alias}?task={moved.Number}");
     }
 
     private async Task DeleteAsync()

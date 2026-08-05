@@ -176,6 +176,16 @@ public sealed class ApiClient(HttpClient http)
         SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/epic",
             new SetTaskEpicRequest { EpicId = epicId }, ct);
 
+    /// <summary>
+    /// Board transfer within the project. The task lands in the destination's
+    /// ad-hoc band unless <paramref name="epicId"/> names one of its epics, and
+    /// comes back renumbered — its serial belongs to the new board now.
+    /// </summary>
+    public Task<TaskDto> MoveTaskAsync(
+        Guid taskId, Guid boardId, Guid? epicId, CancellationToken ct = default) =>
+        SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/board",
+            new MoveTaskRequest { BoardId = boardId, EpicId = epicId }, ct);
+
     public Task<TaskDto> RerankTaskAsync(
         Guid taskId, Guid? precedingId, Guid? followingId, CancellationToken ct = default) =>
         SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/rank",

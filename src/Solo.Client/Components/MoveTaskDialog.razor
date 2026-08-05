@@ -1,0 +1,122 @@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+@*
+    Where should this task live? The project's other open boards, and then —
+    once one is picked — that board's epics, because an epic only means
+    anything on the board that owns it.
+*@
+<MudDialog>
+    <DialogContent>
+        @if (_boards is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_boards.Count == 0)
+        {
+            <MudText Typo="Typo.body2">
+                This project has no other open board to move the task to.
+            </MudText>
+        }
+        else
+        {
+            <MudSelect T="Guid?" Value="@_boardId" ValueChanged="@OnBoardChangedAsync" Label="Board"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3">
+                @foreach (var board in _boards)
+                {
+                    <MudSelectItem T="Guid?" Value="@board.Id">@board.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="Guid?" Value="@_epicId" ValueChanged="@(v => _epicId = v)" Label="Epic"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                       Placeholder="No epic" Disabled="@(_epics.Count == 0)">
+                @foreach (var epic in _epics)
+                {
+                    <MudSelectItem T="Guid?" Value="@epic.Id">@epic.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-3">
+                The task is renumbered for the board it lands on, so links to its
+                old serial number stop resolving. Labels carry over where the
+                destination has the same one.
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_boardId is null)" OnClick="@Move">
+            Move
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<BoardDto>? _boards;
+    private IReadOnlyList<EpicDto> _epics = [];
+    private Guid? _boardId;
+    private Guid? _epicId;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public required Guid ProjectId { get; set; }
+
+    /// <summary>The board the task is on — never a destination for itself.</summary>
+    [Parameter, EditorRequired]
+    public required Guid CurrentBoardId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Closed boards are read-only everywhere else; they are not somewhere
+            // to file work either.
+            _boards = (await Api.GetBoardsAsync(ProjectId))
+                .Where(b => b.Id != CurrentBoardId && b.IsOpen)
+                .ToList();
+        }
+        catch (ApiException e)
+        {
+            _boards = [];
+            Snackbar.Add(e.Detail ?? "Couldn't list this project's boards.", Severity.Error);
+        }
+    }
+
+    private async Task OnBoardChangedAsync(Guid? boardId)
+    {
+        _boardId = boardId;
+        _epicId = null;
+        _epics = [];
+        if (boardId is not { } id)
+        {
+            return;
+        }
+
+        try
+        {
+            _epics = (await Api.GetEpicsAsync(id)).OrderBy(e => e.Rank).ToList();
+        }
+        catch (ApiException)
+        {
+            // Non-fatal: the picker stays empty and the task lands ad-hoc, which
+            // is where it would go on a board with no epics anyway.
+        }
+    }
+
+    private void Move()
+    {
+        if (_boards?.FirstOrDefault(b => b.Id == _boardId) is { } board)
+        {
+            Dialog.Close(DialogResult.Ok(new Target(board, _epicId)));
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    /// <summary>The chosen destination; the caller needs the alias to navigate there.</summary>
+    public sealed record Target(BoardDto Board, Guid? EpicId);
+}

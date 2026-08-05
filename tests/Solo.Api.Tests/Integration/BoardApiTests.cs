@@ -544,6 +544,239 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.False(await db.Users.AnyAsync(u => u.Email == "drifter@example.com"));
     }
 
+    // -- Moving a task to another board --------------------------------------
+
+    [SkippableFact]
+    public async Task MovingATask_ReseatsWhatTheBoardOwned_AndKeepsEverythingElse()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, home) = await CreateProjectWithBoard("Transfer");
+        var away = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Away", alias = "AWAY" });
+        var awayEpic = await _admin.PostJson<EpicDto>($"/api/boards/{away.Id}/epics", new { name = "Slice" });
+
+        // Away already has a task, so a serial carried over from home would
+        // collide rather than merely look wrong.
+        await _admin.PostJson<TaskDto>($"/api/boards/{away.Id}/tasks", new { name = "Sitting there" });
+
+        var homeLabels = await _admin.GetJson<List<LabelDto>>($"/api/boards/{home.Id}/labels");
+        var homeTaskLabel = homeLabels.First(l => l.Kind == LabelKind.Task);
+        var homeSubLabel = homeLabels.First(l => l.Kind == LabelKind.SubTask);
+
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{home.Id}/tasks", new
+        {
+            name = "Travelling task",
+            labelId = homeTaskLabel.Id,
+        });
+        var subTask = await _admin.PostJson<SubTaskDto>(
+            $"/api/tasks/{task.Id}/subtasks", new { name = "Packed", labelId = homeSubLabel.Id });
+        await _admin.PostJson<CommentDto>($"/api/tasks/{task.Id}/comments", new { body = "Wrong board" });
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        await _admin.PutJson<TaskDto>(
+            $"/api/tasks/{task.Id}/assignees", new { userIds = new[] { me.Id } });
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/status", new { status = "InProgress" });
+
+        var moved = await _admin.PutJson<TaskDto>(
+            $"/api/tasks/{task.Id}/board", new { boardId = away.Id, epicId = awayEpic.Id });
+
+        Assert.Equal(task.Id, moved.Id);
+        Assert.Equal(away.Id, moved.BoardId);
+        Assert.Equal(awayEpic.Id, moved.EpicId);
+        Assert.Equal(2, moved.Number);                    // away's sequence, not home's
+        Assert.Equal(TaskState.InProgress, moved.Status); // columns are the same everywhere
+
+        // Board-owned labels are re-resolved to away's copies of the same defaults.
+        var awayLabels = await _admin.GetJson<List<LabelDto>>($"/api/boards/{away.Id}/labels");
+        var awayTaskLabel = awayLabels.First(l => l.Kind == LabelKind.Task && l.Name == homeTaskLabel.Name);
+        var awaySubLabel = awayLabels.First(l => l.Kind == LabelKind.SubTask && l.Name == homeSubLabel.Name);
+        Assert.Equal(awayTaskLabel.Id, moved.LabelId);
+        Assert.NotEqual(homeTaskLabel.Id, moved.LabelId);
+        Assert.Equal(awaySubLabel.Id, moved.SubTasks.Single().LabelId);
+
+        // Everything hanging off the task came along.
+        Assert.Equal([subTask.Id], moved.SubTasks.Select(s => s.Id));
+        Assert.Equal([me.Id], moved.AssigneeIds);
+        Assert.Single(await _admin.GetJson<List<CommentDto>>($"/api/tasks/{task.Id}/comments"));
+
+        // And each board's payload agrees on where it lives now.
+        var homeDetail = await _admin.GetJson<BoardDetailDto>($"/api/boards/{home.Id}");
+        var awayDetail = await _admin.GetJson<BoardDetailDto>($"/api/boards/{away.Id}");
+        Assert.DoesNotContain(homeDetail.Tasks, t => t.Id == task.Id);
+        Assert.Contains(awayDetail.Tasks, t => t.Id == task.Id);
+        Assert.True(awayDetail.Tasks.Single(t => t.Id == task.Id).Rank >
+                    awayDetail.Tasks.Single(t => t.Id != task.Id).Rank);
+    }
+
+    [SkippableFact]
+    public async Task MovingATask_ClearsALabelTheDestinationHasNoAnswerFor()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, home) = await CreateProjectWithBoard("Orphan");
+        var away = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Away", alias = "AWAY" });
+
+        // A label home invented for itself: away has never heard of it.
+        var local = await _admin.PostJson<LabelDto>($"/api/boards/{home.Id}/labels", new
+        {
+            kind = "Task",
+            name = "Playtest blocker",
+            color = "#123456",
+        });
+        var task = await _admin.PostJson<TaskDto>(
+            $"/api/boards/{home.Id}/tasks", new { name = "Unlabelled soon", labelId = local.Id });
+
+        var moved = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/board", new { boardId = away.Id });
+
+        Assert.Null(moved.LabelId);
+        Assert.Null(moved.EpicId); // no epic named: the ad-hoc band
+    }
+
+    /// <summary>
+    /// A task's serial number is how prose names it, and a move changes that
+    /// number. Every reference in the project follows the task; everything else
+    /// in the same text is left exactly as its author wrote it.
+    /// </summary>
+    [SkippableFact]
+    public async Task MovingATask_CarriesTheReferencesToItAlong()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, home) = await CreateProjectWithBoard("Refs");
+        var away = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Away", alias = "AWAY" });
+
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{home.Id}/tasks", new { name = "Referenced" });
+        var bystander = await _admin.PostJson<TaskDto>($"/api/boards/{home.Id}/tasks", new { name = "Bystander" });
+        Assert.Equal(1, task.Number);
+        Assert.Equal(2, bystander.Number);
+
+        // The three places a reference can live, each also naming something the
+        // move must not touch: the bystander task, and a lower-case mention of it.
+        var epic = await _admin.PostJson<EpicDto>($"/api/boards/{away.Id}/epics", new
+        {
+            name = "Slice",
+            description = "Blocked by ||REFS-REFS-1||, not ||REFS-REFS-2||.",
+        });
+        await _admin.PutJson<TaskDto>($"/api/tasks/{bystander.Id}", new
+        {
+            name = bystander.Name,
+            description = "See ||refs-refs-1|| and ||refs-refs-2||.",
+            version = bystander.Version,
+        });
+        var comment = await _admin.PostJson<CommentDto>($"/api/tasks/{bystander.Id}/comments", new
+        {
+            body = "||REFS-REFS-1|| twice: ||REFS-REFS-1||. Not a reference: |REFS-REFS-1|.",
+        });
+
+        var moved = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/board", new { boardId = away.Id });
+        Assert.Equal(1, moved.Number); // away's own sequence starts over
+
+        // Every reference to the moved task now names where it actually lives.
+        var movedEpic = (await _admin.GetJson<BoardDetailDto>($"/api/boards/{away.Id}"))
+            .Epics.Single(e => e.Id == epic.Id);
+        Assert.Equal("Blocked by ||REFS-AWAY-1||, not ||REFS-REFS-2||.", movedEpic.Description);
+
+        // Case and padding are how it was typed, not what it means: the reference
+        // to the moved task is caught, the bystander's is left as written.
+        var movedTask = await _admin.GetJson<TaskDto>($"/api/tasks/{bystander.Id}");
+        Assert.Equal("See ||REFS-AWAY-1|| and ||refs-refs-2||.", movedTask.Description);
+
+        var comments = await _admin.GetJson<List<CommentDto>>($"/api/tasks/{bystander.Id}/comments");
+        Assert.Equal(
+            "||REFS-AWAY-1|| twice: ||REFS-AWAY-1||. Not a reference: |REFS-REFS-1|.",
+            comments.Single(c => c.Id == comment.Id).Body);
+    }
+
+    [SkippableFact]
+    public async Task MovingATask_LeavesProseInOtherProjectsAlone()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, home) = await CreateProjectWithBoard("Fences");
+        var away = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Away", alias = "AWAY" });
+        var (_, elsewhere) = await CreateProjectWithBoard("Bystand");
+
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{home.Id}/tasks", new { name = "Referenced" });
+        var outsider = await _admin.PostJson<TaskDto>(
+            $"/api/boards/{elsewhere.Id}/tasks", new { name = "Outsider" });
+        await _admin.PutJson<TaskDto>($"/api/tasks/{outsider.Id}", new
+        {
+            name = outsider.Name,
+            description = "Cross-project mention of ||FENCES-FENCES-1||.",
+            version = outsider.Version,
+        });
+
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/board", new { boardId = away.Id });
+
+        // The sweep stays inside the project the caller was authorized for, so a
+        // cross-project mention goes stale rather than being edited from outside.
+        var untouched = await _admin.GetJson<TaskDto>($"/api/tasks/{outsider.Id}");
+        Assert.Equal("Cross-project mention of ||FENCES-FENCES-1||.", untouched.Description);
+    }
+
+    [SkippableFact]
+    public async Task MovingATask_RefusesAnyDestinationOutsideItsProject()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, home) = await CreateProjectWithBoard("Fenced");
+        var (_, elsewhere) = await CreateProjectWithBoard("Neighbour");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{home.Id}/tasks", new { name = "Stays put" });
+
+        // Another project's board — even for the super admin, who can see both.
+        var crossProject = await _admin.PutAsJsonAsync(
+            $"/api/tasks/{task.Id}/board", new { boardId = elsewhere.Id }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, crossProject.StatusCode);
+
+        // A board that doesn't exist reads the same, and says nothing more.
+        var unknown = await _admin.PutAsJsonAsync(
+            $"/api/tasks/{task.Id}/board", new { boardId = Guid.NewGuid() }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+
+        // Its own board is not a move.
+        var itself = await _admin.PutAsJsonAsync(
+            $"/api/tasks/{task.Id}/board", new { boardId = home.Id }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, itself.StatusCode);
+
+        var unmoved = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
+        Assert.Equal(home.Id, unmoved.BoardId);
+        Assert.Equal(1, unmoved.Number);
+    }
+
+    [SkippableFact]
+    public async Task MovingATask_RejectsAnEpicFromAnyOtherBoard()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, home) = await CreateProjectWithBoard("Lanes");
+        var away = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Away", alias = "AWAY" });
+        var homeEpic = await _admin.PostJson<EpicDto>($"/api/boards/{home.Id}/epics", new { name = "Home lane" });
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{home.Id}/tasks", new { name = "Lane bound" });
+
+        var wrongLane = await _admin.PutAsJsonAsync(
+            $"/api/tasks/{task.Id}/board", new { boardId = away.Id, epicId = homeEpic.Id }, TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.BadRequest, wrongLane.StatusCode);
+        Assert.Equal(home.Id, (await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).BoardId);
+    }
+
+    [SkippableFact]
+    public async Task MovingATask_NeedsWriteAccess()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, home) = await CreateProjectWithBoard("Readers");
+        var away = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Away", alias = "AWAY" });
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{home.Id}/tasks", new { name = "Look, don't touch" });
+
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "reader@example.com", role = "Read" });
+        var reader = _factory.As("reader", "reader@example.com", "Reader");
+
+        var denied = await reader.PutAsJsonAsync(
+            $"/api/tasks/{task.Id}/board", new { boardId = away.Id }, TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
     // -- Aliases and serial numbers ------------------------------------------
 
     [SkippableFact]

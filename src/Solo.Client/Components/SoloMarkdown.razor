@@ -25,10 +25,6 @@ else
 }
 
 @code {
-    private static readonly System.Text.RegularExpressions.Regex TaskLink = new(
-        @"\|\|([A-Za-z0-9]{1,8})-([A-Za-z0-9]{1,8})-([0-9]{1,9})\|\|",
-        System.Text.RegularExpressions.RegexOptions.Compiled);
-
     [Parameter]
     public string? Value { get; set; }
 
@@ -44,12 +40,7 @@ else
 
     /// <summary>Rewrites ||serial|| tokens into markdown links to the board's ?task= route.</summary>
     public static string LinkifySerials(string markdown) =>
-        TaskLink.Replace(markdown, match =>
-        {
-            var project = Aliases.Normalize(match.Groups[1].Value);
-            var board = Aliases.Normalize(match.Groups[2].Value);
-            var number = int.Parse(match.Groups[3].Value);
-            return $"[{Aliases.Serial(project, board, number)}]" +
-                   $"(/projects/{project}/boards/{board}?task={number})";
-        });
+        TaskReferences.Replace(markdown, reference =>
+            $"[{reference.Serial}]" +
+            $"(/projects/{reference.ProjectAlias}/boards/{reference.BoardAlias}?task={reference.Number})");
 }

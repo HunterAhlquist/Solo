@@ -154,6 +154,72 @@ public class BoardLabelsTests
         Assert.Equal([invented], result.Removed);
     }
 
+    // -- Counterpart: what a label becomes when its item moves boards ------------
+
+    private static readonly Guid OtherBoardId = Guid.NewGuid();
+
+    /// <summary>
+    /// Two boards stamped from the same defaults hold different rows for the same
+    /// label, so a task moving between them has to be re-pointed — including when
+    /// the destination has since renamed its copy.
+    /// </summary>
+    [Fact]
+    public void Counterpart_FollowsTheSharedDefaultEvenAcrossARename()
+    {
+        var defaults = Defaults();
+        var here = BoardLabels.CopyToBoard(defaults, BoardId).Single(l => l.Name == "Bug");
+        var there = BoardLabels.CopyToBoard(defaults, OtherBoardId);
+        there.Single(l => l.Name == "Bug").Name = "Defect";
+
+        var match = BoardLabels.Counterpart(here, there);
+
+        Assert.NotNull(match);
+        Assert.Equal("Defect", match.Name);
+        Assert.Equal(here.SourceId, match.SourceId);
+        Assert.NotEqual(here.Id, match.Id);
+    }
+
+    /// <summary>A label a board invented has no shared origin, so name is all there is.</summary>
+    [Fact]
+    public void Counterpart_FallsBackToKindAndNameIgnoringCase()
+    {
+        var invented = new Label
+        {
+            ProjectId = ProjectId, BoardId = BoardId, Kind = LabelKind.Task,
+            Name = "Playtest blocker", Color = "#123456",
+        };
+        var there = new List<Label>
+        {
+            new()
+            {
+                ProjectId = ProjectId, BoardId = OtherBoardId, Kind = LabelKind.SubTask,
+                Name = "playtest blocker", Color = "#654321",
+            },
+            new()
+            {
+                ProjectId = ProjectId, BoardId = OtherBoardId, Kind = LabelKind.Task,
+                Name = "PLAYTEST BLOCKER", Color = "#654321",
+            },
+        };
+
+        var match = BoardLabels.Counterpart(invented, there);
+
+        Assert.NotNull(match);
+        Assert.Equal(LabelKind.Task, match.Kind); // the same-name sub-task label is a different label
+    }
+
+    [Fact]
+    public void Counterpart_IsNullWhenTheOtherBoardHasNothingLikeIt()
+    {
+        var invented = new Label
+        {
+            ProjectId = ProjectId, BoardId = BoardId, Kind = LabelKind.Task,
+            Name = "Playtest blocker", Color = "#123456",
+        };
+
+        Assert.Null(BoardLabels.Counterpart(invented, BoardLabels.CopyToBoard(Defaults(), OtherBoardId)));
+    }
+
     /// <summary>Kind is part of a label's identity: same name, different kind is a different label.</summary>
     [Fact]
     public void Reset_MatchesOnKindAsWellAsName()

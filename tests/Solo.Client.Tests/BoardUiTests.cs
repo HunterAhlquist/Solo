@@ -1,4 +1,5 @@
 using Bunit;
+using Bunit.Rendering;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
@@ -241,6 +242,98 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
 
         Assert.Contains("Multiplayer", drawer.Markup);
         Assert.Contains("Description", drawer.Markup);
+    }
+
+    // -- Moving a task to another board -----------------------------------------
+
+    [Fact]
+    public async Task Only_a_task_can_be_moved_to_another_board_and_only_by_a_writer()
+    {
+        var task = TestData.Task() with { Name = "Travelling task" };
+        var epic = TestData.Epic() with { Name = "Multiplayer" };
+        await LoadStoreAsync(TestData.Board(tasks: [task], epics: [epic]));
+
+        var writer = Render<DetailDrawer>(p => p.Add(d => d.Task, task).Add(d => d.CanWrite, true));
+        var reader = Render<DetailDrawer>(p => p.Add(d => d.Task, task).Add(d => d.CanWrite, false));
+        // An epic is the board's own furniture — it has nowhere else to go.
+        var epicDrawer = Render<DetailDrawer>(p => p.Add(d => d.Epic, epic).Add(d => d.CanWrite, true));
+
+        Assert.Contains("Move to board", writer.Markup);
+        Assert.DoesNotContain("Move to board", reader.Markup);
+        Assert.DoesNotContain("Move to board", epicDrawer.Markup);
+    }
+
+    private static readonly Guid ArtBoardId = Guid.Parse("b0000000-0000-0000-0000-000000000001");
+
+    /// <summary>
+    /// The picker, hosted the way the app hosts it: MudDialog renders nothing
+    /// without a dialog instance to cascade, and MudSelect teleports its items
+    /// into the popover provider — so both providers share this render tree, and
+    /// the returned fragment spans them.
+    /// </summary>
+    private async Task<IRenderedComponent<ContainerFragment>> ShowMovePickerAsync()
+    {
+        _http.RouteJson("/epics", new[] { TestData.Epic() with { Name = "Concept art" } });
+        _http.RouteJson($"/projects/{TestData.ProjectId}/boards", new[]
+        {
+            new BoardDto(TestData.BoardId, TestData.ProjectId, "This board", "BRD", null, null, true, 1),
+            new BoardDto(ArtBoardId, TestData.ProjectId, "Art board", "ART", null, null, true, 1),
+            new BoardDto(Guid.NewGuid(), TestData.ProjectId, "Shipped board", "OLD", null, null, false, 1),
+        });
+
+        var host = Render(builder =>
+        {
+            builder.OpenComponent<MudPopoverProvider>(0);
+            builder.CloseComponent();
+            builder.OpenComponent<MudDialogProvider>(1);
+            builder.CloseComponent();
+        });
+
+        var dialogs = Services.GetRequiredService<IDialogService>();
+        await host.InvokeAsync(() => dialogs.ShowAsync<MoveTaskDialog>(
+            "Move task",
+            new DialogParameters<MoveTaskDialog>
+            {
+                { d => d.ProjectId, TestData.ProjectId },
+                { d => d.CurrentBoardId, TestData.BoardId },
+            }));
+        return host;
+    }
+
+    /// <summary>MudSelect opens on mousedown, not click.</summary>
+    private static void OpenSelect(IRenderedComponent<ContainerFragment> host, int index) =>
+        host.FindAll("div.mud-input-control")[index].MouseDown();
+
+    /// <summary>
+    /// The picker lists somewhere <em>else</em> to put the task: the board it is
+    /// already on is no destination, and neither is a closed one — those are
+    /// read-only everywhere else in the app.
+    /// </summary>
+    [Fact]
+    public async Task The_move_picker_offers_the_projects_other_open_boards()
+    {
+        var host = await ShowMovePickerAsync();
+
+        OpenSelect(host, 0);
+
+        var offered = host.FindAll(".mud-list-item").Select(i => i.TextContent).ToList();
+        Assert.Contains(offered, b => b.Contains("Art board"));
+        Assert.DoesNotContain(offered, b => b.Contains("This board"));
+        Assert.DoesNotContain(offered, b => b.Contains("Shipped board"));
+    }
+
+    /// <summary>An epic only means anything on the board that owns it.</summary>
+    [Fact]
+    public async Task Choosing_a_board_offers_the_lanes_on_that_board()
+    {
+        var host = await ShowMovePickerAsync();
+
+        OpenSelect(host, 0);
+        host.FindAll(".mud-list-item").First(i => i.TextContent.Contains("Art board")).Click();
+        OpenSelect(host, 1);
+
+        Assert.Contains($"GET /api/boards/{ArtBoardId}/epics", _http.Paths);
+        Assert.Contains(host.FindAll(".mud-list-item"), i => i.TextContent.Contains("Concept art"));
     }
 
     // -- Comment moderation mirrors the API: author, project owner or super admin --

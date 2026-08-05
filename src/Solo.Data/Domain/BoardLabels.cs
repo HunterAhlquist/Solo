@@ -48,6 +48,22 @@ public static class BoardLabels
         return new LabelResetResult(added, surplus);
     }
 
+    /// <summary>
+    /// This label's equivalent among another board's labels, for an item moving
+    /// between the two: the copy stamped from the same project default, or
+    /// failing that one of the same kind and name — the matching a reset uses.
+    /// Null when that board has nothing like it, and the item loses the label.
+    /// </summary>
+    public static Label? Counterpart(Label label, IEnumerable<Label> candidates)
+    {
+        var sameKind = candidates.Where(c => c.Kind == label.Kind).ToList();
+        return (label.SourceId is { } sourceId
+                   ? sameKind.FirstOrDefault(c => c.SourceId == sourceId)
+                   : null)
+               ?? sameKind.FirstOrDefault(c =>
+                   string.Equals(c.Name, label.Name, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static Label Copy(Label source, Guid boardId) => new()
     {
         ProjectId = source.ProjectId,

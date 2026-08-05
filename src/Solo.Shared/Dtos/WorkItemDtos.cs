@@ -98,6 +98,18 @@ public sealed class SetTaskEpicRequest
     public Guid? EpicId { get; init; }
 }
 
+/// <summary>
+/// Board transfer. The destination must be another board in the same project;
+/// <see cref="EpicId"/> names an epic on <em>that</em> board, or null to land in
+/// its ad-hoc band.
+/// </summary>
+public sealed class MoveTaskRequest
+{
+    public Guid BoardId { get; init; }
+
+    public Guid? EpicId { get; init; }
+}
+
 public sealed class SetAssigneesRequest
 {
     public required IReadOnlyList<Guid> UserIds { get; init; }
