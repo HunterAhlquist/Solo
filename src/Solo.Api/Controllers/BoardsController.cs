@@ -82,6 +82,10 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         return board is null ? NotFound() : await BuildDetailAsync(board, ct);
     }
 
+    // Epics and tasks are independent collections on the board, so one flat join
+    // would multiply every epic by every task (and each of those by its sub-tasks
+    // and assignees) — a table's worth of duplicated rows for a payload this size.
+    // Split into a query per collection instead.
     private Task<Board?> LoadDetail(
         System.Linq.Expressions.Expression<Func<Board, bool>> filter, CancellationToken ct) =>
         db.Boards.AsNoTracking()
@@ -89,6 +93,7 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
             .Include(b => b.Epics).ThenInclude(e => e.Assignments)
             .Include(b => b.Tasks).ThenInclude(t => t.SubTasks)
             .Include(b => b.Tasks).ThenInclude(t => t.Assignments)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(filter, ct);
 
     private async Task<BoardDetailDto> BuildDetailAsync(Board board, CancellationToken ct)
@@ -164,9 +169,12 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<IActionResult> Delete(Guid boardId, CancellationToken ct)
     {
+        // Loaded rather than left to the cascade so the audit trail sees the
+        // deletions; split for the same reason the detail load is.
         var board = await db.Boards
             .Include(b => b.Epics)
             .Include(b => b.Tasks).ThenInclude(t => t.SubTasks)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(b => b.Id == boardId, ct);
         if (board is null)
         {

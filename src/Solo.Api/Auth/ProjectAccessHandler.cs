@@ -134,11 +134,14 @@ public sealed class ProjectAccessHandler(
         _ => Task.FromResult<Guid?>(null),
     };
 
-    private static async Task<Guid?> FirstOrNull(IQueryable<Guid> query, CancellationToken ct)
-    {
-        var results = await query.Take(1).ToListAsync(ct);
-        return results.Count == 0 ? null : results[0];
-    }
+    /// <summary>
+    /// "No such row" and "the row's value" have to stay distinguishable, which a
+    /// plain <c>FirstOrDefaultAsync</c> over a <see cref="Guid"/> cannot do — hence
+    /// the projection to a nullable, rather than a row-limiting operator whose
+    /// result EF cannot order (and warns about on every request).
+    /// </summary>
+    private static async Task<Guid?> FirstOrNull(IQueryable<Guid> query, CancellationToken ct) =>
+        await query.Select(id => (Guid?)id).FirstOrDefaultAsync(ct);
 
     private static bool TryGetGuid(RouteValueDictionary route, string key, out Guid value)
     {

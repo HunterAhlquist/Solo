@@ -23,6 +23,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             .Where(t => t.BoardId == boardId)
             .Include(t => t.SubTasks)
             .Include(t => t.Assignments)
+            .AsSplitQuery()
             .OrderBy(t => t.Rank)
             .ToListAsync(ct);
         return tasks.Select(t => t.ToDto()).ToList();
@@ -334,10 +335,13 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
 
     private async Task<TaskItem?> LoadTask(Guid taskId, CancellationToken ct, bool track)
     {
+        // Sub-tasks and assignees are unrelated to each other, so a single join
+        // would repeat the task's own row — description text and all — once per
+        // pairing of the two.
         var query = db.Tasks
             .Include(t => t.SubTasks)
             .Include(t => t.Assignments)
-            .AsQueryable();
+            .AsSplitQuery();
         if (!track)
         {
             query = query.AsNoTracking();

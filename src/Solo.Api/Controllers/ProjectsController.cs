@@ -138,6 +138,7 @@ public sealed class ProjectsController(
     {
         var project = await db.Projects
             .Include(p => p.Boards).Include(p => p.Members).Include(p => p.Labels)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.Id == projectId, ct);
         if (project is null)
         {
