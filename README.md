@@ -61,7 +61,9 @@ dotnet ef migrations add <Name> --project src/Solo.Data --startup-project src/So
 
 ## CI & image publishing
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) builds and tests every push/PR. Pushes to `main` (and `v*` tags) additionally publish the container image to **`ghcr.io/hunterahlquist/solo`** using the workflow's `GITHUB_TOKEN` — no extra secrets needed.
+[.github/workflows/ci.yml](.github/workflows/ci.yml) builds and tests every PR into `main`. Pushing a **`server-v*`** tag additionally publishes the container image to **`ghcr.io/hunterahlquist/solo`** using the workflow's `GITHUB_TOKEN` — no extra secrets needed. The tag is stripped to produce the image tags, so `server-v1.6.0` publishes `1.6.0`, `1.6`, `latest`, and `sha-…`; a prerelease like `server-v1.6.0-rc1` skips the floating `1.6`.
+
+The image and the desktop client version independently — see [Packaging](#packaging) for the `desktop-v*` series. A tag whose commit changes nothing the image is built from (`Dockerfile`, `src/Solo.{Api,Client,Data,Shared}`, `tests/`, this workflow) is skipped rather than rebuilt, measured against the previous `server-v*` tag it descends from.
 
 > The first publish creates the GHCR package. Verify it is **private** afterwards (GitHub → your profile → Packages → solo → Package settings); packages default to private, but it's worth confirming before granting anyone pull access.
 
@@ -134,4 +136,6 @@ claude mcp add --transport http solo http://localhost:41321/mcp
 npm run dist   # electron-builder → dist/ (dmg/zip, nsis, AppImage)
 ```
 
-CI does this automatically: pushing a `v*` tag runs [release-desktop.yml](.github/workflows/release-desktop.yml), which packages macOS (x64 + arm64), Windows, and Linux installers and attaches them to the GitHub release for the tag. Builds are unsigned unless the Apple signing/notarization secrets are configured; a manual `workflow_dispatch` run uploads the installers as workflow artifacts without creating a release.
+CI does this automatically: pushing a **`desktop-v*`** tag runs [release-desktop.yml](.github/workflows/release-desktop.yml), which stamps `package.json` with the version from the tag, packages macOS (x64 + arm64), Windows, and Linux installers, and attaches them to the GitHub release for the tag. Builds are unsigned unless the Apple signing/notarization secrets are configured; a manual `workflow_dispatch` run uploads the installers as workflow artifacts without creating a release.
+
+The desktop client versions independently of the container image, which has its own `server-v*` series. A tag whose commit changes nothing the installers are built from (`src/Solo.Desktop`, `src/Solo.{Client,Shared}`, `Icons/`, this workflow) is skipped rather than repackaged, measured against the previous `desktop-v*` tag it descends from — so an API- or docs-only release costs nothing here.

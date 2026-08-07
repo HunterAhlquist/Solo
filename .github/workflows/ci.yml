@@ -2,20 +2,30 @@ name: CI
 
 on:
   push:
-    tags: ["v*"]
+    # Server releases only. The desktop client has its own `desktop-v*` series
+    # and its own workflow, so the two artifacts version independently.
+    tags: ["server-v*"]
   pull_request:
     branches: [main]
 
 env:
   IMAGE: ghcr.io/hunterahlquist/solo
+  TAG_PREFIX: server-v
 
 jobs:
-  build-test:
+  # Gate for the whole run. A tag that changes nothing the image is built from
+  # would produce a byte-identical container, so it doesn't get built at all.
+  # PRs always fall through to the build.
+  changes:
+    name: Check release inputs
     runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so the tag guard below can see origin/main.
+          # Full history so the guard can see origin/main and the diff below
+          # can reach earlier tags.
           fetch-depth: 0
 
       # Tags can point at any commit; only release ones that landed on main.
@@ -28,6 +38,59 @@ jobs:
             echo "::error::Tag ${GITHUB_REF_NAME} points at a commit that is not on main; refusing to build."
             exit 1
           fi
+
+      - name: Diff against the previous server release
+        id: diff
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Everything that reaches the image, plus the sources the gating
+          # tests cover. Deliberately excludes src/Solo.Desktop, Icons/, docs,
+          # and the desktop workflow — none of them change the container.
+          PATHS=(
+            Dockerfile
+            .dockerignore
+            Solo.slnx
+            src/Solo.Api
+            src/Solo.Client
+            src/Solo.Data
+            src/Solo.Shared
+            tests
+            .github/workflows/ci.yml
+          )
+
+          # Nearest earlier tag in this series that HEAD descends from. The
+          # --exclude keeps the tag being pushed from matching itself; when a
+          # second tag sits on the same commit the diff is correctly empty.
+          PREVIOUS=$(git describe --tags --abbrev=0 --match "${TAG_PREFIX}*" \
+            --exclude "${GITHUB_REF_NAME}" HEAD 2>/dev/null || true)
+
+          if [ -z "${PREVIOUS}" ]; then
+            echo "No earlier ${TAG_PREFIX}* tag in this history — building."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet "${PREVIOUS}" HEAD -- "${PATHS[@]}"; then
+            echo "::notice::Nothing the image is built from changed since ${PREVIOUS}; skipping build and publish."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed since ${PREVIOUS}:"
+            git diff --name-only "${PREVIOUS}" HEAD -- "${PATHS[@]}"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-test:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -55,9 +118,9 @@ jobs:
 
   publish-image:
     name: Publish image to GHCR
-    needs: build-test
-    # Publish only when a v* tag is pushed; PR builds just validate.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [changes, build-test]
+    # Publish only when a server-v* tag is pushed; PR builds just validate.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/server-v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,12 +142,17 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          # This job only runs on v* tag pushes, so latest always points at
-          # the newest release — deploy/docker-compose.yml pulls :latest.
+          # `type=semver` only parses a bare `v1.2.3`, so the prefix is peeled
+          # off with `type=match` instead: the first pattern yields the exact
+          # version (`server-v1.6.0-rc1` → `1.6.0-rc1`), the second the floating
+          # `1.6` — anchored, so a prerelease never claims the minor tag.
+          #
+          # This job only runs on server-v* tag pushes, so latest always points
+          # at the newest release — deploy/docker-compose.yml pulls :latest.
           tags: |
             type=raw,value=latest
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=match,pattern=server-v(\d+\.\d+\.\d+.*),group=1
+            type=match,pattern=server-v(\d+\.\d+)\.\d+$,group=1
             type=sha,prefix=sha-
 
       - name: Build and push

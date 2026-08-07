@@ -2,14 +2,91 @@ name: Desktop Release
 
 on:
   push:
-    tags: ["v*"]
+    # Desktop releases only. The container image has its own `server-v*` series
+    # and its own workflow, so the two artifacts version independently.
+    tags: ["desktop-v*"]
   # Manual runs build the installers as workflow artifacts without touching
   # a release — useful for testing the packaging on a branch.
   workflow_dispatch:
 
+env:
+  TAG_PREFIX: desktop-v
+
 jobs:
+  # Gate for the whole run. A tag that changes nothing the installers are built
+  # from would package identical apps on three runners for ~725 MB of upload,
+  # so it doesn't get built at all. Manual runs always fall through.
+  changes:
+    name: Check release inputs
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the guard can see origin/main and the diff below
+          # can reach earlier tags.
+          fetch-depth: 0
+
+      # Tags can point at any commit; only release ones that landed on main.
+      - name: Verify tagged commit is on main
+        if: github.event_name == 'push'
+        run: |
+          if git merge-base --is-ancestor HEAD origin/main; then
+            echo "Tag ${GITHUB_REF_NAME} is on main."
+          else
+            echo "::error::Tag ${GITHUB_REF_NAME} points at a commit that is not on main; refusing to build."
+            exit 1
+          fi
+
+      - name: Diff against the previous desktop release
+        id: diff
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Everything that ends up inside an installer: the shell itself, the
+          # Blazor client it serves (plus the shared contracts that client
+          # compiles against), and the icon source. Deliberately excludes
+          # src/Solo.Api, src/Solo.Data, the Dockerfile, and docs — none of
+          # them are packaged.
+          PATHS=(
+            src/Solo.Desktop
+            src/Solo.Client
+            src/Solo.Shared
+            Icons
+            .github/workflows/release-desktop.yml
+          )
+
+          # Nearest earlier tag in this series that HEAD descends from. The
+          # --exclude keeps the tag being pushed from matching itself; when a
+          # second tag sits on the same commit the diff is correctly empty.
+          PREVIOUS=$(git describe --tags --abbrev=0 --match "${TAG_PREFIX}*" \
+            --exclude "${GITHUB_REF_NAME}" HEAD 2>/dev/null || true)
+
+          if [ -z "${PREVIOUS}" ]; then
+            echo "No earlier ${TAG_PREFIX}* tag in this history — building."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet "${PREVIOUS}" HEAD -- "${PATHS[@]}"; then
+            echo "::notice::Nothing the installers are built from changed since ${PREVIOUS}; skipping the packaging run."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed since ${PREVIOUS}:"
+            git diff --name-only "${PREVIOUS}" HEAD -- "${PATHS[@]}"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -27,21 +104,6 @@ jobs:
         working-directory: src/Solo.Desktop
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Full history so the tag guard below can see origin/main.
-          fetch-depth: 0
-
-      # Tags can point at any commit; only release ones that landed on main.
-      - name: Verify tagged commit is on main
-        if: github.event_name == 'push'
-        run: |
-          if git merge-base --is-ancestor HEAD origin/main; then
-            echo "Tag ${GITHUB_REF_NAME} is on main."
-          else
-            echo "::error::Tag ${GITHUB_REF_NAME} points at a commit that is not on main; refusing to build."
-            exit 1
-          fi
-        shell: bash
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -67,12 +129,12 @@ jobs:
           xcrun actool --version | grep short-bundle-version
 
       # Installer filenames come from package.json's version; keep them in
-      # step with the tag. Tags that aren't valid semver (e.g. v1.2.0rc)
+      # step with the tag. Tags that aren't valid semver (e.g. desktop-v1.2.0rc)
       # can't be stamped — those builds keep the committed version.
       - name: Stamp version from tag
         if: github.event_name == 'push'
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${GITHUB_REF_NAME#${TAG_PREFIX}}"
           if ! npm version "$VERSION" --no-git-tag-version; then
             echo "::warning::Tag ${GITHUB_REF_NAME} is not valid semver; keeping package.json version $(node -p "require('./package.json').version")"
           fi
@@ -106,7 +168,7 @@ jobs:
 
   release:
     name: Attach to GitHub release
-    needs: build
+    needs: [changes, build]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

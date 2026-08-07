@@ -508,6 +508,9 @@ code {
     display: inline-flex;
     align-items: center;
     cursor: grab;
+    /* Touch: a press that misses the drag must not start selecting the row. */
+    user-select: none;
+    -webkit-touch-callout: none;
 }
 
 .subtask-drag-handle:active {
