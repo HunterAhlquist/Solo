@@ -9,6 +9,7 @@ const settingsStore = require('./main/settings');
 const { createSoloServer } = require('./main/server');
 const { createMcpHandler } = require('./main/mcp');
 const { buildMenu } = require('./main/menu');
+const { attachContextMenu } = require('./main/context-menu');
 const { DesktopAuth } = require('./main/desktop-auth');
 
 const desktopAuth = new DesktopAuth();
@@ -187,6 +188,10 @@ function createMainWindow() {
 
     mainWindow.once('ready-to-show', () => mainWindow.show());
     mainWindow.on('closed', () => { mainWindow = null; });
+
+    // Spelling corrections and copy/paste on right-click; Electron has no
+    // context menu of its own.
+    attachContextMenu(mainWindow.webContents);
 
     // The window is the app; it never navigates off its own origin. Task
     // descriptions and comments are user-written markdown rendered in this
@@ -369,6 +374,8 @@ function openSettingsWindow() {
 
     settingsWindow.once('ready-to-show', () => settingsWindow.show());
     settingsWindow.on('closed', () => { settingsWindow = null; });
+    // Pasting an instance URL is the whole job of this window.
+    attachContextMenu(settingsWindow.webContents);
     settingsWindow.setMenuBarVisibility(false);
     // A local form with no links: it navigates nowhere and opens nothing.
     settingsWindow.webContents.on('will-navigate', event => event.preventDefault());
