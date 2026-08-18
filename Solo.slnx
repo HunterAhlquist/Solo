@@ -11,5 +11,6 @@
     <Project Path="tests/Solo.Api.Tests/Solo.Api.Tests.csproj" />
     <Project Path="tests/Solo.Client.Tests/Solo.Client.Tests.csproj" />
     <Project Path="tests/Solo.Data.Tests/Solo.Data.Tests.csproj" />
+    <Project Path="tests/Solo.Extension.Fixture/Solo.Extension.Fixture.csproj" />
   </Folder>
 </Solution>

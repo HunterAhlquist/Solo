@@ -9,6 +9,8 @@ WORKDIR /src
 
 COPY src/Solo.Shared/Solo.Shared.csproj src/Solo.Shared/
 COPY src/Solo.Data/Solo.Data.csproj src/Solo.Data/
+COPY src/Solo.Extensibility/Solo.Extensibility.csproj src/Solo.Extensibility/
+COPY src/Solo.Extensions/Solo.Extensions.csproj src/Solo.Extensions/
 COPY src/Solo.Client/Solo.Client.csproj src/Solo.Client/
 COPY src/Solo.Api/Solo.Api.csproj src/Solo.Api/
 RUN dotnet restore src/Solo.Api/Solo.Api.csproj

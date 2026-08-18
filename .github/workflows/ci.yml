@@ -59,6 +59,8 @@ jobs:
             src/Solo.Api
             src/Solo.Client
             src/Solo.Data
+            src/Solo.Extensibility
+            src/Solo.Extensions
             src/Solo.Shared
             tests
             .github/workflows/ci.yml
