@@ -19,6 +19,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
     public DbSet<InstanceSettings> InstanceSettings => Set<InstanceSettings>();
     public DbSet<ImageAsset> ImageAssets => Set<ImageAsset>();
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
+    public DbSet<ExtensionRegistration> ExtensionRegistrations => Set<ExtensionRegistration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,6 +45,17 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
             e.HasIndex(s => s.ExpiresAt);
             e.HasOne(s => s.User).WithMany()
                 .HasForeignKey(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ExtensionRegistration>(e =>
+        {
+            e.HasKey(x => x.ExtensionId);
+            e.Property(x => x.ExtensionId).HasMaxLength(64);
+            e.Property(x => x.SchemaName).HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasMaxLength(200);
+            e.Property(x => x.LastSeenVersion).HasMaxLength(32);
+            e.Property(x => x.State).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.FailureReason).HasMaxLength(2000);
         });
 
         modelBuilder.Entity<Project>(e =>
@@ -192,6 +204,16 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
         {
             e.Property(i => i.ContentType).HasMaxLength(100);
         });
+
+        // Per-extension field bags. jsonb on Postgres; the unit-test SQLite
+        // provider has no such type and keeps them as plain text, which is all
+        // the store needs since it only ever round-trips whole documents.
+        if (isNpgsql)
+        {
+            modelBuilder.Entity<TaskItem>().Property(t => t.Extensions).HasColumnType("jsonb");
+            modelBuilder.Entity<Epic>().Property(e => e.Extensions).HasColumnType("jsonb");
+            modelBuilder.Entity<Board>().Property(b => b.Extensions).HasColumnType("jsonb");
+        }
 
         // xmin optimistic-concurrency token on all editable entities (Postgres only;
         // other providers — SQLite in unit tests — keep Version as a plain column).

@@ -6,6 +6,7 @@ using Solo.Api.Realtime;
 using Solo.Api.Services;
 using Solo.Data;
 using Solo.Data.Entities;
+using Solo.Extensibility;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Solo.Shared.Hubs;
@@ -27,6 +28,7 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpPost("api/boards/{boardId:guid}/epics")]
+    [SoloOperation(Operations.EpicCreate)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<EpicDto>> Create(
         Guid boardId, CreateEpicRequest request, CancellationToken ct)
@@ -52,6 +54,7 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpPut("api/epics/{epicId:guid}")]
+    [SoloOperation(Operations.EpicUpdate)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<EpicDto>> Update(
         Guid epicId, UpdateEpicRequest request, CancellationToken ct)
@@ -79,6 +82,7 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
 
     /// <summary>Epic deletion detaches child tasks to ad-hoc rather than deleting them.</summary>
     [HttpDelete("api/epics/{epicId:guid}")]
+    [SoloOperation(Operations.EpicDelete)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<IActionResult> Delete(Guid epicId, CancellationToken ct)
     {

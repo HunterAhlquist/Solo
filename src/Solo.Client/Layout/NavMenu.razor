@@ -6,6 +6,7 @@
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
+@inject Solo.Client.Extensions.ExtensionCatalog Extensions
 
 @*
     The sidebar is the app's map: every project, and inside each one its open
@@ -70,6 +71,19 @@
                         Project settings
                     </MudNavLink>
 
+                    @* Extension pages. These come from the manifest, but only for
+                       extensions whose client assembly actually loaded — an entry
+                       whose route no assembly registered would land on the router's
+                       "that page doesn't exist", which reads as a bug rather than as
+                       a version mismatch. See ExtensionBootstrapper. *@
+                    @foreach (var entry in ExtensionNav(project))
+                    {
+                        <MudNavLink Href="@ExtensionHref(entry, project)" Match="NavLinkMatch.Prefix"
+                                    Icon="@ExtensionIcon(entry)">
+                            @entry.Label
+                        </MudNavLink>
+                    }
+
                     @if (ProjectNavStore.CanAddBoard(project))
                     {
                         <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__add"
@@ -103,6 +117,28 @@
 
 @code {
     private readonly HashSet<Guid> _expanded = [];
+
+    /// <summary>
+    /// Extension entries this viewer may see on this project. The manifest's
+    /// "requires" is checked against the same role the rest of the sidebar uses,
+    /// so an extension cannot advertise a page the API would refuse.
+    /// </summary>
+    private IEnumerable<ClientExtensionNavDto> ExtensionNav(ProjectSummaryDto project) =>
+        Extensions.Nav.Where(entry => entry.Requires switch
+        {
+            "Owner" => project.IsOwner,
+            "Write" => ProjectNavStore.CanAddBoard(project),
+            _ => true,
+        });
+
+    private static string ExtensionHref(ClientExtensionNavDto entry, ProjectSummaryDto project) =>
+        entry.Route.TrimStart('/').Replace("{projectAlias}", project.Alias, StringComparison.OrdinalIgnoreCase);
+
+    private static string ExtensionIcon(ClientExtensionNavDto entry) =>
+        string.IsNullOrWhiteSpace(entry.Icon)
+            ? Icons.Material.Filled.Extension
+            : SoloIcons.Resolve(null, entry.Icon);
+
     private IReadOnlyList<Guid> _recent = [];
     private bool _autoExpanded;
 

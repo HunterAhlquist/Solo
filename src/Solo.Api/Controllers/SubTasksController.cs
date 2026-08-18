@@ -7,6 +7,7 @@ using Solo.Api.Services;
 using Solo.Data;
 using Solo.Data.Domain;
 using Solo.Data.Entities;
+using Solo.Extensibility;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Solo.Shared.Hubs;
@@ -27,6 +28,7 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
     }
 
     [HttpPost("api/tasks/{taskId:guid}/subtasks")]
+    [SoloOperation(Operations.SubTaskCreate)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<SubTaskDto>> Create(
         Guid taskId, CreateSubTaskRequest request, CancellationToken ct)
@@ -63,6 +65,7 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
     }
 
     [HttpPut("api/subtasks/{subTaskId:guid}")]
+    [SoloOperation(Operations.SubTaskUpdate)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<SubTaskDto>> Update(
         Guid subTaskId, UpdateSubTaskRequest request, CancellationToken ct)
@@ -94,6 +97,7 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
     }
 
     [HttpDelete("api/subtasks/{subTaskId:guid}")]
+    [SoloOperation(Operations.SubTaskDelete)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<IActionResult> Delete(Guid subTaskId, CancellationToken ct)
     {
@@ -117,6 +121,7 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
     /// separately (the client auto-moves a fully-checked card to Finished).
     /// </summary>
     [HttpPut("api/subtasks/{subTaskId:guid}/finished")]
+    [SoloOperation(Operations.SubTaskSetFinished)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<SubTaskDto>> SetFinished(
         Guid subTaskId, SetSubTaskFinishedRequest request, CancellationToken ct)

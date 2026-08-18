@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The public contract extensions compile against. Versioned independently of
+       the app (see docs/extension-plan.md §10): the host checks a package's
+       declared range against ContractVersion and refuses to load out-of-range.
+
+       It may reference Solo.Shared and NOTHING ELSE from this solution. A
+       reference to Solo.Data or Solo.Api would make every internal refactor a
+       breaking change for every installed extension. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Solo.Shared\Solo.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Pinned to the same EF Core the rest of the solution resolves, so the
+         contract assembly and Solo.Data unify on one Abstractions version. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.9" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+  </ItemGroup>
+
+</Project>

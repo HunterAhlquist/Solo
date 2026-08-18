@@ -17,9 +17,20 @@ using Solo.Data;
 using Solo.Data.Auditing;
 using Solo.Data.Domain;
 using Solo.Data.Entities;
+using Solo.Extensibility;
+using Solo.Extensions;
 using Solo.Shared.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---------------------------------------------------------------------------
+// Extensions. First, because MVC application parts and filters cannot be added
+// after Build(): an extension's controllers and hooks have to be registered
+// before the container is built. Nothing here throws — a package that fails to
+// load is recorded and skipped, and the instance starts without it, the same
+// way a bad theme package is reported rather than fatal.
+// ---------------------------------------------------------------------------
+var extensions = builder.AddSoloExtensions();
 
 // ---------------------------------------------------------------------------
 // Persistence
@@ -85,6 +96,8 @@ if (!string.IsNullOrEmpty(authority))
 builder.Services.AddScoped<UserProvisioningService>();
 // Desktop shell browser sign-in: pending device-code flows (see DesktopAuthController).
 builder.Services.AddSingleton<DesktopSignInFlows>();
+builder.Services.AddScoped<SoloDbContextRoleLookup>();
+builder.Services.AddScoped<IExtensionCallerAccessor, ExtensionCallerAccessor>();
 builder.Services.AddScoped<IAuthorizationHandler, ProjectAccessHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, SuperAdminHandler>();
 builder.Services.AddAuthorizationBuilder()
@@ -112,8 +125,10 @@ builder.Services.AddAuthorizationBuilder()
 // ---------------------------------------------------------------------------
 // Web stack
 // ---------------------------------------------------------------------------
-builder.Services.AddControllers().AddJsonOptions(options =>
-    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddControllers()
+    .AddExtensionControllers(extensions)
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 builder.Services.AddSignalR();
 builder.Services.AddHttpContextAccessor();
@@ -280,6 +295,14 @@ if (app.Configuration.GetValue("Database:AutoMigrate", true))
         await db.SaveChangesAsync();
     }
 }
+
+// Extension schemas, after core's and gated on the same AutoMigrate flag. A
+// failure here disables only its own extension: its routes and hooks were
+// registered before Build(), so without this it would serve requests against
+// tables that do not exist. Also reconciles the registry, which is what lets an
+// extension whose package has been deleted still be named — and its surviving
+// data offered for purge — rather than becoming an orphan schema.
+await app.MigrateExtensionsAsync(extensions);
 
 // Build the theme catalog now rather than on whichever request first asks for a
 // theme. It reads the filesystem, so anything wrong with the themes volume

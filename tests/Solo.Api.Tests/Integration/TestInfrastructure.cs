@@ -160,13 +160,28 @@ public sealed class TestLogCollector : ILoggerProvider
     }
 }
 
-public sealed class SoloApiFactory(string connectionString) : WebApplicationFactory<Program>
+public sealed class SoloApiFactory(string connectionString, bool loadExtensions = false)
+    : WebApplicationFactory<Program>
 {
     public const string SetupUsername = "setup-admin";
     public const string SetupPassword = "first-run-secret";
 
+    /// <summary>
+    /// Where the build staged the fixture package. Laid out as a real package
+    /// directory (extension.json + server/) and discovered on disk, so the
+    /// loader and its private AssemblyLoadContext are genuinely exercised —
+    /// the test project deliberately does not reference the fixture assembly.
+    /// </summary>
+    public static string FixtureDirectory => Path.Combine(
+        AppContext.BaseDirectory, "extension-fixtures", "fixture");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        if (loadExtensions)
+        {
+            builder.UseSetting("Extensions:DevelopmentDirectories:0", FixtureDirectory);
+        }
+
         builder.ConfigureLogging(logging => logging.AddProvider(new TestLogCollector()));
         builder.UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command", "Information");
         builder.UseSetting("ConnectionStrings:Default", connectionString);

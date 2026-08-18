@@ -3,6 +3,8 @@
     <Project Path="src/Solo.Api/Solo.Api.csproj" />
     <Project Path="src/Solo.Client/Solo.Client.csproj" />
     <Project Path="src/Solo.Data/Solo.Data.csproj" />
+    <Project Path="src/Solo.Extensibility/Solo.Extensibility.csproj" />
+    <Project Path="src/Solo.Extensions/Solo.Extensions.csproj" />
     <Project Path="src/Solo.Shared/Solo.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/">

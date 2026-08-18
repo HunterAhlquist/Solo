@@ -4,6 +4,7 @@
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject ThemeState Theme
+@inject IDialogService Dialogs
 
 <PageTitle>Admin settings · Solo</PageTitle>
 
@@ -105,11 +106,81 @@ else
             </MudText>
         }
     </MudPaper>
+
+    <MudPaper Elevation="1" Class="pa-4 mt-4" Style="max-width:44rem">
+        <MudText Typo="Typo.h4" Class="mb-1">Extensions</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Packages in the extensions directory. Installing, updating or removing one
+            takes a restart — unlike themes, there is no rescan.
+        </MudText>
+
+        @if (_extensions is null)
+        {
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        }
+        else
+        {
+            @if (_extensions.Extensions.Count == 0 && _extensions.Failures.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No extensions installed.</MudText>
+            }
+
+            @foreach (var extension in _extensions.Extensions)
+            {
+                <div class="d-flex align-center py-2">
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.body1">
+                            @(extension.DisplayName ?? extension.ExtensionId)
+                            <MudChip T="string" Size="Size.Small" Class="ml-2"
+                                     Color="@StateColour(extension.State)">@StateLabel(extension)</MudChip>
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @extension.ExtensionId@(extension.Version is null ? "" : $" · {extension.Version}")
+                            @(extension.SchemaName is null ? "" : $" · {extension.SchemaName}")
+                        </MudText>
+
+                        @if (extension.FailureReason is not null)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
+                                @extension.FailureReason
+                            </MudText>
+                        }
+
+                        @* Which extensions sit on which write path. Without this,
+                           "why can't I move this card?" has no quick answer. *@
+                        @if (extension.Hooks.Count > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                                Intercepts: @string.Join(", ", extension.Hooks)
+                            </MudText>
+                        }
+                    </div>
+
+                    @if (extension.CanPurge)
+                    {
+                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                   OnClick="@(() => PurgeAsync(extension))">
+                            Delete data
+                        </MudButton>
+                    }
+                </div>
+                <MudDivider />
+            }
+
+            @foreach (var failure in _extensions.Failures)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                    <strong>@failure.Source</strong> — @failure.Reason
+                </MudAlert>
+            }
+        }
+    </MudPaper>
 }
 
 @code {
     private InstanceSettingsDto? _settings;
     private ThemeScanResultDto? _themes;
+    private ExtensionAdminDto? _extensions;
     private int _retentionDays;
     private string? _themeId;
     private bool _rescanning;
@@ -125,6 +196,7 @@ else
             // Null means "the default": show which theme that resolved to rather
             // than an empty radio group.
             _themeId = _settings.ThemeId ?? _themes.Themes.FirstOrDefault(t => t.IsActive)?.Id;
+            _extensions = await Api.GetExtensionsAsync();
         }
         catch (ApiException e)
         {
@@ -195,6 +267,60 @@ else
             return false;
         }
     }
+
+    /// <summary>
+    /// Confirms with a retyped id, then drops the schema and the extension's
+    /// keys from core's field bags. Only offered for an extension that is not
+    /// loaded this boot — which is what makes the drop safe without locking.
+    /// </summary>
+    private async Task PurgeAsync(ExtensionRegistrationDto extension)
+    {
+        var dialog = await Dialogs.ShowAsync<TextPromptDialog>(
+            $"Delete {extension.DisplayName ?? extension.ExtensionId} data",
+            new DialogParameters
+            {
+                [nameof(TextPromptDialog.Message)] =
+                    $"This drops the schema {extension.SchemaName ?? "(none)"} and every row in it, and removes "
+                    + "this extension's custom fields from tasks, epics and boards. It cannot be undone — take a "
+                    + $"pg_dump -n {extension.SchemaName} first if you might want the data back. "
+                    + $"Type {extension.ExtensionId} to confirm.",
+                [nameof(TextPromptDialog.Label)] = "Extension id",
+                [nameof(TextPromptDialog.MaxLength)] = 64,
+                [nameof(TextPromptDialog.SaveText)] = "Delete data",
+            });
+
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data?.ToString() != extension.ExtensionId)
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.PurgeExtensionAsync(extension.ExtensionId);
+            Snackbar.Add($"{extension.ExtensionId} data deleted.", Severity.Success);
+            _extensions = await Api.GetExtensionsAsync();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't delete that extension's data.", Severity.Error);
+        }
+    }
+
+    private static Color StateColour(string state) => state switch
+    {
+        "Loaded" => Color.Success,
+        "Failed" => Color.Error,
+        _ => Color.Warning,
+    };
+
+    /// <summary>"Absent" is the interesting one: data present, package gone.</summary>
+    private static string StateLabel(ExtensionRegistrationDto extension) => extension.State switch
+    {
+        "Loaded" => "loaded",
+        "Failed" => "disabled",
+        _ => "data present, package missing",
+    };
 
     private async Task ReloadAsync()
     {

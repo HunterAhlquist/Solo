@@ -1,0 +1,145 @@
+using System.Reflection;
+using Bunit;
+using Microsoft.Extensions.DependencyInjection;
+using MudBlazor.Services;
+using Solo.Client.Extensions;
+using Solo.Client.Layout;
+using Solo.Client.State;
+using Solo.Shared;
+using Solo.Shared.Dtos;
+using Solo.Shared.Extensibility;
+
+namespace Solo.Client.Tests;
+
+/// <summary>
+/// Extension entries in the sidebar. The gating matters more than the
+/// rendering: an entry whose assembly did not load would point at a route the
+/// router cannot resolve, which reads to a user as a bug rather than as a
+/// version mismatch.
+/// </summary>
+public class ExtensionNavTests : BunitContext, IAsyncLifetime
+{
+    private readonly StubHttp _http = new();
+
+    public ExtensionNavTests()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
+
+        var api = _http.CreateClient();
+        Services.AddSingleton(api);
+        Services.AddSingleton(new UserSession(api));
+        Services.AddSingleton(new ProjectNavStore(api));
+        Services.AddScoped<RecentProjectsStore>();
+    }
+
+    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
+
+    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
+
+    [Fact]
+    public async Task A_loaded_extension_contributes_a_nav_entry()
+    {
+        Services.AddSingleton(CatalogWith(Nav("/roadmap/{projectAlias}", "Roadmap", "Read")));
+        await SeedProjectAsync(ProjectRole.Read, isOwner: false);
+
+        var nav = Render<NavMenu>();
+        Expand(nav, "Alpha");
+
+        Assert.Contains("Roadmap", nav.Markup);
+        // {projectAlias} is substituted, so the link is per project.
+        Assert.Contains("roadmap/ALPHA", nav.Markup);
+    }
+
+    [Fact]
+    public async Task A_write_only_entry_is_hidden_from_a_read_only_member()
+    {
+        Services.AddSingleton(CatalogWith(Nav("/planner/{projectAlias}", "Planner", "Write")));
+        await SeedProjectAsync(ProjectRole.Read, isOwner: false);
+
+        var nav = Render<NavMenu>();
+        Expand(nav, "Alpha");
+
+        Assert.DoesNotContain("Planner", nav.Markup);
+    }
+
+    [Fact]
+    public async Task An_owner_only_entry_is_hidden_from_a_non_owner()
+    {
+        Services.AddSingleton(CatalogWith(Nav("/billing/{projectAlias}", "Billing", "Owner")));
+        await SeedProjectAsync(ProjectRole.ReadWrite, isOwner: false);
+
+        var nav = Render<NavMenu>();
+        Expand(nav, "Alpha");
+
+        Assert.DoesNotContain("Billing", nav.Markup);
+    }
+
+    /// <summary>
+    /// The case the Electron shell makes real: the server advertises an
+    /// extension whose client half this build cannot load. Nothing about it may
+    /// reach the sidebar.
+    /// </summary>
+    [Fact]
+    public async Task An_extension_that_failed_to_load_contributes_nothing()
+    {
+        Services.AddSingleton(new ExtensionCatalog
+        {
+            Skipped = [new SkippedExtension("roadmap", "Needs Solo client API >=2.0")],
+        });
+        await SeedProjectAsync(ProjectRole.ReadWrite, isOwner: true);
+
+        var nav = Render<NavMenu>();
+        Expand(nav, "Alpha");
+
+        Assert.DoesNotContain("Roadmap", nav.Markup);
+    }
+
+    private static ClientExtensionNavDto Nav(string route, string label, string requires) =>
+        new(route, label, null, requires);
+
+    private static ExtensionCatalog CatalogWith(params ClientExtensionNavDto[] nav) => new()
+    {
+        Loaded =
+        [
+            new LoadedExtension(
+                new ClientExtensionDto("fixture", "Fixture", "1.0.0", ">=1.0 <2.0", "Fixture", nav),
+                Assembly.GetExecutingAssembly()),
+        ],
+    };
+
+    private async Task SeedProjectAsync(ProjectRole role, bool isOwner)
+    {
+        var projectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        _http.RouteJson($"api/projects/{projectId}/boards", Array.Empty<BoardDto>());
+        _http.RouteJson("api/projects", new[]
+        {
+            new ProjectSummaryDto(projectId, "Alpha", "ALPHA", "Games", null, role, isOwner),
+        });
+        await Task.CompletedTask;
+    }
+
+    private static void Expand(IRenderedComponent<NavMenu> nav, string projectName) =>
+        nav.FindAll("button.mud-nav-link")
+            .First(b => b.TextContent.Contains(projectName))
+            .Click();
+}
+
+/// <summary>
+/// The compat check itself. This is the whole reason the client re-checks a
+/// range the server already validated: in the Electron shell the bundled client
+/// and the instance version independently.
+/// </summary>
+public class ExtensionCompatibilityTests
+{
+    [Theory]
+    [InlineData(">=1.0 <2.0", true)]
+    [InlineData(">=0.9 <1.5", true)]
+    [InlineData(">=2.0 <3.0", false)]
+    [InlineData(">=1.1 <2.0", false)]
+    public void A_range_is_checked_against_this_builds_contract(string range, bool expected)
+    {
+        Assert.True(VersionRange.TryParse(range, out var parsed, out _));
+        Assert.Equal(expected, parsed.Includes(ContractVersion.Parsed));
+    }
+}

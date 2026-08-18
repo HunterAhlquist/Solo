@@ -53,6 +53,17 @@ services:
       # always available; this is only for ones you add. See docs/themes.md.
       Themes__Directory: "/data/themes"
 
+      # -- Extensions ---------------------------------------------------------
+      # Directory scanned for extension packages (*.zip). Unlike themes there is
+      # NO rescan: an extension registers controllers, hooks and its own
+      # database context before the host is built, so installing, updating or
+      # removing one takes a restart of this container.
+      #
+      # An extension runs in-process with the database connection: installing
+      # one is deploying code. Treat a package exactly as you treat this image.
+      # See docs/extension-plan.md.
+      Extensions__Directory: "/data/extensions"
+
       # -- Reverse proxy ------------------------------------------------------
       # X-Forwarded-For is what per-IP rate limiting reads, so it is only
       # trusted from a peer that looks like a local reverse proxy: loopback or
@@ -79,6 +90,12 @@ services:
       # readable by that UID. Otherwise no packages load — the app still runs on
       # its built-in themes and says why in Admin settings and the startup log.
       - solo-themes:/data/themes
+
+      # Extension packages. Same ownership caveat as themes above if you swap
+      # this for a host path. Removing a package leaves its data in the database
+      # on purpose — Admin settings then lists it as installed-but-absent and
+      # offers to drop it.
+      - solo-extensions:/data/extensions
 
     # The aspnet base image ships no curl/wget; probe the TCP port via bash.
     healthcheck:
@@ -124,3 +141,4 @@ services:
 volumes:
   solo-pgdata:
   solo-themes:
+  solo-extensions:

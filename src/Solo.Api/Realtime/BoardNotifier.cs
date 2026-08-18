@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Data;
+using Solo.Extensibility;
+using Solo.Extensions;
 using Solo.Shared;
 using Solo.Shared.Hubs;
 
@@ -23,16 +25,30 @@ public interface IBoardNotifier
         ChangeKind kind, params string[] changedFields);
 }
 
+/// <remarks>
+/// Also the raise point for extension domain events. These call sites already
+/// know the board/project scope and the changed fields — which a
+/// ChangeTracker-derived event would not — so the SignalR broadcast and the
+/// extension fan-out are the same moment, and neither can drift from the other.
+/// Publishing is awaited but never allowed to fail the caller: the publisher
+/// wraps every handler (see DomainEventPublisher).
+/// </remarks>
 public sealed class BoardNotifier(
     IHubContext<BoardHub, IBoardClient> hub,
     SoloDbContext db,
     CurrentUserAccessor currentUser,
-    IHttpContextAccessor httpContextAccessor)
+    IHttpContextAccessor httpContextAccessor,
+    IDomainEventPublisher events)
     : IBoardNotifier
 {
-    public Task BoardEntityChanged(Guid boardId, string entityType, Guid entityId,
-        ChangeKind kind, params string[] changedFields) =>
-        Send(BoardHubConstants.BoardGroup(boardId), Event(entityType, entityId, kind, changedFields));
+    public async Task BoardEntityChanged(Guid boardId, string entityType, Guid entityId,
+        ChangeKind kind, params string[] changedFields)
+    {
+        await Send(BoardHubConstants.BoardGroup(boardId), Event(entityType, entityId, kind, changedFields));
+        await events.PublishAsync(new SoloDomainEvent(
+            entityType, entityId, kind, changedFields, currentUser.UserId ?? Guid.Empty,
+            ProjectId: null, BoardId: boardId));
+    }
 
     public async Task ProjectEntityChanged(Guid projectId, string entityType, Guid entityId,
         ChangeKind kind, params string[] changedFields)
@@ -46,6 +62,10 @@ public sealed class BoardNotifier(
         {
             await Send(BoardHubConstants.BoardGroup(boardId), change);
         }
+
+        await events.PublishAsync(new SoloDomainEvent(
+            entityType, entityId, kind, changedFields, currentUser.UserId ?? Guid.Empty,
+            ProjectId: projectId, BoardId: null));
     }
 
     private EntityChangedEvent Event(string entityType, Guid entityId, ChangeKind kind, string[] changedFields) =>

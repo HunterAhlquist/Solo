@@ -46,10 +46,12 @@ dotnet test Solo.slnx
 Solution layout:
 
 ```
-src/Solo.Api      ASP.NET Core host: controllers, SignalR hub, auth, serves the WASM client
-src/Solo.Data     EF Core DbContext, entities, migrations, audit interceptor
-src/Solo.Shared   DTOs, enums, hub contracts (shared with the WASM client)
-tests/            unit (Solo.Data.Tests) + integration (Solo.Api.Tests)
+src/Solo.Api           ASP.NET Core host: controllers, SignalR hub, auth, serves the WASM client
+src/Solo.Data          EF Core DbContext, entities, migrations, audit interceptor
+src/Solo.Shared        DTOs, enums, hub contracts (shared with the WASM client)
+src/Solo.Extensibility the public contract extensions compile against (see Extensions)
+src/Solo.Extensions    the extension host: package loading, hook dispatch, registry
+tests/                 unit (Solo.Data.Tests) + integration (Solo.Api.Tests)
 ```
 
 Migrations are applied automatically on startup. To add one:
@@ -85,9 +87,45 @@ All configuration is environment variables:
 | `Auth__ClientId` | OIDC client id; also the expected token audience |
 | `Auth__Provider` | Claim-mapping preset: `google`, `microsoft`, or `generic` |
 | `Setup__Username` / `Setup__Password` | Static first-run setup credentials (dead after handoff) |
-| `Database__AutoMigrate` | Apply migrations on startup (default `true`) |
+| `Database__AutoMigrate` | Apply migrations on startup (default `true`); also gates extension migrations |
+| `Themes__Directory` | Directory scanned for theme packages |
+| `Extensions__Directory` | Directory scanned for extension packages |
 
 Health endpoint: `GET /healthz` (checks the database connection).
+
+## Extensions
+
+Solo can be extended with packages that add API endpoints, database tables of
+their own, hooks that intercept core write operations, and pages in the client.
+Design and rationale are in [docs/extension-plan.md](docs/extension-plan.md).
+
+An extension package is a `.zip` — `extension.json` at the root, plus `server/`,
+`client/` and `content/` — dropped into the extensions directory
+(`/data/extensions` in the deployment template).
+
+> **Installing an extension is deploying code.** A server extension runs
+> in-process with the database connection string, and a client extension runs in
+> the same browser context as the session token. There is no sandbox and the
+> manifest's declarations are not a security boundary. Trust a package exactly as
+> much as you trust the image.
+
+**Unlike themes, there is no rescan.** Controllers, hooks and DI are fixed once
+the host is built, so installing, updating or removing an extension takes a
+container restart. A package that fails to load is reported in Admin settings
+and skipped; the instance still starts.
+
+Each extension that stores data owns a Postgres **schema** (`ext_<id>`) inside
+the existing database — not a separate database, so nothing extra to back up.
+Its migrations run at startup after core's, gated on the same
+`Database__AutoMigrate`. A failed migration disables that one extension (its
+endpoints answer `503` naming the reason) rather than taking down the instance.
+
+Removing a package keeps its data, and Admin settings then lists the extension
+as installed-but-absent — which is what makes it possible to offer a purge later
+rather than leaving an orphan schema nobody can attribute. Purging drops the
+schema *and* strips the extension's keys from core's per-entity field bags; it
+is super-admin only, requires retyping the extension id, and is refused while
+the extension is still loaded.
 
 ## Desktop app
 

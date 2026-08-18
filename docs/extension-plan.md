@@ -1,6 +1,16 @@
 # Solo — Extension Construction Plan
 
-> **Status (2026-08-18):** proposed. Nothing in this document is built yet; it is a design to argue with, not a record of what shipped.
+> **Status (2026-08-18):** implemented on branch `extensions`, phases 1–7. Phase 0 (webhooks + scoped API tokens) was deliberately **not** built — it was always framed as an alternative to this plan rather than a component of it.
+>
+> Deltas found while building, none of which changed the design:
+>
+> - **`Solo.Extensibility` cannot be referenced by `Solo.Client`.** It carries a `FrameworkReference` to `Microsoft.AspNetCore.App` and an EF Core dependency, and neither resolves for the `browser-wasm` target. `ContractVersion` and `VersionRange` therefore live in `Solo.Shared/Extensibility/` — dependency-free, referenced by both halves — while the contract package keeps everything a server extension needs. §9's client compat check works against the copy in `Solo.Shared`.
+> - **`IDomainEventPublisher` must be scoped, not singleton.** Handlers are scoped (they hold the extension's own `DbContext`), and a singleton resolving them lands on the root provider, which the container refuses outright. Caught by the integration suite on first run.
+> - **`SoloPolicies` restated core's policy names wrongly** (`"ProjectRead"` vs core's `"Project:Read"`), which surfaces as a 500 on every extension endpoint that authorizes. `ExtensionPolicyNamesTests` now asserts the two agree — the test §11 called for, written after the drift proved the point.
+> - **The project policies need a project in the route.** An extension endpoint with no project/board/task id must use a plain `[Authorize]` and scope its reads through `ISoloQuery`; `SoloPolicies` says so now.
+> - **`ExtensionState.Enable`** was added so tests can restore the shared singleton after exercising the disabled gate. Startup never needs it.
+>
+> Verified: 509 tests green (`Solo.Data.Tests` 51, `Solo.Client.Tests` 255, `Solo.Api.Tests` 203), including a fixture extension loaded from a real package directory into its own `AssemblyLoadContext` against Testcontainers Postgres.
 
 Companion to [backend-plan.md](backend-plan.md) and [frontend-plan.md](frontend-plan.md). Solo already has one working extension subsystem — **themes** ([themes.md](themes.md)) — and this plan deliberately reuses its shape: a zip package, a manifest, a mounted volume, a validating loader, and load failures surfaced in Admin settings instead of taken out on the instance. An operator who can install a theme can install an extension.
 

@@ -6,6 +6,7 @@ using MudBlazor.Services;
 using Solo.Client;
 using Solo.Client.Api;
 using Solo.Client.Auth;
+using Solo.Client.Extensions;
 using Solo.Client.Realtime;
 using Solo.Client.State;
 using Solo.Shared.Dtos;
@@ -26,6 +27,15 @@ var instance = new InstanceConnection(builder.HostEnvironment.BaseAddress);
 // configured from the API's environment rather than baked into the client.
 // ---------------------------------------------------------------------------
 var config = await LoadConfigAsync(instance);
+
+// ---------------------------------------------------------------------------
+// Extensions. Loaded before the host is built so their pages exist by the time
+// the router first renders. Every failure here is soft — a skipped extension
+// costs its own feature and nothing else, and the reasons surface in admin
+// settings rather than the console.
+// ---------------------------------------------------------------------------
+var extensions = await LoadExtensionsAsync(instance);
+builder.Services.AddSingleton(extensions);
 
 // ---------------------------------------------------------------------------
 // HTTP, realtime and state (see SoloClientServices for the lifetimes).
@@ -80,6 +90,13 @@ builder.Services.AddMudServices(options =>
 builder.Services.AddMudMarkdownServices();
 
 await builder.Build().RunAsync();
+
+// ---------------------------------------------------------------------------
+static async Task<ExtensionCatalog> LoadExtensionsAsync(InstanceConnection instance)
+{
+    using var http = new HttpClient { BaseAddress = instance.BaseAddress };
+    return await ExtensionBootstrapper.LoadAsync(http);
+}
 
 // ---------------------------------------------------------------------------
 static async Task<AppConfig> LoadConfigAsync(InstanceConnection instance)

@@ -147,6 +147,9 @@ namespace Solo.Data.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("character varying(8)");
 
+                    b.Property<string>("Extensions")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Icon")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -238,6 +241,9 @@ namespace Solo.Data.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<string>("Extensions")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -258,6 +264,44 @@ namespace Solo.Data.Migrations
                     b.HasIndex("BoardId");
 
                     b.ToTable("Epics");
+                });
+
+            modelBuilder.Entity("Solo.Data.Entities.ExtensionRegistration", b =>
+                {
+                    b.Property<string>("ExtensionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("InstalledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastLoadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastSeenVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SchemaName")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("ExtensionId");
+
+                    b.ToTable("ExtensionRegistrations");
                 });
 
             modelBuilder.Entity("Solo.Data.Entities.ImageAsset", b =>
@@ -503,6 +547,9 @@ namespace Solo.Data.Migrations
 
                     b.Property<Guid?>("EpicId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Extensions")
+                        .HasColumnType("jsonb");
 
                     b.Property<Guid?>("LabelId")
                         .HasColumnType("uuid");

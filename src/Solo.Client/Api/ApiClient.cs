@@ -36,6 +36,18 @@ public sealed class ApiClient(HttpClient http)
     public Task<ThemeScanResultDto> RescanThemesAsync(CancellationToken ct = default) =>
         SendAsync<ThemeScanResultDto>(HttpMethod.Post, "api/themes/rescan", null, ct);
 
+    /// <summary>Every extension this instance has seen, including ones whose package is gone.</summary>
+    public Task<ExtensionAdminDto> GetExtensionsAsync(CancellationToken ct = default) =>
+        GetAsync<ExtensionAdminDto>("api/extensions/admin", ct);
+
+    /// <summary>
+    /// Drops an extension's schema and its keys from core's field bags.
+    /// Irreversible, and refused while the extension is still loaded.
+    /// </summary>
+    public Task PurgeExtensionAsync(string extensionId, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Delete, $"api/extensions/{extensionId}/data",
+            new PurgeExtensionRequest { ConfirmExtensionId = extensionId }, ct);
+
     public Task<UserDto> GetCurrentUserAsync(CancellationToken ct = default) =>
         GetAsync<UserDto>("api/users/me", ct);
 

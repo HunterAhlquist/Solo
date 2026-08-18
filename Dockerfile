@@ -33,7 +33,11 @@ COPY --from=build /app .
 # the host's own ownership wins: make that path readable by UID $APP_UID
 # yourself. Either way the app degrades to built-in themes and reports the
 # problem in Admin settings rather than failing.
-RUN mkdir -p /data/themes && chown -R $APP_UID:$APP_UID /data
+# Extensions volume (Extensions__Directory) sits beside it, created the same
+# way and for the same reason. Unlike themes there is no rescan: controllers and
+# DI are fixed once the host is built, so installing or updating an extension
+# takes a container restart.
+RUN mkdir -p /data/themes /data/extensions && chown -R $APP_UID:$APP_UID /data
 
 EXPOSE 8080
 USER $APP_UID

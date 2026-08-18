@@ -1,4 +1,5 @@
 @inject AppConfig Config
+@inject Solo.Client.Extensions.ExtensionCatalog Extensions
 
 @if (Config.LoadError is not null)
 {
@@ -7,7 +8,9 @@
 else
 {
     <CascadingAuthenticationState>
-        <Router AppAssembly="@typeof(App).Assembly">
+        @* AdditionalAssemblies is what makes extension @page routes resolvable.
+           Only assemblies that actually loaded are in here — see ExtensionBootstrapper. *@
+        <Router AppAssembly="@typeof(App).Assembly" AdditionalAssemblies="@Extensions.RouteAssemblies">
             <Found Context="routeData">
                 <SetupGate>
                     <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">

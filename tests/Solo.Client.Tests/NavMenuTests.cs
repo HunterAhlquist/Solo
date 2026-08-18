@@ -2,6 +2,7 @@ using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using MudBlazor.Services;
+using Solo.Client.Extensions;
 using Solo.Client.Layout;
 using Solo.Client.State;
 using Solo.Shared;
@@ -30,6 +31,10 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
         Services.AddScoped<RecentProjectsStore>();
+        // The sidebar renders extension nav entries. An empty catalog is the
+        // normal case — no extensions installed — and keeps these tests about
+        // the core tree; ExtensionNavTests covers the entries themselves.
+        Services.AddSingleton(new ExtensionCatalog());
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;

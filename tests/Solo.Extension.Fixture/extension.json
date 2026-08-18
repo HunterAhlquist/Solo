@@ -1,0 +1,10 @@
+{
+  "id": "fixture",
+  "name": "Test Fixture",
+  "version": "1.0.0",
+  "soloApiVersion": ">=1.0 <2.0",
+  "server": "server/Solo.Extension.Fixture.dll",
+  "schema": "ext_fixture",
+  "hooks": ["task.update", "task.setStatus"],
+  "failOpen": false
+}

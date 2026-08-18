@@ -7,6 +7,7 @@ using Solo.Api.Services;
 using Solo.Data;
 using Solo.Data.Domain;
 using Solo.Data.Entities;
+using Solo.Extensibility;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Solo.Shared.Hubs;
@@ -38,6 +39,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpPost("api/boards/{boardId:guid}/tasks")]
+    [SoloOperation(Operations.TaskCreate)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> Create(
         Guid boardId, CreateTaskRequest request, CancellationToken ct)
@@ -81,6 +83,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpPut("api/tasks/{taskId:guid}")]
+    [SoloOperation(Operations.TaskUpdate)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> Update(
         Guid taskId, UpdateTaskRequest request, CancellationToken ct)
@@ -116,6 +119,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpDelete("api/tasks/{taskId:guid}")]
+    [SoloOperation(Operations.TaskDelete)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<IActionResult> Delete(Guid taskId, CancellationToken ct)
     {
@@ -139,6 +143,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     /// lock on where the user may place it.
     /// </summary>
     [HttpPut("api/tasks/{taskId:guid}/status")]
+    [SoloOperation(Operations.TaskSetStatus)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> SetStatus(
         Guid taskId, SetTaskStatusRequest request, CancellationToken ct)
@@ -158,6 +163,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
 
     /// <summary>Attach to an epic on the same board, or null to detach to ad-hoc.</summary>
     [HttpPut("api/tasks/{taskId:guid}/epic")]
+    [SoloOperation(Operations.TaskSetEpic)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> SetEpic(
         Guid taskId, SetTaskEpicRequest request, CancellationToken ct)
@@ -272,6 +278,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpPut("api/tasks/{taskId:guid}/rank")]
+    [SoloOperation(Operations.TaskMove)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> Rerank(
         Guid taskId, RerankRequest request, CancellationToken ct)

@@ -1,5 +1,9 @@
 <MudDialog>
     <DialogContent>
+        @if (!string.IsNullOrWhiteSpace(Message))
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">@Message</MudText>
+        }
         <MudTextField @bind-Value="_text" Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" AutoFocus="true" MaxLength="@MaxLength" OnKeyUp="@OnKeyUp" />
     </DialogContent>
@@ -23,6 +27,14 @@
 
     [Parameter]
     public string SaveText { get; set; } = "Create";
+
+    /// <summary>
+    /// Optional explanation above the field. Used where the prompt is a
+    /// confirmation rather than a plain "name this" — a destructive action has
+    /// to say what it will do before asking the user to type the magic word.
+    /// </summary>
+    [Parameter]
+    public string? Message { get; set; }
 
     /// <summary>Every current caller prompts for an epic/task name.</summary>
     [Parameter]

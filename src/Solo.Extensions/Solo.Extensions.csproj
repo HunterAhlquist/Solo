@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The extension HOST: package loading, load contexts, MVC wiring, hook
+       dispatch, the registry. Referenced by Solo.Api only.
+
+       Unlike Solo.Extensibility this may reference Solo.Data freely — it is
+       internal machinery, not a contract extensions compile against. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Solo.Extensibility\Solo.Extensibility.csproj" />
+    <ProjectReference Include="..\Solo.Data\Solo.Data.csproj" />
+    <ProjectReference Include="..\Solo.Shared\Solo.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

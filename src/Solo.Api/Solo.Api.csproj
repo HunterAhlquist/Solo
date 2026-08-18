@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Solo.Client\Solo.Client.csproj" />
     <ProjectReference Include="..\Solo.Data\Solo.Data.csproj" />
+    <ProjectReference Include="..\Solo.Extensibility\Solo.Extensibility.csproj" />
+    <ProjectReference Include="..\Solo.Extensions\Solo.Extensions.csproj" />
     <ProjectReference Include="..\Solo.Shared\Solo.Shared.csproj" />
   </ItemGroup>
 
