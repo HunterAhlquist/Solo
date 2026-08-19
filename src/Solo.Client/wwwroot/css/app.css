@@ -208,6 +208,29 @@ code {
     color: var(--mud-palette-primary);
 }
 
+/* Where the fixed app bar ends, for anything that has to pin itself just below
+   it. --mud-appbar-height is the *nominal* height: MudBlazor shrinks the bar by
+   an eighth on a portrait phone and a quarter in landscape, and pads
+   .mud-main-content down by whatever is left — so these are the same three
+   cases it uses, and the value tracks a theme that sets its own bar height.
+   Solo's app bar is never Dense (see MainLayout), which is the one case left
+   out. */
+:root {
+    --solo-appbar-bottom: calc(var(--mud-appbar-height, 5em) - var(--mud-appbar-height, 5em) / 8);
+}
+
+@media (min-width: 0px) and (orientation: landscape) {
+    :root {
+        --solo-appbar-bottom: calc(var(--mud-appbar-height, 5em) - var(--mud-appbar-height, 5em) / 4);
+    }
+}
+
+@media (min-width: 600px) {
+    :root {
+        --solo-appbar-bottom: var(--mud-appbar-height, 5em);
+    }
+}
+
 /* ---------------------------------------------------------------------------
    Board page header — back, icon, name, presence, create buttons.
 
@@ -564,11 +587,12 @@ code {
     }
 
     /* The gutter stops being a left-hand column and becomes the band's header.
-       Sticky under the app bar so it stays put while its cards scroll past;
-       opaque, or the cards would show through it. */
+       Sticky flush under the app bar so it stays put while its cards scroll
+       past; opaque, or the cards would show through it. Flush matters: pin it a
+       few pixels low and the cards passing behind show in the gap. */
     .kanban-lane__gutter {
         position: sticky;
-        top: var(--mud-appbar-height, 5em);
+        top: var(--solo-appbar-bottom, 5em);
         z-index: 2;
         flex-direction: row;
         flex-wrap: wrap;
