@@ -209,6 +209,27 @@ code {
 }
 
 /* ---------------------------------------------------------------------------
+   Board page header — back, icon, name, presence, create buttons.
+
+   Wraps: the name is the one part that can't be shortened, so when the row runs
+   out of room the create buttons go to a line of their own rather than
+   compressing the title to one letter per line.
+   --------------------------------------------------------------------------- */
+.board-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.board-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* ---------------------------------------------------------------------------
    Kanban surface
    --------------------------------------------------------------------------- */
 .kanban {
@@ -219,7 +240,7 @@ code {
 
 .kanban-header {
     display: grid;
-    grid-template-columns: var(--kanban-lane-gutter, 13rem) repeat(3, 1fr);
+    grid-template-columns: var(--kanban-lane-gutter, 13rem) 1fr;
     gap: 0.5rem;
     position: sticky;
     top: 0;
@@ -230,7 +251,7 @@ code {
 
 .kanban-lane {
     display: grid;
-    grid-template-columns: var(--kanban-lane-gutter, 13rem) repeat(3, 1fr);
+    grid-template-columns: var(--kanban-lane-gutter, 13rem) 1fr;
     gap: 0.5rem;
     align-items: stretch;
     border: 1px solid var(--mud-palette-lines-default);
@@ -241,6 +262,18 @@ code {
     background: var(--mud-palette-background);
 }
 
+/* The three status columns, in the sticky header and in every lane. One nested
+   grid rather than three cells of the outer one: the phone layout turns just
+   this strip into a swipeable carousel, and it can only do that if the strip is
+   an element in its own right. */
+.kanban-header__columns,
+.kanban-lane__zones {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    min-width: 0;
+}
+
 .kanban-lane__gutter {
     display: flex;
     flex-direction: column;
@@ -248,6 +281,12 @@ code {
     padding: 0.6rem;
     border-right: 1px solid var(--mud-palette-lines-default);
     min-width: 0;
+}
+
+/* Flush with the epic name: the chevron's own padding would indent the title
+   past the lane's. Coarse pointers get the padding back — see the touch block. */
+.kanban-lane__collapse {
+    padding: 0;
 }
 
 .kanban-lane__title {
@@ -324,6 +363,24 @@ code {
     border-style: dashed;
 }
 
+/* Wraps a drop zone and its heading, so the heading can't become a drop target
+   and the carousel has one box per column to snap to. */
+.kanban-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* Only the carousel shows it; on the grid, .kanban-header names all three
+   columns once at the top of the board. */
+.kanban-column__header {
+    display: none;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem 0;
+}
+
 .kanban-zone {
     display: flex;
     flex-direction: column;
@@ -331,6 +388,9 @@ code {
     padding: 0.5rem;
     min-height: 4.5rem;
     min-width: 0;
+    /* Fills the rest of the column, so the whole of an empty column takes a drop
+       rather than just the 4.5rem under its heading. */
+    flex: 1 1 auto;
     border-radius: var(--mud-default-borderradius);
     transition: background-color 120ms ease-in-out;
 }
@@ -429,22 +489,22 @@ code {
 }
 
 /* Vertical dividers between the three status columns, in both the sticky header
-   and every lane. Child 1 is the gutter/blank cell; the columns are children
-   2-4, so a rule at the left edge of children 3 and 4 sits between each pair.
+   and every lane. A rule at the left edge of the second and third column sits
+   between each pair, and the strip's first column keeps a clean outer edge.
    Drawn as a ::before line, not a border-left: .kanban-zone has a border-radius,
    and a left border traces those rounded corners — bowing the divider to the
    right at the top and bottom. A straight, absolutely-positioned line ignores it. */
-.kanban-header > *:nth-child(3),
-.kanban-header > *:nth-child(4),
-.kanban-lane > .kanban-zone:nth-child(3),
-.kanban-lane > .kanban-zone:nth-child(4) {
+.kanban-header__columns > *:nth-child(2),
+.kanban-header__columns > *:nth-child(3),
+.kanban-lane__zones > .kanban-column:nth-child(2),
+.kanban-lane__zones > .kanban-column:nth-child(3) {
     position: relative;
 }
 
-.kanban-header > *:nth-child(3)::before,
-.kanban-header > *:nth-child(4)::before,
-.kanban-lane > .kanban-zone:nth-child(3)::before,
-.kanban-lane > .kanban-zone:nth-child(4)::before {
+.kanban-header__columns > *:nth-child(2)::before,
+.kanban-header__columns > *:nth-child(3)::before,
+.kanban-lane__zones > .kanban-column:nth-child(2)::before,
+.kanban-lane__zones > .kanban-column:nth-child(3)::before {
     content: "";
     position: absolute;
     top: 0;
@@ -453,6 +513,174 @@ code {
     width: 1px;
     background: var(--mud-palette-lines-default);
     pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Detail drawer — the task/epic editor.
+
+   Header pinned, body scrolling: MudDrawer is already a flex column of a
+   definite height, so this is all it takes, and it keeps the close button
+   reachable however long the comment thread grows.
+   --------------------------------------------------------------------------- */
+.detail-drawer__header {
+    flex: 0 0 auto;
+}
+
+.detail-drawer__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   The board on a phone — the status columns become a swipeable carousel.
+
+   Three columns beside a 13rem gutter needs the better part of 900px. Below
+   that the grid doesn't shrink gracefully, it crushes: cards a few characters
+   wide, overlapping labels, a title broken one word to a line. So under the md
+   breakpoint the lane turns on its side. The epic gutter becomes a header
+   stripe across the top of its band and sticks there under the app bar, so the
+   band you are inside is named whichever column you have swiped to; the three
+   columns become a horizontal scroller that snaps each one to the middle of
+   the screen.
+
+   The column width is what makes the snapping land centred. With 1.5rem of
+   margin outside the first and last columns, a column of exactly
+   (100% - 3rem) puts the first column's centre at scroll offset zero and the
+   last column's at the end of the scroll range — so every column can rest dead
+   centre, not just the middle one. The 1.5rem left over at each edge is the
+   peek that says there is another column to swipe to. Margins rather than
+   padding on the scroller: a flex item's margin always counts towards
+   scrollable overflow, which is not true of a scroll container's end padding.
+   --------------------------------------------------------------------------- */
+@media (max-width: 959.98px) {
+    /* Nothing left for it to sit over — each column carries its own heading. */
+    .kanban-header {
+        display: none;
+    }
+
+    .kanban-lane {
+        grid-template-columns: 1fr;
+    }
+
+    /* The gutter stops being a left-hand column and becomes the band's header.
+       Sticky under the app bar so it stays put while its cards scroll past;
+       opaque, or the cards would show through it. */
+    .kanban-lane__gutter {
+        position: sticky;
+        top: var(--mud-appbar-height, 5em);
+        z-index: 2;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        background: var(--mud-palette-background);
+        border-right: none;
+        border-bottom: 1px solid var(--mud-palette-lines-default);
+        border-radius: var(--mud-default-borderradius) var(--mud-default-borderradius) 0 0;
+    }
+
+    .kanban-lane__title {
+        flex: 1 1 8rem;
+    }
+
+    /* margin-top:auto pins these to the foot of a tall gutter on the desktop
+       grid; in a one-line header it would push them off the baseline. */
+    .kanban-lane__actions {
+        margin-top: 0;
+        justify-content: flex-end;
+        gap: 0.25rem;
+    }
+
+    .kanban-lane__zones {
+        display: flex;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x mandatory;
+        padding-bottom: 0.25rem;
+    }
+
+    .kanban-lane__zones > .kanban-column {
+        flex: 0 0 calc(100% - 3rem);
+        scroll-snap-align: center;
+    }
+
+    .kanban-lane__zones > .kanban-column:first-child {
+        margin-left: 1.5rem;
+    }
+
+    .kanban-lane__zones > .kanban-column:last-child {
+        margin-right: 1.5rem;
+    }
+
+    .kanban-column__header {
+        display: flex;
+    }
+
+    /* The dividers separate columns standing side by side. In the carousel each
+       column is its own page, and a rule down its left edge reads as a border. */
+    .kanban-lane__zones > .kanban-column:nth-child(2)::before,
+    .kanban-lane__zones > .kanban-column:nth-child(3)::before {
+        content: none;
+    }
+
+    /* The theme's heading letter-spacing costs a board name most of the width it
+       has on a phone; at 1.75rem "PAX West 2026" wraps to three lines. */
+    .board-header__title.mud-typography-h1 {
+        font-size: 1.15rem;
+    }
+
+    /* Full-screen editor. MudDrawer writes its Width into --mud-drawer-width as
+       an inline style, so overriding it takes !important — the alternative is
+       measuring the viewport from C# and re-rendering the drawer on resize.
+       100dvh, not 100%: the drawer is fixed to the visual viewport, and on iOS
+       Safari 100vh is the address bar's height short of it. */
+    .detail-drawer {
+        --mud-drawer-width: 100vw !important;
+        height: 100dvh;
+    }
+
+    /* MudDrawerHeader's min-height is the app bar's 5em — a sixth of a phone
+       screen spent on a serial number and a close button. */
+    .detail-drawer__header {
+        min-height: 0;
+        padding: 0.5rem 0.75rem 0.5rem 1rem;
+    }
+
+    /* Clear of the home indicator, so the last comment isn't under it. */
+    .detail-drawer__body {
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)) !important;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Touch targets. MudBlazor's Small icon button is an 18px glyph in 3px of
+   padding — a 24px box, about half of what a fingertip reliably hits. Gated on
+   a coarse pointer rather than a width, because the thing that decides this is
+   the pointer, not the screen: a touchscreen laptop needs the bigger boxes and
+   a narrow browser window on a desktop does not.
+   --------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+    .mud-icon-button.mud-icon-button-size-small {
+        padding: 12px;
+    }
+
+    /* Undoing the padding is the whole point of .kanban-lane__collapse on a
+       mouse; on a finger the chevron needs a box like every other control. */
+    .kanban-lane__collapse.mud-icon-button {
+        padding: 12px;
+    }
+
+    /* Small text/outlined/filled buttons are ~26px tall. Height only: widening
+       them would wrap the board header's two create buttons. */
+    .mud-button-root.mud-button:not(.mud-icon-button) {
+        min-height: 44px;
+    }
+
+    /* The sub-task drag handle is a bare span, so none of the button rules
+       above reach it. */
+    .subtask-drag-handle {
+        padding: 6px;
+    }
 }
 
 /* Custom uploaded icons: keep them square and lightly rounded wherever they

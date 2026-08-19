@@ -11,12 +11,16 @@
     reports Editing presence, which is what warns the next person off.
 *@
 
-@* While a description draft is open, clicking off must not throw it away. *@
+@* While a description draft is open, clicking off must not throw it away.
+   The width holds until the screen is narrower than it is — see .detail-drawer
+   in app.css, where a phone takes the drawer full-bleed rather than letting
+   most of it hang off the left edge. *@
 <MudDrawer Open="@IsOpen" Anchor="Anchor.Right" Elevation="3" Variant="DrawerVariant.Temporary"
-           Width="34rem" OverlayAutoClose="@(!_editingDescription)" OpenChanged="@OnOpenChanged">
+           Class="detail-drawer" Width="34rem"
+           OverlayAutoClose="@(!_editingDescription)" OpenChanged="@OnOpenChanged">
     @if (Entity is not null)
     {
-        <MudDrawerHeader Class="d-flex align-center">
+        <MudDrawerHeader Class="detail-drawer__header d-flex align-center">
             <MudText Typo="Typo.subtitle1" Class="flex-grow-1">
                 @HeaderText
             </MudText>
@@ -25,7 +29,7 @@
                            OnClick="@CloseAsync" aria-label="Close" />
         </MudDrawerHeader>
 
-        <div class="pa-4" style="overflow-y:auto">
+        <div class="detail-drawer__body pa-4">
             <EditingWarning Editors="@Editors" />
 
             @* -- Name: blur commits ------------------------------------------- *@
@@ -36,10 +40,12 @@
 
             @if (Task is not null)
             {
-                <div class="d-flex mb-3" style="gap:.75rem">
+                @* Wraps: side by side these two need ~24rem, which a phone-width
+                   drawer doesn't have. *@
+                <div class="d-flex flex-wrap mb-3" style="gap:.75rem">
                     <MudSelect T="Guid?" Value="@Task.LabelId" Label="Label" Variant="Variant.Outlined"
                                Margin="Margin.Dense" Clearable="true" Disabled="@(!CanWrite)"
-                               ValueChanged="@OnLabelChanged" Class="flex-grow-1">
+                               ValueChanged="@OnLabelChanged" Class="flex-grow-1" Style="min-width:11rem">
                         @foreach (var label in TaskLabels)
                         {
                             <MudSelectItem T="Guid?" Value="@label.Id">@label.Name</MudSelectItem>
