@@ -4,15 +4,17 @@ The MCP server, packaged as a Solo extension. An LLM client that speaks the
 Model Context Protocol can browse projects and boards and create, edit and move
 tasks — acting as the person whose token authorized the call.
 
-Everything the feature needs is in this project: its credential, its schema and
-migrations, its endpoints. Nothing about MCP exists in `Solo.Api` or
-`Solo.Data`. Delete the package and the instance loses MCP access and nothing
-else.
+Everything the feature needs is in this project and its client half
+([Solo.Mcp.Client](../Solo.Mcp.Client)): the credential, the schema and
+migrations, the endpoints, and the page people use. Nothing about MCP exists in
+`Solo.Api`, `Solo.Data` or `Solo.Client`. Delete the package and the instance
+loses MCP access and nothing else — including the sidebar entry, which comes
+from the manifest.
 
 ## Layout
 
 ```
-extension.json      manifest: id "mcp", schema "ext_mcp", server assembly
+extension.json      manifest: id "mcp", schema "ext_mcp", both assemblies, nav
 Auth/               the solomcp_ token, its authentication scheme, and the
                     startup filter that runs the scheme before core resolves
                     the user
@@ -20,7 +22,12 @@ Controllers/        POST /api/ext/mcp (protocol), /api/ext/mcp/tokens (managemen
 Data/               McpDbContext + its migrations, in schema ext_mcp
 Protocol/           JSON-RPC dispatch and the tool catalog
 Rest/               the loopback hop back into Solo's REST API
+content/            static files served at /api/extensions/mcp/content/
 ```
+
+The client half is a separate project because it is a different runtime: a Razor
+class library the browser downloads and the host's router picks up. See its
+[README](../Solo.Mcp.Client/README.md).
 
 ## Two decisions worth knowing before changing anything
 
@@ -49,11 +56,11 @@ scheme configuration for no gain.
 build/pack-mcp-extension.sh
 ```
 
-Produces `artifacts/solo-mcp-<version>.zip` containing `extension.json` and
-`server/Solo.Mcp.dll` — nothing else, because the host provides `Solo.Shared`,
-`Solo.Extensibility` and the framework from its own load context. The script
-refuses to run if `extension.json` and the csproj disagree about the version;
-bump both together.
+Produces `artifacts/solo-mcp-<version>.zip`: `extension.json`,
+`server/Solo.Mcp.dll`, `client/Solo.Mcp.Client.dll` and `content/`. Nothing
+else — the host provides `Solo.Shared`, `Solo.Extensibility`, MudBlazor and the
+framework, on both sides. The script refuses to run if the manifest and either
+csproj disagree about the version; bump all three together.
 
 CI builds this package on every run and attaches it to the GitHub release when a
 `server-v*` tag is pushed.

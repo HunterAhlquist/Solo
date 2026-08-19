@@ -100,6 +100,18 @@
     <div class="nav-shell__footer">
         <MudDivider />
         <MudNavMenu>
+            @* Instance-level extension pages — a manifest nav entry whose route
+               names no project. One entry each, rather than one per project, and
+               like every extension entry it appears only when the assembly that
+               registers its route actually loaded. *@
+            @foreach (var entry in Extensions.InstanceNav)
+            {
+                <MudNavLink Href="@entry.Route.TrimStart('/')" Match="NavLinkMatch.Prefix"
+                            Icon="@ExtensionIcon(entry)">
+                    @entry.Label
+                </MudNavLink>
+            }
+
             @if (Session.IsSuperAdmin)
             {
                 <MudNavLink Icon="@Icons.Material.Filled.CreateNewFolder" Class="nav-shell__add"
@@ -124,7 +136,7 @@
     /// so an extension cannot advertise a page the API would refuse.
     /// </summary>
     private IEnumerable<ClientExtensionNavDto> ExtensionNav(ProjectSummaryDto project) =>
-        Extensions.Nav.Where(entry => entry.Requires switch
+        Extensions.ProjectNav.Where(entry => entry.Requires switch
         {
             "Owner" => project.IsOwner,
             "Write" => ProjectNavStore.CanAddBoard(project),
@@ -132,7 +144,9 @@
         });
 
     private static string ExtensionHref(ClientExtensionNavDto entry, ProjectSummaryDto project) =>
-        entry.Route.TrimStart('/').Replace("{projectAlias}", project.Alias, StringComparison.OrdinalIgnoreCase);
+        entry.Route.TrimStart('/')
+            .Replace(Solo.Client.Extensions.ExtensionCatalog.ProjectAliasToken, project.Alias,
+                StringComparison.OrdinalIgnoreCase);
 
     private static string ExtensionIcon(ClientExtensionNavDto entry) =>
         string.IsNullOrWhiteSpace(entry.Icon)

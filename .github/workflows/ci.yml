@@ -62,6 +62,7 @@ jobs:
             src/Solo.Extensibility
             src/Solo.Extensions
             src/Solo.Mcp
+            src/Solo.Mcp.Client
             src/Solo.Shared
             tests
             build

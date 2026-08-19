@@ -38,6 +38,26 @@ public sealed class ExtensionCatalog
 
     /// <summary>Nav entries from extensions that actually loaded.</summary>
     public IEnumerable<ClientExtensionNavDto> Nav => Loaded.SelectMany(e => e.Descriptor.Nav);
+
+    /// <summary>
+    /// Entries belonging to a project: their route carries <c>{projectAlias}</c>,
+    /// so the sidebar renders one per project with the alias substituted, gated
+    /// on the viewer's role in it.
+    /// </summary>
+    public IEnumerable<ClientExtensionNavDto> ProjectNav => Nav.Where(IsProjectScoped);
+
+    /// <summary>
+    /// Instance-level entries — no project in the route, so there is one of each
+    /// and it sits in the sidebar footer beside Admin settings. A manifest's
+    /// <c>requires</c> names a level of <em>project</em> access, so it means
+    /// nothing here: an instance-level page authorizes itself.
+    /// </summary>
+    public IEnumerable<ClientExtensionNavDto> InstanceNav => Nav.Where(entry => !IsProjectScoped(entry));
+
+    public const string ProjectAliasToken = "{projectAlias}";
+
+    private static bool IsProjectScoped(ClientExtensionNavDto entry) =>
+        entry.Route.Contains(ProjectAliasToken, StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record LoadedExtension(ClientExtensionDto Descriptor, Assembly Assembly);

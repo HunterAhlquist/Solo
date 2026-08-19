@@ -2,19 +2,26 @@ using System.Net;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Solo.Client.Api;
-using Solo.Client.Pages;
+using Solo.Mcp.Client;
+using Solo.Shared.Extensibility;
 
 namespace Solo.Client.Tests;
 
 /// <summary>
-/// The MCP access page. It is core UI over an extension's API, so the case that
-/// matters most is the one where the package is not installed: the page has to
-/// say so rather than render a token form pointed at a 404.
+/// The MCP extension's page, rendered the way the host renders it: resolving
+/// MudBlazor and <see cref="ISoloClientApi"/> from the app's own service
+/// provider, with nothing of its own registered.
 /// </summary>
+/// <remarks>
+/// That the page can be rendered at all with only host services present is half
+/// the point — it is what an extension assembly gets when the router hands it a
+/// route, and the reason <c>ISoloClientApi</c> exists.
+/// </remarks>
 public class McpAccessTests : ComponentTestBase
 {
     private const string InfoPath = "api/ext/mcp/info";
     private const string TokensPath = "api/ext/mcp/tokens";
+    private const string AuditPath = "api/ext/mcp/tokens/admin";
 
     private readonly StubHttp _http = new();
 
@@ -28,35 +35,28 @@ public class McpAccessTests : ComponentTestBase
         },
     };
 
-    [Fact]
-    public void An_instance_without_the_extension_says_so_instead_of_offering_a_token()
-    {
-        _http.Route(InfoPath, HttpStatusCode.NotFound);
-        var page = RenderPage();
-
-        Assert.Contains("isn't installed on this instance", page.Markup);
-        Assert.DoesNotContain("Generate token", page.Markup);
-    }
-
     /// <summary>
-    /// A failed migration disables an extension and its routes answer 503. That
-    /// is still "no MCP here" as far as this page is concerned; the reason lives
-    /// in Admin settings.
+    /// The client half loaded but the server half is disabled — a failed
+    /// migration does exactly this, and the page has to say so rather than offer
+    /// a token form pointed at a 503.
     /// </summary>
-    [Fact]
-    public void A_disabled_extension_is_treated_the_same_as_an_absent_one()
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public void A_disabled_server_half_is_reported_instead_of_a_token_form(HttpStatusCode status)
     {
-        _http.Route(InfoPath, HttpStatusCode.ServiceUnavailable);
+        _http.Route(InfoPath, status);
         var page = RenderPage();
 
-        Assert.Contains("isn't installed on this instance", page.Markup);
+        Assert.Contains("MCP server isn't running", page.Markup);
+        Assert.DoesNotContain("Generate token", page.Markup);
     }
 
     [Fact]
     public void An_account_with_no_token_is_offered_one()
     {
-        _http.RouteJson(InfoPath, Info);
-        _http.Route(TokensPath, HttpStatusCode.OK, new { active = (object?)null, history = Array.Empty<object>() });
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
 
         var page = RenderPage();
 
@@ -72,7 +72,7 @@ public class McpAccessTests : ComponentTestBase
     public void Generating_shows_the_value_once_and_puts_it_in_the_snippets()
     {
         const string secret = "solomcp_abcdef0123456789";
-        _http.RouteJson(InfoPath, Info);
+        Installed();
 
         // The status endpoint answers differently either side of the mint,
         // exactly as the real one does — so the flag flips when the POST lands.
@@ -82,10 +82,8 @@ public class McpAccessTests : ComponentTestBase
             minted = true;
             return new { token = Token(revoked: false), value = secret };
         }, HttpMethod.Post);
-        _http.Route(TokensPath, HttpStatusCode.OK, () => minted
-            ? new { active = Token(revoked: false), history = new[] { Token(revoked: false) } }
-            : new { active = (object?)null, history = Array.Empty<object>() },
-            HttpMethod.Get);
+        _http.Route(TokensPath, HttpStatusCode.OK,
+            () => minted ? WithToken() : NoToken(), HttpMethod.Get);
 
         var page = RenderPage();
         page.FindAll("button").First(b => b.TextContent.Contains("Generate token")).Click();
@@ -102,12 +100,8 @@ public class McpAccessTests : ComponentTestBase
     [Fact]
     public void An_existing_token_offers_rotation_and_revocation_but_not_its_value()
     {
-        _http.RouteJson(InfoPath, Info);
-        _http.Route(TokensPath, HttpStatusCode.OK, new
-        {
-            active = Token(revoked: false),
-            history = new[] { Token(revoked: false) },
-        });
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, WithToken(), HttpMethod.Get);
 
         var page = RenderPage();
 
@@ -120,13 +114,93 @@ public class McpAccessTests : ComponentTestBase
     [Fact]
     public void The_endpoint_url_is_absolute_against_the_configured_instance()
     {
-        _http.RouteJson(InfoPath, Info);
-        _http.Route(TokensPath, HttpStatusCode.OK, new { active = (object?)null, history = Array.Empty<object>() });
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
 
         var page = RenderPage();
 
+        // (The package's own stylesheet goes out through HeadContent, which
+        // renders into the host's HeadOutlet rather than into this markup; the
+        // integration suite asserts the content endpoint serves it.)
         Assert.Contains("https://solo.test/api/ext/mcp", page.Markup);
     }
+
+    /// <summary>
+    /// A 403 from the audit endpoint is how a normal user's page learns it has
+    /// no admin section — there is no second endpoint to ask.
+    /// </summary>
+    [Fact]
+    public void A_non_admin_sees_no_audit()
+    {
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, WithToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+
+        Assert.DoesNotContain("All tokens", page.Markup);
+        Assert.DoesNotContain("Revoke all", page.Markup);
+    }
+
+    [Fact]
+    public void An_admin_sees_every_token_and_the_usage_graph_but_no_secret()
+    {
+        Installed(audit: new
+        {
+            windowStart = DateTimeOffset.UtcNow.AddHours(-23),
+            tokens = new[]
+            {
+                new
+                {
+                    id = Guid.NewGuid(),
+                    userEmail = "someone@example.com",
+                    userDisplayName = "Someone",
+                    description = "Laptop",
+                    createdAt = DateTimeOffset.UtcNow.AddDays(-2),
+                    lastUsedAt = (DateTimeOffset?)DateTimeOffset.UtcNow,
+                    revokedAt = (DateTimeOffset?)null,
+                    revokedReason = (string?)null,
+                    usage = Enumerable.Range(0, 24).Select(i => i).ToArray(),
+                },
+            },
+        });
+        _http.Route(TokensPath, HttpStatusCode.OK, WithToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+
+        Assert.Contains("All tokens", page.Markup);
+        // The owner's display name, and the label they gave the token.
+        Assert.Contains("Someone", page.Markup);
+        Assert.Contains("Laptop", page.Markup);
+        Assert.Contains("Revoke all", page.Markup);
+        // 24 dense hourly bars.
+        Assert.Equal(24, page.FindAll(".mcp-usage__bar").Count);
+    }
+
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Registers the endpoints the page reads on load. Order matters: the audit
+    /// path contains the tokens path, and the stub matches by fragment in
+    /// registration order — so the more specific route goes in first, exactly as
+    /// routing would resolve it server-side.
+    /// </summary>
+    private void Installed(object? audit = null)
+    {
+        _http.RouteJson(InfoPath, Info);
+        if (audit is null)
+        {
+            _http.Route(AuditPath, HttpStatusCode.Forbidden);
+        }
+        else
+        {
+            _http.Route(AuditPath, HttpStatusCode.OK, audit);
+        }
+    }
+
+    private static object NoToken() => new { active = (object?)null, history = Array.Empty<object>() };
+
+    private static object WithToken() =>
+        new { active = Token(revoked: false), history = new[] { Token(revoked: false) } };
 
     private static object Token(bool revoked) => new
     {
@@ -138,10 +212,15 @@ public class McpAccessTests : ComponentTestBase
         revokedReason = revoked ? "Regenerated" : null,
     };
 
+    /// <summary>
+    /// Only host services — the page brings none of its own, which is what an
+    /// extension assembly actually gets.
+    /// </summary>
     private IRenderedComponent<McpAccess> RenderPage()
     {
-        Services.AddSingleton(_http.CreateClient());
-        Services.AddSingleton(new InstanceConnection("https://solo.test/"));
+        var api = _http.CreateClient();
+        Services.AddSingleton(api);
+        Services.AddSingleton<ISoloClientApi>(api);
         return Render<McpAccess>();
     }
 }

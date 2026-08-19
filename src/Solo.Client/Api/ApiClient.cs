@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Solo.Shared;
 using Solo.Shared.Dtos;
+using Solo.Shared.Extensibility;
 
 namespace Solo.Client.Api;
 
@@ -12,8 +13,29 @@ namespace Solo.Client.Api;
 /// <c>Version</c> (Postgres xmin) for optimistic concurrency; a 409 surfaces as
 /// <see cref="ApiConflictException"/>.
 /// </summary>
-public sealed class ApiClient(HttpClient http)
+public sealed class ApiClient(HttpClient http) : ISoloClientApi
 {
+    // -- The extension seam -------------------------------------------------
+    // An extension's client assembly cannot reference this one, so it injects
+    // ISoloClientApi and gets these. Implemented explicitly so the escape hatch
+    // does not sit among the endpoint methods as though it were one of them.
+    //
+    // Deliberately this class rather than a second HttpClient: an extension then
+    // shares core's credential, base address and ProblemDetails handling, and
+    // cannot end up on a path that authenticates differently from the app it is
+    // running inside.
+
+    Uri ISoloClientApi.Resolve(string relativePath) =>
+        new(http.BaseAddress!, relativePath.TrimStart('/'));
+
+    Task<T> ISoloClientApi.GetAsync<T>(string path, CancellationToken ct) => GetAsync<T>(path, ct);
+
+    Task<T> ISoloClientApi.SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct) =>
+        SendAsync<T>(method, path, body, ct);
+
+    Task ISoloClientApi.SendAsync(HttpMethod method, string path, object? body, CancellationToken ct) =>
+        SendAsync(method, path, body, ct);
+
     // -- Bootstrap ----------------------------------------------------------
     public Task<AuthConfigDto> GetAuthConfigAsync(CancellationToken ct = default) =>
         GetAsync<AuthConfigDto>("api/config/auth", ct);
@@ -352,62 +374,6 @@ public sealed class ApiClient(HttpClient http)
         return GetAsync<PagedResult<AuditEntryDto>>(
             $"api/projects/{projectId}/audit?{string.Join('&', query)}", ct);
     }
-
-    // -- MCP access ---------------------------------------------------------
-    // Served by the MCP extension, not by core. Every one of these answers 404
-    // on an instance without the package installed, which is what
-    // GetMcpInfoAsync turns into "the feature is not available here" rather
-    // than an error.
-
-    /// <summary>
-    /// The instance's MCP endpoint, or null when the extension is not
-    /// installed.
-    /// </summary>
-    public async Task<McpInfoDto?> GetMcpInfoAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            return await GetAsync<McpInfoDto>(McpInfoPath, ct);
-        }
-        catch (ApiException e) when (e.StatusCode is HttpStatusCode.NotFound
-                                         or HttpStatusCode.ServiceUnavailable)
-        {
-            // Not installed, or installed and disabled by a failed migration —
-            // both are "no MCP here", and the admin page is where the reason lives.
-            return null;
-        }
-    }
-
-    /// <summary>Relative path of the MCP endpoint itself, for the connection instructions.</summary>
-    public const string McpEndpointPath = "api/ext/mcp";
-
-    private const string McpInfoPath = $"{McpEndpointPath}/info";
-
-    private const string McpTokensPath = $"{McpEndpointPath}/tokens";
-
-    public Task<McpTokenStatusDto> GetMcpTokensAsync(CancellationToken ct = default) =>
-        GetAsync<McpTokenStatusDto>(McpTokensPath, ct);
-
-    /// <summary>
-    /// Generates a token, revoking whatever this account had before. The value
-    /// in the response is the only copy that will ever exist.
-    /// </summary>
-    public Task<McpTokenSecretDto> CreateMcpTokenAsync(
-        string? description, CancellationToken ct = default) =>
-        SendAsync<McpTokenSecretDto>(HttpMethod.Post, McpTokensPath, new { description }, ct);
-
-    public Task RevokeMcpTokenAsync(CancellationToken ct = default) =>
-        SendAsync(HttpMethod.Delete, $"{McpTokensPath}/current", null, ct);
-
-    /// <summary>Every token on the instance, with its 24-hour usage series. Super admin only.</summary>
-    public Task<McpTokenAdminDto> GetMcpTokenAuditAsync(CancellationToken ct = default) =>
-        GetAsync<McpTokenAdminDto>($"{McpTokensPath}/admin", ct);
-
-    /// <summary>The emergency lever: cuts off every live token on the instance.</summary>
-    public Task<RevokeAllMcpTokensResultDto> RevokeAllMcpTokensAsync(
-        string confirm, CancellationToken ct = default) =>
-        SendAsync<RevokeAllMcpTokensResultDto>(
-            HttpMethod.Post, $"{McpTokensPath}/admin/revoke-all", new { confirm }, ct);
 
     // -- Plumbing -----------------------------------------------------------
     private async Task<T> GetAsync<T>(string url, CancellationToken ct)

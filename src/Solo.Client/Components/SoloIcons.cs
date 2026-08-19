@@ -44,6 +44,7 @@ public static class SoloIcons
         ["Chat"] = Icons.Material.Filled.Chat,
         ["People"] = Icons.Material.Filled.People,
         ["Calendar"] = Icons.Material.Filled.CalendarMonth,
+        ["Robot"] = Icons.Material.Filled.SmartToy,
     };
 
     public static IEnumerable<string> Names => ByName.Keys;

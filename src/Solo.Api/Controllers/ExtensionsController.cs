@@ -24,7 +24,15 @@ public sealed class ExtensionsController(
     /// failed migration must not contribute a nav entry pointing at a route its
     /// assembly will never register.
     /// </summary>
+    /// <remarks>
+    /// Anonymous, and it has to be: the client fetches this during bootstrap,
+    /// before the router exists and long before anyone has signed in. The same
+    /// goes for the assembly and content endpoints below — an extension page has
+    /// to be routable on the sign-in screen, exactly as the active theme has to
+    /// be loadable there.
+    /// </remarks>
     [HttpGet]
+    [AllowAnonymous]
     public ActionResult<IReadOnlyList<ClientExtensionDto>> List() =>
         state.Enabled
             .Where(p => p.ClientAssembly is not null)
@@ -50,6 +58,7 @@ public sealed class ExtensionsController(
     /// so <c>connect-src 'self'</c> already covers the fetch.
     /// </remarks>
     [HttpGet("{extensionId}/client/{fileName}")]
+    [AllowAnonymous]
     public IActionResult GetClientAssembly(string extensionId, string fileName)
     {
         var package = state.Enabled.FirstOrDefault(p =>
@@ -71,6 +80,7 @@ public sealed class ExtensionsController(
 
     /// <summary>Static assets from the package's <c>content/</c> folder.</summary>
     [HttpGet("{extensionId}/content/{**path}")]
+    [AllowAnonymous]
     public IActionResult GetContent(string extensionId, string path)
     {
         var package = state.Enabled.FirstOrDefault(p =>

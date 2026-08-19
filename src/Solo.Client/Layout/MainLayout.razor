@@ -1,7 +1,6 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject UserSession Session
-@inject ApiClient Api
 @inject AppConfig Config
 @inject GoogleIdentityService Google
 @inject NavigationManager Navigation
@@ -36,14 +35,6 @@
                     <MudText Typo="Typo.body2" Class="px-4 py-2">@auth.User.Identity?.Name</MudText>
                     <MudDivider />
                     <ColorSchemeMenu />
-                    @* Only when the MCP extension is installed: a menu entry for a
-                       page that would only explain its own absence is noise on the
-                       instances that will never have it. *@
-                    @if (_mcpAvailable)
-                    {
-                        <MudDivider />
-                        <MudMenuItem Icon="@Icons.Material.Filled.SmartToy" Href="mcp">MCP access</MudMenuItem>
-                    }
                     <MudDivider />
                     <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@SignOut">Sign out</MudMenuItem>
                 </MudMenu>
@@ -92,7 +83,6 @@
 
     private bool _expiryDialogOpen;
     private bool _signingOut;
-    private bool _mcpAvailable;
 
     protected override void OnInitialized()
     {
@@ -172,24 +162,6 @@
                     // Token rejected or user deprovisioned; the route guards
                     // bounce them to sign-in on the next navigation.
                 }
-            }
-
-            // Is the MCP extension installed here? One probe per app load,
-            // and the answer only decides whether a menu entry exists — which
-            // is why it waits for a signed-in caller rather than asking an
-            // endpoint that would only answer 401.
-            try
-            {
-                _mcpAvailable = await Api.GetMcpInfoAsync() is not null;
-                if (_mcpAvailable)
-                {
-                    StateHasChanged();
-                }
-            }
-            catch (ApiException)
-            {
-                // The instance is unhappy, or this build is talking to an older
-                // one. The entry stays hidden and the next load asks again.
             }
         }
 

@@ -95,6 +95,44 @@ public class ExtensionNavTests : BunitContext, IAsyncLifetime
         Assert.DoesNotContain("Roadmap", nav.Markup);
     }
 
+    /// <summary>
+    /// An entry whose route names no project is instance-level: one of it, in
+    /// the footer beside Admin settings, rather than one per project. This is
+    /// what lets an extension ship a page that is not about a single project —
+    /// the MCP access page is the shipped example.
+    /// </summary>
+    [Fact]
+    public async Task An_entry_with_no_project_in_its_route_sits_in_the_footer()
+    {
+        Services.AddSingleton(CatalogWith(Nav("/mcp", "MCP access", "Read")));
+        await SeedProjectAsync(ProjectRole.Read, isOwner: false);
+
+        var nav = Render<NavMenu>();
+
+        // Present without expanding any project…
+        Assert.Contains("MCP access", nav.Markup);
+        Assert.Contains("href=\"mcp\"", nav.Markup);
+
+        // …and in the footer, not inside the project tree.
+        var footer = nav.Find(".nav-shell__footer");
+        Assert.Contains("MCP access", footer.TextContent);
+    }
+
+    /// <summary>
+    /// Instance-level entries appear once, however many projects the viewer has —
+    /// the substitution that makes a project entry per-project does not apply.
+    /// </summary>
+    [Fact]
+    public async Task An_instance_level_entry_appears_once_per_sidebar()
+    {
+        Services.AddSingleton(CatalogWith(Nav("/mcp", "MCP access", "Read")));
+        await SeedProjectsAsync();
+
+        var nav = Render<NavMenu>();
+
+        Assert.Single(nav.FindAll("a[href='mcp']"));
+    }
+
     private static ClientExtensionNavDto Nav(string route, string label, string requires) =>
         new(route, label, null, requires);
 
@@ -115,6 +153,20 @@ public class ExtensionNavTests : BunitContext, IAsyncLifetime
         _http.RouteJson("api/projects", new[]
         {
             new ProjectSummaryDto(projectId, "Alpha", "ALPHA", "Games", null, role, isOwner),
+        });
+        await Task.CompletedTask;
+    }
+
+    private async Task SeedProjectsAsync()
+    {
+        var first = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var second = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        _http.RouteJson($"api/projects/{first}/boards", Array.Empty<BoardDto>());
+        _http.RouteJson($"api/projects/{second}/boards", Array.Empty<BoardDto>());
+        _http.RouteJson("api/projects", new[]
+        {
+            new ProjectSummaryDto(first, "Alpha", "ALPHA", "Games", null, ProjectRole.ReadWrite, true),
+            new ProjectSummaryDto(second, "Beta", "BETA", "Games", null, ProjectRole.ReadWrite, true),
         });
         await Task.CompletedTask;
     }

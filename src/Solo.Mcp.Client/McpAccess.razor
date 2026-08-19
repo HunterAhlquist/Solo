@@ -1,0 +1,556 @@
+@page "/mcp"
+@attribute [Authorize]
+@inject ISoloClientApi Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject IJSRuntime Js
+
+@*
+    The MCP extension's page: generate a token, copy the config your client
+    wants — and, for a super admin, audit every token on the instance.
+
+    This assembly is downloaded from the instance at bootstrap and handed to the
+    host's router, so @page above is all that is needed for /mcp to resolve.
+    Everything it touches is either the host's DI (MudBlazor, ISoloClientApi) or
+    this package's own API.
+*@
+
+<PageTitle>MCP access · Solo</PageTitle>
+
+@* Styles ship in the package's content/ folder, so they arrive and leave with
+   the extension rather than living in the host's stylesheet. *@
+<HeadContent>
+    <link rel="stylesheet" href="@_mcp.Content("mcp.css")" />
+</HeadContent>
+
+<MudText Typo="Typo.h1" Class="mb-4">MCP access</MudText>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_info is null)
+{
+    @* This assembly loaded but the server half did not — a failed migration
+       disables it and its routes answer 503. Say so rather than offering a
+       token form pointed at nothing. *@
+    <MudAlert Severity="Severity.Warning" Style="max-width:44rem">
+        The MCP server isn't running on this instance. Its package is installed —
+        this page came from it — but the server half is disabled. An admin can see
+        why under Extensions in Admin settings.
+    </MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="max-width:44rem">
+        Connect an AI assistant to Solo and it can read your boards and create,
+        edit and move tasks — acting as you, and reaching only the projects you
+        are a member of.
+    </MudText>
+
+    @* ------------------------------------------------------------------ *@
+    <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:44rem">
+        <MudText Typo="Typo.h4" Class="mb-1">Your token</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            One token per account. Generating a new one immediately blocks the old
+            one, so anything still using it stops working.
+        </MudText>
+
+        @* Shown once, and never retrievable: the server keeps only a hash. *@
+        @if (_secret is not null)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4">
+                <MudText Typo="Typo.body2" Class="mb-2">
+                    <b>Copy this now.</b> It won't be shown again — if you lose it, generate another.
+                </MudText>
+                <div class="d-flex align-center gap-2">
+                    <MudTextField T="string" Value="@_secret" ReadOnly="true" Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" Class="mcp-token" Label="Token" />
+                    <MudTooltip Text="Copy to clipboard">
+                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                       OnClick="@(() => CopyAsync(_secret))" aria-label="Copy token" />
+                    </MudTooltip>
+                </div>
+            </MudAlert>
+        }
+
+        @if (_status?.Active is { } active)
+        {
+            <MudSimpleTable Dense="true" Elevation="0" Class="mb-4">
+                <tbody>
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">Created</MudText></td>
+                        <td><MudText Typo="Typo.body2">@Local(active.CreatedAt)</MudText></td>
+                    </tr>
+                    <tr>
+                        <td><MudText Typo="Typo.body2" Color="Color.Secondary">Last used</MudText></td>
+                        <td>
+                            <MudText Typo="Typo.body2">
+                                @(active.LastUsedAt is { } used ? Local(used) : "never")
+                            </MudText>
+                        </td>
+                    </tr>
+                    @if (active.Description is { Length: > 0 } label)
+                    {
+                        <tr>
+                            <td><MudText Typo="Typo.body2" Color="Color.Secondary">Label</MudText></td>
+                            <td><MudText Typo="Typo.body2">@label</MudText></td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+
+            <div class="d-flex gap-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_busy"
+                           StartIcon="@Icons.Material.Filled.Autorenew" OnClick="@RegenerateAsync">
+                    Regenerate
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@_busy"
+                           StartIcon="@Icons.Material.Filled.Block" OnClick="@RevokeAsync">
+                    Revoke
+                </MudButton>
+            </div>
+        }
+        else
+        {
+            <MudTextField @bind-Value="_description" Label="Label (optional)" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" MaxLength="200" Class="mb-3"
+                          HelperText="What you're connecting, e.g. &quot;Claude Code on the laptop&quot;." />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_busy"
+                       StartIcon="@Icons.Material.Filled.Key" OnClick="@MintAsync">
+                Generate token
+            </MudButton>
+        }
+    </MudPaper>
+
+    @* ------------------------------------------------------------------ *@
+    <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:44rem">
+        <MudText Typo="Typo.h4" Class="mb-1">Connect a client</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            Solo speaks MCP over HTTP at <code>@Endpoint</code>, protocol revision
+            @_info.ProtocolVersion. Use the address you reach Solo at — if you're in the
+            desktop app, that's your instance's URL, not this local one.
+        </MudText>
+
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pt-4">
+            <MudTabPanel Text="Claude Code">
+                <Snippet Title="Run this once" Text="@ClaudeCodeCommand" OnCopy="@CopyAsync" />
+            </MudTabPanel>
+            <MudTabPanel Text="JSON config">
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Most desktop clients — Claude Desktop, Cursor, Windsurf — read a config file
+                    with an <code>mcpServers</code> object. Add Solo to yours:
+                </MudText>
+                <Snippet Title="mcp.json" Text="@JsonConfig" OnCopy="@CopyAsync" />
+            </MudTabPanel>
+            <MudTabPanel Text="VS Code">
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Put this in <code>.vscode/mcp.json</code> in your workspace.
+                </MudText>
+                <Snippet Title=".vscode/mcp.json" Text="@VsCodeConfig" OnCopy="@CopyAsync" />
+            </MudTabPanel>
+            <MudTabPanel Text="Anything else">
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Any MCP client that supports a streamable-HTTP server and a custom header:
+                </MudText>
+                <Snippet Title="Endpoint" Text="@Endpoint" OnCopy="@CopyAsync" />
+                <Snippet Title="Header" Text="@($"Authorization: Bearer {TokenOrPlaceholder}")"
+                         OnCopy="@CopyAsync" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
+                    POST only — the endpoint is stateless and offers no event stream, so a client
+                    that insists on opening a GET stream will see 405.
+                </MudText>
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+
+    @* ------------------------------------------------------------------ *@
+    <MudPaper Elevation="1" Class="pa-4" Style="max-width:44rem">
+        <MudText Typo="Typo.h4" Class="mb-1">What it can do</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            @_info.Tools.Count tools, from MCP server version @_info.ServerVersion.
+        </MudText>
+
+        <MudSimpleTable Dense="true" Elevation="0">
+            <tbody>
+                @foreach (var tool in _info.Tools)
+                {
+                    <tr>
+                        <td style="white-space:nowrap"><code>@tool.Name</code></td>
+                        <td><MudText Typo="Typo.body2">@tool.Description</MudText></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+
+    @* ------------------------------------------------------------------ *@
+    @* Admin audit. Same page rather than a second one: the extension owns one
+       route, and a super admin arriving here wants both halves. Metadata only —
+       the instance stores hashes, so there is no token here to read. *@
+    @if (_audit is not null)
+    {
+        <MudPaper Elevation="1" Class="pa-4 mt-4" Style="max-width:44rem">
+            <div class="d-flex align-center mb-1">
+                <MudText Typo="Typo.h4">All tokens</MudText>
+                <MudSpacer />
+                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                           Disabled="@(LiveTokenCount == 0)"
+                           StartIcon="@Icons.Material.Filled.Block" OnClick="@RevokeAllAsync">
+                    Revoke all
+                </MudButton>
+            </div>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                Every token generated on this instance. Each acts as its owner and reaches only
+                their projects. You can see that a token exists and how much it is used — never
+                what it is.
+            </MudText>
+
+            @if (_audit.Tokens.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Nobody has generated one yet.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-1">Requests, last 24 hours</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2">
+                    Every request a token authenticated, per hour. One tool call makes more than
+                    one — the endpoint re-enters the API for each read and write it does.
+                </MudText>
+                <div class="mcp-usage mb-4" role="img"
+                     aria-label="@($"{TotalRequests} requests in the last 24 hours")">
+                    @for (var hour = 0; hour < HourlyTotals.Count; hour++)
+                    {
+                        var count = HourlyTotals[hour];
+                        var at = _audit.WindowStart.AddHours(hour).ToLocalTime().ToString("t");
+                        <MudTooltip Text="@($"{at} — {count} request{(count == 1 ? "" : "s")}")">
+                            <div class="mcp-usage__slot">
+                                <div class="mcp-usage__bar" style="@BarHeight(count, PeakHour)"></div>
+                            </div>
+                        </MudTooltip>
+                    }
+                </div>
+
+                <MudSimpleTable Dense="true" Elevation="0">
+                    <thead>
+                        <tr>
+                            <th>Owner</th>
+                            <th>Created</th>
+                            <th>Last used</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var token in _audit.Tokens)
+                        {
+                            <tr>
+                                <td>
+                                    <MudText Typo="Typo.body2">
+                                        @(token.UserDisplayName ?? token.UserEmail ?? "unknown")
+                                    </MudText>
+                                    @if (token.Description is { Length: > 0 } label)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@label</MudText>
+                                    }
+                                </td>
+                                <td><MudText Typo="Typo.body2">@Local(token.CreatedAt)</MudText></td>
+                                <td>
+                                    <MudText Typo="Typo.body2">
+                                        @(token.LastUsedAt is { } used ? Local(used) : "never")
+                                    </MudText>
+                                </td>
+                                <td>
+                                    @if (token.RevokedAt is { } revoked)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">
+                                            @RevocationLabel(token.RevokedReason)
+                                        </MudChip>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                                            @Local(revoked)
+                                        </MudText>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success">live</MudChip>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    /// <summary>Retyped to confirm the revoke-all; matches the server's constant.</summary>
+    private const string RevokeAllPhrase = "revoke all tokens";
+
+    private McpApi _mcp = default!;
+    private McpInfoDto? _info;
+    private McpTokenStatusDto? _status;
+    private McpTokenAdminDto? _audit;
+    private string? _secret;
+    private string? _description;
+    private string? _error;
+    private bool _loading = true;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _mcp = new McpApi(Api);
+        try
+        {
+            _info = await _mcp.TryInfoAsync();
+            if (_info is not null)
+            {
+                _status = await _mcp.TokensAsync();
+                await LoadAuditAsync();
+            }
+        }
+        catch (SoloApiException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// The audit is super-admin only, so a 403 is a legitimate answer rather
+    /// than an error — it is how a normal user's page learns it has no admin
+    /// section, without a second endpoint to ask.
+    /// </summary>
+    private async Task LoadAuditAsync()
+    {
+        try
+        {
+            _audit = await _mcp.AuditAsync();
+        }
+        catch (SoloApiException e) when (e.StatusCode is HttpStatusCode.Forbidden
+                                             or HttpStatusCode.Unauthorized)
+        {
+            _audit = null;
+        }
+    }
+
+    // -- Tokens -------------------------------------------------------------
+
+    /// <summary>
+    /// Regeneration is destructive to whatever is already connected, so it asks
+    /// first — the old token stops working the instant the new one exists.
+    /// </summary>
+    private async Task RegenerateAsync()
+    {
+        if (await ConfirmAsync(
+                "Regenerate token",
+                "Your current token stops working immediately. Any assistant still using it " +
+                "loses access until you give it the new one.",
+                "Regenerate"))
+        {
+            await MintAsync();
+        }
+    }
+
+    private async Task<bool> ConfirmAsync(string title, string message, string confirmText)
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            title,
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message, message },
+                { d => d.ConfirmText, confirmText },
+            });
+
+        return await dialog.Result is { Canceled: false };
+    }
+
+    private async Task MintAsync()
+    {
+        _busy = true;
+        try
+        {
+            var minted = await _mcp.CreateTokenAsync(_description);
+            _secret = minted.Value;
+            _description = null;
+            _status = await _mcp.TokensAsync();
+            await LoadAuditAsync();
+        }
+        catch (SoloApiException e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RevokeAsync()
+    {
+        if (!await ConfirmAsync(
+                "Revoke token",
+                "Anything using this token loses access immediately. You can generate a new one at any time.",
+                "Revoke"))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await _mcp.RevokeTokenAsync();
+            _secret = null;
+            _status = await _mcp.TokensAsync();
+            await LoadAuditAsync();
+        }
+        catch (SoloApiException e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// The emergency lever. Blunt on purpose — everyone has to generate a new
+    /// token afterwards — so it asks for the phrase rather than a single click.
+    /// </summary>
+    private async Task RevokeAllAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmPhraseDialog>(
+            "Revoke every MCP token",
+            new DialogParameters<ConfirmPhraseDialog>
+            {
+                { d => d.Message,
+                    $"This blocks all {LiveTokenCount} live token(s) on the instance at once. Every " +
+                    "connected assistant stops working immediately, and each owner has to generate " +
+                    $"a new token from this page. Type \"{RevokeAllPhrase}\" to confirm." },
+                { d => d.Phrase, RevokeAllPhrase },
+                { d => d.ConfirmText, "Revoke all" },
+            });
+
+        if (await dialog.Result is not { Canceled: false })
+        {
+            return;
+        }
+
+        try
+        {
+            var revoked = await _mcp.RevokeAllAsync(RevokeAllPhrase);
+            Snackbar.Add($"Revoked {revoked.Revoked} MCP token(s).", Severity.Success);
+            _status = await _mcp.TokensAsync();
+            await LoadAuditAsync();
+        }
+        catch (SoloApiException e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+    }
+
+    // -- The audit's numbers ------------------------------------------------
+
+    private int LiveTokenCount => _audit?.Tokens.Count(t => t.RevokedAt is null) ?? 0;
+
+    /// <summary>Requests per hour across every token — the instance-wide series.</summary>
+    private IReadOnlyList<int> HourlyTotals => _audit is null || _audit.Tokens.Count == 0
+        ? []
+        : Enumerable.Range(0, _audit.Tokens.Max(t => t.Usage.Count))
+            .Select(hour => _audit.Tokens.Sum(t => hour < t.Usage.Count ? t.Usage[hour] : 0))
+            .ToList();
+
+    private int PeakHour => HourlyTotals.Count == 0 ? 0 : HourlyTotals.Max();
+
+    private int TotalRequests => HourlyTotals.Sum();
+
+    /// <summary>
+    /// Bar height as a share of the busiest hour, with a floor so an hour that
+    /// saw traffic never renders as indistinguishable from one that saw none.
+    /// </summary>
+    private static string BarHeight(int count, int peak) => count == 0
+        ? "height:2px"
+        : $"height:{Math.Max(8, (int)Math.Round(count * 100.0 / Math.Max(peak, 1)))}%";
+
+    private static string RevocationLabel(string? reason) => reason switch
+    {
+        "Regenerated" => "replaced",
+        "RevokedByOwner" => "revoked by owner",
+        "RevokedByAdmin" => "revoked by admin",
+        _ => "revoked",
+    };
+
+    // -- Clipboard ----------------------------------------------------------
+
+    /// <summary>
+    /// Straight to the browser API rather than through a host interop helper:
+    /// the extension contract does not promise one, and depending on the host's
+    /// private JS surface is how a package breaks on an app update.
+    /// </summary>
+    private async Task CopyAsync(string text)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Snackbar.Add("Copied.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Couldn't reach the clipboard — select the text and copy it.", Severity.Warning);
+        }
+    }
+
+    // -- The snippets -------------------------------------------------------
+
+    private string Endpoint => _mcp.Endpoint.ToString();
+
+    /// <summary>
+    /// The real token while it is still on screen, a placeholder afterwards —
+    /// the server cannot give it back, so the snippets stop pretending it can.
+    /// </summary>
+    private string TokenOrPlaceholder => _secret ?? "YOUR_TOKEN";
+
+    private string ClaudeCodeCommand =>
+        $"claude mcp add --transport http solo {Endpoint} \\\n" +
+        $"  --header \"Authorization: Bearer {TokenOrPlaceholder}\"";
+
+    private string JsonConfig =>
+        $$"""
+          {
+            "mcpServers": {
+              "solo": {
+                "type": "http",
+                "url": "{{Endpoint}}",
+                "headers": {
+                  "Authorization": "Bearer {{TokenOrPlaceholder}}"
+                }
+              }
+            }
+          }
+          """;
+
+    private string VsCodeConfig =>
+        $$"""
+          {
+            "servers": {
+              "solo": {
+                "type": "http",
+                "url": "{{Endpoint}}",
+                "headers": {
+                  "Authorization": "Bearer {{TokenOrPlaceholder}}"
+                }
+              }
+            }
+          }
+          """;
+
+    private static string Local(DateTimeOffset value) => value.ToLocalTime().ToString("g");
+}

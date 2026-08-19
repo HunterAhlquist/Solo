@@ -3,8 +3,13 @@
   "name": "MCP Server",
   "version": "1.0.0",
   "soloApiVersion": ">=1.0 <2.0",
+  "soloClientVersion": ">=1.0 <2.0",
   "server": "server/Solo.Mcp.dll",
+  "client": "client/Solo.Mcp.Client.dll",
   "schema": "ext_mcp",
+  "nav": [
+    { "route": "/mcp", "label": "MCP access", "icon": "Robot" }
+  ],
   "hooks": [],
   "failOpen": false
 }

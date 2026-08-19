@@ -35,6 +35,8 @@
          actually produces rather than a project reference. -->
     <ProjectReference Include="..\..\src\Solo.Mcp\Solo.Mcp.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\src\Solo.Mcp.Client\Solo.Mcp.Client.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <!-- Lay the fixture out as a package directory under the test output, so
@@ -49,13 +51,24 @@
           DestinationFolder="$(OutDir)extension-fixtures\fixture" />
   </Target>
 
-  <!-- And the real MCP package, laid out the same way. -->
+  <!-- And the real MCP package, laid out the same way — both halves plus its
+       content/, so the tests exercise the archive a release actually ships. -->
   <Target Name="StageMcpExtension" AfterTargets="Build">
     <MSBuild Projects="..\..\src\Solo.Mcp\Solo.Mcp.csproj" Targets="GetTargetPath">
       <Output TaskParameter="TargetOutputs" ItemName="McpAssembly" />
     </MSBuild>
+    <MSBuild Projects="..\..\src\Solo.Mcp.Client\Solo.Mcp.Client.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="McpClientAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <McpContent Include="..\..\src\Solo.Mcp\content\**\*" />
+    </ItemGroup>
     <Copy SourceFiles="@(McpAssembly)"
           DestinationFolder="$(OutDir)extension-fixtures\mcp\server" />
+    <Copy SourceFiles="@(McpClientAssembly)"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp\client" />
+    <Copy SourceFiles="@(McpContent)"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp\content\%(RecursiveDir)" />
     <Copy SourceFiles="..\..\src\Solo.Mcp\extension.json"
           DestinationFolder="$(OutDir)extension-fixtures\mcp" />
   </Target>
