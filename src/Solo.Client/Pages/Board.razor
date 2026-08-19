@@ -205,6 +205,15 @@ else
         </ItemRenderer>
     </MudDropContainer>
 
+    @* Column-swap targets for a drag on the phone carousel: the column you want
+       is usually off-screen when you pick a card up, so holding it against
+       either edge steps that band along. Painted here, armed from
+       js/solo-interop.js — dragover fires continuously for the length of a
+       drag, which is no way to drive a render. pointer-events:none, so they can
+       never take the drop themselves. *@
+    <div class="board-edge board-edge--left" aria-hidden="true"></div>
+    <div class="board-edge board-edge--right" aria-hidden="true"></div>
+
     <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite"
                   CanModerate="@_canModerate" OnClose="@CloseDrawerAsync" />
 }

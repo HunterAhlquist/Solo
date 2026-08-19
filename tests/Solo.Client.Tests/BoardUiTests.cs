@@ -721,6 +721,22 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
             .Select(h => string.Join(' ', h.Children.Select(c => c.TextContent.Trim())))
             .ToList();
 
+    /// <summary>
+    /// Holding a dragged card against either edge steps the carousel to the next
+    /// column. The behaviour is in js/solo-interop.js, where a test can't reach
+    /// it — what is worth protecting here is that the two elements the script
+    /// lights up still exist, since it fails silently if they don't.
+    /// </summary>
+    [Fact]
+    public void The_board_paints_an_edge_the_drag_gesture_can_light_up_on_each_side()
+    {
+        QueueBoard(TestData.Board(tasks: [TestData.Task()]));
+        var page = RenderBoard();
+
+        Assert.Single(page.FindAll(".board-edge--left"));
+        Assert.Single(page.FindAll(".board-edge--right"));
+    }
+
     // -- Bug: the top-right profile menu (ActivatorContent) stopped opening -------
 
     /// <summary>
