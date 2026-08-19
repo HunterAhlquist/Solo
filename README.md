@@ -97,7 +97,7 @@ Health endpoint: `GET /healthz` (checks the database connection).
 
 Solo can be extended with packages that add API endpoints, database tables of
 their own, hooks that intercept core write operations, and pages in the client.
-Design and rationale are in [docs/extension-plan.md](docs/extension-plan.md).
+How to write one: [docs/writing-extensions.md](docs/writing-extensions.md). Design and rationale: [docs/extension-plan.md](docs/extension-plan.md).
 
 An extension package is a `.zip` — `extension.json` at the root, plus `server/`,
 `client/` and `content/` — dropped into the extensions directory

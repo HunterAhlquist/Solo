@@ -21,6 +21,8 @@
 >
 > Two smaller corrections fell out of the same work. The endpoints serving `GET /api/extensions`, the client assembly and `content/` had to become `[AllowAnonymous]`: the client fetches all three during bootstrap, before anyone has signed in, so under the fallback policy the client half of every extension silently never loaded. And a manifest nav entry whose route carries no `{projectAlias}` is now an **instance-level** entry, rendered once in the sidebar footer rather than per project — §9's nav model assumed every extension page belonged to a project.
 
+> **Building an extension? Read [writing-extensions.md](writing-extensions.md) instead.** That is the authoring recipe. This document is the design record — the trust model, the decisions and the alternatives rejected — and explains *why* the system is shaped the way it is.
+
 Companion to [backend-plan.md](backend-plan.md) and [frontend-plan.md](frontend-plan.md). Solo already has one working extension subsystem — **themes** ([themes.md](themes.md)) — and this plan deliberately reuses its shape: a zip package, a manifest, a mounted volume, a validating loader, and load failures surfaced in Admin settings instead of taken out on the instance. An operator who can install a theme can install an extension.
 
 Four capabilities are in scope: **new API endpoints**, **new data**, **hooks that intercept existing API calls**, and **new client pages**.
