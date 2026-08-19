@@ -18,8 +18,15 @@ public sealed class McpApi(ISoloClientApi api)
 
     private const string TokensPath = $"{EndpointPath}/tokens";
 
-    /// <summary>Absolute URL of the MCP endpoint, for the connection snippets.</summary>
-    public Uri Endpoint => api.Resolve(EndpointPath);
+    /// <summary>
+    /// Absolute URL of the MCP endpoint, for the connection snippets.
+    /// </summary>
+    /// <remarks>
+    /// Resolved externally: an MCP client is a separate process, and in the
+    /// desktop shell this page's own origin is a local proxy that exists only
+    /// while the app is running.
+    /// </remarks>
+    public Uri Endpoint => api.ResolveExternal(EndpointPath);
 
     /// <summary>Absolute URL of a file in this package's <c>content/</c> folder.</summary>
     public Uri Content(string fileName) => api.Resolve($"api/extensions/mcp/content/{fileName}");
@@ -37,12 +44,17 @@ public sealed class McpApi(ISoloClientApi api)
     public Task<McpTokenSecretDto> CreateTokenAsync(string? description, CancellationToken ct = default) =>
         api.SendAsync<McpTokenSecretDto>(HttpMethod.Post, TokensPath, new { description }, ct);
 
-    public Task RevokeTokenAsync(CancellationToken ct = default) =>
+    /// <summary>Revokes the caller's own token.</summary>
+    public Task RevokeOwnTokenAsync(CancellationToken ct = default) =>
         api.SendAsync(HttpMethod.Delete, $"{TokensPath}/current", null, ct);
 
     /// <summary>Every token on the instance, with its 24-hour usage series. Super admin only.</summary>
     public Task<McpTokenAdminDto> AuditAsync(CancellationToken ct = default) =>
         api.GetAsync<McpTokenAdminDto>($"{TokensPath}/admin", ct);
+
+    /// <summary>Cuts off one person's token. Super admin only.</summary>
+    public Task RevokeTokenAsync(Guid tokenId, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Post, $"{TokensPath}/admin/{tokenId}/revoke", null, ct);
 
     /// <summary>The emergency lever: cuts off every live token on the instance.</summary>
     public Task<RevokeAllMcpTokensResultDto> RevokeAllAsync(string confirm, CancellationToken ct = default) =>

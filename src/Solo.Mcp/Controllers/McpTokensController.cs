@@ -177,6 +177,48 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
     }
 
     /// <summary>
+    /// Cuts off one token — in practice, one person's access, since an account
+    /// holds at most one live token.
+    /// </summary>
+    /// <remarks>
+    /// The proportionate tool next to revoke-all: when one person's laptop is
+    /// lost, or one assistant is misbehaving, an admin should not have to cut off
+    /// everybody to deal with it. Idempotent — revoking an already-revoked token
+    /// leaves the original reason and time intact, because the audit's account of
+    /// when access actually stopped must not move.
+    /// </remarks>
+    [HttpPost("admin/{tokenId:guid}/revoke")]
+    [Authorize(Policy = SoloPolicies.SuperAdmin)]
+    public async Task<IActionResult> RevokeOne(
+        Guid tokenId,
+        [FromServices] ILogger<McpTokensController> logger,
+        CancellationToken ct)
+    {
+        var token = await db.Tokens.AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == tokenId, ct);
+        if (token is null)
+        {
+            return NotFound();
+        }
+
+        if (token.RevokedAt is not null)
+        {
+            return NoContent();
+        }
+
+        await RevokeAsync(
+            db.Tokens.Where(t => t.Id == tokenId && t.RevokedAt == null),
+            McpTokenRevocation.RevokedByAdmin,
+            ct);
+
+        logger.LogWarning(
+            "MCP token {TokenId} ({Owner}) revoked by {User}.",
+            tokenId, token.Email ?? token.Subject, User.Identity?.Name);
+
+        return NoContent();
+    }
+
+    /// <summary>
     /// Cuts off every live token on the instance at once.
     /// </summary>
     /// <remarks>

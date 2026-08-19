@@ -13,7 +13,7 @@ namespace Solo.Client.Api;
 /// <c>Version</c> (Postgres xmin) for optimistic concurrency; a 409 surfaces as
 /// <see cref="ApiConflictException"/>.
 /// </summary>
-public sealed class ApiClient(HttpClient http) : ISoloClientApi
+public sealed class ApiClient(HttpClient http, InstanceConnection instance) : ISoloClientApi
 {
     // -- The extension seam -------------------------------------------------
     // An extension's client assembly cannot reference this one, so it injects
@@ -27,6 +27,8 @@ public sealed class ApiClient(HttpClient http) : ISoloClientApi
 
     Uri ISoloClientApi.Resolve(string relativePath) =>
         new(http.BaseAddress!, relativePath.TrimStart('/'));
+
+    Uri ISoloClientApi.ResolveExternal(string relativePath) => instance.ResolveExternal(relativePath);
 
     Task<T> ISoloClientApi.GetAsync<T>(string path, CancellationToken ct) => GetAsync<T>(path, ct);
 

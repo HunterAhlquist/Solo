@@ -27,11 +27,24 @@ namespace Solo.Shared.Extensibility;
 public interface ISoloClientApi
 {
     /// <summary>
-    /// An absolute URL against the instance, for something the browser fetches
-    /// itself — a stylesheet from the package's <c>content/</c>, an image — or
-    /// for showing a user where their instance lives.
+    /// An absolute URL for something <em>this browser</em> fetches — a
+    /// stylesheet from the package's <c>content/</c>, an image.
     /// </summary>
     Uri Resolve(string relativePath);
+
+    /// <summary>
+    /// An absolute URL for something <em>outside</em> the browser to reach: an
+    /// address you are showing a user to paste into another tool.
+    /// </summary>
+    /// <remarks>
+    /// Usually identical to <see cref="Resolve"/>, and different in exactly one
+    /// place that matters — the desktop shell, which serves the client from a
+    /// local origin and proxies the API onward. There, <see cref="Resolve"/>
+    /// yields <c>http://localhost:41321/…</c>, which is correct for a fetch and
+    /// useless in an external tool's config. Use this one for anything a person
+    /// copies out of the app.
+    /// </remarks>
+    Uri ResolveExternal(string relativePath);
 
     /// <summary>GET, deserialized. Throws <see cref="SoloApiException"/> on a non-success status.</summary>
     Task<T> GetAsync<T>(string path, CancellationToken ct = default);

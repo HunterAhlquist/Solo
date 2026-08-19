@@ -132,8 +132,7 @@ else
         <MudText Typo="Typo.h4" Class="mb-1">Connect a client</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             Solo speaks MCP over HTTP at <code>@Endpoint</code>, protocol revision
-            @_info.ProtocolVersion. Use the address you reach Solo at — if you're in the
-            desktop app, that's your instance's URL, not this local one.
+            @_info.ProtocolVersion.
         </MudText>
 
         <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pt-4">
@@ -242,6 +241,7 @@ else
                             <th>Created</th>
                             <th>Last used</th>
                             <th>Status</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -249,9 +249,7 @@ else
                         {
                             <tr>
                                 <td>
-                                    <MudText Typo="Typo.body2">
-                                        @(token.UserDisplayName ?? token.UserEmail ?? "unknown")
-                                    </MudText>
+                                    <MudText Typo="Typo.body2">@Owner(token)</MudText>
                                     @if (token.Description is { Length: > 0 } label)
                                     {
                                         <MudText Typo="Typo.caption" Color="Color.Secondary">@label</MudText>
@@ -276,6 +274,19 @@ else
                                     else
                                     {
                                         <MudChip T="string" Size="Size.Small" Color="Color.Success">live</MudChip>
+                                    }
+                                </td>
+                                <td style="width:1%">
+                                    @* Only a live token has anything to cut off; a revoked
+                                       row is history and stays that way. *@
+                                    @if (token.RevokedAt is null)
+                                    {
+                                        <MudTooltip Text="@($"Revoke {Owner(token)}'s token")">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Block" Size="Size.Small"
+                                                           Color="Color.Error" Disabled="@_busy"
+                                                           OnClick="@(() => RevokeOneAsync(token))"
+                                                           aria-label="@($"Revoke {Owner(token)}'s token")" />
+                                        </MudTooltip>
                                     }
                                 </td>
                             </tr>
@@ -406,8 +417,46 @@ else
         _busy = true;
         try
         {
-            await _mcp.RevokeTokenAsync();
+            await _mcp.RevokeOwnTokenAsync();
             _secret = null;
+            _status = await _mcp.TokensAsync();
+            await LoadAuditAsync();
+        }
+        catch (SoloApiException e)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Owner(McpTokenAuditDto token) =>
+        token.UserDisplayName ?? token.UserEmail ?? "unknown";
+
+    /// <summary>
+    /// Cuts off one person's access. The proportionate tool beside revoke-all:
+    /// one lost laptop should not cost everybody their token.
+    /// </summary>
+    private async Task RevokeOneAsync(McpTokenAuditDto token)
+    {
+        if (!await ConfirmAsync(
+                $"Revoke {Owner(token)}'s token",
+                $"{Owner(token)} loses MCP access immediately, and anything they have connected " +
+                "stops working. They can generate a new token themselves from this page.",
+                "Revoke"))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await _mcp.RevokeTokenAsync(token.Id);
+            Snackbar.Add($"Revoked {Owner(token)}'s token.", Severity.Success);
+            // Their own token is in this table too, so the section above can go
+            // stale from a click down here.
             _status = await _mcp.TokensAsync();
             await LoadAuditAsync();
         }

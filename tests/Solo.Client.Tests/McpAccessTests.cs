@@ -126,6 +126,56 @@ public class McpAccessTests : ComponentTestBase
     }
 
     /// <summary>
+    /// The desktop shell serves the client from its own local origin and proxies
+    /// the API onward, so the page's origin is a server that exists only while
+    /// the app runs. What goes in an MCP client's config has to be the instance.
+    /// </summary>
+    [Fact]
+    public async Task In_the_desktop_shell_the_snippets_name_the_instance_not_the_local_origin()
+    {
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
+
+        // What the shell answers through the preload bridge.
+        JSInterop.Setup<string?>("solo.desktop.instanceUrl").SetResult("https://solo.example.com");
+        await _http.Instance.ResolveExternalAddressAsync(JSInterop.JSRuntime);
+
+        var page = RenderPage();
+
+        Assert.Contains("https://solo.example.com/api/ext/mcp", page.Markup);
+        Assert.DoesNotContain("solo.test/api/ext/mcp", page.Markup);
+    }
+
+    /// <summary>
+    /// One lost laptop should not cost everybody their token, so the audit
+    /// offers a per-row revoke beside the instance-wide one.
+    /// </summary>
+    [Fact]
+    public void An_admin_can_revoke_one_live_token_from_the_audit()
+    {
+        Installed(audit: AuditWith(revoked: false));
+        _http.Route(TokensPath, HttpStatusCode.OK, WithToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+
+        Assert.Single(page.FindAll("button[aria-label=\"Revoke Someone's token\"]"));
+    }
+
+    /// <summary>A revoked row is history; there is nothing left to cut off.</summary>
+    [Fact]
+    public void A_revoked_row_offers_no_revoke_button()
+    {
+        Installed(audit: AuditWith(revoked: true));
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+
+        Assert.Empty(page.FindAll("button[aria-label=\"Revoke Someone's token\"]"));
+        // The row is still listed — revocation is the audit trail, not a delete.
+        Assert.Contains("Someone", page.Markup);
+    }
+
+    /// <summary>
     /// A 403 from the audit endpoint is how a normal user's page learns it has
     /// no admin section — there is no second endpoint to ask.
     /// </summary>
@@ -144,25 +194,7 @@ public class McpAccessTests : ComponentTestBase
     [Fact]
     public void An_admin_sees_every_token_and_the_usage_graph_but_no_secret()
     {
-        Installed(audit: new
-        {
-            windowStart = DateTimeOffset.UtcNow.AddHours(-23),
-            tokens = new[]
-            {
-                new
-                {
-                    id = Guid.NewGuid(),
-                    userEmail = "someone@example.com",
-                    userDisplayName = "Someone",
-                    description = "Laptop",
-                    createdAt = DateTimeOffset.UtcNow.AddDays(-2),
-                    lastUsedAt = (DateTimeOffset?)DateTimeOffset.UtcNow,
-                    revokedAt = (DateTimeOffset?)null,
-                    revokedReason = (string?)null,
-                    usage = Enumerable.Range(0, 24).Select(i => i).ToArray(),
-                },
-            },
-        });
+        Installed(audit: AuditWith(revoked: false));
         _http.Route(TokensPath, HttpStatusCode.OK, WithToken(), HttpMethod.Get);
 
         var page = RenderPage();
@@ -196,6 +228,26 @@ public class McpAccessTests : ComponentTestBase
             _http.Route(AuditPath, HttpStatusCode.OK, audit);
         }
     }
+
+    private static object AuditWith(bool revoked) => new
+    {
+        windowStart = DateTimeOffset.UtcNow.AddHours(-23),
+        tokens = new[]
+        {
+            new
+            {
+                id = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                userEmail = "someone@example.com",
+                userDisplayName = "Someone",
+                description = "Laptop",
+                createdAt = DateTimeOffset.UtcNow.AddDays(-2),
+                lastUsedAt = (DateTimeOffset?)DateTimeOffset.UtcNow,
+                revokedAt = revoked ? DateTimeOffset.UtcNow : (DateTimeOffset?)null,
+                revokedReason = revoked ? "RevokedByAdmin" : null,
+                usage = Enumerable.Range(0, 24).Select(i => i).ToArray(),
+            },
+        },
+    };
 
     private static object NoToken() => new { active = (object?)null, history = Array.Empty<object>() };
 

@@ -430,6 +430,11 @@ function registerIpc() {
         settingsWindow?.close();
     });
 
+    // The client is served from this shell's local origin and reaches the API
+    // through the proxy, so it cannot work out the instance's own address —
+    // which is what a user has to paste into a tool running outside the app.
+    ipcMain.handle('instance:url', () => settings.instanceUrl);
+
     ipcMain.handle('desktop-auth:begin', () => beginBrowserSignIn());
 
     // Asked for once per page load: the window may already be fullscreen when

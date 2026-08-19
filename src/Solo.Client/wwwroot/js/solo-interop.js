@@ -73,6 +73,12 @@ window.solo = {
 
         beginSignIn: () => window.soloDesktop.beginSignIn(),
 
+        // The instance this shell is pointed at, or null on the web build where
+        // the page origin already is the instance. Defensive about the bridge
+        // being absent: this is called unconditionally at startup.
+        instanceUrl: async () =>
+            (window.soloDesktop?.instanceUrl ? await window.soloDesktop.instanceUrl() : null),
+
         // Called by the shell when the browser flow completes: the session is
         // already live server-side, so store it, then tell .NET.
         deliverSession(token, user) {

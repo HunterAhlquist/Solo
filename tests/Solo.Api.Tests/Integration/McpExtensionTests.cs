@@ -394,6 +394,73 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.True(usage[^1] > 0, "the current hour should have counted the requests just made");
     }
 
+    /// <summary>
+    /// The proportionate lever beside revoke-all: one person's access, without
+    /// costing everyone else theirs.
+    /// </summary>
+    [SkippableFact]
+    public async Task An_admin_can_revoke_one_persons_token_without_touching_the_rest()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var mine = await MintTokenAsync();
+        var stranger = _factory.As("stranger", "stranger@example.com", "Stranger");
+        await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Anything", alias = "ANY" });
+        var theirs = await MintTokenAsync(client: stranger);
+
+        var audit = await _admin.GetJson<JsonObject>($"{Tokens}/admin");
+        var theirRow = audit["tokens"]!.AsArray()
+            .Single(t => t!["userEmail"]!.GetValue<string>() == "stranger@example.com")!;
+        var theirId = Guid.Parse(theirRow["id"]!.GetValue<string>());
+
+        var response = await _admin.PostAsync($"{Tokens}/admin/{theirId}/revoke", null);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await ListToolsAsync(McpClient(theirs.Value))).Status);
+        // Everyone else is untouched — that is the whole point of not using revoke-all.
+        Assert.Equal(HttpStatusCode.OK, (await ListToolsAsync(McpClient(mine.Value))).Status);
+
+        var after = await _admin.GetJson<JsonObject>($"{Tokens}/admin");
+        var revoked = after["tokens"]!.AsArray()
+            .Single(t => Guid.Parse(t!["id"]!.GetValue<string>()) == theirId)!;
+        Assert.Equal("RevokedByAdmin", revoked["revokedReason"]!.GetValue<string>());
+    }
+
+    /// <summary>
+    /// Idempotent, and it must not move the audit's account of when access
+    /// actually stopped.
+    /// </summary>
+    [SkippableFact]
+    public async Task Revoking_an_already_revoked_token_leaves_the_original_record()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var token = await MintTokenAsync();
+        var id = token.Id;
+
+        await _admin.DeleteAsync($"{Tokens}/current");
+        var first = await _admin.GetJson<JsonObject>($"{Tokens}/admin");
+        var before = first["tokens"]!.AsArray().Single(t => Guid.Parse(t!["id"]!.GetValue<string>()) == id)!;
+
+        var response = await _admin.PostAsync($"{Tokens}/admin/{id}/revoke", null);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var second = await _admin.GetJson<JsonObject>($"{Tokens}/admin");
+        var after = second["tokens"]!.AsArray().Single(t => Guid.Parse(t!["id"]!.GetValue<string>()) == id)!;
+
+        Assert.Equal(before["revokedAt"]!.GetValue<string>(), after["revokedAt"]!.GetValue<string>());
+        Assert.Equal("RevokedByOwner", after["revokedReason"]!.GetValue<string>());
+    }
+
+    [SkippableFact]
+    public async Task Revoking_an_unknown_token_is_a_404()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var response = await _admin.PostAsync($"{Tokens}/admin/{Guid.NewGuid()}/revoke", null);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     [SkippableFact]
     public async Task Revoke_all_cuts_off_every_token_on_the_instance()
     {
@@ -441,6 +508,8 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, (await stranger.GetAsync($"{Tokens}/admin")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await stranger.PostAsJsonAsync(
             $"{Tokens}/admin/revoke-all", new { confirm = "revoke all tokens" }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await stranger.PostAsync($"{Tokens}/admin/{Guid.NewGuid()}/revoke", null)).StatusCode);
     }
 
     // -----------------------------------------------------------------------

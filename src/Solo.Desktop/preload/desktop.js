@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('soloDesktop', {
     // Opens the browser sign-in flow (main starts a device-code flow on the
     // instance and polls it for the session).
     beginSignIn: () => ipcRenderer.invoke('desktop-auth:begin'),
+
+    // The Solo instance this shell is pointed at. The client needs it whenever
+    // it shows an address for something outside the app to use — its own origin
+    // is this local server, which only exists while the app is running.
+    instanceUrl: () => ipcRenderer.invoke('instance:url'),
 });
 
 // ---------------------------------------------------------------------------

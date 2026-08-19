@@ -18,6 +18,12 @@ to grow for this is **`ISoloClientApi`** (in `Solo.Shared.Extensibility`) — an
 authenticated call into the instance, implemented by the host's own `ApiClient`,
 so a package shares the app's credential rather than inventing one.
 
+Note its two resolvers. `Resolve` is for something this browser fetches — the
+stylesheet below. `ResolveExternal` is for an address a person copies out of the
+app, which is what the connection snippets are: in the desktop shell the page's
+origin is a local proxy that only exists while the app is running, so an MCP
+client configured with it would break the moment Solo was closed.
+
 What it brings itself:
 
 - **Its API shapes.** [McpApi.cs](McpApi.cs) mirrors what `Solo.Mcp` serves. The

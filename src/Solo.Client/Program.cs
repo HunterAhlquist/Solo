@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using MudBlazor;
 using MudBlazor.Services;
 using Solo.Client;
@@ -89,7 +91,17 @@ builder.Services.AddMudServices(options =>
 });
 builder.Services.AddMudMarkdownServices();
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// In the desktop shell the client is served from a local origin that proxies the
+// API onward, so the address a user must paste into a tool running outside the
+// app is the instance the shell points at — not this page's origin. Asked once,
+// here, because the answer cannot change without a restart and no page should
+// have to know the shell exists. A no-op on the web build.
+await host.Services.GetRequiredService<InstanceConnection>()
+    .ResolveExternalAddressAsync(host.Services.GetRequiredService<IJSRuntime>());
+
+await host.RunAsync();
 
 // ---------------------------------------------------------------------------
 static async Task<ExtensionCatalog> LoadExtensionsAsync(InstanceConnection instance)
@@ -104,7 +116,7 @@ static async Task<AppConfig> LoadConfigAsync(InstanceConnection instance)
     using var http = new HttpClient { BaseAddress = instance.BaseAddress };
     try
     {
-        var api = new ApiClient(http);
+        var api = new ApiClient(http, instance);
 
         // Both calls are anonymous and independent, so they overlap rather than
         // adding a second round trip to a startup that already blocks on one.

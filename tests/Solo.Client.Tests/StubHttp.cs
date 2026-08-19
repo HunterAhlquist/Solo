@@ -75,8 +75,15 @@ internal sealed class StubHttp : HttpMessageHandler
         return this;
     }
 
+    /// <summary>
+    /// The instance the stub's clients are pointed at. Exposed so a test can
+    /// drive <see cref="InstanceConnection.ResolveExternalAddressAsync"/> —
+    /// standing in for the desktop shell — rather than reaching past it.
+    /// </summary>
+    public InstanceConnection Instance { get; } = new("https://solo.test/");
+
     public ApiClient CreateClient() =>
-        new(new HttpClient(this) { BaseAddress = new Uri("https://solo.test/") });
+        new(new HttpClient(this) { BaseAddress = Instance.BaseAddress }, Instance);
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)

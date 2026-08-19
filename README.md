@@ -107,7 +107,10 @@ A package's **client half** is a Razor class library the browser downloads at
 bootstrap and hands to the router, so its `@page` routes resolve like any other.
 Its pages resolve MudBlazor, dialogs and JS interop from the host, and call the
 API through `ISoloClientApi` — the host's own authenticated client, so an
-extension shares the app's credential rather than inventing one. A manifest nav
+extension shares the app's credential rather than inventing one. Use its
+`ResolveExternal` for any address a person copies out of the app: in the desktop
+shell the page's own origin is a local proxy, and only the instance's address
+works in another tool. A manifest nav
 entry whose route contains `{projectAlias}` renders per project, gated on the
 viewer's role in it; one without it is instance-level and sits in the sidebar
 footer.
@@ -173,8 +176,8 @@ SHA-256 hashes, so nobody — super admin included — can read one back. One li
 token per account: generating a new one blocks the old one immediately, and the
 revoked row stays in the audit. A super admin
 sees a second section on the same page: every token's owner, creation and
-revocation times and a 24-hour usage graph, plus an emergency **Revoke all**
-that cuts off every token on the instance at once.
+revocation times and a 24-hour usage graph, a per-row **Revoke** for cutting off
+one person, and an emergency **Revoke all** for cutting off the instance.
 
 ## Desktop app
 
