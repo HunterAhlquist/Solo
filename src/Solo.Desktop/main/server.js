@@ -13,9 +13,6 @@ const httpProxy = require('http-proxy');
 const PROXY_PREFIXES = ['/api/', '/hubs/'];
 const PROXY_EXACT = ['/healthz'];
 
-// Local MCP endpoint (see main/mcp.js) — handled here, never proxied.
-const MCP_PATH = '/mcp';
-
 // The client shipped inside the app renders the same user-written markdown the
 // hosted build does, so the local origin gets the same policy the API sends
 // (Solo.Api/SecurityHeaders.cs) — keep the two in step. 'wasm-unsafe-eval' is
@@ -81,7 +78,7 @@ function shouldProxy(url) {
     return PROXY_PREFIXES.some(p => pathname.startsWith(p)) || PROXY_EXACT.includes(pathname);
 }
 
-function createSoloServer({ clientDir, getTarget, mcpHandler }) {
+function createSoloServer({ clientDir, getTarget }) {
     const proxy = httpProxy.createProxyServer({
         changeOrigin: true, // host-based routing (reverse proxies) needs the real Host
         ws: true,
@@ -106,11 +103,6 @@ function createSoloServer({ clientDir, getTarget, mcpHandler }) {
         const host = (req.headers.host ?? '').toLowerCase();
         if (!host.startsWith('localhost:') && !host.startsWith('127.0.0.1:')) {
             res.writeHead(403).end();
-            return;
-        }
-
-        if (mcpHandler && req.url.split('?')[0] === MCP_PATH) {
-            mcpHandler(req, res);
             return;
         }
 

@@ -127,22 +127,6 @@
       color: var(--accent);
       user-select: text;
     }
-
-    .toggle {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-    }
-
-    .toggle input {
-      width: auto;
-      margin: 0;
-      accent-color: var(--accent);
-    }
-
-    .toggle label {
-      cursor: pointer;
-    }
   </style>
 </head>
 <body>
@@ -165,16 +149,6 @@
     as an authorized JavaScript origin.
   </p>
 
-  <div class="toggle">
-    <input id="mcp" type="checkbox" />
-    <label for="mcp">Allow AI agents (MCP)</label>
-  </div>
-  <p class="hint">
-    Serves task tools for MCP clients on this machine (Claude Code, Claude
-    Desktop, …) at <span class="origin" id="mcpUrl">http://localhost:41321/mcp</span>.
-    Agents act as the signed-in user; while off, the endpoint doesn't exist.
-  </p>
-
   <div id="status"></div>
 
   <div class="buttons">
@@ -186,7 +160,6 @@
 
 <script>
   const urlInput = document.getElementById('url');
-  const mcpCheckbox = document.getElementById('mcp');
   const status = document.getElementById('status');
   const testButton = document.getElementById('test');
   const saveButton = document.getElementById('save');
@@ -223,7 +196,7 @@
   async function save() {
     setBusy(true);
     setStatus('Saving…');
-    const result = await window.soloSettings.save(urlInput.value, mcpCheckbox.checked);
+    const result = await window.soloSettings.save(urlInput.value);
     if (!result.ok) {
       setBusy(false);
       setStatus(result.error, 'error');
@@ -241,13 +214,11 @@
     if (e.key === 'Escape') window.soloSettings.close();
   });
 
-  window.soloSettings.get().then(({ instanceUrl, port, mcpEnabled, firstRun }) => {
+  window.soloSettings.get().then(({ instanceUrl, port, firstRun }) => {
     if (instanceUrl) {
       urlInput.value = instanceUrl;
     }
-    mcpCheckbox.checked = mcpEnabled === true;
     document.getElementById('origin').textContent = `http://localhost:${port}`;
-    document.getElementById('mcpUrl').textContent = `http://localhost:${port}/mcp`;
     if (firstRun) {
       cancelButton.textContent = 'Quit';
       setStatus('Welcome. Point Solo at your instance to get started.');

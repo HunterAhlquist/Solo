@@ -21,11 +21,9 @@ function load() {
             port: Number.isInteger(raw.port) && raw.port > 0 && raw.port < 65536
                 ? raw.port
                 : DEFAULT_PORT,
-            // MCP is opt-in: anything but an explicit true means off.
-            mcpEnabled: raw.mcpEnabled === true,
         };
     } catch {
-        return { instanceUrl: null, port: DEFAULT_PORT, mcpEnabled: false };
+        return { instanceUrl: null, port: DEFAULT_PORT };
     }
 }
 

@@ -361,7 +361,7 @@ On web these are always one build. In the shell they are not, and an RCL compile
 
 **The alternative, named and not recommended:** proxy the client assets too, serving `Solo.Client` from the instance rather than the bundle. That deletes the skew and makes desktop identical to web, at the cost of pulling the WASM payload over the network on cold start, losing offline start, and undoing the shell's locally-served design. A hybrid — prefer the instance's build, cache it, fall back to bundled — is what to revisit if desktop skew becomes recurring pain. Not worth it for extensions alone.
 
-**Limits.** Extensions cannot reach the shell itself. `/mcp` is handled locally and never proxied (`Solo.Desktop/main/mcp.js`, versioned with the shell), so a server extension cannot add MCP tools; nor can extensions add menus, protocol handlers, or any main-process behaviour. To the shell, an extension is only ever more API surface and more Blazor pages.
+**Limits.** Extensions cannot reach the shell itself: they cannot add menus, protocol handlers, or any main-process behaviour. To the shell, an extension is only ever more API surface and more Blazor pages. (This paragraph used to carve out `/mcp` as well, on the grounds that the shell handled it locally and never proxied it — which is exactly why the MCP server was moved into an extension and deleted from the shell. An extension *can* add MCP tools now, because the endpoint is the instance's.)
 
 ## 10. Compatibility
 

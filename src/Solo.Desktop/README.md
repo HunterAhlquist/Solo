@@ -74,28 +74,16 @@ works depends on the provider's webview policy.
 
 ## MCP
 
-**Off by default.** Enable **Allow AI agents (MCP)** in *Solo → Server
-Settings…* and the running app serves an MCP endpoint at
-`http://localhost:41321/mcp` (streamable HTTP, stateless), so an MCP client on
-the same machine — Claude Code, Claude Desktop — can browse projects/boards
-and create or edit tasks. Task tools address a task by GUID or by full serial
-number (`DMD-PXW26-2`), so an agent holding a serial needs no id discovery.
-The toggle applies on save without a restart; while
-off, `/mcp` answers 404. The tools call the configured instance's REST API
-with the **signed-in user's own session token**, read from the running client
-per request: no separate credential, and MCP access ends the moment you sign
-out or close the app.
+The shell no longer serves an MCP endpoint. It moved to the instance, where it
+belongs: [src/Solo.Mcp](../Solo.Mcp) is an extension the server loads, so MCP
+works from any machine and any client rather than only while this app is
+running, and access is granted per user by a token the owner can rotate and an
+admin can audit and revoke.
 
-Connect Claude Code with:
-
-```sh
-claude mcp add --transport http solo http://localhost:41321/mcp
-```
-
-(This repo's `.mcp.json` already registers it for sessions inside the repo.)
-Only localhost clients can reach the endpoint: the local server rejects
-non-localhost `Host` headers, and `/mcp` additionally rejects browser
-cross-origin requests by `Origin`.
+Install the package on the instance and generate a token from **MCP access** in
+the profile menu — the page produces the config snippet each client wants. See
+the [MCP server section](../../README.md#mcp-server-bundled-extension) of the
+root README.
 
 ## Packaging
 
