@@ -2,20 +2,40 @@
     One cell of the swimlane × column grid. The container owns which tasks land
     here (via its ItemsSelector); the zone only owns the drop target and the
     Finished column's overflow expander.
+
+    The heading above the drop zone is the phone layout's half of the board
+    header: there the three columns become a swipeable carousel, so no shared
+    header row can line up with them and each column has to name itself. It is
+    hidden on the desktop grid, where .kanban-header names all three at once.
 *@
-<MudDropZone T="TaskDto" Identifier="@Identifier" AllowReorder="true" Class="kanban-zone">
-    @if (HiddenCount > 0)
-    {
-        <MudButton Variant="Variant.Text" Size="Size.Small" Style="opacity:.65"
-                   StartIcon="@Icons.Material.Filled.UnfoldMore" OnClick="@OnExpand">
-            Show all @(HiddenCount + BoardZones.FinishedVisibleLimit)
-        </MudButton>
-    }
-</MudDropZone>
+<div class="kanban-column">
+    <div class="kanban-column__header">
+        <MudText Typo="Typo.overline" Color="Color.Secondary">@Title</MudText>
+        <MudText Typo="Typo.overline" Color="Color.Secondary">@Count</MudText>
+    </div>
+
+    <MudDropZone T="TaskDto" Identifier="@Identifier" AllowReorder="true" Class="kanban-zone">
+        @if (HiddenCount > 0)
+        {
+            <MudButton Variant="Variant.Text" Size="Size.Small" Style="opacity:.65"
+                       StartIcon="@Icons.Material.Filled.UnfoldMore" OnClick="@OnExpand">
+                Show all @(HiddenCount + BoardZones.FinishedVisibleLimit)
+            </MudButton>
+        }
+    </MudDropZone>
+</div>
 
 @code {
     [Parameter, EditorRequired]
     public required string Identifier { get; set; }
+
+    /// <summary>The column's name, shown by the phone layout's per-column heading.</summary>
+    [Parameter]
+    public string? Title { get; set; }
+
+    /// <summary>Cards in this zone, folded ones included — the heading's count.</summary>
+    [Parameter]
+    public int Count { get; set; }
 
     /// <summary>Cards folded away behind the expander; zero for every non-Finished zone.</summary>
     [Parameter]
