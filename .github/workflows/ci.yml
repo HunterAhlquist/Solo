@@ -61,8 +61,10 @@ jobs:
             src/Solo.Data
             src/Solo.Extensibility
             src/Solo.Extensions
+            src/Solo.Mcp
             src/Solo.Shared
             tests
+            build
             .github/workflows/ci.yml
           )
 
@@ -118,6 +120,21 @@ jobs:
           path: TestResults
           retention-days: 7
 
+      # The MCP server ships as an extension package rather than inside the
+      # image: an operator drops it into the extensions volume and restarts.
+      # Built on every run so a PR proves the package still assembles, and
+      # attached to the release below when a tag is pushed.
+      - name: Package the MCP extension
+        run: build/pack-mcp-extension.sh
+
+      - name: Upload the MCP extension package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-extension
+          path: artifacts/solo-mcp-*.zip
+          if-no-files-found: error
+          retention-days: 7
+
   publish-image:
     name: Publish image to GHCR
     needs: [changes, build-test]
@@ -166,6 +183,29 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release-extension:
+    name: Attach the MCP extension to the release
+    needs: [changes, build-test]
+    # Tag pushes only; a PR build just proves the package assembles.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/server-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-extension
+          path: artifacts
+
+      # Creates the release for the tag if it doesn't exist yet; otherwise
+      # attaches the package to the existing one. The image is published
+      # separately to GHCR — this release carries what an operator installs by
+      # hand.
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/solo-mcp-*.zip
+          generate_release_notes: true
 
   # NO AUTOMATIC GHCR PRUNING. A `prune-images` job lived here for exactly one
   # release (v1.4.1, 2026-07-30) and took production down with

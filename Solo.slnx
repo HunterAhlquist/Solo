@@ -5,6 +5,7 @@
     <Project Path="src/Solo.Data/Solo.Data.csproj" />
     <Project Path="src/Solo.Extensibility/Solo.Extensibility.csproj" />
     <Project Path="src/Solo.Extensions/Solo.Extensions.csproj" />
+    <Project Path="src/Solo.Mcp/Solo.Mcp.csproj" />
     <Project Path="src/Solo.Shared/Solo.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/">

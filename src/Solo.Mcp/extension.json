@@ -1,0 +1,10 @@
+{
+  "id": "mcp",
+  "name": "MCP Server",
+  "version": "1.0.0",
+  "soloApiVersion": ">=1.0 <2.0",
+  "server": "server/Solo.Mcp.dll",
+  "schema": "ext_mcp",
+  "hooks": [],
+  "failOpen": false
+}

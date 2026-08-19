@@ -30,7 +30,7 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         }
 
         _connectionString = await postgres.CreateDatabaseAsync("extensions");
-        _factory = new SoloApiFactory(_connectionString, loadExtensions: true);
+        _factory = new SoloApiFactory(_connectionString, TestExtensions.Fixture);
         _admin = _factory.As("admin", "admin@example.com", "Admin");
         await TestClients.CompleteSetupAsync(_admin);
     }
