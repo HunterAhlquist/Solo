@@ -156,8 +156,15 @@ public sealed class ThemeCatalog
         }
 
         _snapshot = new Snapshot(themes, failures);
+        // Names the volume, because "0 packages" is exactly the moment an
+        // operator wants to know where it looked. Built-ins are counted
+        // separately so a volume that loaded nothing cannot hide behind them.
         _logger.LogInformation(
-            "Theme catalog loaded: {Count} theme(s), {Failures} failure(s).", themes.Count, failures.Count);
+            "Theme catalog loaded: {Count} theme(s) ({BuiltIn} built in), {Failures} failure(s). Packages: {Directory}.",
+            themes.Count,
+            themes.Count(t => t.Manifest.IsBuiltIn),
+            failures.Count,
+            string.IsNullOrWhiteSpace(_options.Directory) ? "(no directory configured)" : _options.Directory);
     }
 
     private void LoadBuiltIns(List<ThemePackage> themes, List<ThemeLoadFailure> failures)
@@ -180,6 +187,13 @@ public sealed class ThemeCatalog
     {
         if (string.IsNullOrWhiteSpace(_options.Directory))
         {
+            // Says so out loud rather than returning in silence: an operator who
+            // mounts a volume and drops a package in should not have to guess
+            // which of "wrong path", "unreadable" and "never configured" they
+            // are looking at.
+            _logger.LogInformation(
+                "Themes:Directory is not configured, so no packages are scanned; built-in themes only. " +
+                "Set Themes__Directory (the image ships /data/themes) to add one.");
             return;
         }
 
