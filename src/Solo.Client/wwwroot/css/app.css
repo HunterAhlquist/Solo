@@ -556,6 +556,84 @@ code {
 }
 
 /* ---------------------------------------------------------------------------
+   Drag-to-the-next-column edges (phone carousel).
+
+   Two bands down the sides of the screen, dark until a card is held against
+   one. They are signage, not drop zones — pointer-events:none, so the drop
+   still lands on whatever column is under the finger, and releasing over one
+   does nothing special. The inner rule charges over the dwell, so the wait has
+   something to show for itself; each step restarts it from empty.
+
+   They sit below the app bar and are inert everywhere but the carousel: the
+   script only arms them over a band that has somewhere left to scroll, which
+   the desktop grid never does.
+   --------------------------------------------------------------------------- */
+.board-edge {
+    position: fixed;
+    top: var(--solo-appbar-bottom, 5em);
+    bottom: 0;
+    width: 2.75rem;
+    z-index: 4;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease-in-out;
+}
+
+.board-edge--left {
+    left: 0;
+    background: linear-gradient(
+        to right, color-mix(in srgb, var(--mud-palette-primary) 30%, transparent), transparent);
+}
+
+.board-edge--right {
+    right: 0;
+    background: linear-gradient(
+        to left, color-mix(in srgb, var(--mud-palette-primary) 30%, transparent), transparent);
+}
+
+.board-edge--armed {
+    opacity: 1;
+}
+
+/* The charge: a hairline at the very edge that fills over the dwell. */
+.board-edge::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--mud-palette-primary);
+    box-shadow: 0 0 0.75rem 0.15rem var(--mud-palette-primary);
+    opacity: 0;
+}
+
+.board-edge--left::after {
+    left: 0;
+}
+
+.board-edge--right::after {
+    right: 0;
+}
+
+/* Duration is the script's dwell; keep the two in step. */
+.board-edge--armed::after {
+    animation: board-edge-charge 1s linear forwards;
+}
+
+@keyframes board-edge-charge {
+    from { opacity: 0.15; }
+    to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    /* No ramp, but the same wait — the band simply stands lit. */
+    .board-edge--armed::after {
+        animation: none;
+        opacity: 1;
+    }
+}
+
+/* ---------------------------------------------------------------------------
    The board on a phone — the status columns become a swipeable carousel.
 
    Three columns beside a 13rem gutter needs the better part of 900px. Below
