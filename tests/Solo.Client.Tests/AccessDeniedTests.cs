@@ -68,6 +68,9 @@ public class MainLayoutAccessDeniedTests : ComponentTestBase
         this.AddAuthorization();
         var session = new UserSession(new StubHttp().Respond(HttpStatusCode.Forbidden).CreateClient());
         Services.AddSingleton(session);
+        // The layout injects ApiClient for its own probes. Its own stub, so
+        // nothing it does consumes the session's canned 403.
+        Services.AddSingleton(new StubHttp().CreateClient());
         Services.AddSingleton(new AppConfig
         {
             Auth = new AuthConfigDto("https://accounts.google.com", "client-id", "google", true),

@@ -127,6 +127,34 @@ schema *and* strips the extension's keys from core's per-entity field bags; it
 is super-admin only, requires retyping the extension id, and is refused while
 the extension is still loaded.
 
+### MCP server (bundled extension)
+
+The one extension this repo ships is **`solo-mcp`** ([src/Solo.Mcp](src/Solo.Mcp)),
+which lets an LLM client read and edit Solo's boards. It is a package like any
+other, not part of the image: download `solo-mcp-<version>.zip` from the
+[releases](../../releases), copy it into the extensions directory, and restart.
+`build/pack-mcp-extension.sh` builds the same archive locally.
+
+Once installed, each person generates their own token from **MCP access** in
+their profile menu, and pastes the connection snippet the page produces into
+Claude Code, Claude Desktop, Cursor, VS Code or any other MCP client. The
+endpoint is `POST /api/ext/mcp` — streamable HTTP, stateless, no event stream —
+authenticated by `Authorization: Bearer solomcp_…`.
+
+A token **acts as the person who generated it**: every tool call re-enters
+Solo's own REST API carrying that token, so it gets the same authorization,
+auditing and live-board broadcasts as the same action performed in a browser,
+and it reaches only the projects its owner is a member of. Tools address a task
+by GUID or by full serial number (`DMD-PXW26-2`), so an agent holding a serial
+needs no id discovery.
+
+Tokens live in the extension's own `ext_mcp` schema and are stored only as
+SHA-256 hashes, so nobody — super admin included — can read one back. One live
+token per account: generating a new one blocks the old one immediately, and the
+revoked row stays in the audit. In **Admin settings**, a super admin sees every
+token's owner, creation and revocation times and a 24-hour usage graph, plus an
+emergency **Revoke all** that cuts off every token on the instance at once.
+
 ## Desktop app
 
 [src/Solo.Desktop](src/Solo.Desktop) is an Electron shell around the unmodified Solo web client. The shell serves the published Blazor WASM build from a local origin (`http://localhost:41321`) and reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to whichever Solo instance is configured in **Server Settings** — so the client runs byte-for-byte identical to the hosted build, same-origin, with no CORS anywhere and no changes to the API.

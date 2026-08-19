@@ -68,7 +68,23 @@ public sealed class PostgresFixture : IAsyncLifetime
         command.CommandText = $"CREATE DATABASE \"{name}\"";
         await command.ExecuteNonQueryAsync();
 
-        return new NpgsqlConnectionStringBuilder(adminConnectionString) { Database = name }.ConnectionString;
+        // One shared container serves the whole run, and every test builds its own
+        // host against its own database — so every test leaves behind a
+        // connection pool that EF's static provider cache keeps alive for the
+        // rest of the process. At the defaults (100 connections a pool, idle
+        // ones held for five minutes) a long run exhausts the server's
+        // max_connections, and the failure lands on whichever unrelated test
+        // runs next: "sorry, too many clients already".
+        //
+        // So: a small ceiling, and idle connections handed back within seconds
+        // rather than minutes. A single test never needs more than a handful.
+        return new NpgsqlConnectionStringBuilder(adminConnectionString)
+        {
+            Database = name,
+            MaxPoolSize = 8,
+            ConnectionIdleLifetime = 2,
+            ConnectionPruningInterval = 1,
+        }.ConnectionString;
     }
 }
 
@@ -160,26 +176,66 @@ public sealed class TestLogCollector : ILoggerProvider
     }
 }
 
-public sealed class SoloApiFactory(string connectionString, bool loadExtensions = false)
+/// <summary>Which staged extension packages a factory should load.</summary>
+[Flags]
+public enum TestExtensions
+{
+    None = 0,
+
+    /// <summary>The test fixture package (tests/Solo.Extension.Fixture).</summary>
+    Fixture = 1,
+
+    /// <summary>The shipped MCP package (src/Solo.Mcp).</summary>
+    Mcp = 2,
+}
+
+public sealed class SoloApiFactory(
+    string connectionString,
+    TestExtensions extensions = TestExtensions.None,
+    string? extensionsDirectory = null)
     : WebApplicationFactory<Program>
 {
     public const string SetupUsername = "setup-admin";
     public const string SetupPassword = "first-run-secret";
 
     /// <summary>
-    /// Where the build staged the fixture package. Laid out as a real package
-    /// directory (extension.json + server/) and discovered on disk, so the
-    /// loader and its private AssemblyLoadContext are genuinely exercised —
-    /// the test project deliberately does not reference the fixture assembly.
+    /// Where the build staged a package. Laid out as a real package directory
+    /// (extension.json + server/) and discovered on disk, so the loader and its
+    /// private AssemblyLoadContext are genuinely exercised — the test project
+    /// deliberately references neither assembly.
     /// </summary>
-    public static string FixtureDirectory => Path.Combine(
-        AppContext.BaseDirectory, "extension-fixtures", "fixture");
+    public static string PackageDirectory(string id) => Path.Combine(
+        AppContext.BaseDirectory, "extension-fixtures", id);
+
+    public static string FixtureDirectory => PackageDirectory("fixture");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        if (loadExtensions)
+        var slot = 0;
+        if (extensions.HasFlag(TestExtensions.Fixture))
         {
-            builder.UseSetting("Extensions:DevelopmentDirectories:0", FixtureDirectory);
+            builder.UseSetting($"Extensions:DevelopmentDirectories:{slot++}", FixtureDirectory);
+        }
+
+        if (extensionsDirectory is not null)
+        {
+            // The zip-scanning path a deployment actually uses, rather than the
+            // unzipped development directories above.
+            builder.UseSetting("Extensions:Directory", extensionsDirectory);
+        }
+
+        if (extensions.HasFlag(TestExtensions.Mcp))
+        {
+            builder.UseSetting($"Extensions:DevelopmentDirectories:{slot}", PackageDirectory("mcp"));
+        }
+
+        if (extensions.HasFlag(TestExtensions.Mcp) || extensionsDirectory is not null)
+        {
+            // The MCP tools re-enter the API over HTTP (see SoloRestClient). There
+            // is no socket under WebApplicationFactory, so the loopback hop is
+            // pointed at the TestServer's own in-memory handler below — which is
+            // the same pipeline, minus the wire.
+            builder.UseSetting("Mcp:ApiBaseUrl", "http://localhost/");
         }
 
         builder.ConfigureLogging(logging => logging.AddProvider(new TestLogCollector()));
@@ -208,6 +264,14 @@ public sealed class SoloApiFactory(string connectionString, bool loadExtensions 
                         Auth.SessionTokens.IsSessionToken(Auth.SessionTokens.FromRequest(context.Request))
                             ? Auth.AuthConstants.SessionScheme
                             : null);
+
+            if (extensions.HasFlag(TestExtensions.Mcp) || extensionsDirectory is not null)
+            {
+                // Resolved lazily: the host does not exist yet here, but it does
+                // by the time an MCP tool first asks for a client.
+                services.AddHttpClient("solo-mcp")
+                    .ConfigurePrimaryHttpMessageHandler(() => Server.CreateHandler());
+            }
         });
     }
 }

@@ -30,6 +30,11 @@
          default context and the loader would never be exercised. -->
     <ProjectReference Include="..\Solo.Extension.Fixture\Solo.Extension.Fixture.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Same arrangement for the shipped MCP extension: built and staged as a
+         package, never referenced, so the tests exercise the package a release
+         actually produces rather than a project reference. -->
+    <ProjectReference Include="..\..\src\Solo.Mcp\Solo.Mcp.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <!-- Lay the fixture out as a package directory under the test output, so
@@ -42,6 +47,17 @@
           DestinationFolder="$(OutDir)extension-fixtures\fixture\server" />
     <Copy SourceFiles="..\Solo.Extension.Fixture\extension.json"
           DestinationFolder="$(OutDir)extension-fixtures\fixture" />
+  </Target>
+
+  <!-- And the real MCP package, laid out the same way. -->
+  <Target Name="StageMcpExtension" AfterTargets="Build">
+    <MSBuild Projects="..\..\src\Solo.Mcp\Solo.Mcp.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="McpAssembly" />
+    </MSBuild>
+    <Copy SourceFiles="@(McpAssembly)"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp\server" />
+    <Copy SourceFiles="..\..\src\Solo.Mcp\extension.json"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp" />
   </Target>
 
 </Project>
