@@ -103,6 +103,15 @@ An extension package is a `.zip` — `extension.json` at the root, plus `server/
 `client/` and `content/` — dropped into the extensions directory
 (`/data/extensions` in the deployment template).
 
+A package's **client half** is a Razor class library the browser downloads at
+bootstrap and hands to the router, so its `@page` routes resolve like any other.
+Its pages resolve MudBlazor, dialogs and JS interop from the host, and call the
+API through `ISoloClientApi` — the host's own authenticated client, so an
+extension shares the app's credential rather than inventing one. A manifest nav
+entry whose route contains `{projectAlias}` renders per project, gated on the
+viewer's role in it; one without it is instance-level and sits in the sidebar
+footer.
+
 > **Installing an extension is deploying code.** A server extension runs
 > in-process with the database connection string, and a client extension runs in
 > the same browser context as the session token. There is no sandbox and the
@@ -135,11 +144,13 @@ other, not part of the image: download `solo-mcp-<version>.zip` from the
 [releases](../../releases), copy it into the extensions directory, and restart.
 `build/pack-mcp-extension.sh` builds the same archive locally.
 
-Once installed, each person generates their own token from **MCP access** in
-their profile menu, and pastes the connection snippet the page produces into
-Claude Code, Claude Desktop, Cursor, VS Code or any other MCP client. The
-endpoint is `POST /api/ext/mcp` — streamable HTTP, stateless, no event stream —
-authenticated by `Authorization: Bearer solomcp_…`.
+The package carries both halves: the server ([src/Solo.Mcp](src/Solo.Mcp)) and
+the pages ([src/Solo.Mcp.Client](src/Solo.Mcp.Client)), whose **MCP access**
+entry appears in the sidebar once the extension is installed. Each person
+generates their own token there and pastes the connection snippet the page
+produces into Claude Code, Claude Desktop, Cursor, VS Code or any other MCP
+client. The endpoint is `POST /api/ext/mcp` — streamable HTTP, stateless, no
+event stream — authenticated by `Authorization: Bearer solomcp_…`.
 
 A token **acts as the person who generated it**: every tool call re-enters
 Solo's own REST API carrying that token, so it gets the same authorization,
@@ -151,9 +162,10 @@ needs no id discovery.
 Tokens live in the extension's own `ext_mcp` schema and are stored only as
 SHA-256 hashes, so nobody — super admin included — can read one back. One live
 token per account: generating a new one blocks the old one immediately, and the
-revoked row stays in the audit. In **Admin settings**, a super admin sees every
-token's owner, creation and revocation times and a 24-hour usage graph, plus an
-emergency **Revoke all** that cuts off every token on the instance at once.
+revoked row stays in the audit. A super admin
+sees a second section on the same page: every token's owner, creation and
+revocation times and a 24-hour usage graph, plus an emergency **Revoke all**
+that cuts off every token on the instance at once.
 
 ## Desktop app
 

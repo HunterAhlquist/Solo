@@ -70,6 +70,14 @@ public sealed class McpPackageTests(PostgresFixture postgres) : IAsyncLifetime
         // and the downgrade guard compares against it on the next boot.
         Assert.False(string.IsNullOrWhiteSpace(registration.Version));
 
+        // Both halves came out of the one archive: the client assembly the
+        // browser will load, and the stylesheet its page links.
+        var anonymous = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK,
+            (await anonymous.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await anonymous.GetAsync("/api/extensions/mcp/content/mcp.css")).StatusCode);
+
         // And it works: mint a token, speak MCP with it.
         var minted = await _admin.PostJson<JsonObject>("/api/ext/mcp/tokens", new { });
         var value = minted["value"]!.GetValue<string>();

@@ -1,17 +1,18 @@
 using System.Net;
+using Solo.Shared.Extensibility;
 
 namespace Solo.Client.Api;
 
-/// <summary>A non-success response from the Solo API, carrying its ProblemDetails.</summary>
+/// <summary>
+/// A non-success response from the Solo API, carrying its ProblemDetails.
+/// </summary>
+/// <remarks>
+/// Derives from the contract's <see cref="SoloApiException"/> so an extension
+/// page — which cannot reference this assembly — catches the same failures the
+/// app does, from one hierarchy rather than two describing the same thing.
+/// </remarks>
 public class ApiException(HttpStatusCode statusCode, string? title, string? detail)
-    : Exception(detail ?? title ?? $"The request failed with status {(int)statusCode}.")
-{
-    public HttpStatusCode StatusCode { get; } = statusCode;
-
-    public string? Title { get; } = title;
-
-    public string? Detail { get; } = detail;
-}
+    : SoloApiException(statusCode, title, detail);
 
 /// <summary>
 /// A 409 from an optimistic-concurrency check: someone else saved first. The

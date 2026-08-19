@@ -1,11 +1,11 @@
 @*
     A block of configuration the reader is meant to copy verbatim: monospaced,
-    horizontally scrollable rather than wrapped (a wrapped command line invites
-    pasting a broken one), with a copy button.
+    horizontally scrollable rather than wrapped, with a copy button. Styles come
+    from the package's own content/mcp.css.
 *@
 
-<div class="snippet mb-3">
-    <div class="snippet__header">
+<div class="mcp-snippet mb-3">
+    <div class="mcp-snippet__header">
         <MudText Typo="Typo.caption" Color="Color.Secondary">@Title</MudText>
         <MudSpacer />
         <MudTooltip Text="Copy">
@@ -14,7 +14,7 @@
                            aria-label="@($"Copy {Title}")" />
         </MudTooltip>
     </div>
-    <pre class="snippet__body"><code>@Text</code></pre>
+    <pre class="mcp-snippet__body"><code>@Text</code></pre>
 </div>
 
 @code {

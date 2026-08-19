@@ -11,21 +11,6 @@ window.solo = {
         removeSession: key => sessionStorage.removeItem(key),
     },
 
-    // Copy-to-clipboard, for the MCP token that is shown exactly once. The
-    // Clipboard API needs a secure context; localhost qualifies, so this works
-    // in the desktop shell too. Returns false rather than throwing when the
-    // browser refuses, so the page can fall back to "select it yourself".
-    clipboard: {
-        write: async text => {
-            try {
-                await navigator.clipboard.writeText(text);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-    },
-
     // Read synchronously at startup so a "match system" user never sees one
     // frame of the wrong scheme. MudThemeProvider watches for later changes.
     systemPrefersDark: () => window.matchMedia('(prefers-color-scheme: dark)').matches,

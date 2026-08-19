@@ -444,6 +444,53 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     // -----------------------------------------------------------------------
+    // The client half. The browser fetches all of this before anyone has signed
+    // in — the router has to know an extension's routes to render the page
+    // behind sign-in at all — so these endpoints must answer anonymously or the
+    // whole client half silently never loads.
+    // -----------------------------------------------------------------------
+
+    [SkippableFact]
+    public async Task The_client_half_is_advertised_with_its_nav_entry()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var anonymous = _factory.CreateClient();
+        var extensions = await anonymous.GetJson<List<ClientExtensionDto>>("/api/extensions");
+
+        var mcp = Assert.Single(extensions, e => e.Id == "mcp");
+        Assert.Equal("Solo.Mcp.Client", mcp.ClientAssembly);
+        Assert.False(string.IsNullOrWhiteSpace(mcp.SoloClientVersion));
+
+        // Instance-level: no {projectAlias}, so the sidebar renders one of it.
+        var entry = Assert.Single(mcp.Nav);
+        Assert.Equal("/mcp", entry.Route);
+        Assert.Equal("MCP access", entry.Label);
+        Assert.DoesNotContain("{projectAlias}", entry.Route, StringComparison.Ordinal);
+    }
+
+    [SkippableFact]
+    public async Task The_client_assembly_and_its_content_are_served_anonymously()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var anonymous = _factory.CreateClient();
+
+        var assembly = await anonymous.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll");
+        Assert.Equal(HttpStatusCode.OK, assembly.StatusCode);
+        var bytes = await assembly.Content.ReadAsByteArrayAsync();
+        // A PE image, not an error page or the SPA shell.
+        Assert.Equal("MZ"u8.ToArray(), bytes[..2]);
+
+        // The page pulls its stylesheet with a plain <link>, which carries no
+        // Authorization header — so this one has to be anonymous too.
+        var stylesheet = await anonymous.GetAsync("/api/extensions/mcp/content/mcp.css");
+        Assert.Equal(HttpStatusCode.OK, stylesheet.StatusCode);
+        Assert.Equal("text/css", stylesheet.Content.Headers.ContentType?.MediaType);
+        Assert.Contains(".mcp-usage", await stylesheet.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+        // -----------------------------------------------------------------------
     // Storage. The whole point of the correction this package embodies: MCP
     // data lives in the extension's schema, and core's stays untouched.
     // -----------------------------------------------------------------------

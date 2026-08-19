@@ -5,6 +5,7 @@ using Solo.Client.Auth;
 using Solo.Client.Realtime;
 using Solo.Client.State;
 using Solo.Client.Theming;
+using Solo.Shared.Extensibility;
 
 namespace Solo.Client;
 
@@ -32,6 +33,10 @@ public static class SoloClientServices
 
         services.AddHttpClient<ApiClient>(client => client.BaseAddress = instance.BaseAddress)
             .AddHttpMessageHandler<IdTokenMessageHandler>();
+        // What an extension's client assembly injects to call its own endpoints.
+        // Forwarded to ApiClient rather than given its own HttpClient, so an
+        // extension shares the app's credential and cannot authenticate differently.
+        services.AddScoped<ISoloClientApi>(sp => sp.GetRequiredService<ApiClient>());
         services.AddHttpClient<SetupClient>(client => client.BaseAddress = instance.BaseAddress);
 
         // Realtime + state. BoardHubClient is scoped rather than singleton: it

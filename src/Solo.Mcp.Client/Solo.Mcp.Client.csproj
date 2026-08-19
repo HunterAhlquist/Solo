@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- The MCP extension's client half: the pages a user sees. Packaged into
+       solo-mcp-<version>.zip under client/, downloaded by the browser at
+       bootstrap and handed to the router (see Solo.Client's ExtensionLoader),
+       so its @page routes resolve like any other.
+
+       References only MudBlazor and Solo.Shared. Both are already loaded by the
+       host, so the package ships this assembly alone — and the host's
+       PublishTrimmed=false is what guarantees the MudBlazor members this uses
+       still exist in a Release build.
+
+       A PackageReference to Components.Web rather than a FrameworkReference to
+       Microsoft.AspNetCore.App: the framework reference does not resolve for
+       browser-wasm, which is the same constraint that keeps Solo.Extensibility
+       out of reach here. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <Version>1.0.0</Version>
+    <!-- Nothing here is served through the host's static-web-asset pipeline:
+         the package's own content/ folder carries the stylesheet, fetched from
+         /api/extensions/mcp/content/. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.9" />
+    <PackageReference Include="MudBlazor" Version="9.6.0" />
+    <ProjectReference Include="..\Solo.Shared\Solo.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

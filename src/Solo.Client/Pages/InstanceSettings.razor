@@ -176,110 +176,12 @@ else
         }
     </MudPaper>
 
-    @* MCP tokens. Only rendered when the extension is installed — the audit is
-       served by the package, so without it there is nothing to show and nothing
-       to revoke. Deliberately metadata only: the instance stores hashes, so
-       there is no token here for an admin to read. *@
-    @if (_mcpTokens is not null)
-    {
-        <MudPaper Elevation="1" Class="pa-4 mt-4" Style="max-width:44rem">
-            <div class="d-flex align-center mb-1">
-                <MudText Typo="Typo.h4">MCP tokens</MudText>
-                <MudSpacer />
-                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
-                           Disabled="@(LiveTokenCount == 0)"
-                           StartIcon="@Icons.Material.Filled.Block" OnClick="@RevokeAllTokensAsync">
-                    Revoke all
-                </MudButton>
-            </div>
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                Credentials people have generated to connect an AI assistant. Each one acts as its
-                owner and reaches only their projects. You can see that a token exists and how much
-                it is used — never what it is.
-            </MudText>
-
-            @if (_mcpTokens.Tokens.Count == 0)
-            {
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Nobody has generated one yet.</MudText>
-            }
-            else
-            {
-                <MudText Typo="Typo.subtitle2" Class="mb-1">Requests, last 24 hours</MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2">
-                    Every request a token authenticated, per hour, across the instance. One tool call
-                    makes more than one — the endpoint re-enters the API for each read and write it does.
-                </MudText>
-                <div class="usage-bars mb-4" role="img"
-                     aria-label="@($"{TotalRequests} requests in the last 24 hours")">
-                    @for (var hour = 0; hour < HourlyTotals.Count; hour++)
-                    {
-                        var count = HourlyTotals[hour];
-                        var at = _mcpTokens.WindowStart.AddHours(hour).ToLocalTime().ToString("t");
-                        <MudTooltip Text="@($"{at} — {count} request{(count == 1 ? "" : "s")}")">
-                            <div class="usage-bars__slot">
-                                <div class="usage-bars__bar" style="@BarHeight(count, PeakHour)"></div>
-                            </div>
-                        </MudTooltip>
-                    }
-                </div>
-
-                <MudSimpleTable Dense="true" Elevation="0">
-                    <thead>
-                        <tr>
-                            <th>Owner</th>
-                            <th>Created</th>
-                            <th>Last used</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var token in _mcpTokens.Tokens)
-                        {
-                            <tr>
-                                <td>
-                                    <MudText Typo="Typo.body2">
-                                        @(token.UserDisplayName ?? token.UserEmail ?? "unknown")
-                                    </MudText>
-                                    @if (token.Description is { Length: > 0 } label)
-                                    {
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@label</MudText>
-                                    }
-                                </td>
-                                <td><MudText Typo="Typo.body2">@Local(token.CreatedAt)</MudText></td>
-                                <td>
-                                    <MudText Typo="Typo.body2">
-                                        @(token.LastUsedAt is { } used ? Local(used) : "never")
-                                    </MudText>
-                                </td>
-                                <td>
-                                    @if (token.RevokedAt is { } revoked)
-                                    {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Default">
-                                            @RevocationLabel(token.RevokedReason)
-                                        </MudChip>
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
-                                            @Local(revoked)
-                                        </MudText>
-                                    }
-                                    else
-                                    {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Success">live</MudChip>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </MudSimpleTable>
-            }
-        </MudPaper>
-    }
 }
 
 @code {
     private InstanceSettingsDto? _settings;
     private ThemeScanResultDto? _themes;
     private ExtensionAdminDto? _extensions;
-    private McpTokenAdminDto? _mcpTokens;
     private int _retentionDays;
     private string? _themeId;
     private bool _rescanning;
@@ -296,7 +198,6 @@ else
             // than an empty radio group.
             _themeId = _settings.ThemeId ?? _themes.Themes.FirstOrDefault(t => t.IsActive)?.Id;
             _extensions = await Api.GetExtensionsAsync();
-            _mcpTokens = await LoadMcpTokensAsync();
         }
         catch (ApiException e)
         {
@@ -404,95 +305,6 @@ else
         catch (ApiException e)
         {
             Snackbar.Add(e.Detail ?? "Couldn't delete that extension's data.", Severity.Error);
-        }
-    }
-
-    // -- MCP tokens ---------------------------------------------------------
-    // Served by the mcp extension package, so absence is normal rather than an
-    // error: an instance without it simply has no section here.
-
-    private int LiveTokenCount => _mcpTokens?.Tokens.Count(t => t.RevokedAt is null) ?? 0;
-
-    /// <summary>Requests per hour across every token — the instance-wide series.</summary>
-    private IReadOnlyList<int> HourlyTotals => _mcpTokens is null || _mcpTokens.Tokens.Count == 0
-        ? []
-        : Enumerable.Range(0, _mcpTokens.Tokens.Max(t => t.Usage.Count))
-            .Select(hour => _mcpTokens.Tokens.Sum(t => hour < t.Usage.Count ? t.Usage[hour] : 0))
-            .ToList();
-
-    private int PeakHour => HourlyTotals.Count == 0 ? 0 : HourlyTotals.Max();
-
-    private int TotalRequests => HourlyTotals.Sum();
-
-    private async Task<McpTokenAdminDto?> LoadMcpTokensAsync()
-    {
-        try
-        {
-            return await Api.GetMcpTokenAuditAsync();
-        }
-        catch (ApiException e) when (e.StatusCode is System.Net.HttpStatusCode.NotFound
-                                         or System.Net.HttpStatusCode.ServiceUnavailable)
-        {
-            // The extension is not installed, or is disabled by a failed
-            // migration — the extensions list above already says which.
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Bar height as a share of the busiest hour, with a floor so an hour that
-    /// saw traffic never renders as indistinguishable from one that saw none.
-    /// </summary>
-    private static string BarHeight(int count, int peak) => count == 0
-        ? "height:2px"
-        : $"height:{Math.Max(8, (int)Math.Round(count * 100.0 / Math.Max(peak, 1)))}%";
-
-    private static string RevocationLabel(string? reason) => reason switch
-    {
-        "Regenerated" => "replaced",
-        "RevokedByOwner" => "revoked by owner",
-        "RevokedByAdmin" => "revoked by admin",
-        _ => "revoked",
-    };
-
-    private static string Local(DateTimeOffset value) => value.ToLocalTime().ToString("g");
-
-    /// <summary>
-    /// The emergency lever. Blunt on purpose — everyone has to generate a new
-    /// token afterwards — so it asks for the phrase rather than a single click.
-    /// </summary>
-    private async Task RevokeAllTokensAsync()
-    {
-        const string phrase = "revoke all tokens";
-        var dialog = await Dialogs.ShowAsync<TextPromptDialog>(
-            "Revoke every MCP token",
-            new DialogParameters
-            {
-                [nameof(TextPromptDialog.Message)] =
-                    $"This blocks all {LiveTokenCount} live token(s) on the instance at once. Every "
-                    + "connected assistant stops working immediately, and each owner has to generate a "
-                    + $"new token from their MCP access page. Type {phrase} to confirm.",
-                [nameof(TextPromptDialog.Label)] = "Confirmation",
-                [nameof(TextPromptDialog.MaxLength)] = 64,
-                [nameof(TextPromptDialog.SaveText)] = "Revoke all",
-            });
-
-        var result = await dialog.Result;
-        if (result is null || result.Canceled ||
-            !string.Equals(result.Data?.ToString(), phrase, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        try
-        {
-            var revoked = await Api.RevokeAllMcpTokensAsync(phrase);
-            Snackbar.Add($"Revoked {revoked.Revoked} MCP token(s).", Severity.Success);
-            _mcpTokens = await LoadMcpTokensAsync();
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't revoke the tokens.", Severity.Error);
         }
     }
 

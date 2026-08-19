@@ -1,0 +1,69 @@
+/* ---------------------------------------------------------------------------
+   Styles for the MCP extension's pages, served from the package's content/
+   folder at /api/extensions/mcp/content/mcp.css and pulled in by the page
+   itself (see McpAccess.razor's HeadContent).
+
+   In the package rather than in the host's app.css because they belong to this
+   extension: remove the package and they leave with it. Everything here is
+   written against MudBlazor's theme variables, so it follows whichever theme
+   the instance is running rather than carrying a palette of its own.
+   --------------------------------------------------------------------------- */
+
+/* Copyable configuration. Scrolls rather than wraps: a wrapped command line
+   reads as two commands, and the whole point of the block is that it is pasted
+   verbatim. */
+.mcp-snippet {
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    overflow: hidden;
+}
+
+.mcp-snippet__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.15rem 0.35rem 0.15rem 0.75rem;
+    background: var(--mud-palette-background-gray);
+}
+
+.mcp-snippet__body {
+    margin: 0;
+    padding: 0.75rem;
+    overflow-x: auto;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    background: var(--mud-palette-surface);
+}
+
+/* The one-shot token: monospaced, so a misread character is obvious. */
+.mcp-token input {
+    font-family: var(--mud-typography-monospace-family, monospace);
+}
+
+/* Requests per hour over the last day. A bar per hour, sized against the
+   busiest one — deliberately not a charting library for 24 numbers with no axis
+   to speak of. */
+.mcp-usage {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 4rem;
+    padding: 0.25rem;
+    border-radius: var(--mud-default-borderradius);
+    background: var(--mud-palette-background-gray);
+}
+
+.mcp-usage__slot {
+    display: flex;
+    flex: 1 1 0;
+    align-items: flex-end;
+    height: 100%;
+    min-width: 4px;
+}
+
+.mcp-usage__bar {
+    width: 100%;
+    min-height: 2px;
+    border-radius: 1px;
+    background: var(--mud-palette-primary);
+}

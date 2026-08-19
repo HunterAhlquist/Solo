@@ -25,6 +25,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Solo.Client\Solo.Client.csproj" />
+    <!-- The MCP extension's client half. Referenced rather than loaded from a
+         package: bUnit renders components, and the loader that would normally
+         deliver this assembly is covered by the integration suite instead. -->
+    <ProjectReference Include="..\..\src\Solo.Mcp.Client\Solo.Mcp.Client.csproj" />
   </ItemGroup>
 
 </Project>
