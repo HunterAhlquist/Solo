@@ -127,6 +127,17 @@ public static class ExtensionStartup
 
                 try
                 {
+                    // Bracketing the noise: EF probes the history table before it
+                    // exists, so a first install logs a failed SELECT from the
+                    // extension's __EFMigrationsHistory — at Error level, right
+                    // between these two lines. That is the probe finding the table
+                    // absent, not a failure; core's own first migration does the
+                    // same thing against public. This line and the one after it
+                    // are what actually report the outcome.
+                    logger.LogInformation(
+                        "Extension '{Id}': applying migrations to schema {Schema}.",
+                        registration.ExtensionId, registration.Schema);
+
                     var context = (DbContext)scope.ServiceProvider.GetRequiredService(registration.ContextType);
                     await context.Database.MigrateAsync();
                     logger.LogInformation(

@@ -129,6 +129,15 @@ Its migrations run at startup after core's, gated on the same
 `Database__AutoMigrate`. A failed migration disables that one extension (its
 endpoints answer `503` naming the reason) rather than taking down the instance.
 
+On a **first install** the log carries a `fail:` line from EF —
+`SELECT ... FROM ext_<id>."__EFMigrationsHistory"` — immediately before the
+migration succeeds. That is EF probing for a history table that does not exist
+yet, exactly as core does against `public` on a first boot; it is not a failure.
+The lines that report the real outcome are Solo's own, on either side of it:
+`Extension '<id>': applying migrations to schema ext_<id>.` then
+`Extension '<id>' migrated into schema ext_<id>.` A restart shows neither the
+probe nor any `fail:` line.
+
 Removing a package keeps its data, and Admin settings then lists the extension
 as installed-but-absent — which is what makes it possible to offer a purge later
 rather than leaving an orphan schema nobody can attribute. Purging drops the
