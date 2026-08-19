@@ -71,6 +71,33 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     // -----------------------------------------------------------------------
+    // Configuration
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The image creates /data/extensions and the docs point operators at it, so
+    /// an instance that mounts a volume there must scan it without being told to.
+    /// </summary>
+    /// <remarks>
+    /// Written after the trap fired for real: <c>Themes:Directory</c> had a
+    /// default in appsettings.json and <c>Extensions:Directory</c> did not, so a
+    /// deployment that set neither scanned themes and silently skipped
+    /// extensions — with no log line naming the setting that turned it off,
+    /// because the empty case had no branch. A package sat in the volume and
+    /// startup reported "0 package(s), 0 failure(s)".
+    /// </remarks>
+    [SkippableFact]
+    public void The_extensions_directory_defaults_to_the_path_the_image_creates()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var options = _factory.Services
+            .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExtensionOptions>>().Value;
+
+        Assert.Equal("/data/extensions", options.Directory);
+    }
+
+    // -----------------------------------------------------------------------
     // Routing
     // -----------------------------------------------------------------------
 

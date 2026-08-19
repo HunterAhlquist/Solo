@@ -67,7 +67,10 @@ public static class ExtensionLoader
         }
 
         logger.LogInformation(
-            "Extensions loaded: {Count} package(s), {Failures} failure(s).", packages.Count, failures.Count);
+            "Extensions loaded from {Directory}: {Count} package(s), {Failures} failure(s).",
+            string.IsNullOrWhiteSpace(options.Directory) ? "(no directory configured)" : options.Directory,
+            packages.Count,
+            failures.Count);
         return new ExtensionState(packages, failures);
     }
 
@@ -90,6 +93,16 @@ public static class ExtensionLoader
                 logger.LogInformation(
                     "No extensions directory at {Directory}; running without extensions.", options.Directory);
             }
+        }
+        else
+        {
+            // Says so out loud, because the alternative is the failure this
+            // guards against: an operator mounts a volume, drops a package in,
+            // and the startup log is silent about the one setting that decides
+            // whether anything reads it.
+            logger.LogInformation(
+                "Extensions:Directory is not configured, so no packages are scanned. " +
+                "Set Extensions__Directory (the image ships /data/extensions) to install one.");
         }
 
         foreach (var directory in options.DevelopmentDirectories.Where(Directory.Exists))

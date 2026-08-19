@@ -88,8 +88,8 @@ All configuration is environment variables:
 | `Auth__Provider` | Claim-mapping preset: `google`, `microsoft`, or `generic` |
 | `Setup__Username` / `Setup__Password` | Static first-run setup credentials (dead after handoff) |
 | `Database__AutoMigrate` | Apply migrations on startup (default `true`); also gates extension migrations |
-| `Themes__Directory` | Directory scanned for theme packages |
-| `Extensions__Directory` | Directory scanned for extension packages |
+| `Themes__Directory` | Directory scanned for theme packages (default `/data/themes`) |
+| `Extensions__Directory` | Directory scanned for extension packages (default `/data/extensions`) |
 
 Health endpoint: `GET /healthz` (checks the database connection).
 
