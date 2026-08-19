@@ -5,15 +5,26 @@ namespace Solo.Shared.Extensibility;
 /// their manifest and the host refuses to load a package outside it.
 /// </summary>
 /// <remarks>
-/// Two ranges exist because they move independently. <c>soloApiVersion</c> is
+/// <para>Two ranges exist because they move independently. <c>soloApiVersion</c> is
 /// checked on the server against this constant; <c>soloClientVersion</c> is
 /// checked in the browser against the running client build, which in the
 /// Electron shell is bundled with the app and can be older than the instance.
-/// On the hosted web build the two are always the same number.
+/// On the hosted web build the two are always the same number.</para>
+///
+/// <para><b>Adding a member to the contract is a minor bump, and it is not
+/// optional.</b> A package compiled against the new member declares a floor
+/// that excludes hosts without it, and the range check then refuses the package
+/// with a sentence naming the reason. Leave the number alone and the check
+/// passes on a host that cannot satisfy the package — which is worse than
+/// having no check, because the failure surfaces as a broken page instead of
+/// "update the app".</para>
+///
+/// <para>1.1.0 added <see cref="ISoloClientApi"/>: the client-side seam an
+/// extension's pages use to call the API.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.0.0";
+    public const string Current = "1.1.0";
 
-    public static readonly Version Parsed = new(1, 0, 0);
+    public static readonly Version Parsed = new(1, 1, 0);
 }

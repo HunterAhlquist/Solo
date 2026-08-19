@@ -126,6 +126,46 @@ public class McpAccessTests : ComponentTestBase
     }
 
     /// <summary>
+    /// Claude Desktop launches local processes only — an entry with a
+    /// <c>url</c> is dropped as invalid, which is exactly the config the
+    /// generic HTTP snippet produces. It gets the mcp-remote bridge instead.
+    /// </summary>
+    [Fact]
+    public void Claude_desktop_gets_a_stdio_bridge_rather_than_a_url_entry()
+    {
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+        var desktop = Snippet(page, "Claude Desktop", "claude_desktop_config.json");
+
+        Assert.Contains("\"command\": \"npx\"", desktop);
+        Assert.Contains("mcp-remote", desktop);
+        Assert.Contains("https://solo.test/api/ext/mcp", desktop);
+        // A url/type entry is what Claude Desktop rejects; this one must not carry it.
+        Assert.DoesNotContain("\"url\"", desktop);
+        Assert.DoesNotContain("\"type\": \"http\"", desktop);
+        // The credential goes through env, or a client that fails to escape
+        // spaces in args splits the header in half.
+        Assert.Contains("\"Authorization:${SOLO_TOKEN}\"", desktop);
+        Assert.Contains("\"SOLO_TOKEN\": \"Bearer ", desktop);
+    }
+
+    /// <summary>The HTTP shape is still offered, for clients that do accept it.</summary>
+    [Fact]
+    public void Clients_that_speak_http_still_get_a_url_entry()
+    {
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+        var json = Snippet(page, "Cursor", "mcp.json");
+
+        Assert.Contains("\"type\": \"http\"", json);
+        Assert.Contains("\"url\": \"https://solo.test/api/ext/mcp\"", json);
+    }
+
+    /// <summary>
     /// The desktop shell serves the client from its own local origin and proxies
     /// the API onward, so the page's origin is a server that exists only while
     /// the app runs. What goes in an MCP client's config has to be the instance.
@@ -216,6 +256,22 @@ public class McpAccessTests : ComponentTestBase
     /// registration order — so the more specific route goes in first, exactly as
     /// routing would resolve it server-side.
     /// </summary>
+    /// <summary>
+    /// The body of one titled snippet block, after opening the tab that holds
+    /// it — MudTabs renders only the active panel, which is also all a user
+    /// sees at once.
+    /// </summary>
+    private static string Snippet(IRenderedComponent<McpAccess> page, string tab, string title)
+    {
+        page.FindAll(".mud-tab").First(t => t.TextContent.Contains(tab, StringComparison.OrdinalIgnoreCase))
+            .Click();
+
+        return page.FindAll(".mcp-snippet")
+            .Single(block => block.QuerySelector(".mcp-snippet__header")!.TextContent.Contains(title))
+            .QuerySelector("code")!
+            .TextContent;
+    }
+
     private void Installed(object? audit = null)
     {
         _http.RouteJson(InfoPath, Info);

@@ -7,6 +7,7 @@ using Solo.Data;
 using Solo.Extensions;
 using Solo.Shared;
 using Solo.Shared.Dtos;
+using Solo.Shared.Extensibility;
 using Xunit;
 
 namespace Solo.Api.Tests.Integration;
@@ -348,7 +349,10 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         var anonymous = _factory.CreateClient();
         var version = await anonymous.GetJson<InstanceVersionDto>("/api/config/version");
 
-        Assert.Equal("1.0.0", version.ExtensionApiVersion);
+        // The endpoint's whole job is to report this build's contract, so that
+        // is what it is checked against — a literal here would only have to be
+        // edited on every bump without catching anything.
+        Assert.Equal(ContractVersion.Current, version.ExtensionApiVersion);
         Assert.False(string.IsNullOrWhiteSpace(version.ServerVersion));
     }
 

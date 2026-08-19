@@ -161,7 +161,9 @@ the pages ([src/Solo.Mcp.Client](src/Solo.Mcp.Client)), whose **MCP access**
 entry appears in the sidebar once the extension is installed. Each person
 generates their own token there and pastes the connection snippet the page
 produces into Claude Code, Claude Desktop, Cursor, VS Code or any other MCP
-client. The endpoint is `POST /api/ext/mcp` — streamable HTTP, stateless, no
+client. Claude Desktop gets a different snippet from the rest: its config file
+launches local processes only and drops an entry carrying a URL, so the page
+hands it an `mcp-remote` bridge instead of the HTTP shape. The endpoint is `POST /api/ext/mcp` — streamable HTTP, stateless, no
 event stream — authenticated by `Authorization: Bearer solomcp_…`.
 
 A token **acts as the person who generated it**: every tool call re-enters

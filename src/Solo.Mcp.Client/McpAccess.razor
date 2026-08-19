@@ -139,10 +139,23 @@ else
             <MudTabPanel Text="Claude Code">
                 <Snippet Title="Run this once" Text="@ClaudeCodeCommand" OnCopy="@CopyAsync" />
             </MudTabPanel>
-            <MudTabPanel Text="JSON config">
+            <MudTabPanel Text="Claude Desktop">
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-                    Most desktop clients — Claude Desktop, Cursor, Windsurf — read a config file
-                    with an <code>mcpServers</code> object. Add Solo to yours:
+                    <code>claude_desktop_config.json</code> only accepts servers it launches
+                    locally, so an entry with a <code>url</code> is skipped as invalid. Bridge to
+                    Solo with <code>mcp-remote</code>, which Claude Desktop runs and which speaks
+                    HTTP to this endpoint. Needs Node installed; restart Claude Desktop after editing.
+                </MudText>
+                <Snippet Title="claude_desktop_config.json" Text="@ClaudeDesktopConfig" OnCopy="@CopyAsync" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
+                    The token rides in <code>env</code> rather than inline: some clients don't escape
+                    spaces inside <code>args</code>, which mangles a header written as one string.
+                </MudText>
+            </MudTabPanel>
+            <MudTabPanel Text="Cursor & others">
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Clients that speak HTTP directly — Cursor, Windsurf — read a config file with an
+                    <code>mcpServers</code> object. Add Solo to yours:
                 </MudText>
                 <Snippet Title="mcp.json" Text="@JsonConfig" OnCopy="@CopyAsync" />
             </MudTabPanel>
@@ -570,6 +583,39 @@ else
     private string ClaudeCodeCommand =>
         $"claude mcp add --transport http solo {Endpoint} \\\n" +
         $"  --header \"Authorization: Bearer {TokenOrPlaceholder}\"";
+
+    /// <summary>
+    /// Claude Desktop launches local processes only — its config file has no
+    /// remote transport, and an entry carrying a URL is dropped as invalid.
+    /// <c>mcp-remote</c> is the standard bridge: a stdio server it can launch
+    /// that speaks HTTP onward.
+    /// </summary>
+    /// <remarks>
+    /// The credential goes through <c>env</c> rather than inline in
+    /// <c>args</c> because several clients do not escape spaces when they invoke
+    /// npx, which splits "Bearer &lt;token&gt;" into two arguments and sends a
+    /// header that authenticates nothing.
+    /// </remarks>
+    private string ClaudeDesktopConfig =>
+        $$"""
+          {
+            "mcpServers": {
+              "solo": {
+                "command": "npx",
+                "args": [
+                  "-y",
+                  "mcp-remote",
+                  "{{Endpoint}}",
+                  "--header",
+                  "Authorization:${SOLO_TOKEN}"
+                ],
+                "env": {
+                  "SOLO_TOKEN": "Bearer {{TokenOrPlaceholder}}"
+                }
+              }
+            }
+          }
+          """;
 
     private string JsonConfig =>
         $$"""
