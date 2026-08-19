@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "solo": {
-      "type": "http",
-      "url": "http://localhost:41321/mcp"
-    }
-  }
-}

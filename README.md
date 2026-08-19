@@ -186,15 +186,11 @@ For **other OIDC providers** (code + PKCE redirect) the flow runs in-app: add `h
 
 ### MCP
 
-**Off by default.** Enable **Allow AI agents (MCP)** in *Solo → Server Settings…* and the running app serves an MCP endpoint at `http://localhost:41321/mcp` (streamable HTTP, stateless), so an MCP client on the same machine — Claude Code, Claude Desktop — can browse projects/boards and create or edit tasks. Task tools address a task by GUID or by full serial number (`DMD-PXW26-2`), so an agent holding a serial needs no id discovery. The toggle applies on save without a restart; while off, `/mcp` answers 404. The tools call the configured instance's REST API with the **signed-in user's own session token**, read from the running client per request: no separate credential, and MCP access ends the moment you sign out or close the app.
-
-Connect Claude Code with:
-
-```sh
-claude mcp add --transport http solo http://localhost:41321/mcp
-```
-
-(This repo's [.mcp.json](.mcp.json) already registers it for sessions inside the repo.) Only localhost clients can reach the endpoint: the local server rejects non-localhost `Host` headers, and `/mcp` additionally rejects browser cross-origin requests by `Origin`.
+Gone from the shell as of the server-side [MCP extension](#mcp-server-bundled-extension):
+the endpoint lives on the instance now, so it works from any machine and any
+client rather than only while the desktop app is running, and access is a
+per-user token that can be rotated, audited and revoked instead of a borrowed
+session that vanishes at sign-out.
 
 ### Packaging
 

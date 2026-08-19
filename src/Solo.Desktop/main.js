@@ -7,7 +7,6 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, net, shell } = require('elect
 const path = require('path');
 const settingsStore = require('./main/settings');
 const { createSoloServer } = require('./main/server');
-const { createMcpHandler } = require('./main/mcp');
 const { buildMenu } = require('./main/menu');
 const { attachContextMenu } = require('./main/context-menu');
 const { DesktopAuth } = require('./main/desktop-auth');
@@ -98,11 +97,6 @@ function ensureServer() {
         server = createSoloServer({
             clientDir: clientDir(),
             getTarget: () => settings.instanceUrl,
-            mcpHandler: createMcpHandler({
-                getTarget: () => settings.instanceUrl,
-                getSessionToken,
-                isEnabled: () => settings.mcpEnabled,
-            }),
         });
         server.once('error', reject);
         server.listen(settings.port, '127.0.0.1', () => {
@@ -326,26 +320,6 @@ async function notifySignInFailed(message) {
     }
 }
 
-// The MCP endpoint (main/mcp.js) authenticates its Solo API calls with the
-// session token the signed-in client keeps in web storage — read from the
-// renderer on demand rather than copied anywhere, so MCP access tracks the
-// app's sign-in state exactly: sign out (or close the window) and it's gone.
-async function getSessionToken() {
-    const contents = mainWindow?.webContents;
-    if (!contents || contents.isDestroyed() || contents.isLoading()) {
-        return null;
-    }
-
-    try {
-        const token = await contents.executeJavaScript(
-            'window.solo?.session?.token() ?? null', true);
-        return typeof token === 'string' && token.startsWith('solo_') ? token : null;
-    } catch {
-        // Renderer navigating or gone — same as not signed in.
-        return null;
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Settings window
 // ---------------------------------------------------------------------------
@@ -387,7 +361,6 @@ function registerIpc() {
     ipcMain.handle('settings:get', () => ({
         instanceUrl: settings.instanceUrl,
         port: settings.port,
-        mcpEnabled: settings.mcpEnabled,
         firstRun: !settings.instanceUrl,
     }));
 
@@ -425,7 +398,7 @@ function registerIpc() {
         }
     });
 
-    ipcMain.handle('settings:save', async (_event, rawUrl, mcpEnabled) => {
+    ipcMain.handle('settings:save', async (_event, rawUrl) => {
         const url = settingsStore.normalizeInstanceUrl(rawUrl);
         if (!url) {
             return { ok: false, error: 'Enter a valid http(s) address.' };
@@ -433,16 +406,14 @@ function registerIpc() {
 
         const urlChanged = url !== settings.instanceUrl;
         settings.instanceUrl = url;
-        settings.mcpEnabled = mcpEnabled === true;
         settingsStore.save(settings);
 
         // Main window before closing settings: with quit-on-all-closed, the
         // reverse order would briefly leave zero windows and end the app.
         if (mainWindow) {
             if (urlChanged) {
-                // New instance, fresh boot: the client fetches auth config on
-                // load. An MCP-only change needs nothing — the handler reads
-                // the flag per request.
+                // New instance, fresh boot: the client fetches auth config
+                // on load.
                 mainWindow.webContents.loadURL(localUrl());
             }
             mainWindow.focus();
