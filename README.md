@@ -4,9 +4,13 @@ A simple project management tool for small teams: Kanban boards with epics/tasks
 
 **Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host — one container + Postgres is the whole deployment.
 
+No issue reporting, or public pull requesting. I tailored this to my own needs and just wanted to share it with the world if someone else can get use out of it. 
+If you REALLY need to tell me about a problem security related, you can reach me on Bluesky: hunter.ahlquist.me
+Otherwise you can fork it and make it infinitely better than I could ever.
+
 <details>
 
-<summary>AI Usage Disclaimer</summary>
+<summary>AI Usage Disclaimer (Unhinged Alert)</summary>
 
 <img width="376" height="214" alt="proompt" src="https://github.com/user-attachments/assets/046f15ed-2b9f-4b83-9b7c-2ed5b2ff2ac4" />
 
@@ -20,7 +24,6 @@ I freaking love PROOMPTING, I PROOMPT every day.
 
 AI is melting my programmer brain, please take away my Claude(TM) Pro(TM) subscription, I am begging you.
 
-
 ### Le epic claug face:
 
 <img width="350" height="350" alt="image" src="https://github.com/user-attachments/assets/d1b33d69-bca9-4b2d-b283-2d15140a3248" />
@@ -33,6 +36,10 @@ Nerd emoji lookin ahh
 
 </details>
 
+## Support
+I dogfood this app by project managing my game: [The Dreamer Must Die](https://store.steampowered.com/app/2116590/The_Dreamer_Must_Die/?beta=0)
+
+If you want to support me, give me a wishlist and buy the game (when it's out.)
 
 ## Quick start
 
@@ -46,6 +53,7 @@ compose file.
    unsupported. Google: copy the **full** client id, the one ending in
    `.apps.googleusercontent.com`.
 2. **Set up** the docker compose:
+
    Here is an example that should get you started, though I recommend you use a secrets manager for the passwords.
    ```yaml
       services:
@@ -104,7 +112,7 @@ compose file.
       solo-themes:
       solo-extensions:
    ```
-3. **Complete setup.** Browse to the app and sign in with the static
+4. **Complete setup.** Browse to the app and sign in with the static
    `Setup__Username` / `Setup__Password` account. The wizard verifies SSO
    sign-in and sets audit retention; finish it while signed in with your own SSO
    account, which becomes the permanent super admin. The static account is
@@ -114,6 +122,9 @@ From there, invite your team and hand out the URL. Optional extras: put it
 behind a reverse proxy or the Cloudflare tunnel the compose file has commented
 out, install the [desktop app](#desktop-app), add [themes](docs/themes.md), or
 drop in [extensions](#extensions) such as the bundled MCP server.
+
+>[!IMPORTANT]
+>Everything after this is written by an LLM, sorry for the slop.
 
 ## Extensions
 
