@@ -571,7 +571,10 @@ code {
    two are never both in charge.
    --------------------------------------------------------------------------- */
 @media (pointer: coarse) {
-    [draggable="true"] {
+    /* js/drag.js takes the draggable attribute off on a touchscreen and leaves
+       its own mark in its place, so both spellings are the same elements. */
+    [draggable="true"],
+    [data-solo-drag] {
         -webkit-user-drag: none;
         -webkit-touch-callout: none;
         -webkit-user-select: none;

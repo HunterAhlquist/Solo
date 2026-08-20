@@ -326,7 +326,7 @@ const EDGE_DWELL_MS = 1000;
         }
 
         const target = e.target instanceof Element ? e.target : null;
-        const handle = target?.closest('[draggable="true"]');
+        const handle = target?.closest(`[${MARK}], [draggable="true"]`);
         if (!handle) {
             return;
         }
@@ -347,13 +347,52 @@ const EDGE_DWELL_MS = 1000;
         watch();
     }, { passive: true });
 
+    // Taking the gesture away from the platform.
+    //
     // WebKit runs a long-press drag of its own on anything draggable, and it
-    // lifts about half a second before we do — then the drag session swallows
-    // the touch stream, so our press never completes and what you get is the
-    // platform's drag: instant, clipped to its scroller, and unable to scroll
-    // the page. Refuse it. A trusted dragstart on a touchscreen is the platform
-    // starting the drag we are already running; ours are dispatched from script
-    // and so are untrusted, and pass straight through.
+    // lifts sooner than we do — the drag session then swallows the touch
+    // stream, so our press never completes and what you get is the platform's
+    // drag: instant, clipped to whatever scroller the card sits in, and unable
+    // to scroll the page.
+    //
+    // Two ways to stop it, and on iOS neither is worth trusting alone. The
+    // attribute is the belt: the drag interaction attaches to draggable itself,
+    // so on a touchscreen take it off — nothing downstream reads it, because
+    // the events we dispatch by hand don't consult it, and a re-render that
+    // puts it back is caught the same way it was caught the first time. The
+    // cancelled dragstart is the braces, for any path that starts a drag
+    // anyway. Ours are dispatched from script and so are untrusted, and pass
+    // straight through both.
+    const MARK = 'data-solo-drag';
+
+    const disarm = root => {
+        if (root.nodeType !== 1) {
+            return;
+        }
+
+        const all = root.matches('[draggable="true"]') ? [root, ...root.querySelectorAll('[draggable="true"]')]
+            : [...root.querySelectorAll('[draggable="true"]')];
+        for (const element of all) {
+            element.setAttribute(MARK, '');
+            element.setAttribute('draggable', 'false');
+        }
+    };
+
+    if (coarse()) {
+        disarm(document.body);
+        new MutationObserver(records => {
+            for (const record of records) {
+                if (record.type === 'attributes') {
+                    disarm(record.target);
+                } else {
+                    record.addedNodes.forEach(disarm);
+                }
+            }
+        }).observe(document.body, {
+            subtree: true, childList: true, attributes: true, attributeFilter: ['draggable'],
+        });
+    }
+
     document.addEventListener('dragstart', e => {
         if (coarse() && e.isTrusted) {
             e.preventDefault();
