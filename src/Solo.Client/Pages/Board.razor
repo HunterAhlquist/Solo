@@ -19,11 +19,14 @@
 }
 else
 {
-    <div class="d-flex align-center mb-3" style="gap:.75rem">
+    @* Wraps rather than crushes: on a narrow screen the title keeps the first
+       row and the create buttons drop to a row of their own, instead of the
+       three of them squeezing each other down to a letter apiece. *@
+    <div class="board-header">
         <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
                        Href="@($"projects/{ProjectAlias}")" aria-label="Back to project" />
         <EntityIcon ImageId="@Store.Board.ImageId" Icon="@Store.Board.Icon" Color="Color.Primary" />
-        <MudText Typo="Typo.h1">@Store.Board.Name</MudText>
+        <MudText Typo="Typo.h1" Class="board-header__title">@Store.Board.Name</MudText>
 
         @if (!Store.Board.IsOpen)
         {
@@ -35,14 +38,16 @@ else
 
         @if (CanWrite)
         {
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
-                       StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateEpicAsync">
-                Epic
-            </MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                       StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => CreateTaskAsync(null))">
-                Task
-            </MudButton>
+            <div class="board-header__actions">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateEpicAsync">
+                    Epic
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => CreateTaskAsync(null))">
+                    Task
+                </MudButton>
+            </div>
         }
     </div>
 
@@ -56,14 +61,20 @@ else
                       NoDropClass="kanban-zone--no-drop">
         <ChildContent>
 
+            @* Board-wide column titles, over the gutter-plus-three-columns grid.
+               The phone layout hides this: once the columns become a carousel
+               nothing lines up under a shared header, so each column names
+               itself instead (see KanbanZone). *@
             <div class="kanban-header">
                 <div></div>
-                @foreach (var status in BoardZones.Statuses)
-                {
-                    <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
-                        @BoardZones.Title(status) (@_ordered.Count(t => t.Status == status))
-                    </MudText>
-                }
+                <div class="kanban-header__columns">
+                    @foreach (var status in BoardZones.Statuses)
+                    {
+                        <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
+                            @BoardZones.Title(status) (@_ordered.Count(t => t.Status == status))
+                        </MudText>
+                    }
+                </div>
             </div>
 
             @foreach (var epic in Store.Board.Epics)
@@ -85,7 +96,7 @@ else
                          role="button" aria-label="@($"Open epic {epic.Name}")">
                         <div class="kanban-lane__title">
                             <span class="d-inline-flex" @onclick:stopPropagation>
-                                <MudIconButton Size="Size.Small" Class="pa-0"
+                                <MudIconButton Size="Size.Small" Class="kanban-lane__collapse"
                                                Icon="@(IsCollapsed(epic.Id) ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
                                                OnClick="@(() => ToggleCollapsed(epic.Id))"
                                                aria-label="Collapse epic" />
@@ -129,7 +140,7 @@ else
 
                     @if (IsCollapsed(epic.Id))
                     {
-                        <div class="kanban-zone" style="grid-column:2 / span 3">
+                        <div class="kanban-zone">
                             <MudText Typo="Typo.caption" Color="Color.Secondary">
                                 @TasksOfEpic(epic.Id).Count task(s) hidden
                             </MudText>
@@ -137,12 +148,16 @@ else
                     }
                     else
                     {
-                        @foreach (var status in BoardZones.Statuses)
-                        {
-                            <KanbanZone Identifier="@BoardZones.Id(epic.Id, status)"
-                                        HiddenCount="@HiddenCount(epic.Id, status)"
-                                        OnExpand="@(() => ExpandFinished(epic.Id))" />
-                        }
+                        <div class="kanban-lane__zones">
+                            @foreach (var status in BoardZones.Statuses)
+                            {
+                                <KanbanZone Identifier="@BoardZones.Id(epic.Id, status)"
+                                            Title="@BoardZones.Title(status)"
+                                            Count="@ZoneCount(epic.Id, status)"
+                                            HiddenCount="@HiddenCount(epic.Id, status)"
+                                            OnExpand="@(() => ExpandFinished(epic.Id))" />
+                            }
+                        </div>
                     }
                 </div>
             }
@@ -156,12 +171,16 @@ else
                     </div>
                 </div>
 
-                @foreach (var status in BoardZones.Statuses)
-                {
-                    <KanbanZone Identifier="@BoardZones.Id(null, status)"
-                                HiddenCount="@HiddenCount(null, status)"
-                                OnExpand="@(() => ExpandFinished(null))" />
-                }
+                <div class="kanban-lane__zones">
+                    @foreach (var status in BoardZones.Statuses)
+                    {
+                        <KanbanZone Identifier="@BoardZones.Id(null, status)"
+                                    Title="@BoardZones.Title(status)"
+                                    Count="@ZoneCount(null, status)"
+                                    HiddenCount="@HiddenCount(null, status)"
+                                    OnExpand="@(() => ExpandFinished(null))" />
+                    }
+                </div>
             </div>
 
             @if (Store.Board.Epics.Count == 0 && _ordered.Count == 0)
@@ -185,6 +204,15 @@ else
                       OnOpen="@OpenTask" />
         </ItemRenderer>
     </MudDropContainer>
+
+    @* Column-swap targets for a drag on the phone carousel: the column you want
+       is usually off-screen when you pick a card up, so holding it against
+       either edge steps that band along. Painted here, armed from
+       js/solo-interop.js — dragover fires continuously for the length of a
+       drag, which is no way to drive a render. pointer-events:none, so they can
+       never take the drop themselves. *@
+    <div class="board-edge board-edge--left" aria-hidden="true"></div>
+    <div class="board-edge board-edge--right" aria-hidden="true"></div>
 
     <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite"
                   CanModerate="@_canModerate" OnClose="@CloseDrawerAsync" />
@@ -369,6 +397,10 @@ else
             // Storage unavailable — recents are best-effort.
         }
     }
+
+    /// <summary>What the column heading counts — folded cards included.</summary>
+    private int ZoneCount(Guid? epicId, TaskState status) =>
+        _ordered.Count(t => t.EpicId == epicId && t.Status == status);
 
     private int HiddenCount(Guid? epicId, TaskState status) =>
         status != TaskState.Finished

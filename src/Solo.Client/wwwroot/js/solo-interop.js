@@ -1,6 +1,6 @@
 // Minimal interop surface: browser storage Blazor can't reach on its own.
 // The one-shot pulse/shake animations are driven by adding and removing a CSS
-// class from C#, so they need nothing here.
+// class from C#, so they need nothing here. Drag & drop has its own file.
 window.solo = {
     storage: {
         get: key => localStorage.getItem(key),
@@ -297,21 +297,6 @@ window.solo = {
         },
     },
 };
-
-// WebKit cancels a drag whose dragstart wrote nothing to the pasteboard, so on
-// iPadOS the press falls through to the text-selection gesture and nothing ever
-// drags. Blazor's DragEventArgs is a read-only snapshot — the hand-rolled drag
-// sources (epic bands, sub-task rows) can't call setData from C# — so seed the
-// payload here, in capture, before their @ondragstart runs. Only for a drag
-// that carries nothing: a text, link or image drag already has its own data,
-// and MudBlazor's cards set theirs (which is why those alone dragged on iPad).
-// The type is deliberately '' rather than 'text/plain', as MudBlazor's is: a
-// stray drop into a text field must not paste anything.
-document.addEventListener('dragstart', e => {
-    if (e.dataTransfer && e.dataTransfer.types.length === 0) {
-        e.dataTransfer.setData('', 'solo-drag');
-    }
-}, true);
 
 // Capture phase, so it runs before Blazor's router and event delegation see
 // the click (see window.solo.markdown above).

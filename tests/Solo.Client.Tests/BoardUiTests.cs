@@ -665,6 +665,78 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.Empty(cut.FindAll(SubTaskHandle));
     }
 
+    // -- The phone layout swipes between columns, so each names itself -----------
+    //
+    // Below the md breakpoint the three status columns become a horizontal
+    // carousel and the board's shared header row is hidden, which leaves each
+    // column's own heading as the only thing naming it. That heading — and the
+    // one strip element per band the carousel scrolls — are structure the CSS
+    // depends on, so they are asserted here rather than left to a screenshot.
+
+    [Fact]
+    public void Each_band_puts_its_three_named_columns_in_one_strip()
+    {
+        QueueBoard(TestData.Board(
+            epics: [TestData.Epic(EpicA, 1024m)],
+            tasks:
+            [
+                TestData.Task(epicId: EpicA),
+                TestData.Task(epicId: EpicA, status: TaskState.InProgress, rank: 2048m),
+                TestData.Task(epicId: EpicA, status: TaskState.InProgress, rank: 3072m),
+            ]));
+        var page = RenderBoard();
+
+        // One strip for the epic band, one for the ad-hoc band below it.
+        var strips = page.FindAll(".kanban-lane__zones");
+        Assert.Equal(2, strips.Count);
+        Assert.All(strips, strip => Assert.Equal(3, strip.QuerySelectorAll(".kanban-column").Length));
+
+        Assert.Equal(
+            ["Unstarted 1", "In Progress 2", "Finished 0"],
+            Headings(strips[0]));
+    }
+
+    /// <summary>
+    /// The heading counts what is in the column, not what is on screen: past the
+    /// Finished limit the overflow folds away behind an expander, and a count
+    /// that shrank to 25 would say the rest had been deleted.
+    /// </summary>
+    [Fact]
+    public void A_finished_columns_heading_counts_the_cards_folded_away_too()
+    {
+        var finished = Enumerable.Range(0, BoardZones.FinishedVisibleLimit + 3)
+            .Select(i => TestData.Task(status: TaskState.Finished, rank: 1024m + i))
+            .ToList();
+        QueueBoard(TestData.Board(tasks: finished));
+        var page = RenderBoard();
+
+        Assert.Equal(
+            $"Finished {BoardZones.FinishedVisibleLimit + 3}",
+            Headings(page.Find(".kanban-lane__zones"))[2]);
+    }
+
+    /// <summary>Each column's heading, as "&lt;status&gt; &lt;count&gt;".</summary>
+    private static List<string> Headings(AngleSharp.Dom.IElement strip) =>
+        strip.QuerySelectorAll(".kanban-column__header")
+            .Select(h => string.Join(' ', h.Children.Select(c => c.TextContent.Trim())))
+            .ToList();
+
+    /// <summary>
+    /// Holding a dragged card against either edge steps the carousel to the next
+    /// column. The behaviour is in js/solo-interop.js, where a test can't reach
+    /// it — what is worth protecting here is that the two elements the script
+    /// lights up still exist, since it fails silently if they don't.
+    /// </summary>
+    [Fact]
+    public void The_board_paints_an_edge_the_drag_gesture_can_light_up_on_each_side()
+    {
+        QueueBoard(TestData.Board(tasks: [TestData.Task()]));
+        var page = RenderBoard();
+
+        Assert.Single(page.FindAll(".board-edge--left"));
+        Assert.Single(page.FindAll(".board-edge--right"));
+    }
+
     // -- Bug: the top-right profile menu (ActivatorContent) stopped opening -------
 
     /// <summary>
