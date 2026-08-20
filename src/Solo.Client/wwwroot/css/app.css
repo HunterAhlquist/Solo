@@ -431,6 +431,8 @@ code {
 .kanban-card {
     cursor: grab;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     /* A border does the separating work: MudPaper's Elevation shadow is invisible
        on a near-black surface, and the card fill sits only one step above the lane.
        lines-default is the theme's translucent-yellow hairline. */
@@ -553,6 +555,49 @@ code {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Touch dragging (js/drag.js).
+
+   On a touchscreen the drag is ours, not the platform's, so the platform has to
+   be told to keep out of it: -webkit-user-drag stops WebKit starting a drag of
+   its own on the same press, and the selection and callout rules stop that press
+   turning into a text selection or a magnifier — the conflict that made a card
+   awkward to pick up at all.
+
+   Only where the primary pointer is coarse. A mouse keeps native drag & drop,
+   which is what js/drag.js also checks before it takes anything over, so the
+   two are never both in charge.
+   --------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+    [draggable="true"] {
+        -webkit-user-drag: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+}
+
+/* The card riding under the finger: a copy of the real one, parented to <body>
+   so that no scroller — least of all the horizontal one the phone board puts
+   each band's columns in — can crop it. Lifted off the page with a shadow, and
+   held just clear of the fingertip. */
+.solo-drag-ghost {
+    position: fixed;
+    z-index: 2000;
+    margin: 0;
+    pointer-events: none;
+    opacity: 0.95;
+    transform-origin: center;
+    box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.45);
+    scale: 1.03;
+}
+
+/* What was picked up stays in place, faded, so the row it came from doesn't
+   collapse under the finger mid-drag. */
+.solo-drag-source {
+    opacity: 0.4;
 }
 
 /* ---------------------------------------------------------------------------
