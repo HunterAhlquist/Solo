@@ -577,6 +577,15 @@ code {
         -webkit-user-select: none;
         user-select: none;
     }
+
+    /* A tooltip wants a hover to live inside, and a touchscreen hasn't got one:
+       it opens on the press — the very press that now lifts a card — and then
+       has no pointer-out to close it, so it sits over the board for the rest of
+       the drag. Every one of them repeats a label the element already carries
+       for a screen reader, so on a finger they are pure loss. */
+    .mud-tooltip {
+        display: none !important;
+    }
 }
 
 /* The card riding under the finger: a copy of the real one, parented to <body>

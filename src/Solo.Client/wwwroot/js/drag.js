@@ -234,12 +234,17 @@ const EDGE_DWELL_MS = 1000;
         Math.max(0, Math.min(x, window.innerWidth - 1)),
         Math.max(0, Math.min(y, window.innerHeight - 1)));
 
-    // The nearest thing that can scroll vertically, so a checklist inside the
-    // drawer scrolls itself rather than the page behind it.
-    const scroller = element => {
+    // The nearest thing that can actually scroll the way we are asking, so a
+    // checklist inside the drawer scrolls itself rather than the page behind
+    // it — and so a band's column strip, which overflows sideways and is
+    // therefore technically a vertical scroller too, is passed over rather
+    // than silently swallowing the scroll.
+    const scroller = (element, by) => {
         for (let node = element; node && node !== document.body; node = node.parentElement) {
-            const style = getComputedStyle(node);
-            if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1) {
+            const room = by < 0
+                ? node.scrollTop > 0
+                : node.scrollTop + node.clientHeight < node.scrollHeight - 1;
+            if (room && /(auto|scroll)/.test(getComputedStyle(node).overflowY)) {
                 return node;
             }
         }
@@ -258,7 +263,7 @@ const EDGE_DWELL_MS = 1000;
         }
 
         const by = Math.round(SCROLL_MAX_PX * Math.max(-1, Math.min(from / SCROLL_BAND_PX, 1)));
-        const target = scroller(over ?? document.body);
+        const target = scroller(over ?? document.body, by);
         if (target) {
             target.scrollTop += by;
         } else {
@@ -321,14 +326,17 @@ const EDGE_DWELL_MS = 1000;
         }
 
         const target = e.target instanceof Element ? e.target : null;
-        // A control inside a drag source is a control first: the epic band's own
-        // add and delete buttons live inside the band that drags.
-        if (!target || target.closest('button, a, input, textarea, [role="button"]')) {
+        const handle = target?.closest('[draggable="true"]');
+        if (!handle) {
             return;
         }
 
-        const handle = target.closest('[draggable="true"]');
-        if (!handle) {
+        // A control *inside* a drag source is a control first — the epic band's
+        // own add and delete buttons sit inside the band that drags. The source
+        // itself may well be one: an epic band is a button too, since pressing
+        // it opens the epic.
+        const control = target.closest('button, a, input, textarea, select, [role="button"]');
+        if (control && control !== handle && handle.contains(control)) {
             return;
         }
 
@@ -338,6 +346,19 @@ const EDGE_DWELL_MS = 1000;
         hold = setTimeout(lift, HOLD_MS);
         watch();
     }, { passive: true });
+
+    // WebKit runs a long-press drag of its own on anything draggable, and it
+    // lifts about half a second before we do — then the drag session swallows
+    // the touch stream, so our press never completes and what you get is the
+    // platform's drag: instant, clipped to its scroller, and unable to scroll
+    // the page. Refuse it. A trusted dragstart on a touchscreen is the platform
+    // starting the drag we are already running; ours are dispatched from script
+    // and so are untrusted, and pass straight through.
+    document.addEventListener('dragstart', e => {
+        if (coarse() && e.isTrusted) {
+            e.preventDefault();
+        }
+    }, true);
 
     // Attached only for the life of a press that landed on something draggable,
     // and non-passive only then: a permanent non-passive touchmove on the
