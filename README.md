@@ -1,8 +1,8 @@
 # Solo
 
-A simple project management tool for small, trusted game-dev teams: Kanban boards with epics/tasks/sub-tasks, single-provider OIDC SSO, live editing over SignalR, and full audit logging.
+A simple project management tool for small teams: Kanban boards with epics/tasks/sub-tasks as swim-lanes, single-provider OIDC SSO, live editing over SignalR, full audit logging, themes, and extension support.
 
-**Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host — one container + Postgres is the whole deployment. Design details live in [docs/backend-plan.md](docs/backend-plan.md).
+**Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host — one container + Postgres is the whole deployment.
 
 <details>
 
@@ -104,16 +104,7 @@ compose file.
       solo-themes:
       solo-extensions:
    ```
-
-4. **Start it.**
-
-   ```sh
-   docker compose up -d
-   ```
-
-   The image pulls from `ghcr.io/hunterahlquist/solo`, the database schema is
-   created on first boot, and `GET /healthz` answers once the app is up.
-5. **Complete setup.** Browse to the app and sign in with the static
+3. **Complete setup.** Browse to the app and sign in with the static
    `Setup__Username` / `Setup__Password` account. The wizard verifies SSO
    sign-in and sets audit retention; finish it while signed in with your own SSO
    account, which becomes the permanent super admin. The static account is
@@ -122,8 +113,7 @@ compose file.
 From there, invite your team and hand out the URL. Optional extras: put it
 behind a reverse proxy or the Cloudflare tunnel the compose file has commented
 out, install the [desktop app](#desktop-app), add [themes](docs/themes.md), or
-drop in [extensions](#extensions) such as the bundled MCP server. TrueNAS SCALE
-users have an appliance-specific path — see [Deployment](#deployment-truenas-scale-custom-app).
+drop in [extensions](#extensions) such as the bundled MCP server.
 
 ## Extensions
 
