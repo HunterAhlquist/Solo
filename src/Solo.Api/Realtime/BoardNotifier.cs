@@ -10,28 +10,23 @@ using Solo.Shared.Hubs;
 namespace Solo.Api.Realtime;
 
 /// <summary>
-/// Broadcasts change events to board groups after successful saves. Called from
-/// the API write path (not hub methods) so REST stays the single write path.
-/// The sender is excluded via the connection id it supplies in the
-/// <see cref="BoardHubConstants.ConnectionIdHeader"/> header.
+/// Broadcasts saved REST API changes to board groups. Hub methods do not write,
+/// and the originating SignalR connection is excluded when its id is available.
 /// </summary>
 public interface IBoardNotifier
 {
     Task BoardEntityChanged(Guid boardId, string entityType, Guid entityId,
         ChangeKind kind, params string[] changedFields);
 
-    /// <summary>Project-scoped changes (labels, members, project meta) fan out to every board group.</summary>
+    /// <summary>Sends a project-scoped change to every board in that project.</summary>
     Task ProjectEntityChanged(Guid projectId, string entityType, Guid entityId,
         ChangeKind kind, params string[] changedFields);
 }
 
 /// <remarks>
-/// Also the raise point for extension domain events. These call sites already
-/// know the board/project scope and the changed fields — which a
-/// ChangeTracker-derived event would not — so the SignalR broadcast and the
-/// extension fan-out are the same moment, and neither can drift from the other.
-/// Publishing is awaited but never allowed to fail the caller: the publisher
-/// wraps every handler (see DomainEventPublisher).
+/// Controllers provide scope and changed fields that the change tracker cannot
+/// derive. SignalR and extension handlers receive the same change here, and the
+/// publisher isolates handler failures.
 /// </remarks>
 public sealed class BoardNotifier(
     IHubContext<BoardHub, IBoardClient> hub,
@@ -58,10 +53,8 @@ public sealed class BoardNotifier(
             .Select(b => b.Id)
             .ToListAsync();
         var change = Event(entityType, entityId, kind, changedFields);
-        foreach (var boardId in boardIds)
-        {
-            await Send(BoardHubConstants.BoardGroup(boardId), change);
-        }
+        await Task.WhenAll(boardIds.Select(boardId =>
+            Send(BoardHubConstants.BoardGroup(boardId), change)));
 
         await events.PublishAsync(new SoloDomainEvent(
             entityType, entityId, kind, changedFields, currentUser.UserId ?? Guid.Empty,

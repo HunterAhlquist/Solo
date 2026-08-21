@@ -197,7 +197,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         var response = await McpClient(token.Value).PostAsync(Endpoint, Rpc(null, "notifications/initialized"));
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-        Assert.Equal(0, (await response.Content.ReadAsByteArrayAsync()).Length);
+        Assert.Empty(await response.Content.ReadAsByteArrayAsync());
     }
 
     [SkippableFact]

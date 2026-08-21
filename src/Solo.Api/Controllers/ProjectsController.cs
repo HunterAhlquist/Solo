@@ -30,16 +30,13 @@ public sealed class ProjectsController(
             return Forbid();
         }
 
-        var memberships = await db.ProjectMembers.AsNoTracking()
+        return await db.ProjectMembers.AsNoTracking()
             .Where(m => m.UserId == userId)
-            .Include(m => m.Project)
             .OrderBy(m => m.Project!.Name)
-            .ToListAsync(ct);
-        return memberships
             .Select(m => new ProjectSummaryDto(
                 m.ProjectId, m.Project!.Name, m.Project.Alias, m.Project.Icon, m.Project.ImageId,
                 m.Role, m.IsOwner))
-            .ToList();
+            .ToListAsync(ct);
     }
 
     /// <summary>Project creation is reserved for the super admin.</summary>

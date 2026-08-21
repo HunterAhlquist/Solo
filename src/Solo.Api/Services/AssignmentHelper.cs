@@ -31,24 +31,28 @@ public static class AssignmentHelper
             title: "Invalid assignees",
             detail: $"Not project members: {string.Join(", ", invalid)}");
 
-    /// <summary>
-    /// Reconciles the assignment collection to exactly the requested user ids.
-    /// Rows are removed via the context: detaching them from the navigation
-    /// alone would null the optional parent FK instead of deleting the row.
-    /// </summary>
+    /// <summary>Replaces the current assignments with the requested user ids.</summary>
+    /// <remarks>Stale rows must be deleted because removing them from the navigation only clears the optional FK.</remarks>
     public static void Sync(
         SoloDbContext db, List<Assignment> current, IReadOnlyList<Guid> userIds,
         Func<Guid, Assignment> create)
     {
-        var wanted = userIds.Distinct().ToHashSet();
-        foreach (var stale in current.Where(a => !wanted.Contains(a.UserId)).ToList())
+        var wanted = userIds.ToHashSet();
+        var stale = current.Where(a => !wanted.Contains(a.UserId)).ToList();
+        if (stale.Count > 0)
         {
-            db.Assignments.Remove(stale);
-            current.Remove(stale);
+            db.Assignments.RemoveRange(stale);
+            current.RemoveAll(a => !wanted.Contains(a.UserId));
         }
 
-        foreach (var userId in wanted.Where(id => current.All(a => a.UserId != id)))
+        var assigned = current.Select(a => a.UserId).ToHashSet();
+        foreach (var userId in wanted)
         {
+            if (!assigned.Add(userId))
+            {
+                continue;
+            }
+
             var assignment = create(userId);
             db.Assignments.Add(assignment);
             current.Add(assignment);

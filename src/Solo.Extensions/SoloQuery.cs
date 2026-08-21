@@ -9,22 +9,15 @@ using Solo.Shared.Dtos;
 namespace Solo.Extensions;
 
 /// <summary>
-/// <see cref="ISoloQuery"/> over the core database, filtered by the caller's
-/// project membership before anything is returned.
+/// Implements caller-scoped core reads for extensions.
 /// </summary>
 /// <remarks>
-/// <para>This exists so extensions never hold <c>SoloDbContext</c>. Every method
-/// starts from what the caller may read, so an extension gets core's
-/// authorization for free and cannot construct a query that sees another
-/// project's rows.</para>
+/// <para>Extensions cannot access <c>SoloDbContext</c>. Each method applies core
+/// authorization before returning data.</para>
 ///
-/// <para>The projections are deliberately a copy of core's rather than a call
-/// into <c>DtoMapper</c> — that lives in Solo.Api, which the extension host
-/// cannot reference, the dependency running the other way. The behaviour
-/// mirrors core's endpoints: project listing is membership-only (a super admin
-/// who is a member of nothing sees nothing, exactly as <c>GET /api/projects</c>
-/// does), while per-entity access uses <see cref="AccessPolicy"/> including the
-/// super-admin path, exactly as <c>ProjectAccessHandler</c> does.</para>
+/// <para>Projections stay local because the extension host cannot reference
+/// Solo.Api. Project lists match <c>GET /api/projects</c> and require membership;
+/// entity reads also apply the super-admin path from <see cref="AccessPolicy"/>.</para>
 /// </remarks>
 public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller, IHttpContextAccessor http)
     : ISoloQuery
@@ -37,17 +30,13 @@ public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller,
             return [];
         }
 
-        var memberships = await db.ProjectMembers.AsNoTracking()
+        return await db.ProjectMembers.AsNoTracking()
             .Where(m => m.UserId == user.UserId)
-            .Include(m => m.Project)
             .OrderBy(m => m.Project!.Name)
-            .ToListAsync(ct);
-
-        return memberships
             .Select(m => new ProjectSummaryDto(
                 m.ProjectId, m.Project!.Name, m.Project.Alias, m.Project.Icon, m.Project.ImageId,
                 m.Role, m.IsOwner))
-            .ToList();
+            .ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<BoardDto>> BoardsAsync(Guid projectId, CancellationToken ct = default)
