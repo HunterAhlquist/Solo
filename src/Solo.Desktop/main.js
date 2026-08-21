@@ -122,6 +122,11 @@ function localUrl() {
 
 const isMac = process.platform === 'darwin';
 
+function nativeEffectsEnabled() {
+    return isMac && settings?.nativeEffects !== false &&
+        process.env.SOLO_DISABLE_LIQUID_GLASS !== '1';
+}
+
 // The native package is darwin-only while Solo also installs and packages on
 // Windows and Linux, so it is an optional dependency and never loaded there.
 // macOS uses it when possible and falls back to Electron's AppKit vibrancy
@@ -175,7 +180,7 @@ function createMainWindow() {
         return;
     }
 
-    const useGlassBackdrop = isMac && process.env.SOLO_DISABLE_LIQUID_GLASS !== '1';
+    const useGlassBackdrop = nativeEffectsEnabled();
     liquidGlass = useGlassBackdrop ? loadLiquidGlass() : null;
     const useLiquidGlass = liquidGlass !== null;
     const useVibrancyFallback = useGlassBackdrop && !useLiquidGlass;
@@ -402,21 +407,71 @@ function openSettingsWindow() {
         return;
     }
 
+    const useGlassBackdrop = nativeEffectsEnabled();
+    const settingsLiquidGlass = useGlassBackdrop ? (liquidGlass ?? loadLiquidGlass()) : null;
+    const useLiquidGlass = settingsLiquidGlass !== null;
+    const useVibrancyFallback = useGlassBackdrop && !useLiquidGlass;
+    if (settingsLiquidGlass) {
+        liquidGlass = settingsLiquidGlass;
+    }
+
     settingsWindow = new BrowserWindow({
         width: 520,
-        height: 580,
+        height: 650,
         resizable: false,
         minimizable: false,
         fullscreenable: false,
         show: false,
-        backgroundColor: '#000000',
+        backgroundColor: useGlassBackdrop
+            ? '#00000000'
+            : nativeTheme.shouldUseDarkColors ? '#000000' : '#f7f4ee',
+        transparent: useGlassBackdrop,
+        ...(useVibrancyFallback
+            ? { vibrancy: 'under-window', visualEffectState: 'active' }
+            : {}),
+        ...(useGlassBackdrop
+            ? {
+                titleBarStyle: 'hiddenInset',
+                trafficLightPosition: { x: 18, y: 20 },
+            }
+            : {}),
         title: 'Solo — Server Settings',
         parent: mainWindow ?? undefined,
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'settings.js'),
+            ...(useGlassBackdrop ? { additionalArguments: ['--solo-glass-backdrop'] } : {}),
             ...HARDENED_WEB_PREFERENCES,
         },
     });
+
+    if (useGlassBackdrop) {
+        settingsWindow.setWindowButtonVisibility(true);
+    }
+
+    if (useLiquidGlass) {
+        settingsWindow.webContents.once('did-finish-load', () => {
+            try {
+                const viewId = settingsLiquidGlass.addView(settingsWindow.getNativeWindowHandle());
+                if (viewId < 0) {
+                    throw new Error('the native add-on returned no view');
+                }
+                settingsWindow.webContents.send('window:glass-backdrop', true);
+                console.log(`Solo settings Liquid Glass enabled (view ${viewId}).`);
+            } catch (err) {
+                console.error('Solo settings Liquid Glass could not be applied; using Electron vibrancy.', err);
+                try {
+                    settingsWindow?.setVibrancy('under-window');
+                    settingsWindow?.webContents.send('window:glass-backdrop', true);
+                    console.log('Solo settings glass fallback enabled (Electron vibrancy).');
+                } catch (fallbackError) {
+                    settingsWindow?.webContents.send('window:glass-backdrop', false);
+                    console.error('Solo settings could not apply its glass fallback.', fallbackError);
+                }
+            }
+        });
+    } else if (useVibrancyFallback) {
+        console.log('Solo settings glass fallback enabled (Electron vibrancy).');
+    }
 
     settingsWindow.once('ready-to-show', () => settingsWindow.show());
     settingsWindow.on('closed', () => { settingsWindow = null; });
@@ -433,6 +488,8 @@ function registerIpc() {
     ipcMain.handle('settings:get', () => ({
         instanceUrl: settings.instanceUrl,
         port: settings.port,
+        nativeEffects: settings.nativeEffects,
+        platform: process.platform,
         firstRun: !settings.instanceUrl,
     }));
 
@@ -470,7 +527,7 @@ function registerIpc() {
         }
     });
 
-    ipcMain.handle('settings:save', async (_event, rawUrl) => {
+    ipcMain.handle('settings:save', async (_event, rawUrl, nativeEffects) => {
         const url = settingsStore.normalizeInstanceUrl(rawUrl);
         if (!url) {
             return { ok: false, error: 'Enter a valid http(s) address.' };
@@ -478,6 +535,7 @@ function registerIpc() {
 
         const urlChanged = url !== settings.instanceUrl;
         settings.instanceUrl = url;
+        settings.nativeEffects = nativeEffects !== false;
         settingsStore.save(settings);
 
         // Main window before closing settings: with quit-on-all-closed, the

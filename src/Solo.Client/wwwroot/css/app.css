@@ -993,23 +993,38 @@ html.solo-desktop--glass .mud-main-content {
     background: transparent !important;
 }
 
-/* Preserve the active theme as a translucent wash. The material and blur are
-   native; these colors only keep navigation legible over varied desktops. */
+html.solo-desktop--glass {
+    --solo-glass-appbar-blur: blur(22px) saturate(125%);
+    --solo-glass-page-defocus: blur(64px) saturate(105%);
+    --solo-glass-dense-defocus: blur(48px) saturate(110%);
+    --solo-glass-dense-background:
+        color-mix(in srgb, var(--mud-palette-drawer-background) 84%, transparent);
+}
+
+/* Preserve the active theme as a translucent wash. The native view handles the
+   desktop; backdrop-filter additionally defocuses page content scrolling under
+   the fixed app bar inside Chromium. */
 html.solo-desktop--glass .mud-appbar {
     background: color-mix(in srgb, var(--mud-palette-appbar-background) 38%, transparent);
+    -webkit-backdrop-filter: var(--solo-glass-appbar-blur);
+    backdrop-filter: var(--solo-glass-appbar-blur);
 }
 
 html.solo-desktop--glass .mud-drawer {
     background: color-mix(in srgb, var(--mud-palette-drawer-background) 52%, transparent);
 }
 
-/* On glass the shared column header belongs to the backdrop instead of
-   becoming a fourth boxed lane. Heavier labels keep the three columns easy to
-   scan without the opaque strip or the lane dividers continuing through it. */
+/* These are the two headers visible on a board. They live in page content, not
+   in MudBlazor's global app bar, so they need their own renderer material. */
+html.solo-desktop--glass .board-header,
 html.solo-desktop--glass .kanban-header {
     background: transparent;
+    -webkit-backdrop-filter: var(--solo-glass-page-defocus);
+    backdrop-filter: var(--solo-glass-page-defocus);
 }
 
+/* Heavier labels keep the shared column header easy to scan without restoring
+   the old cell dividers. */
 html.solo-desktop--glass .kanban-header .mud-typography {
     display: flex;
     align-items: center;
@@ -1023,10 +1038,18 @@ html.solo-desktop--glass .kanban-header__columns > *::before {
     content: none;
 }
 
-/* The editor carries dense form content, unlike the navigation drawer. Give
-   it a stronger wash while retaining enough transparency to read as glass. */
+/* Dense editing and named-epic surfaces share one stronger material. The ad-hoc
+   lane stays on the ordinary board background because it is not an epic. */
 html.solo-desktop--glass .mud-drawer.detail-drawer {
-    background: color-mix(in srgb, var(--mud-palette-drawer-background) 84%, transparent);
+    background: var(--solo-glass-dense-background);
+    -webkit-backdrop-filter: var(--solo-glass-dense-defocus);
+    backdrop-filter: var(--solo-glass-dense-defocus);
+}
+
+html.solo-desktop--glass .kanban-lane:not(.kanban-lane--adhoc) {
+    background: var(--solo-glass-dense-background);
+    -webkit-backdrop-filter: var(--solo-glass-dense-defocus);
+    backdrop-filter: var(--solo-glass-dense-defocus);
 }
 
 html.solo-desktop .mud-appbar {

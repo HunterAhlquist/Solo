@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -123,6 +123,38 @@ try {
     })()`);
 
     const systemDark = bridgeTransitions.at(-1).effectiveDark;
+    const surfaceEffects = await evaluate(target.webSocketDebuggerUrl, `(() => {
+        const fixture = document.createElement('div');
+        fixture.innerHTML = [
+            '<div class="mud-appbar"></div>',
+            '<div class="board-header"></div>',
+            '<div class="kanban-header"></div>',
+            '<div class="mud-drawer detail-drawer"></div>',
+            '<div class="kanban-lane"></div>',
+            '<div class="kanban-lane kanban-lane--adhoc"></div>'
+        ].join('');
+        document.body.append(fixture);
+        const [appbar, boardHeader, kanbanHeader, drawer, epicLane, adHocLane] = fixture.children;
+        const read = element => {
+            const style = getComputedStyle(element);
+            return {
+                background: style.backgroundColor,
+                blur: style.backdropFilter || style.webkitBackdropFilter
+            };
+        };
+        const result = {
+            appbar: read(appbar),
+            boardHeader: read(boardHeader),
+            kanbanHeader: read(kanbanHeader),
+            drawer: read(drawer),
+            epicLane: read(epicLane),
+            adHocLane: read(adHocLane)
+        };
+        fixture.remove();
+        return result;
+    })()`);
+    const backdropDefocus = await measureBackdropDefocus(
+        target.webSocketDebuggerUrl, userDataDir);
     const bootTransitions = [];
     for (const [preference, expectedDark] of [['Light', false], ['Dark', true], ['System', systemDark]]) {
         await evaluate(target.webSocketDebuggerUrl,
@@ -139,7 +171,7 @@ try {
         bootTransitions.push({ preference, expectedDark, effectiveDark: state.effectiveDark });
     }
 
-    const result = { bridgeTransitions, bootTransitions };
+    const result = { bridgeTransitions, bootTransitions, surfaceEffects, backdropDefocus };
     console.log(JSON.stringify(result, null, 2));
     const failed = [
         ...bridgeTransitions.filter(item => item.error ||
@@ -148,6 +180,25 @@ try {
             item.expectedScheme !== item.resolvedScheme),
         ...bootTransitions.filter(item => item.expectedDark !== item.effectiveDark),
     ];
+    if (surfaceEffects.appbar.blur === 'none' || surfaceEffects.boardHeader.blur === 'none' ||
+        surfaceEffects.kanbanHeader.blur === 'none' ||
+        surfaceEffects.boardHeader.background !== 'rgba(0, 0, 0, 0)' ||
+        surfaceEffects.kanbanHeader.background !== 'rgba(0, 0, 0, 0)' ||
+        surfaceEffects.drawer.blur === 'none' ||
+        surfaceEffects.drawer.background !== surfaceEffects.epicLane.background ||
+        surfaceEffects.drawer.blur !== surfaceEffects.epicLane.blur ||
+        surfaceEffects.adHocLane.blur !== 'none') {
+        failed.push({ source: 'glass surface effects' });
+    }
+    if (backdropDefocus.actualContrastRatio > 0.15) {
+        failed.push({ source: 'appbar backdrop defocus' });
+    }
+    if (backdropDefocus.exposedContrast < 80) {
+        failed.push({ source: 'appbar defocus reference capture' });
+    }
+    if (backdropDefocus.formerContrastRatio < 0.3) {
+        failed.push({ source: 'appbar defocus regression sensitivity' });
+    }
     if (failed.length) {
         throw new Error(`${failed.map(item => item.source ?? item.preference).join(', ')} did not synchronize the app and Electron appearance.`);
     }
@@ -215,6 +266,117 @@ function evaluate(socketUrl, expression) {
         }
         return result.result.value;
     });
+}
+
+async function measureBackdropDefocus(socketUrl, directory) {
+    await command(socketUrl, 'Page.bringToFront');
+    await evaluate(socketUrl, `new Promise(resolve => {
+        document.body.innerHTML = [
+            '<div id="defocus-pattern"></div>',
+            '<div class="board-header" id="defocus-appbar"></div>'
+        ].join('');
+        document.documentElement.style.background = '#808080';
+        document.body.style.cssText = 'margin:0;background:#808080;overflow:hidden';
+        const pattern = document.getElementById('defocus-pattern');
+        pattern.style.cssText = [
+            'position:fixed', 'inset:0 auto auto 0', 'width:480px', 'height:160px',
+            'z-index:1',
+            'background:repeating-linear-gradient(90deg,#000 0 64px,#fff 64px 128px)'
+        ].join(';');
+        const appbar = document.getElementById('defocus-appbar');
+        appbar.style.cssText = [
+            'position:fixed', 'inset:0 auto auto 0', 'width:480px', 'height:160px',
+            'z-index:2', 'box-shadow:none', 'border:0'
+        ].join(';');
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    })`);
+
+    const actualBitmap = await captureBitmap(socketUrl, directory, 'defocus-actual');
+    await evaluate(socketUrl, `new Promise(resolve => {
+        const appbar = document.getElementById('defocus-appbar');
+        appbar.style.webkitBackdropFilter = 'blur(22px) saturate(125%)';
+        appbar.style.backdropFilter = 'blur(22px) saturate(125%)';
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    })`);
+    const formerBitmap = await captureBitmap(socketUrl, directory, 'defocus-former');
+    await evaluate(socketUrl, `new Promise(resolve => {
+        document.getElementById('defocus-appbar').remove();
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+    })`);
+    const exposedBitmap = await captureBitmap(socketUrl, directory, 'defocus-exposed');
+    const scaleX = actualBitmap.width / 480;
+    const scaleY = actualBitmap.height / 160;
+    const bounds = [40 * scaleX, 440 * scaleX, 20 * scaleY, 140 * scaleY];
+    const actual = lumaContrast(actualBitmap, ...bounds);
+    const former = lumaContrast(formerBitmap, ...bounds);
+    const exposed = lumaContrast(exposedBitmap, ...bounds);
+    return {
+        bitmap: { width: actualBitmap.width, height: actualBitmap.height },
+        actualContrast: Number(actual.toFixed(2)),
+        formerContrast: Number(former.toFixed(2)),
+        exposedContrast: Number(exposed.toFixed(2)),
+        actualContrastRatio: Number((actual / exposed).toFixed(3)),
+        formerContrastRatio: Number((former / exposed).toFixed(3)),
+    };
+}
+
+async function captureBitmap(socketUrl, directory, label) {
+    const screenshot = await command(socketUrl, 'Page.captureScreenshot', {
+        format: 'png',
+        fromSurface: true,
+        captureBeyondViewport: false,
+        clip: { x: 0, y: 0, width: 480, height: 160, scale: 1 },
+    });
+    const pngPath = path.join(directory, `${label}.png`);
+    const bmpPath = path.join(directory, `${label}.bmp`);
+    writeFileSync(pngPath, Buffer.from(screenshot.data, 'base64'));
+    execFileSync('sips', ['-s', 'format', 'bmp', pngPath, '--out', bmpPath], {
+        stdio: 'ignore',
+    });
+    return readBitmap(bmpPath);
+}
+
+function readBitmap(filePath) {
+    const bytes = readFileSync(filePath);
+    const offset = bytes.readUInt32LE(10);
+    const width = bytes.readInt32LE(18);
+    const storedHeight = bytes.readInt32LE(22);
+    const bitsPerPixel = bytes.readUInt16LE(28);
+    if (width <= 0 || storedHeight === 0 || ![24, 32].includes(bitsPerPixel) ||
+        bytes.readUInt32LE(30) !== 0) {
+        throw new Error('The defocus screenshot used an unsupported bitmap format.');
+    }
+    return {
+        bytes,
+        offset,
+        width,
+        height: Math.abs(storedHeight),
+        bottomUp: storedHeight > 0,
+        bytesPerPixel: bitsPerPixel / 8,
+        rowStride: Math.ceil(width * bitsPerPixel / 32) * 4,
+    };
+}
+
+function lumaContrast(bitmap, xStart, xEnd, yStart, yEnd) {
+    const samples = [];
+    for (let y = Math.round(yStart); y < Math.round(yEnd); y++) {
+        for (let x = Math.round(xStart); x < Math.round(xEnd); x++) {
+            samples.push(bitmapLuma(bitmap, x, y));
+        }
+    }
+    const mean = samples.reduce((sum, sample) => sum + sample, 0) / samples.length;
+    return Math.sqrt(samples.reduce((sum, sample) =>
+        sum + (sample - mean) ** 2, 0) / samples.length);
+}
+
+function bitmapLuma(bitmap, x, y) {
+    x = Math.round(x);
+    y = Math.round(y);
+    const row = bitmap.bottomUp ? bitmap.height - 1 - y : y;
+    const index = bitmap.offset + row * bitmap.rowStride + x * bitmap.bytesPerPixel;
+    return 0.2126 * bitmap.bytes[index + 2] +
+        0.7152 * bitmap.bytes[index + 1] +
+        0.0722 * bitmap.bytes[index];
 }
 
 function command(socketUrl, method, params = {}) {

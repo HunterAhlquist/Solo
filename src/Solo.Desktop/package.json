@@ -14,6 +14,7 @@
     "stage:icon": "node scripts/stage-icon.mjs",
     "test:glass": "node scripts/check-glass-default.mjs",
     "test:glass-theme": "node scripts/check-glass-theme-sync.mjs",
+    "test:settings": "node scripts/check-settings-window.mjs",
     "dist": "npm run build:client && electron-builder"
   },
   "dependencies": {

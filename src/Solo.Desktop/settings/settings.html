@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <title>Solo — Server Settings</title>
   <style>
-    /* Matches the client's boot-splash aesthetic: black, #fff600, Courier. */
+    /* Matches the client's boot-splash aesthetic while following the native
+       appearance Electron resolved from Solo's theme preference. */
     :root {
       --bg: #000000;
       --fg: #ffffff;
@@ -13,6 +14,22 @@
       --error: #ff5252;
       --ok: #6fdc6f;
       --line: #2a2a2a;
+      --input-bg: #0a0a0a;
+      --glass-wash: rgb(0 0 0 / 48%);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f7f4ee;
+        --fg: #171717;
+        --dim: #66615a;
+        --accent: #b94f08;
+        --error: #b42318;
+        --ok: #287a35;
+        --line: #cfc7bc;
+        --input-bg: rgb(255 255 255 / 68%);
+        --glass-wash: rgb(247 244 238 / 48%);
+      }
     }
 
     * { box-sizing: border-box; }
@@ -26,12 +43,42 @@
       user-select: none;
     }
 
+    html.solo-settings--glass,
+    html.solo-settings--glass body {
+      background: transparent;
+    }
+
+    html.solo-settings--glass body {
+      -webkit-app-region: drag;
+    }
+
+    html.solo-settings--glass :is(input, button, label, a, [role="button"]) {
+      -webkit-app-region: no-drag;
+    }
+
+    html.solo-settings--glass body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: var(--glass-wash);
+      -webkit-backdrop-filter: blur(28px) saturate(125%);
+      backdrop-filter: blur(28px) saturate(125%);
+      pointer-events: none;
+    }
+
     main {
       display: flex;
       flex-direction: column;
       gap: 1rem;
       height: 100%;
       padding: 1.5rem 1.75rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    html.solo-settings--glass main {
+      padding-top: 3.25rem;
     }
 
     h1 {
@@ -62,7 +109,7 @@
       padding: 0.6rem 0.75rem;
       border: 1px solid var(--line);
       border-radius: 0;
-      background: #0a0a0a;
+      background: var(--input-bg);
       color: var(--fg);
       font: inherit;
       user-select: text;
@@ -84,6 +131,44 @@
 
     #status.ok { color: var(--ok); }
     #status.error { color: var(--error); }
+
+    .native-effects {
+      padding: 0.85rem 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .native-effects label {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.75rem;
+      align-items: start;
+      color: var(--fg);
+      letter-spacing: normal;
+      text-transform: none;
+      cursor: pointer;
+    }
+
+    .native-effects input {
+      width: 1rem;
+      height: 1rem;
+      margin: 0.1rem 0 0;
+      padding: 0;
+      accent-color: var(--accent);
+    }
+
+    .native-effects strong {
+      display: block;
+      font-size: 0.78rem;
+    }
+
+    .native-effects small {
+      display: block;
+      margin-top: 0.3rem;
+      color: var(--dim);
+      font-size: 0.68rem;
+      line-height: 1.45;
+    }
 
     .buttons {
       display: flex;
@@ -149,6 +234,16 @@
     as an authorized JavaScript origin.
   </p>
 
+  <section id="native-effects-setting" class="native-effects" hidden>
+    <label for="native-effects">
+      <input id="native-effects" type="checkbox" />
+      <span>
+        <strong>Use macOS native window effects</strong>
+        <small>Uses Liquid Glass when supported and vibrancy otherwise. Changes apply after restarting Solo.</small>
+      </span>
+    </label>
+  </section>
+
   <div id="status"></div>
 
   <div class="buttons">
@@ -164,6 +259,8 @@
   const testButton = document.getElementById('test');
   const saveButton = document.getElementById('save');
   const cancelButton = document.getElementById('cancel');
+  const nativeEffectsSetting = document.getElementById('native-effects-setting');
+  const nativeEffectsInput = document.getElementById('native-effects');
 
   function setStatus(text, kind) {
     status.textContent = text;
@@ -174,6 +271,7 @@
     for (const b of [testButton, saveButton, cancelButton]) {
       b.disabled = busy;
     }
+    nativeEffectsInput.disabled = busy;
   }
 
   async function test() {
@@ -196,7 +294,7 @@
   async function save() {
     setBusy(true);
     setStatus('Saving…');
-    const result = await window.soloSettings.save(urlInput.value);
+    const result = await window.soloSettings.save(urlInput.value, nativeEffectsInput.checked);
     if (!result.ok) {
       setBusy(false);
       setStatus(result.error, 'error');
@@ -214,11 +312,13 @@
     if (e.key === 'Escape') window.soloSettings.close();
   });
 
-  window.soloSettings.get().then(({ instanceUrl, port, firstRun }) => {
+  window.soloSettings.get().then(({ instanceUrl, port, nativeEffects, platform, firstRun }) => {
     if (instanceUrl) {
       urlInput.value = instanceUrl;
     }
     document.getElementById('origin').textContent = `http://localhost:${port}`;
+    nativeEffectsInput.checked = nativeEffects;
+    nativeEffectsSetting.hidden = platform !== 'darwin';
     if (firstRun) {
       cancelButton.textContent = 'Quit';
       setStatus('Welcome. Point Solo at your instance to get started.');

@@ -44,6 +44,10 @@ The backdrop follows Solo's Light, Dark, or Match system preference rather than
 independently inheriting macOS. Changes apply to the native material while the
 app is running.
 
+The Server Settings window uses the same native treatment. Its macOS native
+window effects checkbox disables both Liquid Glass and the vibrancy fallback
+after the next restart; the choice is stored with the other shell settings.
+
 ## Window chrome
 
 The window has no OS title bar. The platform draws its own controls over the

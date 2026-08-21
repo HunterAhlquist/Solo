@@ -1,8 +1,8 @@
 // Persistent shell settings: a single JSON file in Electron's userData
-// directory. The only setting a user normally touches is the instance URL;
-// the local port exists for the rare clash and because non-Google OIDC
-// providers redirect back to this origin, which they require to be
-// registered — so it must stay stable.
+// directory. The local port exists for the rare clash and because non-Google
+// OIDC providers redirect back to this origin, which they require to be
+// registered. Native effects are opt-out so older settings files retain the
+// desktop treatment introduced after they were created.
 const { app } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -21,9 +21,10 @@ function load() {
             port: Number.isInteger(raw.port) && raw.port > 0 && raw.port < 65536
                 ? raw.port
                 : DEFAULT_PORT,
+            nativeEffects: raw.nativeEffects !== false,
         };
     } catch {
-        return { instanceUrl: null, port: DEFAULT_PORT };
+        return { instanceUrl: null, port: DEFAULT_PORT, nativeEffects: true };
     }
 }
 

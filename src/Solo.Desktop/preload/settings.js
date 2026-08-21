@@ -6,6 +6,21 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('soloSettings', {
     get: () => ipcRenderer.invoke('settings:get'),
     test: url => ipcRenderer.invoke('settings:test', url),
-    save: url => ipcRenderer.invoke('settings:save', url),
+    save: (url, nativeEffects) => ipcRenderer.invoke('settings:save', url, nativeEffects),
     close: () => ipcRenderer.invoke('settings:close'),
 });
+
+let glassBackdrop = process.argv.includes('--solo-glass-backdrop');
+
+function applyAppearance() {
+    if (!document.documentElement) return;
+    document.documentElement.classList.toggle('solo-settings--glass', glassBackdrop);
+}
+
+ipcRenderer.on('window:glass-backdrop', (_event, value) => {
+    glassBackdrop = value === true;
+    applyAppearance();
+});
+
+applyAppearance();
+document.addEventListener('DOMContentLoaded', applyAppearance);
