@@ -26,20 +26,19 @@ Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live 
 During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start`
 serves client assets from anywhere without re-copying.
 
-### Liquid Glass prototype (macOS 26+)
+### Glass backdrop (macOS)
 
-The main window can use the native macOS Liquid Glass backdrop while leaving
-the Blazor renderer and non-macOS builds unchanged:
+The main window uses a translucent backdrop by default while leaving the
+settings window and non-macOS builds unchanged. On macOS 26 and later Solo
+uses the native Liquid Glass module. If that module is unavailable, unsupported,
+or cannot attach to the window, Solo falls back to Electron's AppKit vibrancy:
 
 ```sh
-npm run build:client && SOLO_LIQUID_GLASS=1 npm start
+npm run build:client && npm start
 ```
 
-The native module is optional and the effect fails back to opaque renderer
-surfaces if it cannot load. It is deliberately opt-in because Electron's
-transparent-window behavior and the package's native view placement still need
-to be evaluated across supported Mac hardware. The settings window keeps its
-standard appearance.
+To disable both treatments for troubleshooting, launch with
+`SOLO_DISABLE_LIQUID_GLASS=1 npm start`.
 
 ## Window chrome
 
@@ -49,10 +48,11 @@ Overlay on Windows and Linux (where the menu bar auto-hides behind `Alt`) — an
 the app bar is the region you drag the window by.
 
 That takes agreement from both sides: the preload puts `solo-desktop`,
-`solo-desktop--mac` / `solo-desktop--overlay` and `solo-desktop--fullscreen` on
-`<html>`, and the client's `app.css` keys its drag regions and its room for the
-buttons off them (see the *Desktop shell chrome* block there). The classes exist
-only inside the shell, so the hosted web build keeps an ordinary app bar.
+`solo-desktop--mac` / `solo-desktop--overlay`, `solo-desktop--fullscreen`, and
+`solo-desktop--glass` on `<html>`, and the client's `app.css` keys its drag
+regions, transparency, and room for the buttons off them (see the *Desktop
+shell chrome* block there). The classes exist only inside the shell, so the
+hosted web build keeps an ordinary app bar.
 
 ## Sign-in
 

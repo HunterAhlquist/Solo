@@ -124,10 +124,10 @@ const isMac = process.platform === 'darwin';
 
 // The native package is darwin-only while Solo also installs and packages on
 // Windows and Linux, so it is an optional dependency and never loaded there.
-// Keep the prototype opt-in until the transparent-window tradeoffs have been
-// exercised on the macOS versions and hardware Solo supports.
+// macOS uses it when possible and falls back to Electron's AppKit vibrancy
+// when this optional native layer is unavailable.
 function loadLiquidGlass() {
-    if (!isMac || process.env.SOLO_LIQUID_GLASS !== '1') {
+    if (!isMac) {
         return null;
     }
 
@@ -136,15 +136,15 @@ function loadLiquidGlass() {
         const candidate = imported.default ?? imported;
         if (typeof candidate.addView !== 'function' ||
             (typeof candidate.isGlassSupported === 'function' && !candidate.isGlassSupported())) {
-            console.warn('Solo Liquid Glass is unavailable on this version of macOS.');
+            console.warn('Solo Liquid Glass is unavailable on this version of macOS; using Electron vibrancy.');
             return null;
         }
 
         return candidate;
     } catch (err) {
-        // Optional native code must fail closed: the ordinary opaque window is
-        // still useful if the package is absent or its binary cannot be loaded.
-        console.error('Solo Liquid Glass could not be loaded; using the standard window.', err);
+        // A missing, mismatched, or unsigned optional native binary should not
+        // cost the app its translucent desktop treatment.
+        console.error('Solo Liquid Glass could not be loaded; using Electron vibrancy.', err);
         return null;
     }
 }
@@ -175,8 +175,10 @@ function createMainWindow() {
         return;
     }
 
-    liquidGlass = loadLiquidGlass();
+    const useGlassBackdrop = isMac && process.env.SOLO_DISABLE_LIQUID_GLASS !== '1';
+    liquidGlass = useGlassBackdrop ? loadLiquidGlass() : null;
     const useLiquidGlass = liquidGlass !== null;
+    const useVibrancyFallback = useGlassBackdrop && !useLiquidGlass;
 
     mainWindow = new BrowserWindow({
         width: 1440,
@@ -184,8 +186,11 @@ function createMainWindow() {
         minWidth: 900,
         minHeight: 600,
         show: false,
-        backgroundColor: useLiquidGlass ? '#00000000' : '#000000',
-        transparent: useLiquidGlass,
+        backgroundColor: useGlassBackdrop ? '#00000000' : '#000000',
+        transparent: useGlassBackdrop,
+        ...(useVibrancyFallback
+            ? { vibrancy: 'under-window', visualEffectState: 'active' }
+            : {}),
         title: 'Solo',
         // No OS title bar: the platform's own window controls sit on the app
         // bar instead, the way most Electron apps ship. macOS keeps its inset
@@ -208,10 +213,14 @@ function createMainWindow() {
             }),
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'desktop.js'),
-            ...(useLiquidGlass ? { additionalArguments: ['--solo-liquid-glass'] } : {}),
+            ...(useGlassBackdrop ? { additionalArguments: ['--solo-glass-backdrop'] } : {}),
             ...HARDENED_WEB_PREFERENCES,
         },
     });
+
+    if (useGlassBackdrop) {
+        mainWindow.setWindowButtonVisibility(true);
+    }
 
     if (useLiquidGlass) {
         // The package adds one native NSGlassEffectView beneath Chromium. The
@@ -224,18 +233,23 @@ function createMainWindow() {
                     throw new Error('the native add-on returned no view');
                 }
 
-                mainWindow.setWindowButtonVisibility(true);
-                mainWindow.webContents.send('window:liquid-glass', true);
+                mainWindow.webContents.send('window:glass-backdrop', true);
                 console.log(`Solo Liquid Glass enabled (view ${viewId}).`);
             } catch (err) {
-                // The BrowserWindow itself must be transparent from creation,
-                // but restoring opaque renderer surfaces still gives a legible
-                // standard UI when native initialization fails.
                 liquidGlass = null;
-                mainWindow?.webContents.send('window:liquid-glass', false);
-                console.error('Solo Liquid Glass could not be applied; using opaque renderer surfaces.', err);
+                console.error('Solo Liquid Glass could not be applied; using Electron vibrancy.', err);
+                try {
+                    mainWindow?.setVibrancy('under-window');
+                    mainWindow?.webContents.send('window:glass-backdrop', true);
+                    console.log('Solo glass fallback enabled (Electron vibrancy).');
+                } catch (fallbackError) {
+                    mainWindow?.webContents.send('window:glass-backdrop', false);
+                    console.error('Solo could not apply its glass fallback; using opaque renderer surfaces.', fallbackError);
+                }
             }
         });
+    } else if (useVibrancyFallback) {
+        console.log('Solo glass fallback enabled (Electron vibrancy).');
     }
 
     mainWindow.once('ready-to-show', () => mainWindow.show());

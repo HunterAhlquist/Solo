@@ -118,6 +118,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify glass backdrop defaults on
+        if: runner.os == 'macOS'
+        run: npm run test:glass
+
       # mac.icon is an Icon Composer bundle, staged by the beforePack hook and
       # compiled by electron-builder with actool, which only ships with Xcode
       # 26+. The image's default Xcode selection can lag behind what's

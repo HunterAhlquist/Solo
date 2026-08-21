@@ -959,40 +959,40 @@ code {
      .solo-desktop--mac       inset traffic lights, top left
      .solo-desktop--overlay   Window Controls Overlay (Windows/Linux), top right
      .solo-desktop--fullscreen  no window controls at all
-     .solo-desktop--liquid-glass native macOS glass successfully requested
+     .solo-desktop--glass        native macOS glass or vibrancy requested
    --------------------------------------------------------------------------- */
 
 /* Electron's native glass view lives underneath the whole Chromium renderer,
-   so every opaque root layer would hide it. Only the opt-in macOS shell gets
-   transparent roots; the hosted app and the other desktop platforms keep the
+   so every opaque root layer would hide it. Only the glass-enabled macOS shell
+   gets transparent roots; the hosted app and the other desktop platforms keep the
    theme's ordinary background. Cards and lane surfaces remain opaque so their
    density and text contrast do not depend on whatever is behind the window. */
-html.solo-desktop--liquid-glass,
-html.solo-desktop--liquid-glass body,
-html.solo-desktop--liquid-glass #app,
-html.solo-desktop--liquid-glass .mud-layout,
-html.solo-desktop--liquid-glass .mud-main-content {
+html.solo-desktop--glass,
+html.solo-desktop--glass body,
+html.solo-desktop--glass #app,
+html.solo-desktop--glass .mud-layout,
+html.solo-desktop--glass .mud-main-content {
     background: transparent !important;
 }
 
 /* Preserve the active theme as a translucent wash. The material and blur are
-   native; these colours only keep navigation legible over varied desktops. */
-html.solo-desktop--liquid-glass .mud-appbar {
+   native; these colors only keep navigation legible over varied desktops. */
+html.solo-desktop--glass .mud-appbar {
     background: color-mix(in srgb, var(--mud-palette-appbar-background) 38%, transparent);
 }
 
-html.solo-desktop--liquid-glass .mud-drawer {
+html.solo-desktop--glass .mud-drawer {
     background: color-mix(in srgb, var(--mud-palette-drawer-background) 52%, transparent);
 }
 
 /* On glass the shared column header belongs to the backdrop instead of
    becoming a fourth boxed lane. Heavier labels keep the three columns easy to
    scan without the opaque strip or the lane dividers continuing through it. */
-html.solo-desktop--liquid-glass .kanban-header {
+html.solo-desktop--glass .kanban-header {
     background: transparent;
 }
 
-html.solo-desktop--liquid-glass .kanban-header .mud-typography {
+html.solo-desktop--glass .kanban-header .mud-typography {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1001,13 +1001,13 @@ html.solo-desktop--liquid-glass .kanban-header .mud-typography {
     text-align: center;
 }
 
-html.solo-desktop--liquid-glass .kanban-header__columns > *::before {
+html.solo-desktop--glass .kanban-header__columns > *::before {
     content: none;
 }
 
 /* The editor carries dense form content, unlike the navigation drawer. Give
    it a stronger wash while retaining enough transparency to read as glass. */
-html.solo-desktop--liquid-glass .mud-drawer.detail-drawer {
+html.solo-desktop--glass .mud-drawer.detail-drawer {
     background: color-mix(in srgb, var(--mud-palette-drawer-background) 84%, transparent);
 }
 

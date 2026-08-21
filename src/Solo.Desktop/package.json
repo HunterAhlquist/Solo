@@ -12,6 +12,7 @@
     "build:client": "node scripts/build-client.mjs",
     "build:icon": "node scripts/build-icon.mjs",
     "stage:icon": "node scripts/stage-icon.mjs",
+    "test:glass": "node scripts/check-glass-default.mjs",
     "dist": "npm run build:client && electron-builder"
   },
   "dependencies": {
