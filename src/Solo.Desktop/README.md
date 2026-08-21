@@ -40,6 +40,10 @@ npm run build:client && npm start
 To disable both treatments for troubleshooting, launch with
 `SOLO_DISABLE_LIQUID_GLASS=1 npm start`.
 
+The backdrop follows Solo's Light, Dark, or Match system preference rather than
+independently inheriting macOS. Changes apply to the native material while the
+app is running.
+
 ## Window chrome
 
 The window has no OS title bar. The platform draws its own controls over the

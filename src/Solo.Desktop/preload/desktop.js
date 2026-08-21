@@ -12,6 +12,11 @@ contextBridge.exposeInMainWorld('soloDesktop', {
     // it shows an address for something outside the app to use — its own origin
     // is this local server, which only exists while the app is running.
     instanceUrl: () => ipcRenderer.invoke('instance:url'),
+
+    // Electron's native appearance controls Liquid Glass and vibrancy. The
+    // renderer supplies the user's three-state Solo preference so an explicit
+    // app theme does not accidentally inherit the opposite macOS appearance.
+    setThemeSource: source => ipcRenderer.send('window:theme-source', source),
 });
 
 // ---------------------------------------------------------------------------

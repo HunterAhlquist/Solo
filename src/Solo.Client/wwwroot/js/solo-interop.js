@@ -12,8 +12,49 @@ window.solo = {
     },
 
     // Read synchronously at startup so a "match system" user never sees one
-    // frame of the wrong scheme. MudThemeProvider watches for later changes.
+    // frame of the wrong scheme. solo.theme watches for later changes.
     systemPrefersDark: () => window.matchMedia('(prefers-color-scheme: dark)').matches,
+
+    theme: {
+        _systemQuery: window.matchMedia('(prefers-color-scheme: dark)'),
+        _systemListener: null,
+        _watchId: 0,
+
+        // The web build has no desktop bridge, so this is intentionally a no-op
+        // there. Electron validates the source again in its main process.
+        setSource: source => window.soloDesktop?.setThemeSource?.(source),
+
+        // data-color-scheme also controls the cached overscroll/boot colors.
+        // Keep it current after startup, including Match system changes.
+        setResolvedScheme: isDark => {
+            const scheme = isDark ? 'dark' : 'light';
+            document.documentElement.dataset.colorScheme = scheme;
+            document.documentElement.style.colorScheme = scheme;
+        },
+
+        // MudBlazor's helper does not consistently deliver Electron-driven
+        // nativeTheme changes. Own this single media listener so macOS changes
+        // and explicit desktop source changes reach ThemeState the same way.
+        watchSystem: dotnetRef => {
+            const theme = window.solo.theme;
+            if (theme._systemListener) {
+                theme._systemQuery.removeEventListener('change', theme._systemListener);
+            }
+
+            const watchId = ++theme._watchId;
+            theme._systemListener = event =>
+                dotnetRef.invokeMethodAsync('OnSystemDarkModeChanged', event.matches);
+            theme._systemQuery.addEventListener('change', theme._systemListener);
+            return watchId;
+        },
+
+        stopWatchingSystem: watchId => {
+            const theme = window.solo.theme;
+            if (watchId !== theme._watchId || !theme._systemListener) return;
+            theme._systemQuery.removeEventListener('change', theme._systemListener);
+            theme._systemListener = null;
+        },
+    },
 
     // Rendered markdown link plumbing (see SoloMarkdown.razor). A capture-phase
     // listener at the bottom of this file records link clicks inside

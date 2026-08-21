@@ -1,5 +1,6 @@
-@implements IDisposable
+@implements IAsyncDisposable
 @inject ThemeState Theme
+@inject IJSRuntime JS
 
 @*
     The instance's theme and the user's colour scheme, in one place so both
@@ -33,6 +34,8 @@
 
 @code {
     private MudThemeProvider? _provider;
+    private DotNetObjectReference<SoloThemeProvider>? _self;
+    private long _systemWatchId;
 
     protected override void OnInitialized()
     {
@@ -49,8 +52,9 @@
             return;
         }
 
-        Theme.SetSystemPreference(await _provider.GetSystemDarkModeAsync());
-        await _provider.WatchSystemDarkModeAsync(OnSystemDarkModeChanged);
+        await Theme.SetSystemPreferenceAsync(await _provider.GetSystemDarkModeAsync());
+        _self = DotNetObjectReference.Create(this);
+        _systemWatchId = await JS.InvokeAsync<long>("solo.theme.watchSystem", _self);
 
         // Now that the theme has resolved, leave its splash colours behind for
         // the next cold boot.
@@ -63,12 +67,26 @@
         StateHasChanged();
     }
 
-    private Task OnSystemDarkModeChanged(bool isDark) => InvokeAsync(() =>
-    {
-        Theme.SetSystemPreference(isDark);
-    });
+    [JSInvokable]
+    public Task OnSystemDarkModeChanged(bool isDark) =>
+        InvokeAsync(() => Theme.SetSystemPreferenceAsync(isDark));
 
     private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
 
-    public void Dispose() => Theme.Changed -= OnThemeChanged;
+    public async ValueTask DisposeAsync()
+    {
+        Theme.Changed -= OnThemeChanged;
+        if (_systemWatchId != 0)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("solo.theme.stopWatchingSystem", _systemWatchId);
+            }
+            catch (JSDisconnectedException)
+            {
+                // The page is already gone; its media listener went with it.
+            }
+        }
+        _self?.Dispose();
+    }
 }

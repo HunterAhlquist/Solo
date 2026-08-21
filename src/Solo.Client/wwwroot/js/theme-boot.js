@@ -16,9 +16,15 @@
         var preference = localStorage.getItem('solo.colorScheme');
         var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         var dark = preference === 'Dark' || (preference !== 'Light' && prefersDark);
+        var source = preference === 'Light' ? 'light' : preference === 'Dark' ? 'dark' : 'system';
 
         // Also read by app.css for the light-scheme splash defaults.
         root.dataset.colorScheme = dark ? 'dark' : 'light';
+        root.style.colorScheme = dark ? 'dark' : 'light';
+
+        // Preload exists before this head script. Tell the native window early
+        // enough that glass and the boot splash agree on the first paint.
+        window.soloDesktop?.setThemeSource?.(source);
 
         var cached = JSON.parse(localStorage.getItem('solo.bootStyle') || 'null');
         var colors = cached && (dark ? cached.dark : cached.light);

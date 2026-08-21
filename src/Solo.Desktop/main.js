@@ -3,7 +3,7 @@
 // Solo instance chosen in the settings window — the client itself is the
 // untouched web build. Sign-in happens in the system browser on the
 // instance's own origin (main/desktop-auth.js).
-const { app, BrowserWindow, Menu, dialog, ipcMain, net, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, shell } = require('electron');
 const path = require('path');
 const settingsStore = require('./main/settings');
 const { createSoloServer } = require('./main/server');
@@ -508,6 +508,18 @@ function registerIpc() {
     ipcMain.handle('instance:url', () => settings.instanceUrl);
 
     ipcMain.handle('desktop-auth:begin', () => beginBrowserSignIn());
+
+    // Liquid Glass and vibrancy inherit Electron's native appearance. The
+    // Blazor theme picker owns this choice, so keep AppKit on that same source
+    // instead of leaving it tied to macOS when Solo is explicitly light/dark.
+    ipcMain.on('window:theme-source', (event, source) => {
+        if (event.sender !== mainWindow?.webContents ||
+            !['system', 'light', 'dark'].includes(source)) {
+            return;
+        }
+
+        nativeTheme.themeSource = source;
+    });
 
     // Asked for once per page load: the window may already be fullscreen when
     // the renderer boots, and the change events above only cover transitions.

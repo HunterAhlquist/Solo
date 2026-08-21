@@ -178,6 +178,16 @@ public sealed class ThemeState(IJSRuntime js)
         {
             // Storage disabled (private mode, locked-down browser). System it is.
         }
+
+        try
+        {
+            inProcess.InvokeVoid("solo.theme.setSource", ThemeSource(Preference));
+            inProcess.InvokeVoid("solo.theme.setResolvedScheme", IsDarkMode);
+        }
+        catch (JSException)
+        {
+            // The browser theme still works if optional desktop coordination fails.
+        }
     }
 
     public async Task SetPreferenceAsync(ColorSchemePreference preference)
@@ -188,6 +198,17 @@ public sealed class ThemeState(IJSRuntime js)
         }
 
         Preference = preference;
+
+        try
+        {
+            await js.InvokeVoidAsync("solo.theme.setSource", ThemeSource(preference));
+            await js.InvokeVoidAsync("solo.theme.setResolvedScheme", IsDarkMode);
+        }
+        catch (JSException)
+        {
+            // Theme rendering is local; native coordination is an enhancement.
+        }
+
         Changed?.Invoke();
 
         try
@@ -203,7 +224,7 @@ public sealed class ThemeState(IJSRuntime js)
     }
 
     /// <summary>Called by the theme provider with the browser's current preference.</summary>
-    public void SetSystemPreference(bool prefersDark)
+    public async Task SetSystemPreferenceAsync(bool prefersDark)
     {
         if (SystemPrefersDark == prefersDark)
         {
@@ -213,9 +234,25 @@ public sealed class ThemeState(IJSRuntime js)
         SystemPrefersDark = prefersDark;
         if (Preference == ColorSchemePreference.System)
         {
+            try
+            {
+                await js.InvokeVoidAsync("solo.theme.setResolvedScheme", IsDarkMode);
+            }
+            catch (JSException)
+            {
+                // MudBlazor still re-renders in the right scheme below.
+            }
+
             Changed?.Invoke();
         }
     }
+
+    private static string ThemeSource(ColorSchemePreference preference) => preference switch
+    {
+        ColorSchemePreference.Light => "light",
+        ColorSchemePreference.Dark => "dark",
+        _ => "system",
+    };
 
     /// <summary>
     /// Stashes the resolved splash colours so the next cold boot paints in this
