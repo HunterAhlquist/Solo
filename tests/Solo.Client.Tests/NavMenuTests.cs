@@ -148,7 +148,13 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
     {
         Route(isSuperAdmin: true);
 
-        Assert.Contains(Links(RenderNav()), l => l.Contains("Add project"));
+        var nav = RenderNav();
+        Assert.Contains(Links(nav), l => l.Contains("Add project"));
+
+        var footer = nav.Find(".nav-shell__footer").InnerHtml;
+        Assert.True(
+            footer.IndexOf("Add project", StringComparison.Ordinal) <
+            footer.IndexOf("mud-divider", StringComparison.Ordinal));
     }
 
     [Fact]

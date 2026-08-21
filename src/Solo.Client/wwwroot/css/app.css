@@ -472,11 +472,23 @@ code {
     gap: 0.25rem;
 }
 
-/* Narrows the deadline field only. MudPicker re-applies its Style parameter to
-   the calendar popup's paper (which would crop the calendar to the field's
-   width), but custom classes stay on the field root — so the width limit must
-   live here, not in an inline style. */
+/* Assignees take the remaining editor width beside the fixed deadline field. */
+.detail-drawer__ownership {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 14rem;
+    align-items: start;
+    gap: 0.75rem;
+}
+
+.detail-drawer__assignees {
+    min-width: 0;
+}
+
+/* MudPicker re-applies its Style parameter to the calendar popup's paper, which
+   would crop the calendar to the field's width. Custom classes stay on the
+   field root, so the width belongs here instead of in an inline style. */
 .deadline-picker {
+    width: 14rem;
     max-width: 14rem;
 }
 
@@ -803,6 +815,12 @@ code {
     .detail-drawer__header {
         min-height: 0;
         padding: 0.5rem 0.75rem 0.5rem 1rem;
+    }
+
+    /* A compact desktop drawer covers the app bar. Keep its title and controls
+       below the shell's titlebar unless fullscreen has removed the controls. */
+    html.solo-desktop:not(.solo-desktop--fullscreen) .detail-drawer__header {
+        padding-top: calc(var(--solo-appbar-bottom, 5em) + 0.5rem);
     }
 
     /* Clear of the home indicator, so the last comment isn't under it. */

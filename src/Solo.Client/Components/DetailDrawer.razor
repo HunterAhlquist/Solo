@@ -65,18 +65,27 @@
                     </MudTooltip>
                 </div>
 
-                @* Width via Class, not Style: MudPicker copies Style onto the calendar
-                   popup's paper too, where a max-width crops the Fri/Sat columns. *@
-                <MudDatePicker Date="@DeadlineDate" DateChanged="@OnDeadlineChanged" Label="Deadline"
-                               Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
-                               Editable="true" Placeholder="No deadline" Disabled="@(!CanWrite)"
-                               Class="deadline-picker mb-3" />
-            }
+                <div class="detail-drawer__ownership mb-4">
+                    <div class="detail-drawer__assignees">
+                        <AssigneePicker Members="@Store.Members" AssigneeIds="@AssigneeIds"
+                                        CanWrite="@CanWrite" OnChanged="@OnAssigneesChanged" />
+                    </div>
 
-            <div class="mb-4">
-                <AssigneePicker Members="@Store.Members" AssigneeIds="@AssigneeIds"
-                                CanWrite="@CanWrite" OnChanged="@OnAssigneesChanged" />
-            </div>
+                    @* Width via Class, not Style: MudPicker copies Style onto the calendar
+                       popup's paper too, where a fixed width crops the Fri/Sat columns. *@
+                    <MudDatePicker Date="@DeadlineDate" DateChanged="@OnDeadlineChanged" Label="Deadline"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                                   Editable="true" Placeholder="No deadline" Disabled="@(!CanWrite)"
+                                   Class="deadline-picker" />
+                </div>
+            }
+            else
+            {
+                <div class="mb-4">
+                    <AssigneePicker Members="@Store.Members" AssigneeIds="@AssigneeIds"
+                                    CanWrite="@CanWrite" OnChanged="@OnAssigneesChanged" />
+                </div>
+            }
 
             <MudText Typo="Typo.subtitle2" Class="mb-1">Description</MudText>
             @* Keyed so switching entity (e.g. via a task link) can't carry a draft across. *@

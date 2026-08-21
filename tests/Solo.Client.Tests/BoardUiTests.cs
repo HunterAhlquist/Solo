@@ -231,6 +231,12 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.Contains("Tune the boss fight", drawer.Markup);
         Assert.Contains("Description", drawer.Markup);
         Assert.Contains("Sub-tasks", drawer.Markup);
+
+        var ownership = drawer.Find(".detail-drawer__ownership");
+        Assert.Contains("Assignees", ownership.TextContent);
+        Assert.Contains("Deadline", ownership.TextContent);
+        Assert.Single(ownership.QuerySelectorAll(".detail-drawer__assignees"));
+        Assert.Single(ownership.QuerySelectorAll(".deadline-picker"));
     }
 
     [Fact]

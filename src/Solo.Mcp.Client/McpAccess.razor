@@ -39,25 +39,23 @@ else if (_info is null)
        disables it and its routes answer 503. Say so rather than offering a
        token form pointed at nothing. *@
     <MudAlert Severity="Severity.Warning" Style="max-width:44rem">
-        The MCP server isn't running on this instance. Its package is installed —
-        this page came from it — but the server half is disabled. An admin can see
-        why under Extensions in Admin settings.
+        The MCP package is installed, but its server is disabled. An admin can find
+        the reason under Extensions in Admin settings.
     </MudAlert>
 }
 else
 {
     <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="max-width:44rem">
-        Connect an AI assistant to Solo and it can read your boards and create,
-        edit and move tasks — acting as you, and reaching only the projects you
-        are a member of.
+        Connect an AI assistant to Solo to read your boards and create, edit, and
+        move tasks. It acts as you and can access only projects you belong to.
     </MudText>
 
     @* ------------------------------------------------------------------ *@
     <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:44rem">
         <MudText Typo="Typo.h4" Class="mb-1">Your token</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            One token per account. Generating a new one immediately blocks the old
-            one, so anything still using it stops working.
+            Each account can have one token. Generating a new token immediately
+            revokes the old one and disconnects anything using it.
         </MudText>
 
         @* Shown once, and never retrievable: the server keeps only a hash. *@
@@ -65,7 +63,7 @@ else
         {
             <MudAlert Severity="Severity.Success" Class="mb-4">
                 <MudText Typo="Typo.body2" Class="mb-2">
-                    <b>Copy this now.</b> It won't be shown again — if you lose it, generate another.
+                    <b>Copy this token now.</b> It won't appear again. If you lose it, generate a new one.
                 </MudText>
                 <div class="d-flex align-center gap-2">
                     <MudTextField T="string" Value="@_secret" ReadOnly="true" Variant="Variant.Outlined"
@@ -119,7 +117,7 @@ else
         {
             <MudTextField @bind-Value="_description" Label="Label (optional)" Variant="Variant.Outlined"
                           Margin="Margin.Dense" MaxLength="200" Class="mb-3"
-                          HelperText="What you're connecting, e.g. &quot;Claude Code on the laptop&quot;." />
+                          HelperText="Name the client or device, e.g. &quot;Claude Code on the laptop&quot;." />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_busy"
                        StartIcon="@Icons.Material.Filled.Key" OnClick="@MintAsync">
                 Generate token
@@ -131,7 +129,7 @@ else
     <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:44rem">
         <MudText Typo="Typo.h4" Class="mb-1">Connect a client</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            Solo speaks MCP over HTTP at <code>@Endpoint</code>, protocol revision
+            The MCP endpoint uses HTTP at <code>@Endpoint</code> with protocol revision
             @_info.ProtocolVersion.
         </MudText>
 
@@ -141,21 +139,21 @@ else
             </MudTabPanel>
             <MudTabPanel Text="Claude Desktop">
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-                    <code>claude_desktop_config.json</code> only accepts servers it launches
-                    locally, so an entry with a <code>url</code> is skipped as invalid. Bridge to
-                    Solo with <code>mcp-remote</code>, which Claude Desktop runs and which speaks
-                    HTTP to this endpoint. Needs Node installed; restart Claude Desktop after editing.
+                    <code>claude_desktop_config.json</code> accepts only servers that Claude Desktop
+                    launches locally, so it rejects entries with a <code>url</code>. Use
+                    <code>mcp-remote</code> to connect Claude Desktop to Solo over HTTP. Node is
+                    required. Restart Claude Desktop after editing the configuration.
                 </MudText>
                 <Snippet Title="claude_desktop_config.json" Text="@ClaudeDesktopConfig" OnCopy="@CopyAsync" />
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
-                    The token rides in <code>env</code> rather than inline: some clients don't escape
-                    spaces inside <code>args</code>, which mangles a header written as one string.
+                    The token is passed through <code>env</code> because some clients do not escape
+                    spaces in <code>args</code>, which corrupts an inline authorization header.
                 </MudText>
             </MudTabPanel>
             <MudTabPanel Text="Cursor & others">
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-                    Clients that speak HTTP directly — Cursor, Windsurf — read a config file with an
-                    <code>mcpServers</code> object. Add Solo to yours:
+                    Cursor and Windsurf support HTTP directly. Add Solo to the
+                    <code>mcpServers</code> object in their configuration:
                 </MudText>
                 <Snippet Title="mcp.json" Text="@JsonConfig" OnCopy="@CopyAsync" />
             </MudTabPanel>
@@ -167,14 +165,14 @@ else
             </MudTabPanel>
             <MudTabPanel Text="Anything else">
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-                    Any MCP client that supports a streamable-HTTP server and a custom header:
+                    Use these values with any MCP client that supports streamable HTTP and a custom header:
                 </MudText>
                 <Snippet Title="Endpoint" Text="@Endpoint" OnCopy="@CopyAsync" />
                 <Snippet Title="Header" Text="@($"Authorization: Bearer {TokenOrPlaceholder}")"
                          OnCopy="@CopyAsync" />
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
-                    POST only — the endpoint is stateless and offers no event stream, so a client
-                    that insists on opening a GET stream will see 405.
+                    Use POST requests only. The endpoint is stateless and does not offer an event
+                    stream. Clients that open a GET stream receive a 405 response.
                 </MudText>
             </MudTabPanel>
         </MudTabs>
@@ -182,9 +180,9 @@ else
 
     @* ------------------------------------------------------------------ *@
     <MudPaper Elevation="1" Class="pa-4" Style="max-width:44rem">
-        <MudText Typo="Typo.h4" Class="mb-1">What it can do</MudText>
+        <MudText Typo="Typo.h4" Class="mb-1">Available tools</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            @_info.Tools.Count tools, from MCP server version @_info.ServerVersion.
+            @_info.Tools.Count tools in MCP server version @_info.ServerVersion.
         </MudText>
 
         <MudSimpleTable Dense="true" Elevation="0">
@@ -217,9 +215,9 @@ else
                 </MudButton>
             </div>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-                Every token generated on this instance. Each acts as its owner and reaches only
-                their projects. You can see that a token exists and how much it is used — never
-                what it is.
+                This table lists every token generated on this instance. Each token acts as its
+                owner and can access only that owner's projects. It shows token metadata and usage,
+                but never the token value.
             </MudText>
 
             @if (_audit.Tokens.Count == 0)
@@ -230,8 +228,8 @@ else
             {
                 <MudText Typo="Typo.subtitle2" Class="mb-1">Requests, last 24 hours</MudText>
                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2">
-                    Every request a token authenticated, per hour. One tool call makes more than
-                    one — the endpoint re-enters the API for each read and write it does.
+                    Authenticated requests per hour. A tool call can make multiple requests because
+                    the endpoint calls the API for each read and write.
                 </MudText>
                 <div class="mcp-usage mb-4" role="img"
                      aria-label="@($"{TotalRequests} requests in the last 24 hours")">
@@ -239,7 +237,7 @@ else
                     {
                         var count = HourlyTotals[hour];
                         var at = _audit.WindowStart.AddHours(hour).ToLocalTime().ToString("t");
-                        <MudTooltip Text="@($"{at} — {count} request{(count == 1 ? "" : "s")}")">
+                        <MudTooltip Text="@($"{at} · {count} request{(count == 1 ? "" : "s")}")">
                             <div class="mcp-usage__slot">
                                 <div class="mcp-usage__bar" style="@BarHeight(count, PeakHour)"></div>
                             </div>
@@ -375,8 +373,8 @@ else
     {
         if (await ConfirmAsync(
                 "Regenerate token",
-                "Your current token stops working immediately. Any assistant still using it " +
-                "loses access until you give it the new one.",
+                "Your current token will stop working immediately. Connected assistants need " +
+                "the new token to regain access.",
                 "Regenerate"))
         {
             await MintAsync();
@@ -421,7 +419,7 @@ else
     {
         if (!await ConfirmAsync(
                 "Revoke token",
-                "Anything using this token loses access immediately. You can generate a new one at any time.",
+                "This token will stop working immediately. You can generate a new one at any time.",
                 "Revoke"))
         {
             return;
@@ -456,8 +454,8 @@ else
     {
         if (!await ConfirmAsync(
                 $"Revoke {Owner(token)}'s token",
-                $"{Owner(token)} loses MCP access immediately, and anything they have connected " +
-                "stops working. They can generate a new token themselves from this page.",
+                $"This token will stop working immediately, disconnecting anything {Owner(token)} " +
+                "connected. They can generate a new token from this page.",
                 "Revoke"))
         {
             return;
@@ -494,8 +492,8 @@ else
             new DialogParameters<ConfirmPhraseDialog>
             {
                 { d => d.Message,
-                    $"This blocks all {LiveTokenCount} live token(s) on the instance at once. Every " +
-                    "connected assistant stops working immediately, and each owner has to generate " +
+                    $"This revokes all {LiveTokenCount} active MCP {TokenNoun(LiveTokenCount)} on the instance. " +
+                    "Every connected assistant will stop working immediately. Each owner must generate " +
                     $"a new token from this page. Type \"{RevokeAllPhrase}\" to confirm." },
                 { d => d.Phrase, RevokeAllPhrase },
                 { d => d.ConfirmText, "Revoke all" },
@@ -509,7 +507,7 @@ else
         try
         {
             var revoked = await _mcp.RevokeAllAsync(RevokeAllPhrase);
-            Snackbar.Add($"Revoked {revoked.Revoked} MCP token(s).", Severity.Success);
+            Snackbar.Add($"Revoked {revoked.Revoked} MCP {TokenNoun(revoked.Revoked)}.", Severity.Success);
             _status = await _mcp.TokensAsync();
             await LoadAuditAsync();
         }
@@ -566,13 +564,15 @@ else
         }
         catch (JSException)
         {
-            Snackbar.Add("Couldn't reach the clipboard — select the text and copy it.", Severity.Warning);
+            Snackbar.Add("Couldn't access the clipboard. Select the text and copy it.", Severity.Warning);
         }
     }
 
     // -- The snippets -------------------------------------------------------
 
     private string Endpoint => _mcp.Endpoint.ToString();
+
+    private static string TokenNoun(int count) => count == 1 ? "token" : "tokens";
 
     /// <summary>
     /// The real token while it is still on screen, a placeholder afterwards —

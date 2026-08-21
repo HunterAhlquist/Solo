@@ -48,7 +48,8 @@ public class McpAccessTests : ComponentTestBase
         _http.Route(InfoPath, status);
         var page = RenderPage();
 
-        Assert.Contains("MCP server isn't running", page.Markup);
+        Assert.Contains("MCP package is installed", page.Markup);
+        Assert.Contains("server is disabled", page.Markup);
         Assert.DoesNotContain("Generate token", page.Markup);
     }
 
@@ -88,7 +89,7 @@ public class McpAccessTests : ComponentTestBase
         var page = RenderPage();
         page.FindAll("button").First(b => b.TextContent.Contains("Generate token")).Click();
 
-        Assert.Contains("Copy this now", page.Markup);
+        Assert.Contains("Copy this token now", page.Markup);
         Assert.Contains(secret, page.Markup);
         // And the snippets carry it, rather than the placeholder.
         Assert.Contains($"Authorization: Bearer {secret}", page.Markup);

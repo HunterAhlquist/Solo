@@ -23,7 +23,7 @@ else
     <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:32rem">
         <MudText Typo="Typo.h4" Class="mb-1">Audit retention</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            Audit entries older than this are pruned automatically.
+            Audit entries older than this are deleted automatically.
         </MudText>
 
         @* Blur commits — no save-per-keystroke. *@
@@ -39,14 +39,14 @@ else
         <div class="d-flex align-center mb-1">
             <MudText Typo="Typo.h4">Theme</MudText>
             <MudSpacer />
-            <MudTooltip Text="Re-read the themes directory">
+            <MudTooltip Text="Reload themes from disk">
                 <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
                                Disabled="@_rescanning" OnClick="@RescanAsync" aria-label="Rescan themes" />
             </MudTooltip>
         </div>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            Applies to everyone on this instance. Each person still chooses light
-            or dark for themselves, from their profile menu.
+            Sets the theme for everyone on this instance. Each person can still
+            choose light or dark from the profile menu.
         </MudText>
 
         @* The chosen theme's package is gone from the themes directory. The
@@ -56,7 +56,7 @@ else
         {
             <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-4">
                 @Theme.FallbackMessage Restore its package in the themes directory
-                and rescan, or choose another theme below.
+                and rescan, or select another theme below.
             </MudAlert>
         }
 
@@ -92,17 +92,17 @@ else
             @if (_themes.Errors.Count > 0)
             {
                 <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
-                    <MudText Typo="Typo.body2" Class="mb-1">Some packages were not loaded:</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">Could not load these packages:</MudText>
                     @foreach (var failure in _themes.Errors)
                     {
-                        <MudText Typo="Typo.caption" Class="d-block"><b>@failure.File</b> — @failure.Message</MudText>
+                        <MudText Typo="Typo.caption" Class="d-block"><b>@failure.File:</b> @failure.Message</MudText>
                     }
                 </MudAlert>
             }
 
             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4 d-block">
-                Add a theme by copying its .zip into the instance's themes directory,
-                then rescanning. Reload the page to see a change applied.
+                To add a theme, copy its .zip file into the instance's themes directory
+                and rescan. Reload the page to apply the change.
             </MudText>
         }
     </MudPaper>
@@ -110,8 +110,8 @@ else
     <MudPaper Elevation="1" Class="pa-4 mt-4" Style="max-width:44rem">
         <MudText Typo="Typo.h4" Class="mb-1">Extensions</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
-            Packages in the extensions directory. Installing, updating or removing one
-            takes a restart — unlike themes, there is no rescan.
+            Extension packages are installed in the extensions directory. Installing,
+            updating, or removing one requires a restart; extensions cannot be rescanned.
         </MudText>
 
         @if (_extensions is null)
@@ -170,7 +170,7 @@ else
             @foreach (var failure in _extensions.Failures)
             {
                 <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
-                    <strong>@failure.Source</strong> — @failure.Reason
+                    <strong>@failure.Source:</strong> @failure.Reason
                 </MudAlert>
             }
         }
@@ -258,7 +258,7 @@ else
         catch (ApiConflictException)
         {
             await ReloadAsync();
-            Snackbar.Add("Updated by someone else — your view was refreshed.", Severity.Info);
+            Snackbar.Add("Settings changed elsewhere. This page has been refreshed.", Severity.Info);
             return false;
         }
         catch (ApiException e)
@@ -281,11 +281,11 @@ else
             new DialogParameters
             {
                 [nameof(TextPromptDialog.Message)] =
-                    $"This drops the schema {extension.SchemaName ?? "(none)"} and every row in it, and removes "
-                    + "this extension's custom fields from tasks, epics and boards. It cannot be undone — take a "
-                    + $"pg_dump -n {extension.SchemaName} first if you might want the data back. "
+                    $"This permanently deletes schema {extension.SchemaName ?? "(none)"} and every row in it, and removes "
+                    + "this extension's custom fields from tasks, epics, and boards. To keep a backup, run "
+                    + $"pg_dump -n {extension.SchemaName} before continuing. "
                     + $"Type {extension.ExtensionId} to confirm.",
-                [nameof(TextPromptDialog.Label)] = "Extension id",
+                [nameof(TextPromptDialog.Label)] = "Extension ID",
                 [nameof(TextPromptDialog.MaxLength)] = 64,
                 [nameof(TextPromptDialog.SaveText)] = "Delete data",
             });

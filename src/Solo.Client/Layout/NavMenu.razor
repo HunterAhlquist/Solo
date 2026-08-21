@@ -96,8 +96,19 @@
         }
     </MudNavMenu>
 
-    @* Pinned to the foot of the drawer, below the scrolling tree. *@
+    @* Pinned to the foot of the drawer, below the scrolling tree. Add project
+       stays above the divider that separates creation from instance pages. *@
     <div class="nav-shell__footer">
+        @if (Session.IsSuperAdmin)
+        {
+            <MudNavMenu>
+                <MudNavLink Icon="@Icons.Material.Filled.CreateNewFolder" Class="nav-shell__add"
+                            OnClick="@AddProjectAsync">
+                    Add project
+                </MudNavLink>
+            </MudNavMenu>
+        }
+
         <MudDivider />
         <MudNavMenu>
             @* Instance-level extension pages — a manifest nav entry whose route
@@ -114,11 +125,6 @@
 
             @if (Session.IsSuperAdmin)
             {
-                <MudNavLink Icon="@Icons.Material.Filled.CreateNewFolder" Class="nav-shell__add"
-                            OnClick="@AddProjectAsync">
-                    Add project
-                </MudNavLink>
-
                 <MudNavLink Href="settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">
                     Admin settings
                 </MudNavLink>
