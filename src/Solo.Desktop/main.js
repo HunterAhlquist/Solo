@@ -18,6 +18,7 @@ let server = null;
 let listeningPort = null;
 let mainWindow = null;
 let settingsWindow = null;
+let liquidGlass = null;
 
 // Isolated profile for automated runs; normal launches use the default.
 if (process.env.SOLO_USER_DATA_DIR) {
@@ -121,6 +122,33 @@ function localUrl() {
 
 const isMac = process.platform === 'darwin';
 
+// The native package is darwin-only while Solo also installs and packages on
+// Windows and Linux, so it is an optional dependency and never loaded there.
+// Keep the prototype opt-in until the transparent-window tradeoffs have been
+// exercised on the macOS versions and hardware Solo supports.
+function loadLiquidGlass() {
+    if (!isMac || process.env.SOLO_LIQUID_GLASS !== '1') {
+        return null;
+    }
+
+    try {
+        const imported = require('electron-liquid-glass');
+        const candidate = imported.default ?? imported;
+        if (typeof candidate.addView !== 'function' ||
+            (typeof candidate.isGlassSupported === 'function' && !candidate.isGlassSupported())) {
+            console.warn('Solo Liquid Glass is unavailable on this version of macOS.');
+            return null;
+        }
+
+        return candidate;
+    } catch (err) {
+        // Optional native code must fail closed: the ordinary opaque window is
+        // still useful if the package is absent or its binary cannot be loaded.
+        console.error('Solo Liquid Glass could not be loaded; using the standard window.', err);
+        return null;
+    }
+}
+
 // Electron's current defaults already, spelled out so a future default change
 // — or a stray webPreferences edit — can't quietly hand a renderer Node.
 // The renderer runs a Blazor app that renders other people's markdown; it has
@@ -147,13 +175,17 @@ function createMainWindow() {
         return;
     }
 
+    liquidGlass = loadLiquidGlass();
+    const useLiquidGlass = liquidGlass !== null;
+
     mainWindow = new BrowserWindow({
         width: 1440,
         height: 920,
         minWidth: 900,
         minHeight: 600,
         show: false,
-        backgroundColor: '#000000',
+        backgroundColor: useLiquidGlass ? '#00000000' : '#000000',
+        transparent: useLiquidGlass,
         title: 'Solo',
         // No OS title bar: the platform's own window controls sit on the app
         // bar instead, the way most Electron apps ship. macOS keeps its inset
@@ -176,9 +208,35 @@ function createMainWindow() {
             }),
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'desktop.js'),
+            ...(useLiquidGlass ? { additionalArguments: ['--solo-liquid-glass'] } : {}),
             ...HARDENED_WEB_PREFERENCES,
         },
     });
+
+    if (useLiquidGlass) {
+        // The package adds one native NSGlassEffectView beneath Chromium. The
+        // renderer class supplied above makes only the intended CSS surfaces
+        // translucent; Blazor never needs access to the native module.
+        mainWindow.webContents.once('did-finish-load', () => {
+            try {
+                const viewId = liquidGlass.addView(mainWindow.getNativeWindowHandle());
+                if (viewId < 0) {
+                    throw new Error('the native add-on returned no view');
+                }
+
+                mainWindow.setWindowButtonVisibility(true);
+                mainWindow.webContents.send('window:liquid-glass', true);
+                console.log(`Solo Liquid Glass enabled (view ${viewId}).`);
+            } catch (err) {
+                // The BrowserWindow itself must be transparent from creation,
+                // but restoring opaque renderer surfaces still gives a legible
+                // standard UI when native initialization fails.
+                liquidGlass = null;
+                mainWindow?.webContents.send('window:liquid-glass', false);
+                console.error('Solo Liquid Glass could not be applied; using opaque renderer surfaces.', err);
+            }
+        });
+    }
 
     mainWindow.once('ready-to-show', () => mainWindow.show());
     mainWindow.on('closed', () => { mainWindow = null; });

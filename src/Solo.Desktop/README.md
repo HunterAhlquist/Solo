@@ -26,6 +26,21 @@ Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live 
 During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start`
 serves client assets from anywhere without re-copying.
 
+### Liquid Glass prototype (macOS 26+)
+
+The main window can use the native macOS Liquid Glass backdrop while leaving
+the Blazor renderer and non-macOS builds unchanged:
+
+```sh
+npm run build:client && SOLO_LIQUID_GLASS=1 npm start
+```
+
+The native module is optional and the effect fails back to opaque renderer
+surfaces if it cannot load. It is deliberately opt-in because Electron's
+transparent-window behavior and the package's native view placement still need
+to be evaluated across supported Mac hardware. The settings window keeps its
+standard appearance.
+
 ## Window chrome
 
 The window has no OS title bar. The platform draws its own controls over the

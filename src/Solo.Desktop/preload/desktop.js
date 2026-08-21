@@ -27,6 +27,7 @@ const platformClass = process.platform === 'darwin'
     : 'solo-desktop--overlay';  // Window Controls Overlay, right
 
 let fullScreen = false;
+let liquidGlass = process.argv.includes('--solo-liquid-glass');
 
 function applyChrome() {
     const root = document.documentElement;
@@ -36,10 +37,18 @@ function applyChrome() {
 
     root.classList.add('solo-desktop', platformClass);
     root.classList.toggle('solo-desktop--fullscreen', fullScreen);
+    root.classList.toggle('solo-desktop--liquid-glass', liquidGlass);
 }
 
 ipcRenderer.on('window:full-screen', (_event, value) => {
     fullScreen = value === true;
+    applyChrome();
+});
+
+// The command-line flag applies the transparent styling before first paint.
+// Main turns it back off if native view creation subsequently fails.
+ipcRenderer.on('window:liquid-glass', (_event, value) => {
+    liquidGlass = value === true;
     applyChrome();
 });
 
