@@ -69,10 +69,8 @@ try {
         throw new Error('The native-effects preference did not persist as disabled.');
     }
 
-    const mainTarget = await targetMatching(browserOrigin,
-        target => target.type === 'page' && target.url.startsWith('http://localhost:41321/'));
-    await new Promise(resolve => setTimeout(resolve, 250));
-    const mainUsesGlass = await evaluate(mainTarget.webSocketDebuggerUrl,
+    const mainUsesGlass = await inspectMatching(browserOrigin,
+        target => target.type === 'page' && target.url.startsWith('http://localhost:41321/'),
         `document.documentElement.classList.contains('solo-desktop--glass')`);
     if (mainUsesGlass) {
         throw new Error('The main window still enabled native effects after the saved opt-out.');
@@ -97,6 +95,20 @@ async function targetMatching(origin, predicate) {
         const response = await fetch(`${origin}/json/list`);
         return (await response.json()).find(predicate);
     }, 5000, 'The expected Solo window did not open.');
+}
+
+async function inspectMatching(origin, predicate, expression) {
+    const inspection = await waitFor(async () => {
+        const response = await fetch(`${origin}/json/list`);
+        const target = (await response.json()).find(predicate);
+        if (!target) return null;
+
+        // A target is listed just before its debugger socket becomes stable,
+        // and navigation can replace that socket. Resolve it again on every
+        // attempt instead of holding a stale URL after an arbitrary delay.
+        return { value: await evaluate(target.webSocketDebuggerUrl, expression) };
+    }, 5000, 'The expected Solo window could not be inspected.');
+    return inspection.value;
 }
 
 async function waitFor(probe, timeoutMs, message) {
