@@ -118,10 +118,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify glass backdrop defaults on
-        if: runner.os == 'macOS'
-        run: npm run test:glass && npm run test:glass-theme && npm run test:settings
-
       # mac.icon is an Icon Composer bundle, staged by the beforePack hook and
       # compiled by electron-builder with actool, which only ships with Xcode
       # 26+. The image's default Xcode selection can lag behind what's
@@ -146,6 +142,12 @@ jobs:
 
       - name: Publish Blazor client into shell
         run: npm run build:client
+
+      # The theme synchronization check launches the shell's isolated Blazor
+      # renderer, so it must run after the gitignored wwwroot has been published.
+      - name: Verify glass backdrop defaults on
+        if: runner.os == 'macOS'
+        run: npm run test:glass && npm run test:glass-theme && npm run test:settings
 
       # Without the signing/notarization secrets below, electron-builder
       # logs a warning and ships unsigned builds (mac users must
