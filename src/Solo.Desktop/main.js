@@ -19,6 +19,9 @@ let listeningPort = null;
 let mainWindow = null;
 let settingsWindow = null;
 let liquidGlass = null;
+let networkReconnectPending = false;
+
+process.on('uncaughtException', handleUncaughtException);
 
 // Isolated profile for automated runs; normal launches use the default.
 if (process.env.SOLO_USER_DATA_DIR) {
@@ -57,6 +60,51 @@ function onReady() {
     } else {
         // First run: no instance to talk to yet, so settings is the app.
         openSettingsWindow();
+    }
+}
+
+function handleUncaughtException(error) {
+    if (!isConnectionReset(error)) {
+        // Keep Electron's normal crash behavior for programming errors. The
+        // next throw runs without this handler, so an unrelated exception is
+        // never mistaken for a recoverable network transition.
+        process.removeListener('uncaughtException', handleUncaughtException);
+        setImmediate(() => { throw error; });
+        return;
+    }
+
+    if (!networkReconnectPending) {
+        console.warn('Solo lost its network connection; reconnecting when the window becomes active.');
+    }
+    networkReconnectPending = true;
+
+    if (mainWindow?.isFocused?.()) {
+        setImmediate(recoverNetworkConnection);
+    }
+}
+
+function isConnectionReset(error) {
+    return error?.code === 'ECONNRESET' || error?.message === 'read ECONNRESET';
+}
+
+function recoverNetworkConnection() {
+    if (!networkReconnectPending) {
+        return;
+    }
+
+    const contents = mainWindow?.webContents;
+    if (!contents || contents.isDestroyed()) {
+        return;
+    }
+
+    networkReconnectPending = false;
+    try {
+        // A fresh Blazor boot re-establishes both ordinary API traffic and the
+        // SignalR connection after Chromium resumes on a different network.
+        contents.reload();
+    } catch (error) {
+        networkReconnectPending = true;
+        console.warn(`Solo could not reconnect yet: ${error.message}`);
     }
 }
 
@@ -258,6 +306,7 @@ function createMainWindow() {
     }
 
     mainWindow.once('ready-to-show', () => mainWindow.show());
+    mainWindow.on('focus', recoverNetworkConnection);
     mainWindow.on('closed', () => { mainWindow = null; });
 
     // Spelling corrections and copy/paste on right-click; Electron has no

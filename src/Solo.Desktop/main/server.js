@@ -122,6 +122,12 @@ function createSoloServer({ clientDir, getTarget }) {
 
     // SignalR WebSocket upgrade for /hubs/board.
     server.on('upgrade', (req, socket, head) => {
+        // Node hands ownership of the raw socket to this listener, while
+        // http-proxy does not watch its errors until the instance accepts the
+        // upgrade. Chromium can reset it in that gap after sleep or a network
+        // change, so close it here instead of letting ECONNRESET escape.
+        socket.once('error', () => socket.destroy());
+
         const target = getTarget();
         if (!target || !shouldProxy(req.url)) {
             socket.destroy();
