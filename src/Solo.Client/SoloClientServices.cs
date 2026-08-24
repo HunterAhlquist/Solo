@@ -48,6 +48,7 @@ public static class SoloClientServices
         services.AddScoped<ProjectNavStore>();
         services.AddScoped<UserSession>();
         services.AddScoped<RecentProjectsStore>();
+        services.AddScoped<ProjectOrderStore>();
         services.AddScoped<SaveGuard>();
 
         // The site theme arrives with the bootstrap config; the colour scheme is

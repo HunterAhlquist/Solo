@@ -3,6 +3,7 @@
 @inject UserSession Session
 @inject ApiClient Api
 @inject RecentProjectsStore Recent
+@inject ProjectOrderStore ProjectOrder
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
@@ -29,70 +30,113 @@
             </MudText>
         }
 
-        @foreach (var project in OrderedProjects)
+        @{
+            var orderedProjects = OrderedProjects;
+        }
+        @for (var projectIndex = 0; projectIndex < orderedProjects.Count; projectIndex++)
         {
+            var dropIndex = projectIndex;
+            var project = orderedProjects[projectIndex];
+
+            <div class="@ProjectDropSlotClass(dropIndex)"
+                 @ondragenter="@(() => EnterProjectDropSlot(dropIndex))"
+                 @ondragleave="@ClearProjectDropSlot"
+                 @ondragover:preventDefault="@(_draggedProject is not null)"
+                 @ondrop:preventDefault="true"
+                 @ondrop="@(() => DropProjectAsync(dropIndex))"
+                 aria-hidden="true"></div>
+
             <MudNavGroup Title="@project.Name"
-                         Icon="@SoloIcons.Resolve(project.ImageId, project.Icon)"
+                         @key="project.Id"
+                         Class="@ProjectGroupClass(project)"
+                         HeaderClass="project-nav__header"
                          Expanded="@_expanded.Contains(project.Id)"
                          ExpandedChanged="@(expanded => OnExpandedAsync(project.Id, expanded))">
+                <TitleContent>
+                    <span class="project-nav__title" @ondragenter="@ClearProjectDropSlot">
+                        <span class="project-nav__drag-handle"
+                              draggable="true"
+                              title="Drag to reorder projects"
+                              aria-label="@($"Drag to reorder {project.Name}")"
+                              @onclick:stopPropagation="true"
+                              @ondragstart="@(() => StartProjectDrag(project))"
+                              @ondragend="@EndProjectDrag">
+                            <MudIcon Icon="@SoloIcons.Resolve(project.ImageId, project.Icon)" />
+                        </span>
+                        <span class="project-nav__name">@project.Name</span>
+                    </span>
+                </TitleContent>
 
-                @{
-                    var boards = Nav.BoardsOf(project.Id);
-                }
-                @if (boards is null)
-                {
-                    <div class="px-4 py-2">
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                    </div>
-                }
-                else
-                {
-                    @foreach (var board in boards)
+                <ChildContent>
+                    @{
+                        var boards = Nav.BoardsOf(project.Id);
+                    }
+                    @if (boards is null)
                     {
-                        <MudNavLink Href="@BoardHref(project.Alias, board.Alias)"
-                                    Match="NavLinkMatch.All"
-                                    Icon="@SoloIcons.Resolve(board.ImageId, board.Icon)">
-                            @board.Name
+                        <div class="px-4 py-2">
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var board in boards)
+                        {
+                            <MudNavLink Href="@BoardHref(project.Alias, board.Alias)"
+                                        Match="NavLinkMatch.All"
+                                        Icon="@SoloIcons.Resolve(board.ImageId, board.Icon)">
+                                @board.Name
+                            </MudNavLink>
+                        }
+
+                        @if (boards.Count == 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1 d-block">
+                                No open boards.
+                            </MudText>
+                        }
+
+                        <MudDivider DividerType="DividerType.Middle" Class="my-2" />
+
+                        @* Open the project home for members, labels, closed boards. *@
+                        <MudNavLink Href="@($"projects/{project.Alias}")" Match="NavLinkMatch.All"
+                                    Icon="@Icons.Material.Filled.Tune">
+                            Project settings
                         </MudNavLink>
+
+                        @* Extension pages. These come from the manifest, but only for
+                           extensions whose client assembly actually loaded — an entry
+                           whose route no assembly registered would land on the router's
+                           "that page doesn't exist", which reads as a bug rather than as
+                           a version mismatch. See ExtensionBootstrapper. *@
+                        @foreach (var entry in ExtensionNav(project))
+                        {
+                            <MudNavLink Href="@ExtensionHref(entry, project)" Match="NavLinkMatch.Prefix"
+                                        Icon="@ExtensionIcon(entry)">
+                                @entry.Label
+                            </MudNavLink>
+                        }
+
+                        @if (ProjectNavStore.CanAddBoard(project))
+                        {
+                            <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__add"
+                                        OnClick="@(() => AddBoardAsync(project))">
+                                Add board
+                            </MudNavLink>
+                        }
                     }
-
-                    @if (boards.Count == 0)
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1 d-block">
-                            No open boards.
-                        </MudText>
-                    }
-
-                    <MudDivider DividerType="DividerType.Middle" Class="my-2" />
-
-                    @* Open the project home for members, labels, closed boards. *@
-                    <MudNavLink Href="@($"projects/{project.Alias}")" Match="NavLinkMatch.All"
-                                Icon="@Icons.Material.Filled.Tune">
-                        Project settings
-                    </MudNavLink>
-
-                    @* Extension pages. These come from the manifest, but only for
-                       extensions whose client assembly actually loaded — an entry
-                       whose route no assembly registered would land on the router's
-                       "that page doesn't exist", which reads as a bug rather than as
-                       a version mismatch. See ExtensionBootstrapper. *@
-                    @foreach (var entry in ExtensionNav(project))
-                    {
-                        <MudNavLink Href="@ExtensionHref(entry, project)" Match="NavLinkMatch.Prefix"
-                                    Icon="@ExtensionIcon(entry)">
-                            @entry.Label
-                        </MudNavLink>
-                    }
-
-                    @if (ProjectNavStore.CanAddBoard(project))
-                    {
-                        <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__add"
-                                    OnClick="@(() => AddBoardAsync(project))">
-                            Add board
-                        </MudNavLink>
-                    }
-                }
+                </ChildContent>
             </MudNavGroup>
+        }
+
+        @if (orderedProjects.Count > 0)
+        {
+            <div class="@ProjectDropSlotClass(orderedProjects.Count)"
+                 @ondragenter="@(() => EnterProjectDropSlot(orderedProjects.Count))"
+                 @ondragleave="@ClearProjectDropSlot"
+                 @ondragover:preventDefault="@(_draggedProject is not null)"
+                 @ondrop:preventDefault="true"
+                 @ondrop="@(() => DropProjectAsync(orderedProjects.Count))"
+                 aria-hidden="true"></div>
         }
     </MudNavMenu>
 
@@ -160,6 +204,9 @@
             : SoloIcons.Resolve(null, entry.Icon);
 
     private IReadOnlyList<Guid> _recent = [];
+    private IReadOnlyList<Guid> _projectOrder = [];
+    private ProjectSummaryDto? _draggedProject;
+    private int? _projectDropSlot;
     private bool _autoExpanded;
 
     protected override async Task OnInitializedAsync()
@@ -185,9 +232,8 @@
     }
 
     /// <summary>
-    /// Recents live in localStorage, unreachable until the first render lands, so
-    /// they're read here rather than in init. Once known, the tree re-orders and
-    /// the most-recent few projects unfold themselves.
+    /// Sidebar preferences live in localStorage, unreachable until the first
+    /// render lands, so they're read here rather than in init.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -196,10 +242,11 @@
             try
             {
                 _recent = await Recent.GetAsync();
+                _projectOrder = await ProjectOrder.GetAsync();
             }
             catch (JSException)
             {
-                // Storage unavailable — the tree just keeps its default order.
+                // Storage unavailable — keep the API order and no auto-expansion.
             }
 
             StateHasChanged();
@@ -208,20 +255,99 @@
         await TryAutoExpandAsync();
     }
 
-    /// <summary>Projects most-recently opened float to the top; the rest keep A→Z.</summary>
-    private IEnumerable<ProjectSummaryDto> OrderedProjects
+    /// <summary>
+    /// Saved projects lead in their explicit order. New projects, which have no
+    /// saved position yet, retain the API's alphabetical order at the end.
+    /// </summary>
+    private IReadOnlyList<ProjectSummaryDto> OrderedProjects
     {
         get
         {
-            if (_recent.Count == 0)
+            if (_projectOrder.Count == 0)
             {
                 return Nav.Projects;
             }
 
-            var rank = _recent
-                .Select((id, index) => (id, index))
-                .ToDictionary(x => x.id, x => x.index);
-            return Nav.Projects.OrderBy(p => rank.TryGetValue(p.Id, out var r) ? r : int.MaxValue);
+            var projectsById = Nav.Projects.ToDictionary(project => project.Id);
+            var ordered = _projectOrder
+                .Where(projectsById.ContainsKey)
+                .Select(id => projectsById[id])
+                .ToList();
+            var placed = ordered.Select(project => project.Id).ToHashSet();
+            ordered.AddRange(Nav.Projects.Where(project => !placed.Contains(project.Id)));
+            return ordered;
+        }
+    }
+
+    private string ProjectGroupClass(ProjectSummaryDto project) =>
+        "project-nav-group" +
+        (_draggedProject?.Id == project.Id ? " project-nav-group--dragging" : string.Empty);
+
+    private string ProjectDropSlotClass(int index) =>
+        "project-drop-slot" +
+        (_projectDropSlot == index ? " project-drop-slot--active" : string.Empty);
+
+    private void StartProjectDrag(ProjectSummaryDto project)
+    {
+        _draggedProject = project;
+        _projectDropSlot = null;
+    }
+
+    private void EnterProjectDropSlot(int index)
+    {
+        if (_draggedProject is not null)
+        {
+            _projectDropSlot = index;
+        }
+    }
+
+    private void ClearProjectDropSlot() => _projectDropSlot = null;
+
+    private void EndProjectDrag()
+    {
+        _draggedProject = null;
+        _projectDropSlot = null;
+    }
+
+    /// <summary>
+    /// As on the board, the DOM supplies one insertion slot before each item and
+    /// one after the last. Removing the dragged project shifts later slots left.
+    /// </summary>
+    private async Task DropProjectAsync(int dropIndex)
+    {
+        var dragged = _draggedProject;
+        EndProjectDrag();
+        if (dragged is null)
+        {
+            return;
+        }
+
+        var projects = OrderedProjects.ToList();
+        var sourceIndex = projects.FindIndex(project => project.Id == dragged.Id);
+        var others = projects.Where(project => project.Id != dragged.Id).ToList();
+        if (sourceIndex < 0 || others.Count != projects.Count - 1)
+        {
+            return;
+        }
+
+        var insertionIndex = Math.Clamp(
+            dropIndex > sourceIndex ? dropIndex - 1 : dropIndex, 0, others.Count);
+        if (insertionIndex == sourceIndex)
+        {
+            return;
+        }
+
+        others.Insert(insertionIndex, dragged);
+        _projectOrder = others.Select(project => project.Id).ToList();
+        StateHasChanged();
+
+        try
+        {
+            await ProjectOrder.SetAsync(_projectOrder);
+        }
+        catch (JSException)
+        {
+            // Keep the in-memory order for this session if storage is unavailable.
         }
     }
 

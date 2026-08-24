@@ -40,6 +40,7 @@ public class MarkupDump : BunitContext, IAsyncLifetime
         Services.AddSingleton(_store);
         Services.AddSingleton<Solo.Client.Realtime.IBoardHubClient>(_hub);
         Services.AddScoped<RecentProjectsStore>();
+        Services.AddScoped<ProjectOrderStore>();
         Services.AddScoped<SaveGuard>();
     }
 

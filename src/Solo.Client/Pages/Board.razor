@@ -394,7 +394,7 @@ else
 
     private Guid _recordedProject;
 
-    /// <summary>Opening a board bubbles its project to the top of the sidebar's recents.</summary>
+    /// <summary>Remember this board's project so the sidebar can unfold recent work.</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // The route only carries aliases; the project's id arrives with the payload.

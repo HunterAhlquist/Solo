@@ -5,9 +5,8 @@ namespace Solo.Client.State;
 
 /// <summary>
 /// Remembers which projects the user opened, most-recent first, in
-/// <c>localStorage</c>. The sidebar uses it to order the tree and to auto-expand
-/// the last few projects on load, so returning to the app lands you back where
-/// you were working.
+/// <c>localStorage</c>. The sidebar uses this only to auto-expand the last few
+/// projects on load; its visible order is the user's separate drag preference.
 /// </summary>
 public sealed class RecentProjectsStore(IJSRuntime js)
 {

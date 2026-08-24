@@ -79,7 +79,7 @@ else
 
     private Guid _recorded;
 
-    /// <summary>Opening a project bubbles it to the top of the sidebar's recents.</summary>
+    /// <summary>Remember this project so the sidebar can unfold recent work.</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // The route only carries the alias; the id arrives with the payload.

@@ -31,6 +31,7 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
         Services.AddScoped<RecentProjectsStore>();
+        Services.AddScoped<ProjectOrderStore>();
         // The sidebar renders extension nav entries. An empty catalog is the
         // normal case — no extensions installed — and keeps these tests about
         // the core tree; ExtensionNavTests covers the entries themselves.
@@ -139,6 +140,71 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
             .GetAttribute("href");
 
         Assert.Equal("projects/SOLO/boards/MAIN", href);
+    }
+
+    // -- Project ordering ---------------------------------------------------
+
+    [Fact]
+    public void Project_icons_are_drag_handles_with_an_insertion_slot_at_every_position()
+    {
+        Route(isSuperAdmin: false);
+
+        var nav = RenderNav();
+
+        Assert.Equal(2, nav.FindAll(".project-nav__drag-handle").Count);
+        Assert.Equal(3, nav.FindAll(".project-drop-slot").Count);
+        Assert.All(nav.FindAll(".project-nav__drag-handle"), handle =>
+            Assert.Equal("true", handle.GetAttribute("draggable")));
+    }
+
+    [Fact]
+    public void Dropping_a_project_icon_in_the_last_slot_moves_the_whole_project_group()
+    {
+        Route(isSuperAdmin: false);
+        var nav = RenderNav();
+
+        nav.FindAll(".project-nav__drag-handle")[0].DragStart();
+        nav.FindAll(".project-drop-slot")[2].Drop();
+
+        Assert.Equal(["Side quest", "Solo"],
+            nav.FindAll(".project-nav__name").Select(name => name.TextContent.Trim()));
+        var persisted = JSInterop.VerifyInvoke("solo.storage.set");
+        Assert.Equal("solo.projectOrder", persisted.Arguments[0]);
+        Assert.Equal(
+            System.Text.Json.JsonSerializer.Serialize(new[] { OtherProjectId, TestData.ProjectId }),
+            persisted.Arguments[1]);
+    }
+
+    [Fact]
+    public void A_saved_manual_order_wins_over_the_API_order_on_the_next_load()
+    {
+        JSInterop.Setup<string?>("solo.storage.get", "solo.projectOrder")
+            .SetResult(System.Text.Json.JsonSerializer.Serialize(
+                new[] { OtherProjectId, TestData.ProjectId }));
+        Route(isSuperAdmin: false);
+
+        var nav = RenderNav();
+
+        nav.WaitForAssertion(() => Assert.Equal(["Side quest", "Solo"],
+            nav.FindAll(".project-nav__name").Select(name => name.TextContent.Trim())));
+    }
+
+    [Fact]
+    public void The_project_insertion_slot_under_the_pointer_uses_the_epic_style_line()
+    {
+        Route(isSuperAdmin: false);
+        var nav = RenderNav();
+
+        nav.FindAll(".project-nav__drag-handle")[1].DragStart();
+        nav.FindAll(".project-drop-slot")[0].DragEnter();
+
+        Assert.Single(nav.FindAll(".project-drop-slot--active"));
+        Assert.Single(nav.FindAll(".project-nav-group--dragging"));
+
+        nav.FindAll(".project-nav__drag-handle")[1].DragEnd();
+
+        Assert.Empty(nav.FindAll(".project-drop-slot--active"));
+        Assert.Empty(nav.FindAll(".project-nav-group--dragging"));
     }
 
     // -- Create affordances --------------------------------------------------
