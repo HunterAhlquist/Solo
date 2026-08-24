@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.diff.outputs.build }}
+      mcp: ${{ steps.diff.outputs.mcp }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -46,6 +47,7 @@ jobs:
 
           if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "mcp=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -69,6 +71,17 @@ jobs:
             .github/workflows/ci.yml
           )
 
+          # Source and packaging inputs that can change the installable MCP
+          # package. Solo.Shared is included both for the client and as a
+          # transitive dependency of Solo.Extensibility.
+          MCP_PATHS=(
+            src/Solo.Extensibility
+            src/Solo.Mcp
+            src/Solo.Mcp.Client
+            src/Solo.Shared
+            build/pack-mcp-extension.sh
+          )
+
           # Nearest earlier tag in this series that HEAD descends from. The
           # --exclude keeps the tag being pushed from matching itself; when a
           # second tag sits on the same commit the diff is correctly empty.
@@ -78,6 +91,7 @@ jobs:
           if [ -z "${PREVIOUS}" ]; then
             echo "No earlier ${TAG_PREFIX}* tag in this history — building."
             echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "mcp=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -88,6 +102,15 @@ jobs:
             echo "Changed since ${PREVIOUS}:"
             git diff --name-only "${PREVIOUS}" HEAD -- "${PATHS[@]}"
             echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if git diff --quiet "${PREVIOUS}" HEAD -- "${MCP_PATHS[@]}"; then
+            echo "::notice::No MCP package inputs changed since ${PREVIOUS}; skipping extension publication."
+            echo "mcp=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "MCP package inputs changed since ${PREVIOUS}:"
+            git diff --name-only "${PREVIOUS}" HEAD -- "${MCP_PATHS[@]}"
+            echo "mcp=true" >> "$GITHUB_OUTPUT"
           fi
 
   build-test:
@@ -123,12 +146,14 @@ jobs:
 
       # The MCP server ships as an extension package rather than inside the
       # image: an operator drops it into the extensions volume and restarts.
-      # Built on every run so a PR proves the package still assembles, and
-      # attached to the release below when a tag is pushed.
+      # Every PR proves the package still assembles. A tagged build only packs
+      # it when an input changed since the previous server release.
       - name: Package the MCP extension
+        if: github.event_name == 'pull_request' || needs.changes.outputs.mcp == 'true'
         run: build/pack-mcp-extension.sh
 
       - name: Upload the MCP extension package
+        if: github.event_name == 'pull_request' || needs.changes.outputs.mcp == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: mcp-extension
@@ -186,7 +211,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   release-extension:
-    name: Attach the MCP extension to the release
+    name: Create release and publish changed MCP extension
     needs: [changes, build-test]
     # Tag pushes only; a PR build just proves the package assembles.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/server-v')
@@ -195,15 +220,25 @@ jobs:
       contents: write
     steps:
       - uses: actions/download-artifact@v8
+        if: needs.changes.outputs.mcp == 'true'
         with:
           name: mcp-extension
           path: artifacts
 
+      # A server release still exists when the extension did not change; it
+      # simply omits the already-published MCP package.
+      - name: Create release without an unchanged MCP package
+        if: needs.changes.outputs.mcp != 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+
       # Creates the release for the tag if it doesn't exist yet; otherwise
-      # attaches the package to the existing one. The image is published
-      # separately to GHCR — this release carries what an operator installs by
-      # hand.
-      - uses: softprops/action-gh-release@v3
+      # attaches the changed package. The image is published separately to
+      # GHCR; this asset is what an operator installs by hand.
+      - name: Create release and attach the changed MCP package
+        if: needs.changes.outputs.mcp == 'true'
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/solo-mcp-*.zip
           generate_release_notes: true
