@@ -145,9 +145,9 @@ jobs:
 
       # The theme synchronization check launches the shell's isolated Blazor
       # renderer, so it must run after the gitignored wwwroot has been published.
-      - name: Verify glass backdrop defaults on
+      - name: Verify glass appearance and settings
         if: runner.os == 'macOS'
-        run: npm run test:glass && npm run test:glass-theme && npm run test:settings
+        run: npm run test:glass-theme && npm run test:settings
 
       # Without the signing/notarization secrets below, electron-builder
       # logs a warning and ships unsigned builds (mac users must

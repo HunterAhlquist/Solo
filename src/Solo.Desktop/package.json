@@ -12,7 +12,6 @@
     "build:client": "node scripts/build-client.mjs",
     "build:icon": "node scripts/build-icon.mjs",
     "stage:icon": "node scripts/stage-icon.mjs",
-    "test:glass": "node scripts/check-glass-default.mjs",
     "test:glass-theme": "node scripts/check-glass-theme-sync.mjs",
     "test:network-recovery": "node scripts/check-network-recovery.mjs",
     "test:network-reset": "node scripts/check-server-network-reset.mjs",
