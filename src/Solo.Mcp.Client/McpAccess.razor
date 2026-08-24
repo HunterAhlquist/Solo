@@ -23,6 +23,7 @@
     <link rel="stylesheet" href="@_mcp.Content("mcp.css")" />
 </HeadContent>
 
+<MudContainer MaxWidth="MaxWidth.Medium" Gutters="false">
 <MudText Typo="Typo.h1" Class="mb-4">MCP access</MudText>
 
 @if (_error is not null)
@@ -38,20 +39,20 @@ else if (_info is null)
     @* This assembly loaded but the server half did not — a failed migration
        disables it and its routes answer 503. Say so rather than offering a
        token form pointed at nothing. *@
-    <MudAlert Severity="Severity.Warning" Style="max-width:44rem">
+    <MudAlert Severity="Severity.Warning">
         The MCP package is installed, but its server is disabled. An admin can find
         the reason under Extensions in Admin settings.
     </MudAlert>
 }
 else
 {
-    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="max-width:44rem">
+    <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4">
         Connect an AI assistant to Solo to read your boards and create, edit, and
         move tasks. It acts as you and can access only projects you belong to.
     </MudText>
 
     @* ------------------------------------------------------------------ *@
-    <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:44rem">
+    <MudPaper Elevation="1" Class="pa-4 mb-4">
         <MudText Typo="Typo.h4" Class="mb-1">Your token</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             Each account can have one token. Generating a new token immediately
@@ -126,7 +127,7 @@ else
     </MudPaper>
 
     @* ------------------------------------------------------------------ *@
-    <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:44rem">
+    <MudPaper Elevation="1" Class="pa-4 mb-4">
         <MudText Typo="Typo.h4" Class="mb-1">Connect a client</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             The MCP endpoint uses HTTP at <code>@Endpoint</code> with protocol revision
@@ -179,7 +180,7 @@ else
     </MudPaper>
 
     @* ------------------------------------------------------------------ *@
-    <MudPaper Elevation="1" Class="pa-4" Style="max-width:44rem">
+    <MudPaper Elevation="1" Class="pa-4">
         <MudText Typo="Typo.h4" Class="mb-1">Available tools</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             @_info.Tools.Count tools in MCP server version @_info.ServerVersion.
@@ -204,7 +205,7 @@ else
        the instance stores hashes, so there is no token here to read. *@
     @if (_audit is not null)
     {
-        <MudPaper Elevation="1" Class="pa-4 mt-4" Style="max-width:44rem">
+        <MudPaper Elevation="1" Class="pa-4 mt-4">
             <div class="d-flex align-center mb-1">
                 <MudText Typo="Typo.h4">All tokens</MudText>
                 <MudSpacer />
@@ -308,6 +309,7 @@ else
         </MudPaper>
     }
 }
+</MudContainer>
 
 @code {
     /// <summary>Retyped to confirm the revoke-all; matches the server's constant.</summary>

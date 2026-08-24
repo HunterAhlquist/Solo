@@ -8,6 +8,7 @@
 
 <PageTitle>Admin settings · Solo</PageTitle>
 
+<MudContainer MaxWidth="MaxWidth.Medium" Gutters="false">
 <MudText Typo="Typo.h1" Class="mb-4">Admin settings</MudText>
 
 @if (_error is not null)
@@ -20,7 +21,7 @@ else if (_settings is null)
 }
 else
 {
-    <MudPaper Elevation="1" Class="pa-4 mb-4" Style="max-width:32rem">
+    <MudPaper Elevation="1" Class="pa-4 mb-4">
         <MudText Typo="Typo.h4" Class="mb-1">Audit retention</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             Audit entries older than this are deleted automatically.
@@ -35,7 +36,7 @@ else
         </MudText>
     </MudPaper>
 
-    <MudPaper Elevation="1" Class="pa-4" Style="max-width:32rem">
+    <MudPaper Elevation="1" Class="pa-4">
         <div class="d-flex align-center mb-1">
             <MudText Typo="Typo.h4">Theme</MudText>
             <MudSpacer />
@@ -107,7 +108,7 @@ else
         }
     </MudPaper>
 
-    <MudPaper Elevation="1" Class="pa-4 mt-4" Style="max-width:44rem">
+    <MudPaper Elevation="1" Class="pa-4 mt-4">
         <MudText Typo="Typo.h4" Class="mb-1">Extensions</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             Extension packages are installed in the extensions directory. Installing,
@@ -177,6 +178,7 @@ else
     </MudPaper>
 
 }
+</MudContainer>
 
 @code {
     private InstanceSettingsDto? _settings;

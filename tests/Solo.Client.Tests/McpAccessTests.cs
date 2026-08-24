@@ -65,6 +65,19 @@ public class McpAccessTests : ComponentTestBase
         Assert.DoesNotContain("Regenerate", page.Markup);
     }
 
+    [Fact]
+    public void The_page_uses_the_shared_readable_width_without_inline_caps()
+    {
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+
+        var container = page.Find(".mud-container-maxwidth-md");
+        Assert.DoesNotContain("mud-container--gutters", container.ClassList);
+        Assert.DoesNotContain("max-width:", page.Markup);
+    }
+
     /// <summary>
     /// The value exists in exactly one response, so the page has to show it and
     /// put it straight into the snippets the user is about to copy.

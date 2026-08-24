@@ -1,0 +1,49 @@
+using Bunit;
+using Microsoft.Extensions.DependencyInjection;
+using Solo.Client.Api;
+using Solo.Client.Auth;
+using Solo.Client.Layout;
+using Solo.Client.Pages;
+using Solo.Client.State;
+using Solo.Shared.Dtos;
+
+namespace Solo.Client.Tests;
+
+public class LayoutWidthTests : ComponentTestBase
+{
+    [Fact]
+    public void Main_content_uses_MudBlazors_centered_large_container()
+    {
+        this.AddAuthorization();
+        Services.AddSingleton(new UserSession(new StubHttp().CreateClient()));
+        Services.AddSingleton(new StubHttp().CreateClient());
+        Services.AddSingleton(new AppConfig());
+        Services.AddSingleton<SessionExpiry>();
+        Services.AddScoped<GoogleIdentityService>();
+
+        var layout = Render<MainLayout>();
+
+        var container = layout.Find(".mud-main-content > .mud-container");
+        Assert.Contains("mud-container-maxwidth-lg", container.ClassList);
+        Assert.DoesNotContain("app-content", container.ClassList);
+    }
+
+    [Fact]
+    public void Admin_settings_uses_the_shared_readable_width_without_inline_caps()
+    {
+        var http = new StubHttp()
+            .RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
+            .RouteJson("api/themes", new ThemeScanResultDto([], []))
+            .RouteJson("api/extensions/admin", new ExtensionAdminDto([], []));
+        Services.AddSingleton(http.CreateClient());
+
+        var page = Render<InstanceSettings>();
+
+        page.WaitForAssertion(() =>
+        {
+            var container = page.Find(".mud-container-maxwidth-md");
+            Assert.DoesNotContain("mud-container--gutters", container.ClassList);
+            Assert.DoesNotContain("max-width:", page.Markup);
+        });
+    }
+}
