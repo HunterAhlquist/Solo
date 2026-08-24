@@ -431,8 +431,9 @@ code {
 }
 
 .kanban-zone--can-drop {
-    background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
-    outline: 1px dashed var(--mud-palette-primary);
+    margin: 3px;
+    background: color-mix(in srgb, var(--mud-palette-primary) 6%, transparent);
+    outline: 1px dashed color-mix(in srgb, var(--mud-palette-primary) 55%, transparent);
 }
 
 .kanban-zone--no-drop {
