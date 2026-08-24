@@ -123,6 +123,7 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
     private static readonly Guid EpicC = Guid.Parse("a0000000-0000-0000-0000-000000000003");
 
     private const string Gutter = ".kanban-lane__gutter--openable";
+    private const string EpicDropSlot = ".epic-drop-slot";
 
     /// <summary>Three bands, ranked A → B → C, with a rerank reply waiting.</summary>
     private IRenderedComponent<Pages.Board> RenderThreeBands()
@@ -159,60 +160,72 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.Empty(page.FindAll("[aria-label='Move up']"));
         Assert.Empty(page.FindAll("[aria-label='Move down']"));
         Assert.Equal(3, page.FindAll(".kanban-lane__drag-handle").Count);
+        Assert.Equal(4, page.FindAll(EpicDropSlot).Count);
         Assert.All(page.FindAll(Gutter), g => Assert.Equal("true", g.GetAttribute("draggable")));
     }
 
     [Fact]
-    public void Dragging_a_band_up_onto_another_ranks_it_before_that_band()
+    public void Dropping_in_the_first_slot_ranks_the_band_before_every_other_band()
     {
         var page = RenderThreeBands();
 
         page.FindAll(Gutter)[2].DragStart();
-        page.FindAll(Gutter)[0].Drop();
+        page.FindAll(EpicDropSlot)[0].Drop();
 
         Assert.Equal((null, EpicA), RerankOf(EpicC));
     }
 
     [Fact]
-    public void Dragging_a_band_down_onto_another_ranks_it_after_that_band()
+    public void Dropping_in_the_last_slot_ranks_the_band_after_every_other_band()
     {
         var page = RenderThreeBands();
 
         page.FindAll(Gutter)[0].DragStart();
-        page.FindAll(Gutter)[2].Drop();
+        page.FindAll(EpicDropSlot)[3].Drop();
 
         Assert.Equal((EpicC, (Guid?)null), RerankOf(EpicA));
     }
 
-    /// <summary>
-    /// A task drag reaches the gutters too — they must ignore it, or dropping a
-    /// card on a band would silently reorder the epics instead.
-    /// </summary>
     [Fact]
-    public void Dropping_on_a_band_with_no_band_being_dragged_reranks_nothing()
-    {
-        var page = RenderThreeBands();
-
-        page.FindAll(Gutter)[0].Drop();
-
-        Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
-    }
-
-    /// <summary>The band under the pointer is marked so the drop lands visibly.</summary>
-    [Fact]
-    public void The_band_under_the_pointer_is_highlighted_while_dragging()
+    public void Dropping_on_the_line_between_two_bands_uses_those_bands_as_neighbours()
     {
         var page = RenderThreeBands();
 
         page.FindAll(Gutter)[2].DragStart();
-        page.FindAll(Gutter)[0].DragEnter();
+        page.FindAll(EpicDropSlot)[1].Drop();
 
-        Assert.Single(page.FindAll(".kanban-lane__gutter--drop-target"));
+        Assert.Equal((EpicA, (Guid?)EpicB), RerankOf(EpicC));
+    }
+
+    /// <summary>
+    /// A task drag reaches the insertion slots too. They must ignore it, or a
+    /// card dropped between bands would silently reorder the epics instead.
+    /// </summary>
+    [Fact]
+    public void Dropping_in_an_epic_slot_with_no_band_being_dragged_reranks_nothing()
+    {
+        var page = RenderThreeBands();
+
+        page.FindAll(EpicDropSlot)[0].Drop();
+
+        Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
+    }
+
+    /// <summary>The insertion point under the pointer is marked with a line.</summary>
+    [Fact]
+    public void The_insertion_slot_under_the_pointer_is_highlighted_while_dragging()
+    {
+        var page = RenderThreeBands();
+
+        page.FindAll(Gutter)[2].DragStart();
+        page.FindAll(EpicDropSlot)[1].DragEnter();
+
+        Assert.Single(page.FindAll(".epic-drop-slot--active"));
         Assert.Single(page.FindAll(".kanban-lane--dragging"));
 
         page.FindAll(Gutter)[2].DragEnd();
 
-        Assert.Empty(page.FindAll(".kanban-lane__gutter--drop-target"));
+        Assert.Empty(page.FindAll(".epic-drop-slot--active"));
         Assert.Empty(page.FindAll(".kanban-lane--dragging"));
     }
 

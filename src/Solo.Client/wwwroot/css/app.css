@@ -349,15 +349,27 @@ code {
     color: var(--mud-palette-primary);
 }
 
-/* Reordering: the dragged band fades, and the band under the pointer takes an
-   inset ring (a border would shift the gutter's contents by a pixel). */
+/* Reordering: the dragged band fades. Each otherwise invisible slot occupies
+   the existing gap between two bands and paints the exact insertion point. */
 .kanban-lane--dragging {
     opacity: 0.5;
 }
 
-.kanban-lane__gutter--drop-target {
-    background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
-    box-shadow: inset 0 0 0 2px var(--mud-palette-primary);
+.epic-drop-slot {
+    position: relative;
+    z-index: 2;
+    height: 0.75rem;
+    margin-block: -0.75rem;
+}
+
+.epic-drop-slot--active::after {
+    content: "";
+    position: absolute;
+    inset: calc(50% - 1px) 0 auto;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--mud-palette-primary);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 20%, transparent);
 }
 
 /* The handle is an affordance, not a control: the whole gutter is the drag
@@ -727,6 +739,12 @@ code {
     /* Nothing left for it to sit over — each column carries its own heading. */
     .kanban-header {
         display: none;
+    }
+
+    /* With the shared header hidden, the first insertion slot has no preceding
+       flex gap to occupy. Give it its own space above the first epic. */
+    .kanban-header + .epic-drop-slot {
+        margin-top: 0;
     }
 
     .kanban-lane {
