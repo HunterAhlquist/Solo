@@ -16,6 +16,7 @@ namespace Solo.Api.Tests.Integration;
 [Collection("postgres")]
 public sealed class RateLimitingTests(PostgresFixture postgres) : IAsyncLifetime
 {
+    private const string Challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
     private SoloApiFactory _factory = null!;
 
     public async Task InitializeAsync()
@@ -55,12 +56,16 @@ public sealed class RateLimitingTests(PostgresFixture postgres) : IAsyncLifetime
         for (var i = 0; i < 2; i++)
         {
             var allowed = await client.PostAsJsonAsync(
-                "/api/auth/desktop/start", new { description = "test" }, TestClients.Json);
+                "/api/auth/desktop/start",
+                new { description = "test", codeChallenge = Challenge, loopbackPort = 49152 },
+                TestClients.Json);
             Assert.NotEqual(HttpStatusCode.TooManyRequests, allowed.StatusCode);
         }
 
         var limited = await client.PostAsJsonAsync(
-            "/api/auth/desktop/start", new { description = "test" }, TestClients.Json);
+            "/api/auth/desktop/start",
+            new { description = "test", codeChallenge = Challenge, loopbackPort = 49152 },
+            TestClients.Json);
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.NotNull(limited.Headers.RetryAfter);
     }

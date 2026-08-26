@@ -12,12 +12,6 @@ public static class RateLimitPolicies
     /// minting, and desktop sign-in flow creation.
     /// </summary>
     public const string Auth = "auth";
-
-    /// <summary>
-    /// Per-IP window sized for the desktop shell's sign-in polling (every 2s
-    /// while a flow is pending — see main/desktop-auth.js POLL_INTERVAL_MS).
-    /// </summary>
-    public const string AuthPoll = "auth-poll";
 }
 
 /// <summary>Partition keys shared by the rate-limit policies.</summary>

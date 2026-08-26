@@ -1,7 +1,8 @@
 // Served by the API at GET /desktop-auth?state={flow} (DesktopAuthController)
 // for the desktop shell's browser sign-in. Runs the ordinary GIS flow on this
-// instance's own origin, then hands the credential to the complete endpoint,
-// which pins the verified user to the flow the shell is polling.
+// instance's own origin, then hands the credential to the complete endpoint.
+// The endpoint returns a one-time authorization code to the desktop process's
+// loopback listener; PKCE binds its redemption to that process.
 //
 // A file rather than an inline <script> because the instance's CSP allows
 // script-src 'self' with no 'unsafe-inline' (see SecurityHeaders.cs) — inline
@@ -27,10 +28,20 @@ async function complete(credential) {
   });
 
   if (response.ok) {
-    lead.textContent = 'You’re signed in.';
-    document.getElementById('button').remove();
-    status.textContent = 'Return to the Solo app — this tab can be closed.';
-    status.className = 'ok';
+    const result = await response.json().catch(() => null);
+    try {
+      const callback = new URL(result?.callbackUri);
+      if (callback.protocol !== 'http:' || callback.hostname !== '127.0.0.1' ||
+          callback.pathname !== '/desktop-auth/callback') {
+        throw new Error('Invalid loopback callback.');
+      }
+
+      lead.textContent = 'You’re signed in. Returning to Solo Desktop…';
+      document.getElementById('button').remove();
+      location.replace(callback.href);
+    } catch {
+      fail('The instance returned an invalid desktop callback. Update the server and try again.');
+    }
   } else if (response.status === 404) {
     fail('This sign-in link has expired. Go back to Solo and try again.');
   } else {
@@ -57,7 +68,7 @@ async function run() {
     google.accounts.id.initialize({
       client_id: config.clientId,
       callback: response => complete(response.credential),
-      auto_select: true,
+      auto_select: false,
       use_fedcm_for_prompt: true,
       cancel_on_tap_outside: false,
     });
@@ -70,8 +81,6 @@ async function run() {
       logo_alignment: 'left',
       width: 280,
     });
-    // With a live Google session, One Tap can finish this without a click.
-    try { google.accounts.id.prompt(); } catch { /* button remains */ }
   };
   script.onerror = () => fail('Couldn’t load Google sign-in. Check your connection.');
   document.head.appendChild(script);

@@ -10,19 +10,20 @@ using Solo.Shared.Dtos;
 namespace Solo.Api.Controllers;
 
 /// <summary>
-/// Browser sign-in for the desktop shell, device-code style. Electron cannot
+/// Browser sign-in for the desktop shell. Electron cannot
 /// host Google's sign-in pages, so the shell opens <c>/desktop-auth</c> — a
 /// page on this instance's own, provider-registered origin — in the user's
-/// real browser, and polls for the result:
+/// real browser. A loopback callback and PKCE bind the result to the desktop
+/// process that opened the flow:
 /// <list type="number">
-/// <item><c>POST start</c> (shell, anonymous) — opens a flow: the state names
-/// it in the browser URL, the device code stays in the shell.</item>
+/// <item><c>POST start</c> (shell, anonymous) — opens a flow with the shell's
+/// loopback port and PKCE challenge.</item>
 /// <item><c>GET /desktop-auth?state=…</c> (browser) — the sign-in page; runs
 /// the ordinary provider flow and calls complete.</item>
 /// <item><c>POST complete</c> (browser, provider credential) — pins the
-/// verified user to the flow, single-use.</item>
-/// <item><c>POST poll</c> (shell, anonymous) — redeems the device code for a
-/// freshly minted <c>solo_</c> session, exactly once.</item>
+/// verified user to the flow and returns a one-time code to loopback.</item>
+/// <item><c>POST redeem</c> (shell, anonymous) — exchanges that code plus the
+/// PKCE verifier for a freshly minted <c>solo_</c> session, exactly once.</item>
 /// </list>
 /// </summary>
 [Route("api/auth/desktop")]
@@ -31,13 +32,17 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
     [HttpPost("start")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
-    public ActionResult<DesktopAuthFlowDto> Start([FromBody] DesktopAuthStartRequest? request)
+    public ActionResult<DesktopAuthFlowDto> Start([FromBody] DesktopAuthStartRequest request)
     {
         // Key the per-client pending cap on the caller's IP. UseForwardedHeaders
         // has already resolved the real client address from a trusted proxy, so
         // this matches how the rate limiter partitions callers.
         var clientKey = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        if (flows.Start(request?.Description, clientKey) is not { } flow)
+        if (flows.Start(
+                request.Description,
+                request.CodeChallenge,
+                request.LoopbackPort,
+                clientKey) is not { } flow)
         {
             return Problem(
                 statusCode: StatusCodes.Status429TooManyRequests,
@@ -54,7 +59,7 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
     /// </summary>
     [HttpGet("/desktop-auth")]
     [AllowAnonymous]
-    [EnableRateLimiting(RateLimitPolicies.AuthPoll)]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
     public IActionResult SignInPage([FromQuery] string? state)
     {
         if (!flows.IsPending(state))
@@ -73,7 +78,7 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
     [HttpPost("complete")]
     [Authorize]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
-    public IActionResult Complete(
+    public ActionResult<DesktopAuthCompletionDto> Complete(
         [FromBody] DesktopAuthCompleteRequest request,
         [FromServices] CurrentUserAccessor currentUser)
     {
@@ -89,43 +94,43 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
             return Forbid();
         }
 
-        if (!flows.TryComplete(request.State, user.Id))
+        if (!flows.TryComplete(request.State, user.Id, out var completion))
         {
             return NotFound();
         }
 
-        return NoContent();
+        return completion!;
     }
 
-    [HttpPost("poll")]
+    [HttpPost("redeem")]
     [AllowAnonymous]
-    [EnableRateLimiting(RateLimitPolicies.AuthPoll)]
-    public async Task<ActionResult<SessionDto>> Poll(
-        [FromBody] DesktopAuthPollRequest request,
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<ActionResult<SessionDto>> Redeem(
+        [FromBody] DesktopAuthRedeemRequest request,
         [FromServices] SoloDbContext db,
         [FromServices] IConfiguration config,
         CancellationToken ct)
     {
-        switch (flows.Poll(request.DeviceCode, out var userId, out var description))
+        if (!flows.TryRedeem(
+                request.State,
+                request.AuthorizationCode,
+                request.CodeVerifier,
+                out var userId,
+                out var description))
         {
-            case DesktopSignInFlows.PollStatus.Pending:
-                return Accepted();
-
-            case DesktopSignInFlows.PollStatus.Completed:
-                var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
-                if (user is null)
-                {
-                    // Deprovisioned between completing and polling.
-                    return NotFound();
-                }
-
-                var (session, token) = AuthSessionMinter.Mint(user.Id, description, config);
-                db.AuthSessions.Add(session);
-                await db.SaveChangesAsync(ct);
-                return new SessionDto(token, session.ExpiresAt, user.ToDto());
-
-            default:
-                return NotFound();
+            return NotFound();
         }
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null)
+        {
+            // Deprovisioned between browser completion and code redemption.
+            return NotFound();
+        }
+
+        var (session, token) = AuthSessionMinter.Mint(user.Id, description, config);
+        db.AuthSessions.Add(session);
+        await db.SaveChangesAsync(ct);
+        return new SessionDto(token, session.ExpiresAt, user.ToDto());
     }
 }

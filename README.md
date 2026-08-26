@@ -220,13 +220,13 @@ one person, and an emergency **Revoke all** for cutting off the instance.
 
 ### Desktop Sign-in
 
-Google refuses to run its sign-in pages inside Electron ("this browser or app may not be secure"), so the shell signs in through the **system browser** on the **instance's own origin** — device-code style:
+Google refuses to run its sign-in pages inside Electron ("this browser or app may not be secure"), so the shell signs in through the **system browser** on the **instance's own origin**, then returns through a PKCE-bound loopback callback:
 
-1. The in-app **Authorize in browser** button asks the instance to open a flow (`POST api/auth/desktop/start`), which returns a `state` for the browser URL and a `deviceCode` that never leaves the shell.
-2. The shell opens `https://<instance>/desktop-auth?state=…` in your default browser. That page runs the ordinary Google Identity Services flow — on the origin the operator already registered for the web client, so **no extra provider registration is needed** — and posts the credential back to the instance, which verifies it and pins the signed-in user to the flow (single-use, expires after 10 minutes).
-3. The shell polls `POST api/auth/desktop/poll` with the `deviceCode` and receives a freshly minted **long-lived Solo session token** (sliding expiry, default 30 days via `Auth__SessionDays`), exactly once. The client stores it and boots into the signed-in state — no hourly re-auth, and the Google credential never touches the shell.
+1. The in-app **Authorize in browser** button opens an ephemeral `127.0.0.1` listener, generates a PKCE verifier, and asks the instance to open a flow (`POST api/auth/desktop/start`) with that port and the verifier's challenge.
+2. The shell opens `https://<instance>/desktop-auth?state=…` in your default browser. That page runs the ordinary Google Identity Services flow — on the origin the operator already registered for the web client, so **no extra provider registration is needed** — and sends a short-lived, one-time authorization code to the loopback listener.
+3. The shell redeems that code with its verifier (`POST api/auth/desktop/redeem`) and receives a **long-lived Solo session token** (sliding expiry, default 30 days via `Auth__SessionDays`), exactly once. A remote client that started the flow never receives the loopback code, and an intercepted code is useless without the verifier.
 
-Signing out revokes the session server-side. Requires an instance running an API version with the desktop-auth endpoints; on older instances the sign-in fails at the start step with a message saying to update the server. (The client detects the shell via `window.soloDesktop`, exposed by the preload, and swaps the GIS widget for the plain button — Google's widget never loads inside the app.)
+Signing out revokes the session server-side. Both the desktop app and instance must support the secure loopback flow; incompatible versions fail closed, and the current desktop app identifies an old server response and asks for an update. (The client detects the shell via `window.soloDesktop`, exposed by the preload, and swaps the GIS widget for the plain button — Google's widget never loads inside the app.)
 
 For **other OIDC providers** (code + PKCE redirect) the flow runs in-app: add `http://localhost:41321/authentication/login-callback` as a redirect URI. These providers redirect the whole window rather than a popup; whether that works depends on the provider's webview policy.
 

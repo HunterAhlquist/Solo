@@ -4,8 +4,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('soloDesktop', {
-    // Opens the browser sign-in flow (main starts a device-code flow on the
-    // instance and polls it for the session).
+    // Opens the browser sign-in flow. Main receives a one-time code on an
+    // ephemeral loopback listener and redeems it with PKCE for the session.
     beginSignIn: () => ipcRenderer.invoke('desktop-auth:begin'),
 
     // The Solo instance this shell is pointed at. The client needs it whenever

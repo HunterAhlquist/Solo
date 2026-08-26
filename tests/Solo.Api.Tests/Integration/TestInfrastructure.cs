@@ -251,7 +251,6 @@ public sealed class SoloApiFactory(
         // would trip on unrelated tests. RateLimitingTests tightens these.
         builder.UseSetting("RateLimiting:Api:Burst", "1000000");
         builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000000");
-        builder.UseSetting("RateLimiting:AuthPoll:PermitLimit", "1000000");
         builder.ConfigureServices(services =>
         {
             // Auth:Authority is empty, so Program registered no "Bearer" scheme;

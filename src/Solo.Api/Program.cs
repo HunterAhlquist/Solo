@@ -94,7 +94,7 @@ if (!string.IsNullOrEmpty(authority))
 }
 
 builder.Services.AddScoped<UserProvisioningService>();
-// Desktop shell browser sign-in: pending device-code flows (see DesktopAuthController).
+// Desktop shell browser sign-in: pending PKCE loopback flows (see DesktopAuthController).
 builder.Services.AddSingleton<DesktopSignInFlows>();
 builder.Services.AddScoped<SoloDbContextRoleLookup>();
 builder.Services.AddScoped<IExtensionCallerAccessor, ExtensionCallerAccessor>();
@@ -262,17 +262,6 @@ builder.Services.AddRateLimiter(limiter =>
                 QueueLimit = 0,
             }));
 
-    // 2s polling is 30/min per pending sign-in; allow a few flows per address.
-    var pollPermits = builder.Configuration.GetValue("RateLimiting:AuthPoll:PermitLimit", 120);
-    var pollWindow = TimeSpan.FromSeconds(builder.Configuration.GetValue("RateLimiting:AuthPoll:WindowSeconds", 60));
-    limiter.AddPolicy(RateLimitPolicies.AuthPoll, context =>
-        RateLimitPartition.GetFixedWindowLimiter(RateLimitPartitions.Ip(context),
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = pollPermits,
-                Window = pollWindow,
-                QueueLimit = 0,
-            }));
 });
 
 var app = builder.Build();
