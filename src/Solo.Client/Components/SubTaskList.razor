@@ -26,10 +26,12 @@
 }
 else
 {
-    <MudList T="string" Dense="true" Class="pa-0">
+    @* MudListItem installs a Space-key interceptor for item activation. Because
+       keydown bubbles, it also cancels spaces typed into a descendant editor. *@
+    <ul class="subtask-list">
         @foreach (var subTask in Ordered)
         {
-            <MudListItem T="string" Class="pa-0">
+            <li>
                 @* The row is a reorder drop target; the handle beside it is the drag
                    source. See the reordering region below for why this is hand-rolled. *@
                 <div class="@RowClass(subTask)"
@@ -111,9 +113,9 @@ else
                                        OnClick="@(() => DeleteAsync(subTask))" aria-label="Delete sub-task" />
                     }
                 </div>
-            </MudListItem>
+            </li>
         }
-    </MudList>
+    </ul>
 }
 
 @if (CanWrite)

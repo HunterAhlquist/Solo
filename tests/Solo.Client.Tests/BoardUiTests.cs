@@ -535,6 +535,26 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.Contains("Sharper name", _http.Bodies[_http.Paths.IndexOf(put)]);
     }
 
+    [Fact]
+    public void Subtask_rows_do_not_register_a_keyboard_interceptor_that_swallows_spaces()
+    {
+        var cut = RenderSubTasks(TestData.SubTask(false));
+
+        cut.Find(SubTaskName).Click();
+
+        var swallowingInterceptors = JSInterop.Invocations
+            .Where(invocation => invocation.Identifier == "mudKeyInterceptor.connect")
+            .Where(invocation =>
+                Assert.IsType<MudBlazor.Services.KeyInterceptorOptions>(invocation.Arguments[2]).Keys
+                    .Any(key => key.Key == " " && key.PreventDown == "key+none"));
+        Assert.DoesNotContain(swallowingInterceptors, invocation =>
+        {
+            var targetId = Assert.IsType<string>(invocation.Arguments[1]);
+            return cut.FindAll($"#{targetId}")
+                .Any(target => target.QuerySelector(SubTaskEditor) is not null);
+        });
+    }
+
     /// <summary>Blur is the drawer-wide save event, and it applies here too.</summary>
     [Fact]
     public void Clicking_away_from_a_subtask_rename_commits_it()

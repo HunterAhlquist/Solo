@@ -994,7 +994,14 @@ code {
 /* ---------------------------------------------------------------------------
    Sub-task checklist — rows reorder by dragging
    --------------------------------------------------------------------------- */
+.subtask-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
 .subtask-row {
+    width: 100%;
     gap: 0.35rem;
     border-radius: var(--mud-default-borderradius);
 }
