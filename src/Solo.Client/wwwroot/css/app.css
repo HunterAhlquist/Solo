@@ -155,6 +155,42 @@ code {
 }
 
 /* ---------------------------------------------------------------------------
+   Project card board list — the project's open boards, each row a link straight
+   to that board. MudCard is already a flex column whose content grows, so the
+   settings button stays on the bottom edge however long the list runs.
+
+   The panel is a tint over the card rather than a colour of its own, so it
+   reads as a lighter inset on dark themes and a faint grey one on light themes
+   without either being spelled out. Rows lift on hover in the accent instead of
+   the same neutral, which at this strength would vanish into the panel.
+   --------------------------------------------------------------------------- */
+.project-card__boards {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 0.75rem;
+    padding: 0.35rem;
+    border-radius: var(--mud-default-borderradius);
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 6%, transparent);
+}
+
+.project-card__board {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: var(--mud-default-borderradius);
+    color: var(--mud-palette-text-primary);
+    text-decoration: none;
+}
+
+.project-card__board:hover,
+.project-card__board:focus-visible {
+    background: color-mix(in srgb, var(--mud-palette-primary) 14%, transparent);
+    color: var(--mud-palette-primary);
+}
+
+/* ---------------------------------------------------------------------------
    Markdown editor: the read view is the click target that opens the editor, so
    it needs to look and behave like a field rather than a stray line of text.
    --------------------------------------------------------------------------- */
@@ -1118,6 +1154,13 @@ html.solo-desktop--glass .kanban-lane:not(.kanban-lane--adhoc) {
     background: var(--solo-glass-dense-background);
     -webkit-backdrop-filter: var(--solo-glass-dense-defocus);
     backdrop-filter: var(--solo-glass-dense-defocus);
+}
+
+/* The project cards' board panel. Against a native material even a neutral
+   tint reads as a slab, so it thins to about half strength — enough to keep the
+   list a section of its own without stacking another opaque layer on the glass. */
+html.solo-desktop--glass .project-card__boards {
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 3%, transparent);
 }
 
 html.solo-desktop .mud-appbar {

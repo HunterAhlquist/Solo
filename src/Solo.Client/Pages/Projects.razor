@@ -1,5 +1,6 @@
 @page "/"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject UserSession Session
 @inject ProjectNavStore Nav
@@ -47,8 +48,7 @@ else
         @foreach (var project in _projects)
         {
             <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="1" Class="h-100" Style="cursor:pointer"
-                         @onclick="@(() => Navigation.NavigateTo($"projects/{project.Alias}"))">
+                <MudCard Elevation="1" Class="h-100">
                     <MudCardContent>
                         <div class="d-flex align-center" style="gap:.75rem">
                             <MudAvatar Color="Color.Primary" Variant="Variant.Outlined">
@@ -69,7 +69,45 @@ else
                                 </div>
                             </div>
                         </div>
+
+                        @* Open boards only, as in the sidebar: closed ones stay folded
+                           away on the project home. *@
+                        <div class="project-card__boards">
+                            @{
+                                var boards = Nav.BoardsOf(project.Id);
+                            }
+                            @if (boards is null)
+                            {
+                                <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" />
+                                <MudSkeleton SkeletonType="SkeletonType.Text" Width="45%" />
+                            }
+                            else if (boards.Count == 0)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">No open boards.</MudText>
+                            }
+                            else
+                            {
+                                @foreach (var board in boards)
+                                {
+                                    <a class="project-card__board" href="@BoardHref(project, board)">
+                                        <EntityIcon ImageId="@board.ImageId" Icon="@board.Icon"
+                                                    Size="Size.Small" Color="Color.Primary" />
+                                        <span class="text-truncate">@board.Name</span>
+                                    </a>
+                                }
+                            }
+                        </div>
                     </MudCardContent>
+
+                    @* The only way into the project home from here: the card itself is
+                       not a link, so a click anywhere on it does nothing surprising. *@
+                    <MudCardActions Class="justify-end">
+                        <MudTooltip Text="Project settings">
+                            <MudIconButton Icon="@Icons.Material.Filled.Tune" Size="Size.Small"
+                                           aria-label="@($"{project.Name} settings")"
+                                           OnClick="@(() => OpenProject(project))" />
+                        </MudTooltip>
+                    </MudCardActions>
                 </MudCard>
             </MudItem>
         }
@@ -88,6 +126,10 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // Each card's board list arrives after the card does; the store announces
+        // each project's boards as they land.
+        Nav.Changed += OnNavChanged;
+
         // The layout also loads the session, but a direct hit on this page can
         // race it — and the "New project" button depends on IsSuperAdmin.
         if (Session.Current is null)
@@ -116,7 +158,25 @@ else
             Snackbar.Add(e.Detail ?? "Couldn't load projects.", Severity.Error);
             _projects = [];
         }
+
+        // The cards list boards, so this page is the one place that wants all of
+        // them at once. They go through the sidebar's store rather than a second
+        // fetch: whichever surface asks first, the other reads the same cache.
+        // Not awaited — a card should paint with its name and chips immediately
+        // and fill its list in as that project's boards arrive.
+        foreach (var project in _projects)
+        {
+            _ = Nav.EnsureBoardsAsync(project.Id);
+        }
     }
+
+    private void OnNavChanged() => InvokeAsync(StateHasChanged);
+
+    private void OpenProject(ProjectSummaryDto project) =>
+        Navigation.NavigateTo($"projects/{project.Alias}");
+
+    private static string BoardHref(ProjectSummaryDto project, BoardDto board) =>
+        $"projects/{project.Alias}/boards/{board.Alias}";
 
     private async Task CreateProjectAsync()
     {
@@ -146,4 +206,6 @@ else
             Snackbar.Add(e.Detail ?? "Couldn't create the project.", Severity.Error);
         }
     }
+
+    public void Dispose() => Nav.Changed -= OnNavChanged;
 }
