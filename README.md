@@ -272,9 +272,9 @@ During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start` serves 
 
 ## CI & image publishing
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) builds and tests every PR into `main`. Pushing a **`server-v*`** tag additionally publishes the container image to **`ghcr.io/hunterahlquist/solo`** using the workflow's `GITHUB_TOKEN` — no extra secrets needed. The tag is stripped to produce the image tags, so `server-v1.6.0` publishes `1.6.0`, `1.6`, `latest`, and `sha-…`; a prerelease like `server-v1.6.0-rc1` skips the floating `1.6`.
+[.github/workflows/ci.yml](.github/workflows/ci.yml) builds and tests every PR into `main`. Pushing a **`server-v*`** tag publishes the changed release artifacts using the workflow's `GITHUB_TOKEN` — no extra secrets needed. A changed container image goes to **`ghcr.io/hunterahlquist/solo`**; the tag is stripped to produce the image tags, so `server-v1.6.0` publishes `1.6.0`, `1.6`, `latest`, and `sha-…`, while a prerelease like `server-v1.6.0-rc1` skips the floating `1.6`.
 
-The image and the desktop client version independently — see [Packaging](#packaging) for the `desktop-v*` series. A tag whose commit changes nothing the image is built from (`Dockerfile`, `src/Solo.{Api,Client,Data,Shared}`, `tests/`, this workflow) is skipped rather than rebuilt, measured against the previous `server-v*` tag it descends from.
+The server image, MCP extension, and desktop client version independently — see [Packaging](#packaging) for the `desktop-v*` series. For a `server-v*` tag, CI compares the server inputs (`Dockerfile`, `.dockerignore`, and the server's project-reference closure) and MCP package inputs separately against the previous `server-v*` tag it descends from. It publishes only the artifacts whose inputs changed; test-, documentation-, desktop-, workflow-, and packaging-only changes do not republish the server, and server-only changes do not attach another copy of an unchanged MCP package. If neither artifact changed, CI creates no GitHub release and moves no GHCR tags.
 
 ### Packaging
 

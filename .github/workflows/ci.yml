@@ -13,14 +13,14 @@ env:
   TAG_PREFIX: server-v
 
 jobs:
-  # Gate for the whole run. A tag that changes nothing the image is built from
-  # would produce a byte-identical container, so it doesn't get built at all.
-  # PRs always fall through to the build.
+  # Decide what this tag actually releases. The server image and MCP extension
+  # have overlapping dependencies, but neither should be republished merely
+  # because the other one (or tests/docs/release plumbing) changed.
   changes:
     name: Check release inputs
     runs-on: ubuntu-latest
     outputs:
-      build: ${{ steps.diff.outputs.build }}
+      server: ${{ steps.diff.outputs.server }}
       mcp: ${{ steps.diff.outputs.mcp }}
     steps:
       - uses: actions/checkout@v7
@@ -46,40 +46,39 @@ jobs:
           set -euo pipefail
 
           if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
-            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "server=true" >> "$GITHUB_OUTPUT"
             echo "mcp=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Everything that reaches the image, plus the sources the gating
-          # tests cover. Deliberately excludes src/Solo.Desktop, Icons/, docs,
-          # and the desktop workflow — none of them change the container.
-          PATHS=(
+          # The project-reference closure published by Solo.Api, plus the two
+          # files that define the container. Tests, MCP/Desktop sources, the
+          # solution file, workflow changes, and local launch settings cannot
+          # alter the final image.
+          SERVER_PATHS=(
             Dockerfile
             .dockerignore
-            Solo.slnx
             src/Solo.Api
             src/Solo.Client
             src/Solo.Data
             src/Solo.Extensibility
             src/Solo.Extensions
-            src/Solo.Mcp
-            src/Solo.Mcp.Client
             src/Solo.Shared
-            tests
-            build
-            .github/workflows/ci.yml
+            ":(exclude)src/Solo.Api/Properties/launchSettings.json"
           )
 
           # Source and packaging inputs that can change the installable MCP
           # package. Solo.Shared is included both for the client and as a
-          # transitive dependency of Solo.Extensibility.
+          # transitive dependency of Solo.Extensibility; its READMEs are not
+          # copied into the package.
           MCP_PATHS=(
             src/Solo.Extensibility
             src/Solo.Mcp
             src/Solo.Mcp.Client
             src/Solo.Shared
             build/pack-mcp-extension.sh
+            ":(exclude)src/Solo.Mcp/README.md"
+            ":(exclude)src/Solo.Mcp.Client/README.md"
           )
 
           # Nearest earlier tag in this series that HEAD descends from. The
@@ -90,18 +89,18 @@ jobs:
 
           if [ -z "${PREVIOUS}" ]; then
             echo "No earlier ${TAG_PREFIX}* tag in this history — building."
-            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "server=true" >> "$GITHUB_OUTPUT"
             echo "mcp=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if git diff --quiet "${PREVIOUS}" HEAD -- "${PATHS[@]}"; then
-            echo "::notice::Nothing the image is built from changed since ${PREVIOUS}; skipping build and publish."
-            echo "build=false" >> "$GITHUB_OUTPUT"
+          if git diff --quiet "${PREVIOUS}" HEAD -- "${SERVER_PATHS[@]}"; then
+            echo "::notice::No server image inputs changed since ${PREVIOUS}; skipping image publication."
+            echo "server=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Changed since ${PREVIOUS}:"
-            git diff --name-only "${PREVIOUS}" HEAD -- "${PATHS[@]}"
-            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "Server image inputs changed since ${PREVIOUS}:"
+            git diff --name-only "${PREVIOUS}" HEAD -- "${SERVER_PATHS[@]}"
+            echo "server=true" >> "$GITHUB_OUTPUT"
           fi
 
           if git diff --quiet "${PREVIOUS}" HEAD -- "${MCP_PATHS[@]}"; then
@@ -115,7 +114,7 @@ jobs:
 
   build-test:
     needs: changes
-    if: needs.changes.outputs.build == 'true'
+    if: needs.changes.outputs.server == 'true' || needs.changes.outputs.mcp == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -164,8 +163,8 @@ jobs:
   publish-image:
     name: Publish image to GHCR
     needs: [changes, build-test]
-    # Publish only when a server-v* tag is pushed; PR builds just validate.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/server-v')
+    # PR builds just validate. An MCP-only tag must not move the server tags.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/server-v') && needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -192,8 +191,8 @@ jobs:
           # version (`server-v1.6.0-rc1` → `1.6.0-rc1`), the second the floating
           # `1.6` — anchored, so a prerelease never claims the minor tag.
           #
-          # This job only runs on server-v* tag pushes, so latest always points
-          # at the newest release — deploy/docker-compose.yml pulls :latest.
+          # This job only runs when server inputs changed, so latest points at
+          # the newest server release — deploy/docker-compose.yml pulls it.
           tags: |
             type=raw,value=latest
             type=match,pattern=server-v(\d+\.\d+\.\d+.*),group=1
@@ -210,11 +209,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  release-extension:
-    name: Create release and publish changed MCP extension
-    needs: [changes, build-test]
-    # Tag pushes only; a PR build just proves the package assembles.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/server-v')
+  release:
+    name: Publish changed release artifacts
+    needs: [changes, build-test, publish-image]
+    # `always()` lets an MCP-only release proceed past the intentionally
+    # skipped image job. A changed server must have published successfully
+    # before its GitHub release is created.
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/server-v') &&
+      needs.build-test.result == 'success' &&
+      (needs.changes.outputs.server == 'true' || needs.changes.outputs.mcp == 'true') &&
+      (needs.changes.outputs.server != 'true' || needs.publish-image.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -225,8 +232,8 @@ jobs:
           name: mcp-extension
           path: artifacts
 
-      # A server release still exists when the extension did not change; it
-      # simply omits the already-published MCP package.
+      # A changed server still gets release notes when the extension did not
+      # change; the already-published MCP package is not attached again.
       - name: Create release without an unchanged MCP package
         if: needs.changes.outputs.mcp != 'true'
         uses: softprops/action-gh-release@v3
