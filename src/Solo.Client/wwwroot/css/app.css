@@ -268,6 +268,18 @@ code {
     cursor: grab;
 }
 
+.project-nav__drag-indicator {
+    display: none;
+}
+
+.project-nav__drag-handle:hover .project-nav__entity-icon {
+    display: none;
+}
+
+.project-nav__drag-handle:hover .project-nav__drag-indicator {
+    display: inline-block;
+}
+
 .project-nav__drag-handle:active {
     cursor: grabbing;
 }
@@ -1006,15 +1018,27 @@ code {
     border-radius: var(--mud-default-borderradius);
 }
 
-/* Same signals as the epic bands: the dragged row fades, and the row under the
-   pointer takes an inset ring (a border would nudge the row's contents). */
+/* Same signals as the epic bands: the dragged row fades, and the insertion slot
+   under the pointer paints a line without changing the checklist's spacing. */
 .subtask-row--dragging {
     opacity: 0.5;
 }
 
-.subtask-row--drop-target {
-    background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
-    box-shadow: inset 0 0 0 2px var(--mud-palette-primary);
+.subtask-drop-slot {
+    position: relative;
+    z-index: 1;
+    height: 0.5rem;
+    margin-block: -0.25rem;
+}
+
+.subtask-drop-slot--active::after {
+    content: "";
+    position: absolute;
+    inset: calc(50% - 1px) 0 auto;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--mud-palette-primary);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 20%, transparent);
 }
 
 /* The handle is the drag source, so the row's own controls keep their gestures.

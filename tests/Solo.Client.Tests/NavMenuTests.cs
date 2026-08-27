@@ -152,9 +152,19 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
         var nav = RenderNav();
 
         Assert.Equal(2, nav.FindAll(".project-nav__drag-handle").Count);
+        Assert.Equal(2, nav.FindAll(".project-nav__entity-icon").Count);
+        Assert.Equal(2, nav.FindAll(".project-nav__drag-indicator").Count);
         Assert.Equal(3, nav.FindAll(".project-drop-slot").Count);
         Assert.All(nav.FindAll(".project-nav__drag-handle"), handle =>
-            Assert.Equal("true", handle.GetAttribute("draggable")));
+        {
+            Assert.Equal("true", handle.GetAttribute("draggable"));
+            Assert.Equal(".project-nav__title", handle.GetAttribute("data-solo-drag-preview"));
+
+            var preview = handle.Closest(".project-nav__title");
+            Assert.NotNull(preview);
+            Assert.NotNull(preview.QuerySelector(".project-nav__name"));
+            Assert.Empty(preview.QuerySelectorAll(".mud-nav-link"));
+        });
     }
 
     [Fact]

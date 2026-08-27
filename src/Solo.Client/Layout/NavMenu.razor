@@ -56,12 +56,16 @@
                     <span class="project-nav__title" @ondragenter="@ClearProjectDropSlot">
                         <span class="project-nav__drag-handle"
                               draggable="true"
+                              data-solo-drag-preview=".project-nav__title"
                               title="Drag to reorder projects"
                               aria-label="@($"Drag to reorder {project.Name}")"
                               @onclick:stopPropagation="true"
                               @ondragstart="@(() => StartProjectDrag(project))"
                               @ondragend="@EndProjectDrag">
-                            <MudIcon Icon="@SoloIcons.Resolve(project.ImageId, project.Icon)" />
+                            <MudIcon Class="project-nav__entity-icon"
+                                     Icon="@SoloIcons.Resolve(project.ImageId, project.Icon)" />
+                            <MudIcon Class="project-nav__drag-indicator"
+                                     Icon="@Icons.Material.Filled.DragIndicator" />
                         </span>
                         <span class="project-nav__name">@project.Name</span>
                     </span>

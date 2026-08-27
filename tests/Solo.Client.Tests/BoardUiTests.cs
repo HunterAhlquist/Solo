@@ -611,8 +611,8 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
 
     // -- Sub-tasks reorder by dragging their handle -------------------------------
 
-    private const string SubTaskRow = ".subtask-row";
     private const string SubTaskHandle = ".subtask-drag-handle";
+    private const string SubTaskDropSlot = ".subtask-drop-slot";
 
     /// <summary>Three sub-tasks, ranked first → second → third, with a rerank reply waiting.</summary>
     private (IRenderedComponent<Components.SubTaskList> Page, List<SubTaskDto> Items) RenderChecklist(
@@ -635,54 +635,75 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Dragging_a_subtask_down_onto_another_ranks_it_after_that_row()
+    public void A_subtask_handle_has_an_insertion_slot_before_and_after_every_item()
+    {
+        var (page, _) = RenderChecklist();
+
+        Assert.Equal(3, page.FindAll(SubTaskHandle).Count);
+        Assert.Equal(4, page.FindAll(SubTaskDropSlot).Count);
+    }
+
+    [Fact]
+    public void Dropping_in_the_first_slot_ranks_the_subtask_before_every_other_item()
+    {
+        var (page, items) = RenderChecklist();
+
+        page.FindAll(SubTaskHandle)[2].DragStart();
+        page.FindAll(SubTaskDropSlot)[0].Drop();
+
+        Assert.Equal((null, items[0].Id),
+            NeighborsSentTo($"PUT /api/subtasks/{items[2].Id}/rank"));
+    }
+
+    [Fact]
+    public void Dropping_in_the_last_slot_ranks_the_subtask_after_every_other_item()
     {
         var (page, items) = RenderChecklist();
 
         page.FindAll(SubTaskHandle)[0].DragStart();
-        page.FindAll(SubTaskRow)[2].Drop();
+        page.FindAll(SubTaskDropSlot)[3].Drop();
 
         Assert.Equal((items[2].Id, (Guid?)null),
             NeighborsSentTo($"PUT /api/subtasks/{items[0].Id}/rank"));
     }
 
     [Fact]
-    public void Dragging_a_subtask_up_onto_another_ranks_it_before_that_row()
+    public void Dropping_on_the_line_between_two_subtasks_uses_them_as_neighbors()
     {
         var (page, items) = RenderChecklist();
 
         page.FindAll(SubTaskHandle)[2].DragStart();
-        page.FindAll(SubTaskRow)[0].Drop();
+        page.FindAll(SubTaskDropSlot)[1].Drop();
 
-        Assert.Equal((null, items[0].Id),
+        Assert.Equal((items[0].Id, (Guid?)items[1].Id),
             NeighborsSentTo($"PUT /api/subtasks/{items[2].Id}/rank"));
     }
 
-    /// <summary>The row under the pointer is marked so the drop lands visibly.</summary>
+    /// <summary>The insertion point under the pointer is marked with a line.</summary>
     [Fact]
-    public void The_subtask_row_under_the_pointer_is_highlighted_while_dragging()
+    public void The_subtask_insertion_slot_under_the_pointer_is_highlighted_while_dragging()
     {
         var (page, _) = RenderChecklist();
 
         page.FindAll(SubTaskHandle)[2].DragStart();
-        page.FindAll(SubTaskRow)[0].DragEnter();
+        page.FindAll(SubTaskDropSlot)[1].DragEnter();
 
-        Assert.Single(page.FindAll(".subtask-row--drop-target"));
+        Assert.Single(page.FindAll(".subtask-drop-slot--active"));
         Assert.Single(page.FindAll(".subtask-row--dragging"));
 
         page.FindAll(SubTaskHandle)[2].DragEnd();
 
-        Assert.Empty(page.FindAll(".subtask-row--drop-target"));
+        Assert.Empty(page.FindAll(".subtask-drop-slot--active"));
         Assert.Empty(page.FindAll(".subtask-row--dragging"));
     }
 
     /// <summary>A drop with nothing being dragged must not reorder the checklist.</summary>
     [Fact]
-    public void Dropping_on_a_subtask_with_none_being_dragged_reranks_nothing()
+    public void Dropping_in_a_subtask_slot_with_none_being_dragged_reranks_nothing()
     {
         var (page, _) = RenderChecklist();
 
-        page.FindAll(SubTaskRow)[0].Drop();
+        page.FindAll(SubTaskDropSlot)[0].Drop();
 
         Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
     }

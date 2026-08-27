@@ -29,16 +29,27 @@ else
     @* MudListItem installs a Space-key interceptor for item activation. Because
        keydown bubbles, it also cancels spaces typed into a descendant editor. *@
     <ul class="subtask-list">
-        @foreach (var subTask in Ordered)
+        @{
+            var ordered = Ordered;
+        }
+        @for (var subTaskIndex = 0; subTaskIndex < ordered.Count; subTaskIndex++)
         {
+            var dropIndex = subTaskIndex;
+            var subTask = ordered[subTaskIndex];
+
+            <li class="@DropSlotClass(dropIndex)"
+                @ondragenter="@(() => EnterDropSlot(dropIndex))"
+                @ondragleave="@ClearDropSlot"
+                @ondragover:preventDefault="@(_dragged is not null)"
+                @ondrop:preventDefault="true"
+                @ondrop="@(() => DropAsync(dropIndex))"
+                aria-hidden="true"></li>
+
             <li>
-                @* The row is a reorder drop target; the handle beside it is the drag
-                   source. See the reordering region below for why this is hand-rolled. *@
+                @* Only the handle starts a reorder. The narrow slots between rows
+                   are the drop targets, so the landing position is unambiguous. *@
                 <div class="@RowClass(subTask)"
-                     @ondragenter="@(() => EnterDrag(subTask))"
-                     @ondragover:preventDefault="@(_dragged is not null)"
-                     @ondrop:preventDefault="true"
-                     @ondrop="@(() => DropAsync(subTask))">
+                     @ondragenter="@ClearDropSlot">
                     @if (CanReorder)
                     {
                         <MudTooltip Text="Drag to reorder">
@@ -115,6 +126,14 @@ else
                 </div>
             </li>
         }
+
+        <li class="@DropSlotClass(ordered.Count)"
+            @ondragenter="@(() => EnterDropSlot(ordered.Count))"
+            @ondragleave="@ClearDropSlot"
+            @ondragover:preventDefault="@(_dragged is not null)"
+            @ondrop:preventDefault="true"
+            @ondrop="@(() => DropAsync(ordered.Count))"
+            aria-hidden="true"></li>
     </ul>
 }
 
@@ -135,7 +154,7 @@ else
     private Guid? _editingId;
     private string _editName = string.Empty;
     private SubTaskDto? _dragged;
-    private Guid? _dropTarget;
+    private int? _dropSlot;
 
     [Parameter, EditorRequired]
     public Guid TaskId { get; set; }
@@ -322,65 +341,68 @@ else
     private string RowClass(SubTaskDto subTask)
     {
         var dragging = _dragged?.Id == subTask.Id ? " subtask-row--dragging" : null;
-        var target = _dropTarget == subTask.Id ? " subtask-row--drop-target" : null;
-        return $"subtask-row d-flex align-center{dragging}{target}";
+        return $"subtask-row d-flex align-center{dragging}";
     }
+
+    private string DropSlotClass(int index) =>
+        "subtask-drop-slot" + (_dropSlot == index ? " subtask-drop-slot--active" : string.Empty);
 
     private void StartDrag(SubTaskDto subTask)
     {
         if (CanReorder)
         {
             _dragged = subTask;
-            _dropTarget = null;
+            _dropSlot = null;
         }
     }
 
-    /// <summary>
-    /// dragenter, not dragover: it fires once per element entered, and every child
-    /// of a row reports the same sub-task, so the highlight never flickers.
-    /// </summary>
-    private void EnterDrag(SubTaskDto subTask)
+    private void EnterDropSlot(int index)
     {
-        if (_dragged is not null && _dragged.Id != subTask.Id)
+        if (_dragged is not null)
         {
-            _dropTarget = subTask.Id;
+            _dropSlot = index;
         }
     }
+
+    private void ClearDropSlot() => _dropSlot = null;
 
     private void EndDrag()
     {
         _dragged = null;
-        _dropTarget = null;
+        _dropSlot = null;
     }
 
     /// <summary>
-    /// Dropping on a row puts the dragged item in its place: dragging down lands
-    /// after the target, dragging up lands before it. The parent task refetches,
-    /// which is what re-sorts the list.
+    /// The DOM supplies one insertion slot before every sub-task and one after
+    /// the last. Removing the dragged item shifts every later slot left by one.
     /// </summary>
-    private async Task DropAsync(SubTaskDto target)
+    private async Task DropAsync(int dropIndex)
     {
         var dragged = _dragged;
         EndDrag();
 
-        if (dragged is null || dragged.Id == target.Id || !CanReorder)
+        if (dragged is null || !CanReorder)
         {
             return;
         }
 
         var ordered = Ordered;
-        var index = ordered.FindIndex(s => s.Id == target.Id);
-        var others = ordered.Where(s => s.Id != dragged.Id).Select(s => s.Id).ToList();
-        if (index < 0 || others.Count != ordered.Count - 1)
+        var sourceIndex = ordered.FindIndex(s => s.Id == dragged.Id);
+        var others = ordered.Where(s => s.Id != dragged.Id).ToList();
+        if (sourceIndex < 0 || others.Count != ordered.Count - 1)
         {
             return;
         }
 
-        var (preceding, following) = RankNeighbors.Compute(others, index);
-        if (preceding is null && following is null)
+        var insertionIndex = Math.Clamp(
+            dropIndex > sourceIndex ? dropIndex - 1 : dropIndex, 0, others.Count);
+        if (insertionIndex == sourceIndex)
         {
             return;
         }
+
+        var (preceding, following) = RankNeighbors.Compute(
+            others.Select(s => s.Id).ToList(), insertionIndex);
 
         await Guard.RunAsync(
             () => Api.RerankSubTaskAsync(dragged.Id, preceding, following),

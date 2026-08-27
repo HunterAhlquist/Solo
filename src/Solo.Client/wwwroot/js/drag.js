@@ -21,9 +21,33 @@
 // and MudBlazor's cards set theirs (which is why those alone dragged on iPad).
 // The type is deliberately '' rather than 'text/plain', as MudBlazor's is: a
 // stray drop into a text field must not paste anything.
+const dragPreviewOf = source => {
+    const selector = source.getAttribute('data-solo-drag-preview');
+    if (!selector) {
+        return source;
+    }
+
+    try {
+        return source.closest(selector) ?? source;
+    } catch {
+        return source;
+    }
+};
+
 document.addEventListener('dragstart', e => {
     if (e.dataTransfer && e.dataTransfer.types.length === 0) {
         e.dataTransfer.setData('', 'solo-drag');
+    }
+
+    const source = e.target instanceof Element
+        ? e.target.closest('[data-solo-drag-preview]')
+        : null;
+    if (e.isTrusted && source && e.dataTransfer) {
+        const preview = dragPreviewOf(source);
+        const box = preview.getBoundingClientRect();
+        const x = Math.max(0, Math.min(e.clientX - box.left, box.width));
+        const y = Math.max(0, Math.min(e.clientY - box.top, box.height));
+        e.dataTransfer.setDragImage(preview, x, y);
     }
 }, true);
 
@@ -276,8 +300,9 @@ const EDGE_DWELL_MS = 1000;
         transfer = new DataTransfer();
         fire(source, 'dragstart');
 
-        const box = source.getBoundingClientRect();
-        ghost = source.cloneNode(true);
+        const preview = dragPreviewOf(source);
+        const box = preview.getBoundingClientRect();
+        ghost = preview.cloneNode(true);
         ghost.classList.add('solo-drag-ghost');
         ghost.style.width = `${box.width}px`;
         ghost.style.height = `${box.height}px`;
