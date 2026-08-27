@@ -39,6 +39,7 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Services.AddSingleton<IBoardHubClient>(_hub);
         Services.AddScoped<SaveGuard>();
         Services.AddScoped<RecentProjectsStore>();
+        Services.AddScoped<DragBridge>();
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
@@ -123,7 +124,6 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
     private static readonly Guid EpicC = Guid.Parse("a0000000-0000-0000-0000-000000000003");
 
     private const string Gutter = ".kanban-lane__gutter--openable";
-    private const string EpicDropSlot = ".epic-drop-slot";
 
     /// <summary>Three bands, ranked A → B → C, with a rerank reply waiting.</summary>
     private IRenderedComponent<Pages.Board> RenderThreeBands()
@@ -139,6 +139,16 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         return page;
     }
 
+    /// <summary>
+    /// Hands the page the drop js/drag.js would have reported. The gesture is
+    /// the browser's and out of a test's reach; this is the seam between them,
+    /// and the arithmetic on the far side of it is what these cover.
+    /// </summary>
+    private Task DropAsync(
+        IRenderedComponent<Pages.Board> page, string group, Guid itemId, string zoneId, int index) =>
+        page.InvokeAsync(() => Services.GetRequiredService<DragBridge>()
+            .OnDropAsync(new DragDrop(group, itemId.ToString(), zoneId, index)));
+
     private (Guid? Preceding, Guid? Following) RerankOf(Guid epicId) =>
         NeighborsSentTo($"PUT /api/epics/{epicId}/rank");
 
@@ -152,81 +162,166 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         return (Read(body.GetProperty("precedingId")), Read(body.GetProperty("followingId")));
     }
 
+    /// <summary>
+    /// The markup half of the contract with js/drag.js: the bands are the items
+    /// of one zone, and each carries a handle a finger can drag from without
+    /// pressing and holding first.
+    /// </summary>
     [Fact]
-    public void An_epic_band_is_a_drag_handle_and_has_no_move_buttons()
+    public void An_epic_band_is_a_drag_item_and_has_no_move_buttons()
     {
         var page = RenderThreeBands();
 
         Assert.Empty(page.FindAll("[aria-label='Move up']"));
         Assert.Empty(page.FindAll("[aria-label='Move down']"));
-        Assert.Equal(3, page.FindAll(".kanban-lane__drag-handle").Count);
-        Assert.Equal(4, page.FindAll(EpicDropSlot).Count);
-        Assert.All(page.FindAll(Gutter), g => Assert.Equal("true", g.GetAttribute("draggable")));
+        Assert.Equal("epic", page.Find(".kanban[data-drag-zone]").GetAttribute("data-drag-group"));
+
+        var bands = page.FindAll(".kanban-lane[data-drag-item]");
+        Assert.Equal(3, bands.Count);
+        Assert.All(bands, band =>
+        {
+            Assert.Equal(".kanban-lane__gutter", band.GetAttribute("data-drag-from"));
+            Assert.NotNull(band.QuerySelector(".kanban-lane__drag-handle[data-drag-handle]"));
+        });
+
+        // The ad-hoc band has no rank of its own, so it is not a drag item.
+        Assert.Equal(4, page.FindAll(".kanban-lane").Count);
     }
 
     [Fact]
-    public void Dropping_in_the_first_slot_ranks_the_band_before_every_other_band()
+    public async Task Dropping_before_the_first_band_ranks_it_before_every_other()
     {
         var page = RenderThreeBands();
 
-        page.FindAll(Gutter)[2].DragStart();
-        page.FindAll(EpicDropSlot)[0].Drop();
+        await DropAsync(page, "epic", EpicC, "epics", 0);
 
         Assert.Equal((null, EpicA), RerankOf(EpicC));
     }
 
     [Fact]
-    public void Dropping_in_the_last_slot_ranks_the_band_after_every_other_band()
+    public async Task Dropping_past_the_last_band_ranks_it_after_every_other()
     {
         var page = RenderThreeBands();
 
-        page.FindAll(Gutter)[0].DragStart();
-        page.FindAll(EpicDropSlot)[3].Drop();
+        await DropAsync(page, "epic", EpicA, "epics", 2);
 
         Assert.Equal((EpicC, (Guid?)null), RerankOf(EpicA));
     }
 
     [Fact]
-    public void Dropping_on_the_line_between_two_bands_uses_those_bands_as_neighbours()
+    public async Task Dropping_between_two_bands_uses_those_bands_as_neighbours()
     {
         var page = RenderThreeBands();
 
-        page.FindAll(Gutter)[2].DragStart();
-        page.FindAll(EpicDropSlot)[1].Drop();
+        await DropAsync(page, "epic", EpicC, "epics", 1);
 
         Assert.Equal((EpicA, (Guid?)EpicB), RerankOf(EpicC));
     }
 
     /// <summary>
-    /// A task drag reaches the insertion slots too. They must ignore it, or a
-    /// card dropped between bands would silently reorder the epics instead.
+    /// The ids come back from the browser, so nothing is taken on trust: a drop
+    /// naming a band this board hasn't got must write nothing.
     /// </summary>
     [Fact]
-    public void Dropping_in_an_epic_slot_with_no_band_being_dragged_reranks_nothing()
+    public async Task Dropping_an_unknown_band_reranks_nothing()
     {
         var page = RenderThreeBands();
 
-        page.FindAll(EpicDropSlot)[0].Drop();
+        await DropAsync(page, "epic", Guid.NewGuid(), "epics", 0);
 
         Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
     }
 
-    /// <summary>The insertion point under the pointer is marked with a line.</summary>
+    /// <summary>Dropping a band back where it started is not a change to save.</summary>
     [Fact]
-    public void The_insertion_slot_under_the_pointer_is_highlighted_while_dragging()
+    public async Task Dropping_a_band_in_its_own_place_reranks_nothing()
     {
         var page = RenderThreeBands();
 
-        page.FindAll(Gutter)[2].DragStart();
-        page.FindAll(EpicDropSlot)[1].DragEnter();
+        await DropAsync(page, "epic", EpicB, "epics", 1);
 
-        Assert.Single(page.FindAll(".epic-drop-slot--active"));
-        Assert.Single(page.FindAll(".kanban-lane--dragging"));
+        Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
+    }
 
-        page.FindAll(Gutter)[2].DragEnd();
+    // -- Cards move between the swimlane × column zones --------------------------
 
-        Assert.Empty(page.FindAll(".epic-drop-slot--active"));
-        Assert.Empty(page.FindAll(".kanban-lane--dragging"));
+    /// <summary>
+    /// Every card is a drag item inside the zone that renders it, and the zone's
+    /// identifier is what comes back with the drop.
+    /// </summary>
+    [Fact]
+    public void Every_card_is_a_drag_item_in_a_zone_that_names_its_lane_and_column()
+    {
+        var task = TestData.Task(epicId: EpicA);
+        QueueBoard(TestData.Board(epics: [TestData.Epic(EpicA, 1024m)], tasks: [task]));
+        var page = RenderBoard();
+
+        var zone = page.Find($"[data-drag-zone='{BoardZones.Id(EpicA, TaskState.Unstarted)}']");
+        Assert.Equal("task", zone.GetAttribute("data-drag-group"));
+        Assert.True(zone.HasAttribute("data-drag-outline"));
+
+        var card = zone.QuerySelector("[data-drag-item]");
+        Assert.NotNull(card);
+        Assert.Equal(task.Id.ToString(), card.GetAttribute("data-drag-item"));
+    }
+
+    [Fact]
+    public async Task Dropping_a_card_in_another_column_sets_its_status()
+    {
+        var task = TestData.Task();
+        QueueBoard(TestData.Board(tasks: [task]));
+        var page = RenderBoard();
+        _http.RespondJson(task with { Status = TaskState.InProgress });
+
+        await DropAsync(page, "task", task.Id, BoardZones.Id(null, TaskState.InProgress), 0);
+
+        Assert.Contains($"PUT /api/tasks/{task.Id}/status", _http.Paths);
+    }
+
+    [Fact]
+    public async Task Dropping_a_card_in_another_band_moves_it_to_that_epic()
+    {
+        var task = TestData.Task();
+        QueueBoard(TestData.Board(epics: [TestData.Epic(EpicA, 1024m)], tasks: [task]));
+        var page = RenderBoard();
+        _http.RespondJson(task with { EpicId = EpicA });
+
+        await DropAsync(page, "task", task.Id, BoardZones.Id(EpicA, TaskState.Unstarted), 0);
+
+        Assert.Contains($"PUT /api/tasks/{task.Id}/epic", _http.Paths);
+    }
+
+    /// <summary>
+    /// The drop's index counts the zone's <em>other</em> cards, so it is already
+    /// the slot to insert into — no compensating for the card having been lifted
+    /// out of its own column.
+    /// </summary>
+    [Fact]
+    public async Task Dropping_a_card_between_two_others_uses_them_as_neighbours()
+    {
+        var first = TestData.Task(rank: 1024m);
+        var second = TestData.Task(rank: 2048m);
+        var moved = TestData.Task(rank: 3072m);
+        QueueBoard(TestData.Board(tasks: [first, second, moved]));
+        var page = RenderBoard();
+        _http.RespondJson(moved with { Rank = 1536m });
+
+        await DropAsync(page, "task", moved.Id, BoardZones.Id(null, TaskState.Unstarted), 1);
+
+        Assert.Equal((first.Id, (Guid?)second.Id), NeighborsSentTo($"PUT /api/tasks/{moved.Id}/rank"));
+    }
+
+    /// <summary>A zone identifier the board can't parse is not a place to land.</summary>
+    [Fact]
+    public async Task Dropping_a_card_in_an_unparseable_zone_changes_nothing()
+    {
+        var task = TestData.Task();
+        QueueBoard(TestData.Board(tasks: [task]));
+        var page = RenderBoard();
+
+        await DropAsync(page, "task", task.Id, "epics", 0);
+
+        Assert.DoesNotContain(_http.Paths, p => p.StartsWith("PUT ", StringComparison.Ordinal));
     }
 
     // -- Bug: opening a drawer threw on MarkdownEditor's missing Class parameter --
@@ -612,7 +707,6 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
     // -- Sub-tasks reorder by dragging their handle -------------------------------
 
     private const string SubTaskHandle = ".subtask-drag-handle";
-    private const string SubTaskDropSlot = ".subtask-drop-slot";
 
     /// <summary>Three sub-tasks, ranked first → second → third, with a rerank reply waiting.</summary>
     private (IRenderedComponent<Components.SubTaskList> Page, List<SubTaskDto> Items) RenderChecklist(
@@ -634,86 +728,81 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         return (page, items);
     }
 
+    /// <summary>Hands the checklist the drop js/drag.js would have reported.</summary>
+    private Task DropSubTaskAsync(
+        IRenderedComponent<Components.SubTaskList> page, Guid subTaskId, int index) =>
+        page.InvokeAsync(() => Services.GetRequiredService<DragBridge>()
+            .OnDropAsync(new DragDrop("subtask", subTaskId.ToString(), "subtasks", index)));
+
     [Fact]
-    public void A_subtask_handle_has_an_insertion_slot_before_and_after_every_item()
+    public void Every_row_is_a_drag_item_dragged_only_by_its_handle()
     {
         var (page, _) = RenderChecklist();
 
+        Assert.Equal("subtask", page.Find("[data-drag-zone='subtasks']").GetAttribute("data-drag-group"));
         Assert.Equal(3, page.FindAll(SubTaskHandle).Count);
-        Assert.Equal(4, page.FindAll(SubTaskDropSlot).Count);
+        Assert.All(page.FindAll("li[data-drag-item]"), row =>
+        {
+            Assert.Equal(".subtask-drag-handle", row.GetAttribute("data-drag-from"));
+            Assert.NotNull(row.QuerySelector($"{SubTaskHandle}[data-drag-handle]"));
+        });
     }
 
     [Fact]
-    public void Dropping_in_the_first_slot_ranks_the_subtask_before_every_other_item()
+    public async Task Dropping_before_the_first_row_ranks_it_before_every_other()
     {
         var (page, items) = RenderChecklist();
 
-        page.FindAll(SubTaskHandle)[2].DragStart();
-        page.FindAll(SubTaskDropSlot)[0].Drop();
+        await DropSubTaskAsync(page, items[2].Id, 0);
 
         Assert.Equal((null, items[0].Id),
             NeighborsSentTo($"PUT /api/subtasks/{items[2].Id}/rank"));
     }
 
     [Fact]
-    public void Dropping_in_the_last_slot_ranks_the_subtask_after_every_other_item()
+    public async Task Dropping_past_the_last_row_ranks_it_after_every_other()
     {
         var (page, items) = RenderChecklist();
 
-        page.FindAll(SubTaskHandle)[0].DragStart();
-        page.FindAll(SubTaskDropSlot)[3].Drop();
+        await DropSubTaskAsync(page, items[0].Id, 2);
 
         Assert.Equal((items[2].Id, (Guid?)null),
             NeighborsSentTo($"PUT /api/subtasks/{items[0].Id}/rank"));
     }
 
     [Fact]
-    public void Dropping_on_the_line_between_two_subtasks_uses_them_as_neighbors()
+    public async Task Dropping_between_two_rows_uses_them_as_neighbors()
     {
         var (page, items) = RenderChecklist();
 
-        page.FindAll(SubTaskHandle)[2].DragStart();
-        page.FindAll(SubTaskDropSlot)[1].Drop();
+        await DropSubTaskAsync(page, items[2].Id, 1);
 
         Assert.Equal((items[0].Id, (Guid?)items[1].Id),
             NeighborsSentTo($"PUT /api/subtasks/{items[2].Id}/rank"));
     }
 
-    /// <summary>The insertion point under the pointer is marked with a line.</summary>
+    /// <summary>A drop naming a row this checklist hasn't got must write nothing.</summary>
     [Fact]
-    public void The_subtask_insertion_slot_under_the_pointer_is_highlighted_while_dragging()
+    public async Task Dropping_an_unknown_row_reranks_nothing()
     {
         var (page, _) = RenderChecklist();
 
-        page.FindAll(SubTaskHandle)[2].DragStart();
-        page.FindAll(SubTaskDropSlot)[1].DragEnter();
-
-        Assert.Single(page.FindAll(".subtask-drop-slot--active"));
-        Assert.Single(page.FindAll(".subtask-row--dragging"));
-
-        page.FindAll(SubTaskHandle)[2].DragEnd();
-
-        Assert.Empty(page.FindAll(".subtask-drop-slot--active"));
-        Assert.Empty(page.FindAll(".subtask-row--dragging"));
-    }
-
-    /// <summary>A drop with nothing being dragged must not reorder the checklist.</summary>
-    [Fact]
-    public void Dropping_in_a_subtask_slot_with_none_being_dragged_reranks_nothing()
-    {
-        var (page, _) = RenderChecklist();
-
-        page.FindAll(SubTaskDropSlot)[0].Drop();
+        await DropSubTaskAsync(page, Guid.NewGuid(), 0);
 
         Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void A_read_only_member_gets_no_subtask_drag_handles()
+    public async Task A_read_only_member_cannot_reorder_the_checklist()
     {
-        var (page, _) = RenderChecklist(canWrite: false);
+        var (page, items) = RenderChecklist(canWrite: false);
 
         Assert.Empty(page.FindAll(SubTaskHandle));
+        Assert.Empty(page.FindAll("li[data-drag-item]"));
+
+        await DropSubTaskAsync(page, items[2].Id, 0);
+
+        Assert.DoesNotContain(_http.Paths, p => p.Contains("/rank", StringComparison.Ordinal));
     }
 
     /// <summary>A lone sub-task has nothing to swap with, so it offers no handle.</summary>
@@ -783,9 +872,9 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
 
     /// <summary>
     /// Holding a dragged card against either edge steps the carousel to the next
-    /// column. The behaviour is in js/solo-interop.js, where a test can't reach
-    /// it — what is worth protecting here is that the two elements the script
-    /// lights up still exist, since it fails silently if they don't.
+    /// column. The behaviour is in js/drag.js, where a test can't reach it —
+    /// what is worth protecting here is that the two elements the script lights
+    /// up still exist, since it fails silently if they don't.
     /// </summary>
     [Fact]
     public void The_board_paints_an_edge_the_drag_gesture_can_light_up_on_each_side()

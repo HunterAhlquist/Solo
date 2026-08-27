@@ -32,6 +32,7 @@ public class ExtensionNavTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(new ProjectNavStore(api));
         Services.AddScoped<RecentProjectsStore>();
         Services.AddScoped<ProjectOrderStore>();
+        Services.AddScoped<DragBridge>();
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;

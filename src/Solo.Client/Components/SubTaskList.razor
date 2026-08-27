@@ -1,6 +1,8 @@
+@implements IDisposable
 @inject ApiClient Api
 @inject SaveGuard Guard
 @inject BoardStore Store
+@inject DragBridge Drag
 
 @*
     A task with sub-tasks has a derived status: the checklist drives it. Ticking a
@@ -27,113 +29,93 @@
 else
 {
     @* MudListItem installs a Space-key interceptor for item activation. Because
-       keydown bubbles, it also cancels spaces typed into a descendant editor. *@
-    <ul class="subtask-list">
-        @{
-            var ordered = Ordered;
-        }
-        @for (var subTaskIndex = 0; subTaskIndex < ordered.Count; subTaskIndex++)
+       keydown bubbles, it also cancels spaces typed into a descendant editor.
+
+       The list is one drop zone for js/drag.js and every row an item in it; the
+       insertion line is drawn by the drag itself, over the page, so the rows
+       need no gaps of their own to paint it in. *@
+    <ul class="subtask-list" data-drag-zone="subtasks" data-drag-group="subtask">
+        @foreach (var subTask in Ordered)
         {
-            var dropIndex = subTaskIndex;
-            var subTask = ordered[subTaskIndex];
+            @* Only the handle starts a reorder, so the row's own controls —
+               checkbox, label menu, rename field — keep their gestures. *@
+            <li class="subtask-row d-flex align-center" @key="subTask.Id"
+                data-drag-item="@(CanReorder ? subTask.Id.ToString() : null)"
+                data-drag-from=".subtask-drag-handle">
+                @if (CanReorder)
+                {
+                    <MudTooltip Text="Drag to reorder">
+                        <span class="subtask-drag-handle" data-drag-handle
+                              aria-label="@($"Drag to reorder {subTask.Name}")">
+                            <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
+                                     Size="Size.Small" Color="Color.Secondary" />
+                        </span>
+                    </MudTooltip>
+                }
 
-            <li class="@DropSlotClass(dropIndex)"
-                @ondragenter="@(() => EnterDropSlot(dropIndex))"
-                @ondragleave="@ClearDropSlot"
-                @ondragover:preventDefault="@(_dragged is not null)"
-                @ondrop:preventDefault="true"
-                @ondrop="@(() => DropAsync(dropIndex))"
-                aria-hidden="true"></li>
+                <MudCheckBox T="bool" Value="@subTask.IsFinished" Dense="true" Color="Color.Primary"
+                             Disabled="@(!CanWrite)"
+                             ValueChanged="@(finished => ToggleAsync(subTask, finished))" />
 
-            <li>
-                @* Only the handle starts a reorder. The narrow slots between rows
-                   are the drop targets, so the landing position is unambiguous. *@
-                <div class="@RowClass(subTask)"
-                     @ondragenter="@ClearDropSlot">
-                    @if (CanReorder)
-                    {
-                        <MudTooltip Text="Drag to reorder">
-                            <span class="subtask-drag-handle" draggable="true" aria-hidden="true"
-                                  @ondragstart="@(() => StartDrag(subTask))"
-                                  @ondragend="@EndDrag">
-                                <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
-                                         Size="Size.Small" Color="Color.Secondary" />
-                            </span>
-                        </MudTooltip>
-                    }
+                @* Click the name to rename in place — the drawer's convention:
+                   blur or Enter commits, Escape throws the draft away. *@
+                @if (_editingId == subTask.Id)
+                {
+                    <MudTextField @bind-Value="_editName" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Immediate="true" MaxLength="FieldLimits.ItemName" AutoFocus="true"
+                                  Class="flex-grow-1" aria-label="Edit sub-task"
+                                  OnKeyDown="@(e => OnEditKeyDown(e, subTask))"
+                                  OnBlur="@(() => CommitEditAsync(subTask))" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="flex-grow-1" Style="@NameStyle(subTask)"
+                             @onclick="@(() => BeginEdit(subTask))">
+                        @subTask.Name
+                    </MudText>
+                }
 
-                    <MudCheckBox T="bool" Value="@subTask.IsFinished" Dense="true" Color="Color.Primary"
-                                 Disabled="@(!CanWrite)"
-                                 ValueChanged="@(finished => ToggleAsync(subTask, finished))" />
-
-                    @* Click the name to rename in place — the drawer's convention:
-                       blur or Enter commits, Escape throws the draft away. *@
-                    @if (_editingId == subTask.Id)
-                    {
-                        <MudTextField @bind-Value="_editName" Variant="Variant.Outlined" Margin="Margin.Dense"
-                                      Immediate="true" MaxLength="FieldLimits.ItemName" AutoFocus="true"
-                                      Class="flex-grow-1" aria-label="Edit sub-task"
-                                      OnKeyDown="@(e => OnEditKeyDown(e, subTask))"
-                                      OnBlur="@(() => CommitEditAsync(subTask))" />
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.body2" Class="flex-grow-1" Style="@NameStyle(subTask)"
-                                 @onclick="@(() => BeginEdit(subTask))">
-                            @subTask.Name
-                        </MudText>
-                    }
-
-                    @* Click the tag icon to pick a label; once set it shows the label's
-                       own icon, with the name in a tooltip. Uses MudMenu's built-in Icon
-                       activator (as the epic menu does) — its popover opens reliably in
-                       the drawer, unlike an ActivatorContent activator. *@
-                    @{
-                        var current = LabelOf(subTask);
-                    }
-                    @if (CanWrite)
-                    {
-                        <MudTooltip Text="@(current?.Name ?? "Set label")">
-                            @* The span carries the label's own colour; Inherit hands it to the icon. *@
-                            <span class="subtask-label-menu d-flex align-center"
-                                  style="@(current is null ? null : $"color:{current.Color}")">
-                                <MudMenu Icon="@ActivatorIcon(current)" Size="Size.Small" Dense="true"
-                                         Color="@(current is null ? Color.Default : Color.Inherit)"
-                                         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                                    <MudMenuItem OnClick="@(() => SetLabelAsync(subTask, null))">
-                                        <MudText Typo="Typo.body2" Color="Color.Secondary">No label</MudText>
+                @* Click the tag icon to pick a label; once set it shows the label's
+                   own icon, with the name in a tooltip. Uses MudMenu's built-in Icon
+                   activator (as the epic menu does) — its popover opens reliably in
+                   the drawer, unlike an ActivatorContent activator. *@
+                @{
+                    var current = LabelOf(subTask);
+                }
+                @if (CanWrite)
+                {
+                    <MudTooltip Text="@(current?.Name ?? "Set label")">
+                        @* The span carries the label's own colour; Inherit hands it to the icon. *@
+                        <span class="subtask-label-menu d-flex align-center"
+                              style="@(current is null ? null : $"color:{current.Color}")">
+                            <MudMenu Icon="@ActivatorIcon(current)" Size="Size.Small" Dense="true"
+                                     Color="@(current is null ? Color.Default : Color.Inherit)"
+                                     AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                                <MudMenuItem OnClick="@(() => SetLabelAsync(subTask, null))">
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No label</MudText>
+                                </MudMenuItem>
+                                @foreach (var label in SubTaskLabels)
+                                {
+                                    <MudMenuItem OnClick="@(() => SetLabelAsync(subTask, label.Id))">
+                                        <LabelChip Label="@label" />
                                     </MudMenuItem>
-                                    @foreach (var label in SubTaskLabels)
-                                    {
-                                        <MudMenuItem OnClick="@(() => SetLabelAsync(subTask, label.Id))">
-                                            <LabelChip Label="@label" />
-                                        </MudMenuItem>
-                                    }
-                                </MudMenu>
-                            </span>
-                        </MudTooltip>
-                    }
-                    else if (current is not null)
-                    {
-                        <LabelChip Label="@current" IconOnly="true" />
-                    }
+                                }
+                            </MudMenu>
+                        </span>
+                    </MudTooltip>
+                }
+                else if (current is not null)
+                {
+                    <LabelChip Label="@current" IconOnly="true" />
+                }
 
-                    @if (CanWrite)
-                    {
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                       OnClick="@(() => DeleteAsync(subTask))" aria-label="Delete sub-task" />
-                    }
-                </div>
+                @if (CanWrite)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteAsync(subTask))" aria-label="Delete sub-task" />
+                }
             </li>
         }
-
-        <li class="@DropSlotClass(ordered.Count)"
-            @ondragenter="@(() => EnterDropSlot(ordered.Count))"
-            @ondragleave="@ClearDropSlot"
-            @ondragover:preventDefault="@(_dragged is not null)"
-            @ondrop:preventDefault="true"
-            @ondrop="@(() => DropAsync(ordered.Count))"
-            aria-hidden="true"></li>
     </ul>
 }
 
@@ -153,8 +135,6 @@ else
     private string _newName = string.Empty;
     private Guid? _editingId;
     private string _editName = string.Empty;
-    private SubTaskDto? _dragged;
-    private int? _dropSlot;
 
     [Parameter, EditorRequired]
     public Guid TaskId { get; set; }
@@ -332,80 +312,41 @@ else
     }
 
     // -- Reordering ---------------------------------------------------------
-    //
-    // Hand-rolled HTML5 drag & drop, as the epic bands use: a MudDropContainer
-    // here would be a nested container inside the board's, and the two fight
-    // for the same pointer events. Only the handle is draggable, so the row's
-    // own controls (checkbox, label menu, rename field) keep their gestures.
 
-    private string RowClass(SubTaskDto subTask)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var dragging = _dragged?.Id == subTask.Id ? " subtask-row--dragging" : null;
-        return $"subtask-row d-flex align-center{dragging}";
-    }
-
-    private string DropSlotClass(int index) =>
-        "subtask-drop-slot" + (_dropSlot == index ? " subtask-drop-slot--active" : string.Empty);
-
-    private void StartDrag(SubTaskDto subTask)
-    {
-        if (CanReorder)
+        if (firstRender)
         {
-            _dragged = subTask;
-            _dropSlot = null;
+            await Drag.RegisterAsync("subtask", OnDropAsync);
         }
     }
 
-    private void EnterDropSlot(int index)
-    {
-        if (_dragged is not null)
-        {
-            _dropSlot = index;
-        }
-    }
-
-    private void ClearDropSlot() => _dropSlot = null;
-
-    private void EndDrag()
-    {
-        _dragged = null;
-        _dropSlot = null;
-    }
+    public void Dispose() => Drag.Unregister("subtask", OnDropAsync);
 
     /// <summary>
-    /// The DOM supplies one insertion slot before every sub-task and one after
-    /// the last. Removing the dragged item shifts every later slot left by one.
+    /// The drop's index counts the checklist's <em>other</em> rows, so it is
+    /// already the slot to insert into.
     /// </summary>
-    private async Task DropAsync(int dropIndex)
+    private async Task OnDropAsync(DragDrop drop)
     {
-        var dragged = _dragged;
-        EndDrag();
-
-        if (dragged is null || !CanReorder)
-        {
-            return;
-        }
-
         var ordered = Ordered;
-        var sourceIndex = ordered.FindIndex(s => s.Id == dragged.Id);
-        var others = ordered.Where(s => s.Id != dragged.Id).ToList();
-        if (sourceIndex < 0 || others.Count != ordered.Count - 1)
+        var sourceIndex = ordered.FindIndex(s => s.Id == drop.ItemGuid);
+        if (!CanReorder || sourceIndex < 0)
         {
             return;
         }
 
-        var insertionIndex = Math.Clamp(
-            dropIndex > sourceIndex ? dropIndex - 1 : dropIndex, 0, others.Count);
+        var others = ordered.Where(s => s.Id != drop.ItemGuid).Select(s => s.Id).ToList();
+        var insertionIndex = Math.Clamp(drop.Index, 0, others.Count);
         if (insertionIndex == sourceIndex)
         {
             return;
         }
 
-        var (preceding, following) = RankNeighbors.Compute(
-            others.Select(s => s.Id).ToList(), insertionIndex);
+        var (preceding, following) = RankNeighbors.Compute(others, insertionIndex);
 
         await Guard.RunAsync(
-            () => Api.RerankSubTaskAsync(dragged.Id, preceding, following),
+            () => Api.RerankSubTaskAsync(ordered[sourceIndex].Id, preceding, following),
             OnChanged.InvokeAsync);
 
         await OnChanged.InvokeAsync();

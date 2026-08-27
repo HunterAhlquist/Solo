@@ -10,6 +10,7 @@
 @inject ISnackbar Snackbar
 @inject RecentProjectsStore Recent
 @inject NavigationManager Nav
+@inject DragBridge Drag
 
 <PageTitle>@(Store.Board?.Name ?? "Board") · Solo</PageTitle>
 
@@ -51,182 +52,159 @@ else
         }
     </div>
 
-    <MudDropContainer T="TaskDto" @ref="_container" Items="@_ordered" Class="kanban"
-                      ItemsSelector="@ShowsTask"
-                      CanDrop="@CanDrop"
-                      ItemDisabled="@(_ => !CanWrite)"
-                      ItemDropped="@OnItemDroppedAsync"
-                      ApplyDropClassesOnDragStarted="true"
-                      CanDropClass="kanban-zone--can-drop"
-                      NoDropClass="kanban-zone--no-drop">
-        <ChildContent>
+    @* The board is a plain grid of drop zones; the dragging itself lives in
+       js/drag.js, which reads the data-drag-* attributes below and reports a
+       finished drop back through DragBridge. Two groups overlap here: the epic
+       bands reorder within the board, and the cards move between the columns
+       inside them. A zone only accepts its own group, so the two never collide. *@
+    <div class="kanban" data-drag-zone="epics" data-drag-group="epic">
 
-            @* Board-wide column titles, over the gutter-plus-three-columns grid.
-               The phone layout hides this: once the columns become a carousel
-               nothing lines up under a shared header, so each column names
-               itself instead (see KanbanZone). *@
-            <div class="kanban-header">
-                <div></div>
-                <div class="kanban-header__columns">
-                    @foreach (var status in BoardZones.Statuses)
+        @* Board-wide column titles, over the gutter-plus-three-columns grid.
+           The phone layout hides this: once the columns become a carousel
+           nothing lines up under a shared header, so each column names
+           itself instead (see KanbanZone). *@
+        <div class="kanban-header">
+            <div></div>
+            <div class="kanban-header__columns">
+                @foreach (var status in BoardZones.Statuses)
+                {
+                    <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
+                        @BoardZones.Title(status) (@_ordered.Count(t => t.Status == status))
+                    </MudText>
+                }
+            </div>
+        </div>
+
+        @foreach (var epic in Store.Board.Epics)
+        {
+            @* The whole gutter is the "open epic" target; its own controls
+               (collapse chevron, action icons) stop the click instead. It is
+               also where a reorder drag may begin — from anywhere on it after a
+               press, or straight away from the six-dot handle. *@
+            <div class="kanban-lane" @key="epic.Id"
+                 data-drag-item="@(CanWrite ? epic.Id.ToString() : null)"
+                 data-drag-from=".kanban-lane__gutter"
+                 data-drag-preview=".kanban-lane__gutter">
+                <div class="kanban-lane__gutter kanban-lane__gutter--openable"
+                     @onclick="@(() => OpenEpic(epic))"
+                     role="button" aria-label="@($"Open epic {epic.Name}")">
+                    <div class="kanban-lane__title">
+                        <span class="d-inline-flex" @onclick:stopPropagation>
+                            <MudIconButton Size="Size.Small" Class="kanban-lane__collapse"
+                                           Icon="@(IsCollapsed(epic.Id) ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
+                                           OnClick="@(() => ToggleCollapsed(epic.Id))"
+                                           aria-label="Collapse epic" />
+                        </span>
+                        <MudText Typo="Typo.subtitle2" Class="kanban-lane__name flex-grow-1">@epic.Name</MudText>
+                    </div>
+
+                    <div class="d-flex align-center" style="gap:.35rem">
+                        <MudSpacer />
+                        <PresenceCluster Entries="@Store.PresenceOn(EntityTypes.Epic, epic.Id)" MaxVisible="2" />
+                        <span class="presence-cluster">
+                            @foreach (var assignee in MembersOf(epic.AssigneeIds).Take(3))
+                            {
+                                <UserAvatar UserId="@(assignee.UserId ?? assignee.Id)"
+                                            DisplayName="@(assignee.DisplayName ?? assignee.Email)"
+                                            AvatarUrl="@assignee.AvatarUrl" />
+                            }
+                        </span>
+                    </div>
+
+                    @if (CanWrite)
                     {
-                        <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
-                            @BoardZones.Title(status) (@_ordered.Count(t => t.Status == status))
-                        </MudText>
+                        <div class="kanban-lane__actions" @onclick:stopPropagation>
+                            <MudTooltip Text="Drag to reorder">
+                                <span class="kanban-lane__drag-handle" data-drag-handle
+                                      aria-label="@($"Drag to reorder {epic.Name}")">
+                                    <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
+                                             Size="Size.Small" Color="Color.Secondary" />
+                                </span>
+                            </MudTooltip>
+                            <MudTooltip Text="Add task">
+                                <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                               OnClick="@(() => CreateTaskAsync(epic.Id))" aria-label="Add task" />
+                            </MudTooltip>
+                            <MudTooltip Text="Delete epic">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               OnClick="@(() => DeleteEpicAsync(epic))" aria-label="Delete epic" />
+                            </MudTooltip>
+                        </div>
                     }
                 </div>
-            </div>
 
-            @for (var epicIndex = 0; epicIndex < Store.Board.Epics.Count; epicIndex++)
-            {
-                var dropIndex = epicIndex;
-                var epic = Store.Board.Epics[epicIndex];
-
-                <div class="@EpicDropSlotClass(dropIndex)"
-                     @ondragenter="@(() => EnterEpicDropSlot(dropIndex))"
-                     @ondragleave="@ClearEpicDropSlot"
-                     @ondragover:preventDefault="@(_draggedEpic is not null)"
-                     @ondrop:preventDefault="true"
-                     @ondrop="@(() => DropEpicAsync(dropIndex))"
-                     aria-hidden="true"></div>
-
-                <div class="@LaneClass(epic)">
-                    @* The whole gutter is the "open epic" target; its own controls
-                       (collapse chevron, action icons) stop the click instead. It is
-                       also the reorder drag source. The narrow slots between bands
-                       are the drop targets, so the landing position is unambiguous. *@
-                    <div class="kanban-lane__gutter kanban-lane__gutter--openable"
-                         draggable="@(CanWrite ? "true" : "false")"
-                         @ondragstart="@(() => StartEpicDrag(epic))"
-                         @ondragenter="@ClearEpicDropSlot"
-                         @ondragend="@EndEpicDrag"
-                         @onclick="@(() => OpenEpic(epic))"
-                         role="button" aria-label="@($"Open epic {epic.Name}")">
-                        <div class="kanban-lane__title">
-                            <span class="d-inline-flex" @onclick:stopPropagation>
-                                <MudIconButton Size="Size.Small" Class="kanban-lane__collapse"
-                                               Icon="@(IsCollapsed(epic.Id) ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
-                                               OnClick="@(() => ToggleCollapsed(epic.Id))"
-                                               aria-label="Collapse epic" />
-                            </span>
-                            <MudText Typo="Typo.subtitle2" Class="kanban-lane__name flex-grow-1">@epic.Name</MudText>
-                        </div>
-
-                        <div class="d-flex align-center" style="gap:.35rem">
-                            <MudSpacer />
-                            <PresenceCluster Entries="@Store.PresenceOn(EntityTypes.Epic, epic.Id)" MaxVisible="2" />
-                            <span class="presence-cluster">
-                                @foreach (var assignee in MembersOf(epic.AssigneeIds).Take(3))
-                                {
-                                    <UserAvatar UserId="@(assignee.UserId ?? assignee.Id)"
-                                                DisplayName="@(assignee.DisplayName ?? assignee.Email)"
-                                                AvatarUrl="@assignee.AvatarUrl" />
-                                }
-                            </span>
-                        </div>
-
-                        @if (CanWrite)
+                @if (IsCollapsed(epic.Id))
+                {
+                    <div class="kanban-zone">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @TasksOfEpic(epic.Id).Count task(s) hidden
+                        </MudText>
+                    </div>
+                }
+                else
+                {
+                    <div class="kanban-lane__zones">
+                        @foreach (var status in BoardZones.Statuses)
                         {
-                            <div class="kanban-lane__actions" @onclick:stopPropagation>
-                                <MudTooltip Text="Drag to reorder">
-                                    <span class="kanban-lane__drag-handle" aria-hidden="true">
-                                        <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
-                                                 Size="Size.Small" Color="Color.Secondary" />
-                                    </span>
-                                </MudTooltip>
-                                <MudTooltip Text="Add task">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
-                                                   OnClick="@(() => CreateTaskAsync(epic.Id))" aria-label="Add task" />
-                                </MudTooltip>
-                                <MudTooltip Text="Delete epic">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
-                                                   OnClick="@(() => DeleteEpicAsync(epic))" aria-label="Delete epic" />
-                                </MudTooltip>
-                            </div>
+                            <KanbanZone Identifier="@BoardZones.Id(epic.Id, status)"
+                                        Title="@BoardZones.Title(status)"
+                                        Count="@ZoneCount(epic.Id, status)"
+                                        HiddenCount="@HiddenCount(epic.Id, status)"
+                                        OnExpand="@(() => ExpandFinished(epic.Id))">
+                                @foreach (var task in CardsIn(epic.Id, status))
+                                {
+                                    @Card(task)
+                                }
+                            </KanbanZone>
                         }
                     </div>
+                }
+            </div>
+        }
 
-                    @if (IsCollapsed(epic.Id))
-                    {
-                        <div class="kanban-zone">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @TasksOfEpic(epic.Id).Count task(s) hidden
-                            </MudText>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="kanban-lane__zones">
-                            @foreach (var status in BoardZones.Statuses)
-                            {
-                                <KanbanZone Identifier="@BoardZones.Id(epic.Id, status)"
-                                            Title="@BoardZones.Title(status)"
-                                            Count="@ZoneCount(epic.Id, status)"
-                                            HiddenCount="@HiddenCount(epic.Id, status)"
-                                            OnExpand="@(() => ExpandFinished(epic.Id))" />
-                            }
-                        </div>
-                    }
-                </div>
-            }
-
-            <div class="@EpicDropSlotClass(Store.Board.Epics.Count)"
-                 @ondragenter="@(() => EnterEpicDropSlot(Store.Board.Epics.Count))"
-                 @ondragleave="@ClearEpicDropSlot"
-                 @ondragover:preventDefault="@(_draggedEpic is not null)"
-                 @ondrop:preventDefault="true"
-                 @ondrop="@(() => DropEpicAsync(Store.Board.Epics.Count))"
-                 aria-hidden="true"></div>
-
-            @* The ad-hoc band: tasks that belong to no epic. Dropping here detaches. *@
-            <div class="kanban-lane kanban-lane--adhoc">
-                <div class="kanban-lane__gutter">
-                    <div class="kanban-lane__title">
-                        <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Small" Color="Color.Secondary" />
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">No epic</MudText>
-                    </div>
-                </div>
-
-                <div class="kanban-lane__zones">
-                    @foreach (var status in BoardZones.Statuses)
-                    {
-                        <KanbanZone Identifier="@BoardZones.Id(null, status)"
-                                    Title="@BoardZones.Title(status)"
-                                    Count="@ZoneCount(null, status)"
-                                    HiddenCount="@HiddenCount(null, status)"
-                                    OnExpand="@(() => ExpandFinished(null))" />
-                    }
+        @* The ad-hoc band: tasks that belong to no epic. Dropping here detaches.
+           Not a drag item — it has no rank of its own and always comes last. *@
+        <div class="kanban-lane kanban-lane--adhoc">
+            <div class="kanban-lane__gutter">
+                <div class="kanban-lane__title">
+                    <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Small" Color="Color.Secondary" />
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">No epic</MudText>
                 </div>
             </div>
 
-            @if (Store.Board.Epics.Count == 0 && _ordered.Count == 0)
-            {
-                <EmptyState Message="This board is empty."
-                            Icon="@Icons.Material.Filled.ViewKanban"
-                            ActionText="@(CanWrite ? "Add a task" : null)"
-                            OnAction="@(() => CreateTaskAsync(null))"
-                            SecondaryActionText="@(CanWrite ? "Add an epic" : null)"
-                            OnSecondaryAction="@CreateEpicAsync" />
-            }
-        </ChildContent>
+            <div class="kanban-lane__zones">
+                @foreach (var status in BoardZones.Statuses)
+                {
+                    <KanbanZone Identifier="@BoardZones.Id(null, status)"
+                                Title="@BoardZones.Title(status)"
+                                Count="@ZoneCount(null, status)"
+                                HiddenCount="@HiddenCount(null, status)"
+                                OnExpand="@(() => ExpandFinished(null))">
+                        @foreach (var task in CardsIn(null, status))
+                        {
+                            @Card(task)
+                        }
+                    </KanbanZone>
+                }
+            </div>
+        </div>
 
-        <ItemRenderer>
-            @* Editors only: someone merely viewing a task shows in the drawer, not on the card. *@
-            <TaskCard Task="@context"
-                      Label="@LabelOf(context)"
-                      Assignees="@MembersOf(context.AssigneeIds)"
-                      Presence="@Store.EditorsOn(EntityTypes.Task, context.Id)"
-                      Pulse="@_pulsing.Contains(context.Id)"
-                      OnOpen="@OpenTask" />
-        </ItemRenderer>
-    </MudDropContainer>
+        @if (Store.Board.Epics.Count == 0 && _ordered.Count == 0)
+        {
+            <EmptyState Message="This board is empty."
+                        Icon="@Icons.Material.Filled.ViewKanban"
+                        ActionText="@(CanWrite ? "Add a task" : null)"
+                        OnAction="@(() => CreateTaskAsync(null))"
+                        SecondaryActionText="@(CanWrite ? "Add an epic" : null)"
+                        OnSecondaryAction="@CreateEpicAsync" />
+        }
+    </div>
 
     @* Column-swap targets for a drag on the phone carousel: the column you want
        is usually off-screen when you pick a card up, so holding it against
-       either edge steps that band along. Painted here, armed from
-       js/solo-interop.js — dragover fires continuously for the length of a
-       drag, which is no way to drive a render. pointer-events:none, so they can
-       never take the drop themselves. *@
+       either edge steps that band along. Painted here, lit from js/drag.js —
+       the drag reports a position every frame, which is no way to drive a
+       render. pointer-events:none, so they can never take the drop themselves. *@
     <div class="board-edge board-edge--left" aria-hidden="true"></div>
     <div class="board-edge board-edge--right" aria-hidden="true"></div>
 
@@ -235,15 +213,11 @@ else
 }
 
 @code {
-    private MudDropContainer<TaskDto>? _container;
     private List<TaskDto> _ordered = [];
     private readonly HashSet<Guid> _collapsed = [];
     private readonly HashSet<Guid> _expandedFinished = [];
     private readonly HashSet<Guid> _pulsing = [];
     private HashSet<Guid> _folded = [];
-    private EpicDto? _draggedEpic;
-    private int? _epicDropSlot;
-    private bool _refreshZones;
     private TaskDto? _openTask;
     private EpicDto? _openEpic;
     private bool _canWrite;
@@ -271,6 +245,8 @@ else
     {
         Store.Changed += OnStoreChanged;
         Store.Pulsed += OnPulsed;
+        await Drag.RegisterAsync("task", OnTaskDropAsync);
+        await Drag.RegisterAsync("epic", OnEpicDropAsync);
 
         if (Session.Current is null)
         {
@@ -346,11 +322,29 @@ else
     // -- Rendering ----------------------------------------------------------
 
     /// <summary>
-    /// Which zone renders a task — and, for a folded Finished column, whether it
-    /// renders at all. Everything stays reachable behind the expander.
+    /// The cards one zone shows, in rank order — everything a folded Finished
+    /// column has tucked away stays reachable behind its expander.
     /// </summary>
-    private bool ShowsTask(TaskDto task, string zoneId) =>
-        BoardZones.Id(task.EpicId, task.Status) == zoneId && !_folded.Contains(task.Id);
+    private List<TaskDto> CardsIn(Guid? epicId, TaskState status) =>
+        _ordered
+            .Where(t => t.EpicId == epicId && t.Status == status && !_folded.Contains(t.Id))
+            .ToList();
+
+    /// <summary>
+    /// One card in a column. The wrapper, not the card itself, is the drag item:
+    /// it is what the engine fades in place, clones under the pointer and counts
+    /// when working out which slot the pointer is asking for.
+    /// </summary>
+    private RenderFragment<TaskDto> Card => task =>
+        @<div class="kanban-card-slot" @key="task.Id"
+              data-drag-item="@(CanWrite ? task.Id.ToString() : null)">
+            <TaskCard Task="@task"
+                      Label="@LabelOf(task)"
+                      Assignees="@MembersOf(task.AssigneeIds)"
+                      Presence="@Store.EditorsOn(EntityTypes.Task, task.Id)"
+                      Pulse="@_pulsing.Contains(task.Id)"
+                      OnOpen="@OpenTask" />
+        </div>;
 
     private void Rebuild()
     {
@@ -372,24 +366,6 @@ else
             }
         }
 
-        // Deliberately not calling _container.Refresh() here: the drop zones read
-        // MudDropContainer.Items live, and the container still holds the *previous*
-        // list until this component re-renders and re-supplies the parameter.
-        // Refreshing now would repaint the zones from stale data, leaving the UI a
-        // change behind — a new task only appeared once something else moved.
-        _refreshZones = true;
-    }
-
-    /// <summary>Now that the container has the new Items, tell its zones to re-read them.</summary>
-    protected override void OnAfterRender(bool firstRender)
-    {
-        if (!_refreshZones)
-        {
-            return;
-        }
-
-        _refreshZones = false;
-        _container?.Refresh();
     }
 
     private Guid _recordedProject;
@@ -445,29 +421,19 @@ else
         {
             _collapsed.Remove(epicId);
         }
-
-        // Zones appear/disappear with the lane; refresh once they've re-rendered.
-        _refreshZones = true;
     }
 
-    private int EpicIndex(Guid epicId) =>
-        Store.Board!.Epics.ToList().FindIndex(e => e.Id == epicId);
-
-    private string LaneClass(EpicDto epic) =>
-        "kanban-lane" + (_draggedEpic?.Id == epic.Id ? " kanban-lane--dragging" : string.Empty);
-
-    private string EpicDropSlotClass(int index) =>
-        "epic-drop-slot" + (_epicDropSlot == index ? " epic-drop-slot--active" : string.Empty);
-
     // -- Drag & drop --------------------------------------------------------
+    //
+    // js/drag.js does the gesture; both handlers below are called once, after a
+    // card or a band has been let go. Nothing about a drop is trusted: the ids
+    // and the zone come back from the browser, so every one of them is looked up
+    // again before anything is written.
 
-    /// <summary>Any card can be dropped in any parseable zone — no column is off-limits.</summary>
-    private static bool CanDrop(TaskDto task, string zoneId) => BoardZones.TryParse(zoneId, out _, out _);
-
-    private async Task OnItemDroppedAsync(MudItemDropInfo<TaskDto> drop)
+    private async Task OnTaskDropAsync(DragDrop drop)
     {
-        var task = drop.Item;
-        if (task is null || !CanWrite || !BoardZones.TryParse(drop.DropzoneIdentifier, out var epicId, out var status))
+        var task = Store.Board?.Tasks.FirstOrDefault(t => t.Id == drop.ItemGuid);
+        if (task is null || !CanWrite || !BoardZones.TryParse(drop.ZoneId, out var epicId, out var status))
         {
             return;
         }
@@ -498,13 +464,14 @@ else
             Store.ApplyTask(moved);
         }
 
-        await RerankAsync(task, epicId, status, drop.IndexInZone);
+        await RerankAsync(task, epicId, status, drop.Index);
+        StateHasChanged();
     }
 
     /// <summary>
-    /// MudBlazor hands us the target index among the zone's <em>other</em> items
-    /// (it already compensates for a downward move within the same zone), so the
-    /// neighbours are just the items either side of that slot.
+    /// The drop's index counts the zone's <em>other</em> cards, so it is already
+    /// an insertion point among them and the neighbours are simply the pair
+    /// either side of that slot.
     /// </summary>
     private async Task RerankAsync(TaskDto task, Guid? epicId, TaskState status, int indexInZone)
     {
@@ -546,78 +513,43 @@ else
     }
 
     // -- Epic reordering ----------------------------------------------------
-    //
-    // Hand-rolled HTML5 drag & drop rather than a MudDropContainer: a nested
-    // container inside the task container fights it for the same pointer
-    // events. The gutters and insertion slots are outside every MudDropZone, so
-    // MudBlazor never sees these events — and because no MudBlazor transaction
-    // is open, the task zones ignore them in turn. The guards below keep the two
-    // apart: a task drag leaves _draggedEpic null, so the slots neither accept
-    // the drop (no preventDefault on dragover) nor act on one.
-
-    private void StartEpicDrag(EpicDto epic)
-    {
-        if (CanWrite)
-        {
-            _draggedEpic = epic;
-            _epicDropSlot = null;
-        }
-    }
-
-    private void EnterEpicDropSlot(int index)
-    {
-        if (_draggedEpic is not null)
-        {
-            _epicDropSlot = index;
-        }
-    }
-
-    private void ClearEpicDropSlot() => _epicDropSlot = null;
-
-    private void EndEpicDrag()
-    {
-        _draggedEpic = null;
-        _epicDropSlot = null;
-    }
 
     /// <summary>
-    /// The DOM supplies one insertion slot before every epic and one after the
-    /// last. Removing the dragged epic shifts every later slot left by one.
+    /// The bands are their own drag group, so a card dropped between two of them
+    /// never reaches this — the engine only offers a zone to items of its own
+    /// group, and the card columns are zones of another.
     /// </summary>
-    private async Task DropEpicAsync(int dropIndex)
+    private async Task OnEpicDropAsync(DragDrop drop)
     {
-        var dragged = _draggedEpic;
-        EndEpicDrag();
-
-        if (dragged is null || !CanWrite)
+        var epics = Store.Board?.Epics.ToList();
+        if (epics is null || !CanWrite || drop.ItemGuid is not { } draggedId)
         {
             return;
         }
 
-        var epics = Store.Board!.Epics.ToList();
-        var sourceIndex = EpicIndex(dragged.Id);
-        var others = epics.Where(e => e.Id != dragged.Id).ToList();
-        if (sourceIndex < 0 || others.Count != epics.Count - 1)
+        var sourceIndex = epics.FindIndex(e => e.Id == draggedId);
+        if (sourceIndex < 0)
         {
             return;
         }
 
-        var insertionIndex = Math.Clamp(
-            dropIndex > sourceIndex ? dropIndex - 1 : dropIndex, 0, others.Count);
+        var others = epics.Where(e => e.Id != draggedId).Select(e => e.Id).ToList();
+        var insertionIndex = Math.Clamp(drop.Index, 0, others.Count);
         if (insertionIndex == sourceIndex)
         {
             return;
         }
 
-        var (preceding, following) = RankNeighbors.Compute(
-            others.Select(e => e.Id).ToList(), insertionIndex);
+        var (preceding, following) = RankNeighbors.Compute(others, insertionIndex);
 
         var moved = await Guard.RunAsync(
-            () => Api.RerankEpicAsync(dragged.Id, preceding, following), Store.RefreshAsync);
+            () => Api.RerankEpicAsync(draggedId, preceding, following), Store.RefreshAsync);
         if (moved is not null)
         {
             Store.ApplyEpic(moved);
         }
+
+        StateHasChanged();
     }
 
     private async Task DeleteEpicAsync(EpicDto epic)
@@ -724,6 +656,8 @@ else
     {
         Store.Changed -= OnStoreChanged;
         Store.Pulsed -= OnPulsed;
+        Drag.Unregister("task", OnTaskDropAsync);
+        Drag.Unregister("epic", OnEpicDropAsync);
         await Store.DetachAsync();
     }
 }

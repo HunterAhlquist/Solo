@@ -32,6 +32,7 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(new ProjectNavStore(api));
         Services.AddScoped<RecentProjectsStore>();
         Services.AddScoped<ProjectOrderStore>();
+        Services.AddScoped<DragBridge>();
         // The sidebar renders extension nav entries. An empty catalog is the
         // normal case — no extensions installed — and keeps these tests about
         // the core tree; ExtensionNavTests covers the entries themselves.
@@ -144,23 +145,31 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
 
     // -- Project ordering ---------------------------------------------------
 
+    /// <summary>
+    /// The gesture itself is in js/drag.js, out of a test's reach. What a test
+    /// can hold onto is the contract between the two: the attributes the script
+    /// looks for, and the drop it hands back.
+    /// </summary>
     [Fact]
-    public void Project_icons_are_drag_handles_with_an_insertion_slot_at_every_position()
+    public void Each_project_is_a_drag_item_dragged_by_its_icon()
     {
         Route(isSuperAdmin: false);
 
         var nav = RenderNav();
 
-        Assert.Equal(2, nav.FindAll(".project-nav__drag-handle").Count);
+        Assert.Equal("project", nav.Find("[data-drag-zone='projects']").GetAttribute("data-drag-group"));
         Assert.Equal(2, nav.FindAll(".project-nav__entity-icon").Count);
         Assert.Equal(2, nav.FindAll(".project-nav__drag-indicator").Count);
-        Assert.Equal(3, nav.FindAll(".project-drop-slot").Count);
         Assert.All(nav.FindAll(".project-nav__drag-handle"), handle =>
-        {
-            Assert.Equal("true", handle.GetAttribute("draggable"));
-            Assert.Equal(".project-nav__title", handle.GetAttribute("data-solo-drag-preview"));
+            Assert.True(handle.HasAttribute("data-drag-handle")));
 
-            var preview = handle.Closest(".project-nav__title");
+        Assert.All(nav.FindAll("[data-drag-item]"), item =>
+        {
+            Assert.Equal(".project-nav__drag-handle", item.GetAttribute("data-drag-from"));
+
+            // The whole group would be a preview the size of the sidebar; what
+            // rides under the pointer is the title row alone.
+            var preview = item.QuerySelector(item.GetAttribute("data-drag-preview")!);
             Assert.NotNull(preview);
             Assert.NotNull(preview.QuerySelector(".project-nav__name"));
             Assert.Empty(preview.QuerySelectorAll(".mud-nav-link"));
@@ -168,13 +177,12 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Dropping_a_project_icon_in_the_last_slot_moves_the_whole_project_group()
+    public async Task Dropping_a_project_after_the_last_one_moves_the_whole_project_group()
     {
         Route(isSuperAdmin: false);
         var nav = RenderNav();
 
-        nav.FindAll(".project-nav__drag-handle")[0].DragStart();
-        nav.FindAll(".project-drop-slot")[2].Drop();
+        await DropAsync(nav, TestData.ProjectId, index: 1);
 
         Assert.Equal(["Side quest", "Solo"],
             nav.FindAll(".project-nav__name").Select(name => name.TextContent.Trim()));
@@ -184,6 +192,25 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
             System.Text.Json.JsonSerializer.Serialize(new[] { OtherProjectId, TestData.ProjectId }),
             persisted.Arguments[1]);
     }
+
+    /// <summary>A drop naming a project the sidebar isn't showing changes nothing.</summary>
+    [Fact]
+    public async Task Dropping_an_unknown_project_reorders_nothing()
+    {
+        Route(isSuperAdmin: false);
+        var nav = RenderNav();
+
+        await DropAsync(nav, Guid.NewGuid(), index: 0);
+
+        Assert.Equal(["Solo", "Side quest"],
+            nav.FindAll(".project-nav__name").Select(name => name.TextContent.Trim()));
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.storage.set");
+    }
+
+    /// <summary>Hands the sidebar the drop js/drag.js would have reported.</summary>
+    private Task DropAsync(IRenderedComponent<NavMenu> nav, Guid projectId, int index) =>
+        nav.InvokeAsync(() => Services.GetRequiredService<DragBridge>()
+            .OnDropAsync(new DragDrop("project", projectId.ToString(), "projects", index)));
 
     [Fact]
     public void A_saved_manual_order_wins_over_the_API_order_on_the_next_load()
@@ -197,24 +224,6 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
 
         nav.WaitForAssertion(() => Assert.Equal(["Side quest", "Solo"],
             nav.FindAll(".project-nav__name").Select(name => name.TextContent.Trim())));
-    }
-
-    [Fact]
-    public void The_project_insertion_slot_under_the_pointer_uses_the_epic_style_line()
-    {
-        Route(isSuperAdmin: false);
-        var nav = RenderNav();
-
-        nav.FindAll(".project-nav__drag-handle")[1].DragStart();
-        nav.FindAll(".project-drop-slot")[0].DragEnter();
-
-        Assert.Single(nav.FindAll(".project-drop-slot--active"));
-        Assert.Single(nav.FindAll(".project-nav-group--dragging"));
-
-        nav.FindAll(".project-nav__drag-handle")[1].DragEnd();
-
-        Assert.Empty(nav.FindAll(".project-drop-slot--active"));
-        Assert.Empty(nav.FindAll(".project-nav-group--dragging"));
     }
 
     // -- Create affordances --------------------------------------------------

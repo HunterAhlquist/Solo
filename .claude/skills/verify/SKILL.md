@@ -52,15 +52,20 @@ desktop-only, gated on `window.soloDesktop` existing **at Blazor boot**
   the 1280×720 viewport); use `read_page` refs or element `.click()` via
   javascript_tool.
 - Task cards and the description read-box aren't in the interactive
-  accessibility tree; click them via `.mud-drop-item` descendants /
+  accessibility tree; click them via `.kanban-card-slot` descendants /
   `.markdown-read`.
 - The drawer overlay is `.mud-overlay`; drawer content is inside `.mud-drawer`.
 - Direct board/task URL: `/projects/{PROJ}/boards/{BOARD}?task={N}`.
 - Restart the server after editing `index.html` — Solo.Api serves the client's
   build output, so the edit is not picked up live.
-- HTML5 drag & drop can't be driven with the browser pane's `left_click_drag`;
-  CDP mouse events don't start a native drag. Dispatch the events via
-  javascript_tool instead —
-  `new DragEvent(type, {bubbles:true, cancelable:true, dataTransfer:new DataTransfer()})`
-  for `dragstart`/`dragenter`/`dragover`/`drop` — which does exercise the full
-  Blazor + API path.
+- Dragging is pointer-event driven (`wwwroot/js/drag.js`), so `left_click_drag`
+  works for a mouse drag and exercises the whole path through to the API. For a
+  touch drag, dispatch `PointerEvent`s with `pointerType: 'touch'` from
+  javascript_tool: `pointerdown`, then a `pointermove` after the 320 ms hold has
+  elapsed (a tool round trip is long enough), then `pointerup`.
+- The browser pane reports `document.hidden === true`, which throttles timers and
+  freezes `requestAnimationFrame` and smooth scrolling. The drag paints from a
+  rAF loop, so nothing updates between calls unless a screenshot forces a frame —
+  interleave `computer{action:"screenshot"}` between steps, and don't read
+  anything timing-dependent (the column-step dwell, a magnetic scroll landing)
+  without one.

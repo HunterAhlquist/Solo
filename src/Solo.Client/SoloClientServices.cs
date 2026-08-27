@@ -50,6 +50,7 @@ public static class SoloClientServices
         services.AddScoped<RecentProjectsStore>();
         services.AddScoped<ProjectOrderStore>();
         services.AddScoped<SaveGuard>();
+        services.AddScoped<DragBridge>();
 
         // The site theme arrives with the bootstrap config; the colour scheme is
         // read from localStorage on first render (see SoloThemeProvider).

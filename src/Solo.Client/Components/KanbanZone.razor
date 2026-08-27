@@ -1,7 +1,7 @@
 @*
-    One cell of the swimlane × column grid. The container owns which tasks land
-    here (via its ItemsSelector); the zone only owns the drop target and the
-    Finished column's overflow expander.
+    One cell of the swimlane × column grid, and one drop zone for js/drag.js: the
+    identifier is what comes back with a drop, and data-drag-outline is what asks
+    the drag to paint this column as somewhere a card can land.
 
     The heading above the drop zone is the phone layout's half of the board
     header: there the three columns become a swipeable carousel, so no shared
@@ -14,7 +14,9 @@
         <MudText Typo="Typo.overline" Color="Color.Secondary">@Count</MudText>
     </div>
 
-    <MudDropZone T="TaskDto" Identifier="@Identifier" AllowReorder="true" Class="kanban-zone">
+    <div class="kanban-zone" data-drag-zone="@Identifier" data-drag-group="task" data-drag-outline>
+        @ChildContent
+
         @if (HiddenCount > 0)
         {
             <MudButton Variant="Variant.Text" Size="Size.Small" Style="opacity:.65"
@@ -22,7 +24,7 @@
                 Show all @(HiddenCount + BoardZones.FinishedVisibleLimit)
             </MudButton>
         }
-    </MudDropZone>
+    </div>
 </div>
 
 @code {
@@ -43,4 +45,8 @@
 
     [Parameter]
     public EventCallback OnExpand { get; set; }
+
+    /// <summary>The cards themselves — each one a drag item.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
 }

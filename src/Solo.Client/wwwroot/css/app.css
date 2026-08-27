@@ -289,27 +289,6 @@ code {
     cursor: grabbing;
 }
 
-.project-nav-group--dragging {
-    opacity: 0.5;
-}
-
-.project-drop-slot {
-    position: relative;
-    z-index: 2;
-    height: 0.75rem;
-    margin-block: -0.375rem;
-}
-
-.project-drop-slot--active::after {
-    content: "";
-    position: absolute;
-    inset: calc(50% - 1px) 0 auto;
-    height: 2px;
-    border-radius: 999px;
-    background: var(--mud-palette-primary);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 20%, transparent);
-}
-
 /* Where the fixed app bar ends, for anything that has to pin itself just below
    it. --mud-appbar-height is the *nominal* height: MudBlazor shrinks the bar by
    an eighth on a portrait phone and a quarter in landscape, and pads
@@ -439,6 +418,8 @@ code {
 .kanban-lane__gutter--openable {
     cursor: pointer;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     /* Follow the lane's rounded left corners so the hover tint stays inside. */
     border-radius: var(--mud-default-borderradius) 0 0 var(--mud-default-borderradius);
 }
@@ -451,31 +432,9 @@ code {
     color: var(--mud-palette-primary);
 }
 
-/* Reordering: the dragged band fades. Each otherwise invisible slot occupies
-   the existing gap between two bands and paints the exact insertion point. */
-.kanban-lane--dragging {
-    opacity: 0.5;
-}
-
-.epic-drop-slot {
-    position: relative;
-    z-index: 2;
-    height: 0.75rem;
-    margin-block: -0.75rem;
-}
-
-.epic-drop-slot--active::after {
-    content: "";
-    position: absolute;
-    inset: calc(50% - 1px) 0 auto;
-    height: 2px;
-    border-radius: 999px;
-    background: var(--mud-palette-primary);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 20%, transparent);
-}
-
-/* The handle is an affordance, not a control: the whole gutter is the drag
-   source, so this only has to say so and take the grab cursor. */
+/* The whole gutter is a drag source, so the handle is mostly an affordance —
+   but it is also the one spot a finger can drag from with no press-and-hold, so
+   it has to be a real target rather than a decoration. */
 .kanban-lane__drag-handle {
     display: inline-flex;
     padding: 5px;
@@ -532,15 +491,12 @@ code {
     transition: background-color 120ms ease-in-out;
 }
 
-.kanban-zone--can-drop {
-    margin: 3px;
-    background: color-mix(in srgb, var(--mud-palette-primary) 6%, transparent);
-    outline: 1px dashed color-mix(in srgb, var(--mud-palette-primary) 55%, transparent);
-}
-
-.kanban-zone--no-drop {
-    background: color-mix(in srgb, var(--mud-palette-error) 8%, transparent);
-    cursor: not-allowed;
+/* The wrapper the drag engine treats as the item, so the card itself keeps its
+   own classes for the deadline tint and the change pulse. min-width:0 because a
+   column flexbox stretches its items to the full width and would otherwise let
+   an unbroken word push the column past it. */
+.kanban-card-slot {
+    min-width: 0;
 }
 
 .kanban-card {
@@ -685,29 +641,116 @@ code {
 }
 
 /* ---------------------------------------------------------------------------
-   Touch dragging (js/drag.js).
+   Dragging (js/drag.js).
 
-   On a touchscreen the drag is ours, not the platform's, so the platform has to
-   be told to keep out of it: -webkit-user-drag stops WebKit starting a drag of
-   its own on the same press, and the selection and callout rules stop that press
-   turning into a text selection or a magnifier — the conflict that made a card
-   awkward to pick up at all.
-
-   Only where the primary pointer is coarse. A mouse keeps native drag & drop,
-   which is what js/drag.js also checks before it takes anything over, so the
-   two are never both in charge.
+   The drag is the app's own, driven by pointer events, so the platform has to be
+   told to keep out of the gestures it would otherwise claim for itself: a text
+   selection, a callout, a magnifier, or WebKit's own long-press drag. None of it
+   is behind a media query — the same rules serve a mouse, a trackpad and a
+   finger, which is the whole point of there being one implementation.
    --------------------------------------------------------------------------- */
-@media (pointer: coarse) {
-    /* js/drag.js takes the draggable attribute off on a touchscreen and leaves
-       its own mark in its place, so both spellings are the same elements. */
-    [draggable="true"],
-    [data-solo-drag] {
-        -webkit-user-drag: none;
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
-    }
+[data-drag-item] {
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+}
 
+/* A handle exists to be dragged and for nothing else, so it can refuse the
+   browser's gestures outright — which is what lets a finger drag from one with
+   no press-and-hold first. Everywhere else the surface is also the one you
+   scroll the board with, so it keeps touch-action and the scroll is refused
+   from script instead, once the press has been held long enough to mean it. */
+[data-drag-handle] {
+    touch-action: none;
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+[data-drag-handle]:active {
+    cursor: grabbing;
+}
+
+/* What was picked up stays in place, faded, so the list it came from doesn't
+   collapse under the pointer mid-drag. */
+.solo-drag-source {
+    opacity: 0.4;
+}
+
+/* No text selection anywhere while a drag is running: a pointer drag doesn't
+   suppress it the way the browser's own drag did. touch-action can't call back
+   the gesture already in flight — the script refuses that one from touchmove —
+   but it does keep a second finger from scrolling the board out from under the
+   first. */
+body.solo-dragging {
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+    cursor: grabbing;
+}
+
+/* Everything a drag draws lives in one layer at the top of the document: the
+   card under the pointer, the insertion line, the columns it could land in.
+   That is what keeps the card from sliding under a neighbour or being masked at
+   the edge of an epic — no scroller, stacking context or overflow:hidden in the
+   page is above it. Clipped to the viewport, so nothing it draws can give the
+   page something new to scroll. */
+.solo-drag-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.solo-drag-layer > * {
+    position: absolute;
+    left: 0;
+    top: 0;
+    will-change: transform;
+}
+
+/* The card riding under the pointer: a copy of the real one, lifted off the
+   page with a shadow and held at whatever offset it was taken hold at. */
+.solo-drag-ghost {
+    opacity: 0.95;
+    scale: 1.03;
+    box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.45);
+}
+
+.solo-drag-ghost > * {
+    margin: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    position: static !important;
+}
+
+/* Where it would land, drawn between the two items it would go between. */
+.solo-drag-line {
+    height: 2px;
+    border-radius: 999px;
+    background: var(--mud-palette-primary);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 20%, transparent),
+                0 0 0.5rem color-mix(in srgb, var(--mud-palette-primary) 45%, transparent);
+    opacity: 0;
+    transition: opacity 90ms ease-in-out;
+}
+
+/* Every column that could take the card, with the one under the pointer lit.
+   The old version of this tinted the zones themselves, which meant a class on
+   a Blazor-rendered element changing sixty times a second. */
+.solo-drag-target {
+    border-radius: var(--mud-default-borderradius);
+    outline: 1px dashed color-mix(in srgb, var(--mud-palette-primary) 35%, transparent);
+    outline-offset: -1px;
+    transition: background-color 120ms ease-in-out;
+}
+
+.solo-drag-target--active {
+    outline-color: color-mix(in srgb, var(--mud-palette-primary) 70%, transparent);
+    background: color-mix(in srgb, var(--mud-palette-primary) 8%, transparent);
+}
+
+@media (pointer: coarse) {
     /* A tooltip wants a hover to live inside, and a touchscreen hasn't got one:
        it opens on the press — the very press that now lifts a card — and then
        has no pointer-out to close it, so it sits over the board for the rest of
@@ -718,35 +761,15 @@ code {
     }
 }
 
-/* The card riding under the finger: a copy of the real one, parented to <body>
-   so that no scroller — least of all the horizontal one the phone board puts
-   each band's columns in — can crop it. Lifted off the page with a shadow, and
-   held just clear of the fingertip. */
-.solo-drag-ghost {
-    position: fixed;
-    z-index: 2000;
-    margin: 0;
-    pointer-events: none;
-    opacity: 0.95;
-    transform-origin: center;
-    box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.45);
-    scale: 1.03;
-}
-
-/* What was picked up stays in place, faded, so the row it came from doesn't
-   collapse under the finger mid-drag. */
-.solo-drag-source {
-    opacity: 0.4;
-}
-
 /* ---------------------------------------------------------------------------
    Drag-to-the-next-column edges (phone carousel).
 
    Two bands down the sides of the screen, dark until a card is held against
    one. They are signage, not drop zones — pointer-events:none, so the drop
-   still lands on whatever column is under the finger, and releasing over one
-   does nothing special. The inner rule charges over the dwell, so the wait has
-   something to show for itself; each step restarts it from empty.
+   still lands on whatever column is under the pointer, and releasing over one
+   does nothing special. Armed, the inner hairline charges over the dwell so the
+   wait has something to show for itself; the step done, it goes to the settling
+   colour for the cool-down and then charges again if the card is still there.
 
    They sit below the app bar and are inert everywhere but the carousel: the
    script only arms them over a band that has somewhere left to scroll, which
@@ -775,8 +798,14 @@ code {
         to left, color-mix(in srgb, var(--mud-palette-primary) 30%, transparent), transparent);
 }
 
-.board-edge--armed {
+.board-edge--lit {
     opacity: 1;
+}
+
+/* Settling: the column has arrived and the next step is on hold. Dimmer and
+   still, so the difference between "charging" and "waiting" is legible. */
+.board-edge--lit.board-edge--cooling {
+    opacity: 0.45;
 }
 
 /* The charge: a hairline at the very edge that fills over the dwell. */
@@ -800,8 +829,12 @@ code {
 }
 
 /* Duration is the script's dwell; keep the two in step. */
-.board-edge--armed::after {
-    animation: board-edge-charge 1s linear forwards;
+.board-edge--charging::after {
+    animation: board-edge-charge 1.5s linear forwards;
+}
+
+.board-edge--cooling::after {
+    opacity: 0.3;
 }
 
 @keyframes board-edge-charge {
@@ -811,7 +844,7 @@ code {
 
 @media (prefers-reduced-motion: reduce) {
     /* No ramp, but the same wait — the band simply stands lit. */
-    .board-edge--armed::after {
+    .board-edge--charging::after {
         animation: none;
         opacity: 1;
     }
@@ -842,12 +875,6 @@ code {
     /* Nothing left for it to sit over — each column carries its own heading. */
     .kanban-header {
         display: none;
-    }
-
-    /* With the shared header hidden, the first insertion slot has no preceding
-       flex gap to occupy. Give it its own space above the first epic. */
-    .kanban-header + .epic-drop-slot {
-        margin-top: 0;
     }
 
     .kanban-lane {
@@ -1004,10 +1031,6 @@ code {
     border-radius: 3px;
 }
 
-.mud-drop-item-preview-start {
-    opacity: 0.35;
-}
-
 /* ---------------------------------------------------------------------------
    Sub-task checklist — rows reorder by dragging
    --------------------------------------------------------------------------- */
@@ -1021,29 +1044,6 @@ code {
     width: 100%;
     gap: 0.35rem;
     border-radius: var(--mud-default-borderradius);
-}
-
-/* Same signals as the epic bands: the dragged row fades, and the insertion slot
-   under the pointer paints a line without changing the checklist's spacing. */
-.subtask-row--dragging {
-    opacity: 0.5;
-}
-
-.subtask-drop-slot {
-    position: relative;
-    z-index: 1;
-    height: 0.5rem;
-    margin-block: -0.25rem;
-}
-
-.subtask-drop-slot--active::after {
-    content: "";
-    position: absolute;
-    inset: calc(50% - 1px) 0 auto;
-    height: 2px;
-    border-radius: 999px;
-    background: var(--mud-palette-primary);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 20%, transparent);
 }
 
 /* The handle is the drag source, so the row's own controls keep their gestures.
