@@ -1194,6 +1194,34 @@ html.solo-desktop--glass .project-card__boards {
     background: color-mix(in srgb, var(--mud-palette-text-primary) 3%, transparent);
 }
 
+/* Chromium cannot put an NSGlassEffectView around an individual popover, but
+   its backdrop filter can give the macOS shell's tooltips the same translucent,
+   content-aware material. Key this on the platform rather than native-effects
+   availability so disabling the window backdrop still leaves a useful blur. */
+html.solo-desktop--mac .mud-tooltip.mud-tooltip-default {
+    color: var(--mud-palette-text-primary);
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 16%, transparent);
+    border-radius: max(var(--mud-default-borderradius), 8px);
+    background-color: color-mix(in srgb, var(--mud-palette-surface) 68%, transparent);
+    background-image: linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--mud-palette-text-primary) 10%, transparent),
+        transparent 55%);
+    box-shadow:
+        0 8px 24px color-mix(in srgb, #000 22%, transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--mud-palette-text-primary) 18%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    backdrop-filter: blur(18px) saturate(145%);
+}
+
+/* MudBlazor paints arrowed tooltip pointers as a solid border triangle. A
+   translucent palette tint keeps it joined visually to the glass surface. */
+html.solo-desktop--mac .mud-tooltip.mud-tooltip-default.mud-tooltip-arrow::after {
+    border-color:
+        color-mix(in srgb, var(--mud-palette-surface) 76%, transparent)
+        transparent transparent transparent;
+}
+
 html.solo-desktop .mud-appbar {
     -webkit-app-region: drag;
 }
