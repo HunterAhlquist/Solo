@@ -42,7 +42,8 @@ To disable both treatments for troubleshooting, launch with
 
 The backdrop follows Solo's Light, Dark, or Match system preference rather than
 independently inheriting macOS. Changes apply to the native material while the
-app is running.
+app is running. The Blazor loading view uses the same theme-tinted material from
+the first paint instead of covering the native backdrop with an opaque splash.
 
 The Server Settings window uses the same native treatment. Its macOS native
 window effects checkbox disables both Liquid Glass and the vibrancy fallback
