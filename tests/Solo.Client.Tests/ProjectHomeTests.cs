@@ -13,25 +13,18 @@ namespace Solo.Client.Tests;
 /// user. The layout hydrates that user concurrently, so the page must not read it
 /// before it has arrived.
 /// </summary>
-public class ProjectHomeTests : BunitContext, IAsyncLifetime
+public class ProjectHomeTests : ComponentTestBase
 {
     private readonly StubHttp _http = new();
 
     public ProjectHomeTests()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
-
         var api = _http.CreateClient();
         Services.AddSingleton(api);
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
         Services.AddScoped<RecentProjectsStore>();
     }
-
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     private void Route(bool isSuperAdmin, bool isOwner, ProjectRole role = ProjectRole.ReadWrite)
     {

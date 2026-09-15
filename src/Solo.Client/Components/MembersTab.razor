@@ -2,6 +2,7 @@
 @inject UserSession Session
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@inject SaveGuard Guard
 
 @if (_members is null)
 {
@@ -154,15 +155,14 @@ else
         _busy = true;
         try
         {
-            await Api.InviteMemberAsync(ProjectId,
-                new InviteMemberRequest { Email = _inviteEmail.Trim(), Role = _inviteRole });
-            _inviteEmail = string.Empty;
-            await LoadAsync();
-            await OnMembersChanged.InvokeAsync();
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't send that invite.", Severity.Error);
+            var invited = await Guard.RunAsync(() => Api.InviteMemberAsync(ProjectId,
+                new InviteMemberRequest { Email = _inviteEmail.Trim(), Role = _inviteRole }));
+            if (invited is not null)
+            {
+                _inviteEmail = string.Empty;
+                await LoadAsync();
+                await OnMembersChanged.InvokeAsync();
+            }
         }
         finally
         {
@@ -173,17 +173,14 @@ else
     /// <summary>Dropdown selection and switch toggle are both save events — commit immediately.</summary>
     private async Task SetRoleAsync(ProjectMemberDto member, ProjectRole role, bool isOwner)
     {
-        try
+        var saved = await Guard.RunAsync(() => Api.UpdateMemberAsync(ProjectId, member.Id,
+            new UpdateMemberRequest { Role = role, IsOwner = isOwner }));
+
+        // Reloads either way: a refused change has to drop off the switch too.
+        await LoadAsync();
+        if (saved is not null)
         {
-            await Api.UpdateMemberAsync(ProjectId, member.Id,
-                new UpdateMemberRequest { Role = role, IsOwner = isOwner });
-            await LoadAsync();
             await OnMembersChanged.InvokeAsync();
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't update that member.", Severity.Error);
-            await LoadAsync();
         }
     }
 
@@ -202,15 +199,10 @@ else
             return;
         }
 
-        try
+        if (await Guard.RunAsync(() => Api.RemoveMemberAsync(ProjectId, member.Id)))
         {
-            await Api.RemoveMemberAsync(ProjectId, member.Id);
             await LoadAsync();
             await OnMembersChanged.InvokeAsync();
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't remove that member.", Severity.Error);
         }
     }
 }

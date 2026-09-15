@@ -40,21 +40,14 @@ internal static class FakeCredential
 /// depends entirely on silent renewal: an expired stored token gets one FedCM
 /// re-prompt before the user is treated as signed out.
 /// </summary>
-public class GoogleSilentRenewalTests : BunitContext, IAsyncLifetime
+public class GoogleSilentRenewalTests : SoloBunitContext
 {
     private static AppConfig GoogleConfig() => new()
     {
         Auth = new AuthConfigDto("https://accounts.google.com", "client-id", "google", true),
     };
 
-    public GoogleSilentRenewalTests()
-    {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-    }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     private GoogleIdentityService Service(SessionExpiry? expiry = null) =>
         new(JSInterop.JSRuntime, GoogleConfig(), expiry ?? new SessionExpiry());
@@ -125,17 +118,8 @@ public class GoogleSilentRenewalTests : BunitContext, IAsyncLifetime
 /// mid-flight" signal — it raises the re-sign-in dialog. Anonymous requests
 /// bouncing off protected endpoints must not.
 /// </summary>
-public class IdTokenMessageHandler401Tests : BunitContext, IAsyncLifetime
+public class IdTokenMessageHandler401Tests : SoloBunitContext
 {
-    public IdTokenMessageHandler401Tests()
-    {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-    }
-
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
-
     private (HttpClient Client, SessionExpiry Expiry) Client(HttpStatusCode reply)
     {
         var config = new AppConfig

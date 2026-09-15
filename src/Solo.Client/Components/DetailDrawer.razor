@@ -267,21 +267,7 @@
     {
         if (Task is { } task)
         {
-            var saved = await Guard.RunAsync(
-                () => Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest
-                {
-                    Name = name,
-                    LabelId = task.LabelId,
-                    Description = description,
-                    DeadlineAt = task.DeadlineAt,
-                    Version = task.Version,
-                }),
-                Store.RefreshAsync);
-
-            if (saved is not null)
-            {
-                Store.ApplyTask(saved);
-            }
+            await SaveTaskAsync(task, name, task.LabelId, description, task.DeadlineAt);
         }
         else if (Epic is { } epic)
         {
@@ -308,21 +294,7 @@
             return;
         }
 
-        var saved = await Guard.RunAsync(
-            () => Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest
-            {
-                Name = task.Name,
-                LabelId = labelId,
-                Description = task.Description,
-                DeadlineAt = task.DeadlineAt,
-                Version = task.Version,
-            }),
-            Store.RefreshAsync);
-
-        if (saved is not null)
-        {
-            Store.ApplyTask(saved);
-        }
+        await SaveTaskAsync(task, task.Name, labelId, task.Description, task.DeadlineAt);
     }
 
     private async Task OnDeadlineChanged(DateTime? date)
@@ -333,12 +305,24 @@
             return;
         }
 
+        await SaveTaskAsync(task, task.Name, task.LabelId, task.Description, deadline);
+    }
+
+    /// <summary>
+    /// Every task edit on this drawer sends the whole DTO with one field swapped,
+    /// so the save sits here once and each caller passes what it changed. The
+    /// fields stay explicit rather than defaulted: clearing a label or a deadline
+    /// has to stay distinguishable from leaving it alone.
+    /// </summary>
+    private async Task SaveTaskAsync(
+        TaskDto task, string name, Guid? labelId, string? description, DateOnly? deadline)
+    {
         var saved = await Guard.RunAsync(
             () => Api.UpdateTaskAsync(task.Id, new UpdateTaskRequest
             {
-                Name = task.Name,
-                LabelId = task.LabelId,
-                Description = task.Description,
+                Name = name,
+                LabelId = labelId,
+                Description = description,
                 DeadlineAt = deadline,
                 Version = task.Version,
             }),

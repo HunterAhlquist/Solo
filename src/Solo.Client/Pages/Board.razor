@@ -287,12 +287,8 @@ else
             try
             {
                 await Store.LoadAsync(ProjectAlias, BoardAlias);
-                // The API's write policy accepts the owner flag or a read/write role;
-                // the super admin's blanket rights stop at the owner surface, which
-                // on a board means comment moderation only.
-                var me = Store.Members.FirstOrDefault(m => m.UserId == Session.UserId);
-                _canWrite = (me?.IsOwner ?? false) || me?.Role == ProjectRole.ReadWrite;
-                _canModerate = Session.IsSuperAdmin || (me?.IsOwner ?? false);
+                // On a board the owner surface means comment moderation only.
+                (_canModerate, _canWrite) = Session.AccessIn(Store.Members);
                 Rebuild();
             }
             catch (ApiException e)

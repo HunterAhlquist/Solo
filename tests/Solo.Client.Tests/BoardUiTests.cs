@@ -17,7 +17,7 @@ namespace Solo.Client.Tests;
 /// Renders the board surface the way the browser does. Every bug these cover was
 /// found by a human clicking, not by a test — which is the point of having them now.
 /// </summary>
-public class BoardUiTests : BunitContext, IAsyncLifetime
+public class BoardUiTests : ComponentTestBase
 {
     private readonly StubHttp _http = new();
     private readonly FakeBoardHub _hub = new();
@@ -25,9 +25,7 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
 
     public BoardUiTests()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
         JSInterop.SetupModule("./js/finished-column.js");
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
 
         var api = _http.CreateClient();
@@ -43,9 +41,6 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Services.AddScoped<DragBridge>();
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     private static readonly ProjectMemberDto Hunter = TestData.Member(TestData.MeId, "Hunter Ahlquist");
 

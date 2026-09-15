@@ -17,15 +17,12 @@ namespace Solo.Client.Tests;
 /// router cannot resolve, which reads to a user as a bug rather than as a
 /// version mismatch.
 /// </summary>
-public class ExtensionNavTests : BunitContext, IAsyncLifetime
+public class ExtensionNavTests : ComponentTestBase
 {
     private readonly StubHttp _http = new();
 
     public ExtensionNavTests()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
-
         var api = _http.CreateClient();
         Services.AddSingleton(api);
         Services.AddSingleton(new UserSession(api));
@@ -35,9 +32,6 @@ public class ExtensionNavTests : BunitContext, IAsyncLifetime
         Services.AddScoped<DragBridge>();
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     [Fact]
     public async Task A_loaded_extension_contributes_a_nav_entry()

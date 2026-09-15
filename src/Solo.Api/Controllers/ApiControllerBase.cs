@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Solo.Api.Auth;
 using Solo.Data;
 using Solo.Data.Entities;
 
@@ -9,6 +10,13 @@ namespace Solo.Api.Controllers;
 [ApiController]
 public abstract class ApiControllerBase : ControllerBase
 {
+    /// <summary>
+    /// The project the route authorized, stashed by <see cref="ProjectAccessHandler"/>.
+    /// Only safe on an action carrying one of the project policies — nothing else
+    /// populates it.
+    /// </summary>
+    protected Guid ProjectId() => (Guid)HttpContext.Items[ProjectAccessHandler.ProjectIdItem]!;
+
     /// <summary>True when the failed save tripped the named unique index.</summary>
     protected static bool IsUniqueViolation(DbUpdateException e, string indexName) =>
         e.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg &&

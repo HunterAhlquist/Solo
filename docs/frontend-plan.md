@@ -135,22 +135,7 @@ Three fixed status columns — **Unstarted / In Progress / Finished** — with *
 - **Playwright E2E** (against the real API + Testcontainers Postgres, reusing the backend test-auth handler): sign-in redirect, setup wizard happy path, create project→board→epic→task, drag across columns, two-browser live-update and presence test.
 - CI: client build + bUnit in the existing workflow; E2E as a separate job.
 
-## 11. Build order
-
-| Phase | Deliverable | Exit criterion |
-|---|---|---|
-| 0 | `Solo.Client` scaffold, hosted-WASM wiring, MudBlazor, CI build | `dotnet watch` on Api serves the client shell |
-| 1 | Auth: dynamic OIDC bootstrap, ID-token handler, guards, `/api/users/me` | Sign in against a real provider; authenticated API call succeeds |
-| 2 | Setup wizard | Fresh instance configurable end-to-end from the browser |
-| 3 | Projects list, project home: boards grid, members, label defaults, settings | Full project administration without touching the API directly |
-| 4 | Kanban board: swimlane layout, cards, drag & drop (rank/status/epic) | Board fully drivable by mouse; ranks persist |
-| 5 | Detail drawers: markdown, sub-tasks, comments, assignees | Every concept feature editable via save events |
-| 6 | Realtime: hub client, refetch-on-change, presence, conflict UX | Two-browser test: live updates + editing warnings work |
-| 7 | Audit viewer, instance settings, theming polish, E2E suite | E2E green in CI; dark/light themes complete |
-
-Phases 5 and 6 are independent after 4; 6 can start earlier if collisions become annoying during development.
-
-## 12. Decisions
+## 11. Decisions
 
 All open questions were resolved on 2026-07-07:
 

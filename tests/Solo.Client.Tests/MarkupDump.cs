@@ -16,7 +16,7 @@ namespace Solo.Client.Tests;
 ///
 /// Enabled only when SOLO_DUMP_MARKUP points at a directory, so it stays inert in CI.
 /// </summary>
-public class MarkupDump : BunitContext, IAsyncLifetime
+public class MarkupDump : ComponentTestBase
 {
     private static readonly string? OutputDirectory = Environment.GetEnvironmentVariable("SOLO_DUMP_MARKUP");
 
@@ -26,9 +26,7 @@ public class MarkupDump : BunitContext, IAsyncLifetime
 
     public MarkupDump()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
         JSInterop.SetupModule("./js/finished-column.js");
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
 
         var api = _http.CreateClient();
@@ -46,9 +44,6 @@ public class MarkupDump : BunitContext, IAsyncLifetime
         Services.AddScoped<DragBridge>();
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     [Fact]
     public void Dump_project_home_with_the_labels_tab_active()

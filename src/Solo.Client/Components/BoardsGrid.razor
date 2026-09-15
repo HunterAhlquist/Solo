@@ -2,6 +2,7 @@
 @inject ProjectNavStore Nav
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@inject SaveGuard Guard
 @inject NavigationManager Navigation
 
 @*
@@ -144,22 +145,18 @@ else
             return;
         }
 
-        try
+        var board = await Guard.RunAsync(() => Api.CreateBoardAsync(ProjectId,
+            new CreateBoardRequest
+            {
+                Name = created.Name,
+                Alias = created.Alias,
+                Icon = created.Icon,
+                ImageId = created.ImageId,
+            }));
+        if (board is not null)
         {
-            var board = await Api.CreateBoardAsync(ProjectId,
-                new CreateBoardRequest
-                {
-                    Name = created.Name,
-                    Alias = created.Alias,
-                    Icon = created.Icon,
-                    ImageId = created.ImageId,
-                });
             await Nav.RefreshBoardsAsync(ProjectId);
             Open(board);
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't create the board.", Severity.Error);
         }
     }
 
@@ -181,27 +178,20 @@ else
             return;
         }
 
-        try
-        {
-            await Api.UpdateBoardAsync(board.Id, new UpdateBoardRequest
+        var saved = await Guard.RunAsync(
+            () => Api.UpdateBoardAsync(board.Id, new UpdateBoardRequest
             {
                 Name = edited.Name,
                 Alias = edited.Alias,
                 Icon = edited.Icon,
                 ImageId = edited.ImageId,
                 Version = board.Version,
-            });
+            }),
+            LoadAsync);
+        if (saved is not null)
+        {
             await LoadAsync();
             await Nav.RefreshBoardsAsync(ProjectId);
-        }
-        catch (ApiConflictException)
-        {
-            Snackbar.Add("Updated by someone else — your view was refreshed.", Severity.Info);
-            await LoadAsync();
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't rename the board.", Severity.Error);
         }
     }
 
@@ -227,16 +217,11 @@ else
 
     private async Task SetOpenAsync(BoardDto board, bool isOpen)
     {
-        try
+        if (await Guard.RunAsync(() => Api.SetBoardOpenAsync(board.Id, isOpen)) is not null)
         {
-            await Api.SetBoardOpenAsync(board.Id, isOpen);
             await LoadAsync();
             // Closing a board removes it from the sidebar; reopening puts it back.
             await Nav.RefreshBoardsAsync(ProjectId);
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "Couldn't update the board.", Severity.Error);
         }
     }
 }
