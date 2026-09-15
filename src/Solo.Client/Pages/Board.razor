@@ -52,6 +52,13 @@ else
         }
     </div>
 
+    @if (!BoardIsOpen)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+            You cannot make changes to a board that is closed, reopen the board to enable editing.
+        </MudAlert>
+    }
+
     @* The board is a plain grid of drop zones; the dragging itself lives in
        js/drag.js, which reads the data-drag-* attributes below and reports a
        finished drop back through DragBridge. Two groups overlap here: the epic
@@ -211,7 +218,7 @@ else
     <div class="board-edge board-edge--right" aria-hidden="true"></div>
 
     <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite"
-                  CanModerate="@_canModerate" OnClose="@CloseDrawerAsync" />
+                  CanModerate="@_canModerate" CanComment="@BoardIsOpen" OnClose="@CloseDrawerAsync" />
 }
 
 @code {
@@ -239,7 +246,13 @@ else
     [SupplyParameterFromQuery(Name = "task")]
     public string? TaskQuery { get; set; }
 
-    private bool CanWrite => _canWrite && (Store.Board?.IsOpen ?? false);
+    /// <summary>
+    /// A closed board is read-only for everyone — comments included, which is why
+    /// this is its own flag rather than a term inside <see cref="CanWrite"/>.
+    /// </summary>
+    private bool BoardIsOpen => Store.Board?.IsOpen ?? false;
+
+    private bool CanWrite => _canWrite && BoardIsOpen;
 
     private Guid BoardId => Store.Board?.Id ?? Guid.Empty;
 

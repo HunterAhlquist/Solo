@@ -102,7 +102,8 @@
                 <MudDivider Class="my-4" />
             }
 
-            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" CanModerate="@CanModerate" />
+            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" CanModerate="@CanModerate"
+                           CanComment="@CanComment" />
 
             @if (CanWrite)
             {
@@ -142,6 +143,14 @@
     /// <summary>Project owner or super admin: may delete any comment.</summary>
     [Parameter]
     public bool CanModerate { get; set; }
+
+    /// <summary>
+    /// False on a closed board. Separate from <see cref="CanWrite"/> because the
+    /// two answer different questions: commenting asks whether the board is open,
+    /// not whether this member may edit it.
+    /// </summary>
+    [Parameter]
+    public bool CanComment { get; set; } = true;
 
     [Parameter]
     public EventCallback OnClose { get; set; }

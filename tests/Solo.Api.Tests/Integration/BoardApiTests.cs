@@ -882,4 +882,45 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
             new { body = "Hijacked", version = adminComment.Version }, TestClients.Json);
         Assert.Equal(HttpStatusCode.Forbidden, foreignEdit.StatusCode);
     }
+
+    /// <summary>
+    /// Closing a board freezes the conversation on it, for the admin who owns the
+    /// project as much as for anyone else. Reopening thaws it again.
+    /// </summary>
+    [SkippableFact]
+    public async Task ClosedBoards_TakeNoComments_OnEitherTasksOrEpics()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("Frozen");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Discuss" });
+        var epic = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Ship it" });
+        var comment = await _admin.PostJson<CommentDto>(
+            $"/api/tasks/{task.Id}/comments", new { body = "Said while open" });
+
+        await _admin.PutJson<BoardDto>($"/api/boards/{board.Id}/open", new { isOpen = false });
+
+        var onTask = await _admin.PostAsJsonAsync(
+            $"/api/tasks/{task.Id}/comments", new { body = "Too late" }, TestClients.Json);
+        var onEpic = await _admin.PostAsJsonAsync(
+            $"/api/epics/{epic.Id}/comments", new { body = "Too late" }, TestClients.Json);
+        var edit = await _admin.PutAsJsonAsync(
+            $"/api/comments/{comment.Id}",
+            new { body = "Revised", version = comment.Version }, TestClients.Json);
+        var delete = await _admin.DeleteAsync($"/api/comments/{comment.Id}");
+
+        Assert.Equal(HttpStatusCode.Conflict, onTask.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, onEpic.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, edit.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, delete.StatusCode);
+
+        // What was said before the board closed is still there to read.
+        var thread = await _admin.GetJson<List<CommentDto>>($"/api/tasks/{task.Id}/comments");
+        Assert.Equal([comment.Id], thread.Select(c => c.Id));
+
+        // Reopening is the way back: the same call now lands.
+        await _admin.PutJson<BoardDto>($"/api/boards/{board.Id}/open", new { isOpen = true });
+        var reopened = await _admin.PostJson<CommentDto>(
+            $"/api/tasks/{task.Id}/comments", new { body = "Back on" });
+        Assert.Equal("Back on", reopened.Body);
+    }
 }
