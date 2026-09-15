@@ -102,6 +102,11 @@ jobs:
     defaults:
       run:
         working-directory: src/Solo.Desktop
+    # Lifted to the job because a step's `if:` can read the `env` context but
+    # not `secrets` — the signing step skips itself when the cert is absent.
+    env:
+      MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
 
@@ -161,10 +166,7 @@ jobs:
       # skips that code entirely and signs against CSC_KEYCHAIN.
       - name: Import signing certificate
         id: keychain
-        if: runner.os == 'macOS' && secrets.MAC_CSC_LINK != ''
-        env:
-          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+        if: runner.os == 'macOS' && env.MAC_CSC_LINK != ''
         run: |
           set -euo pipefail
           KEYCHAIN="${RUNNER_TEMP}/solo-signing.keychain-db"
@@ -186,15 +188,29 @@ jobs:
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
           # codesign resolves the certificate chain through the search list,
           # not through --keychain alone; keep the existing keychains on it.
-          security list-keychains -d user -s "$KEYCHAIN" \
-            $(security list-keychains -d user | tr -d '"')
+          # `list-keychains` prints one indented, quoted path per line.
+          EXISTING=()
+          while IFS= read -r line; do
+            EXISTING+=("$(printf '%s' "$line" | sed -e 's/^[[:space:]]*"//' -e 's/"$//')")
+          done < <(security list-keychains -d user)
+          # bash 3.2 (still /bin/bash on the runners) treats an empty array as
+          # unbound under `set -u`, so don't expand one.
+          if [ ${#EXISTING[@]} -gt 0 ]; then
+            security list-keychains -d user -s "$KEYCHAIN" "${EXISTING[@]}"
+          else
+            security list-keychains -d user -s "$KEYCHAIN"
+          fi
 
           rm -f "$CERT"
           # find-identity exits 0 even when it found nothing, so check the
           # count here rather than discovering it as an unsigned .dmg.
           security find-identity -v -p codesigning "$KEYCHAIN" \
             | tee "${RUNNER_TEMP}/identities"
-          ! grep -q "0 valid identities found" "${RUNNER_TEMP}/identities"
+          if grep -q "0 valid identities found" "${RUNNER_TEMP}/identities"; then
+            echo "::error::No codesigning identity in the keychain — check that" \
+                 "MAC_CSC_LINK is a base64 .p12 and MAC_CSC_KEY_PASSWORD matches it."
+            exit 1
+          fi
           echo "CSC_KEYCHAIN=${KEYCHAIN}" >> "$GITHUB_ENV"
 
       # Without the signing/notarization secrets, electron-builder logs a
