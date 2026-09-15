@@ -56,6 +56,86 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task EpicGroups_EnforceMembershipAndWriteAccess()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("GroupAuth");
+        var group = await _admin.PostJson<EpicGroupDto>($"/api/boards/{board.Id}/groups", new { name = "Village" });
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members", new { email = "groupreader@example.com", role = "Read" });
+        var reader = _factory.As("groupreader", "groupreader@example.com");
+        Assert.Single(await reader.GetJson<List<EpicGroupDto>>($"/api/boards/{board.Id}/groups"));
+        Assert.Equal(group.Id, (await reader.GetJson<EpicGroupDto>($"/api/boards/{board.Id}/groups/{group.Id}")).Id);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PostAsJsonAsync($"/api/boards/{board.Id}/groups", new { name = "Denied" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PutAsJsonAsync($"/api/boards/{board.Id}/groups/{group.Id}", new { name = "Denied", version = group.Version })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.DeleteAsync($"/api/boards/{board.Id}/groups/{group.Id}?version={group.Version}")).StatusCode);
+        var stranger = _factory.As("stranger", "stranger@example.com");
+        Assert.Equal(HttpStatusCode.Forbidden, (await stranger.GetAsync($"/api/boards/{board.Id}/groups")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task EpicGroups_ShareRootRanks_MoveEpics_AndDeleteWithoutLosingWork()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("Groups");
+        var root = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Before" });
+        var group = await _admin.PostJson<EpicGroupDto>($"/api/boards/{board.Id}/groups", new { name = "Village 1" });
+        var after = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "After" });
+        Assert.True(root.Rank < group.Rank && group.Rank < after.Rank);
+        var first = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Buildings", groupId = group.Id });
+        var second = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "People", groupId = group.Id });
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "House", epicId = first.Id });
+        var adHoc = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Unrelated" });
+        Assert.Null(root.GroupId);
+        Assert.Equal(group.Id, first.GroupId);
+        second = await _admin.PutJson<EpicDto>($"/api/epics/{second.Id}/group", new
+        {
+            groupId = group.Id, followingId = first.Id, version = second.Version,
+        });
+        Assert.True(second.Rank < first.Rank);
+        var renamed = await _admin.PutJson<EpicGroupDto>($"/api/boards/{board.Id}/groups/{group.Id}", new { name = "Village", version = group.Version });
+        var stale = await _admin.PutAsJsonAsync($"/api/boards/{board.Id}/groups/{group.Id}", new { name = "Stale", version = group.Version });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var deleted = await _admin.DeleteAsync($"/api/boards/{board.Id}/groups/{group.Id}?version={renamed.Version}");
+        deleted.EnsureSuccessStatusCode();
+        var detail = await _admin.GetJson<BoardDetailDto>($"/api/boards/{board.Id}");
+        Assert.Empty(detail.Groups);
+        Assert.All(detail.Epics, e => Assert.Null(e.GroupId));
+        Assert.Equal(new[] { root.Id, second.Id, first.Id, after.Id }, detail.Epics.Select(e => e.Id));
+        Assert.Equal(first.Id, detail.Tasks.Single(t => t.Id == task.Id).EpicId);
+        Assert.Null(detail.Tasks.Single(t => t.Id == adHoc.Id).EpicId);
+    }
+
+    [SkippableFact]
+    public async Task EpicGroups_ValidateBoardAndNeighborScope_AndConcurrency()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("GroupScope");
+        var (_, other) = await CreateProjectWithBoard("OtherScope");
+        var group = await _admin.PostJson<EpicGroupDto>($"/api/boards/{board.Id}/groups", new { name = "Group" });
+        var foreign = await _admin.PostJson<EpicGroupDto>($"/api/boards/{other.Id}/groups", new { name = "Other" });
+        var epic = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Epic" });
+        var invalidCreate = await _admin.PostAsJsonAsync($"/api/boards/{board.Id}/epics", new { name = "Invalid", groupId = foreign.Id });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidCreate.StatusCode);
+        var invalidMove = await _admin.PutAsJsonAsync($"/api/epics/{epic.Id}/group", new { groupId = foreign.Id, version = epic.Version });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidMove.StatusCode);
+        var invalidNeighbor = await _admin.PutAsJsonAsync($"/api/epics/{epic.Id}/group", new { groupId = group.Id, followingId = foreign.Id, version = epic.Version });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidNeighbor.StatusCode);
+        var moved = await _admin.PutJson<EpicDto>($"/api/epics/{epic.Id}/group", new { groupId = group.Id, version = epic.Version });
+        Assert.Equal(group.Id, moved.GroupId);
+        var stale = await _admin.PutAsJsonAsync($"/api/epics/{epic.Id}/group", new { groupId = (Guid?)null, version = epic.Version });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var detached = await _admin.PutJson<EpicDto>($"/api/epics/{epic.Id}/group", new { groupId = (Guid?)null, precedingId = group.Id, version = moved.Version });
+        Assert.Null(detached.GroupId);
+        Assert.True(detached.Rank > group.Rank);
+        var reranked = await _admin.PutJson<EpicGroupDto>($"/api/boards/{board.Id}/groups/{group.Id}/rank", new { precedingId = detached.Id, version = group.Version });
+        Assert.True(reranked.Rank > detached.Rank);
+        var wrongBoard = await _admin.DeleteAsync($"/api/boards/{other.Id}/groups/{group.Id}?version={reranked.Version}");
+        Assert.Equal(HttpStatusCode.NotFound, wrongBoard.StatusCode);
+        var staleDelete = await _admin.DeleteAsync($"/api/boards/{board.Id}/groups/{group.Id}?version={group.Version}");
+        Assert.Equal(HttpStatusCode.Conflict, staleDelete.StatusCode);
+    }
+
+    [SkippableFact]
     public async Task ProjectCreation_SeedsLabelDefaults_AndBoardsCopyThem()
     {
         postgres.SkipUnlessDockerAvailable();

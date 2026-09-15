@@ -1444,3 +1444,51 @@ html.solo-desktop .solo-titlebar {
     top: 0.5rem;
     cursor: pointer;
 }
+
+
+.epic-group {
+    /* Use the epic border's resolved color, including theme tint and alpha. */
+    border: 1px solid color-mix(in srgb, var(--mud-palette-lines-default) 50%, transparent);
+    border-radius: var(--mud-default-borderradius);
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+    background: var(--mud-palette-background);
+}
+
+.epic-group__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.epic-group__title.mud-typography-h2 {
+    font-size: 1.6rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+.epic-group__actions {
+    display: flex;
+    flex-shrink: 0;
+}
+
+.solo-drag-target--group {
+    outline: none;
+}
+
+.solo-drag-target--group.solo-drag-target--active:not(.solo-drag-target--source-group) {
+    outline: 3px dotted color-mix(in srgb, var(--mud-palette-lines-default) 50%, transparent);
+    outline-offset: -2px;
+    background: transparent;
+}
+
+@media (max-width: 959.98px) {
+    .epic-group__title.mud-typography-h2 { font-size: 1.05rem; }
+}

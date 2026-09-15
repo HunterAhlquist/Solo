@@ -48,6 +48,7 @@ public static class EntityTypes
 {
     public const string Project = "project";
     public const string Board = "board";
+    public const string EpicGroup = "epicGroup";
     public const string Epic = "epic";
     public const string Task = "task";
     public const string SubTask = "subtask";

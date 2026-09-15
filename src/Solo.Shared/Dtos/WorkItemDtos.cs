@@ -9,7 +9,8 @@ public sealed record EpicDto(
     string? Description,
     decimal Rank,
     uint Version,
-    IReadOnlyList<Guid> AssigneeIds);
+    IReadOnlyList<Guid> AssigneeIds,
+    Guid? GroupId = null);
 
 public sealed record TaskDto(
     Guid Id,
@@ -38,6 +39,8 @@ public sealed record SubTaskDto(
 
 public sealed class CreateEpicRequest
 {
+    public Guid? GroupId { get; init; }
+
     [Required, MaxLength(FieldLimits.ItemName)]
     public required string Name { get; init; }
 

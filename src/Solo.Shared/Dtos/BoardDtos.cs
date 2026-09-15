@@ -29,7 +29,10 @@ public sealed record BoardDetailDto(
     uint Version,
     IReadOnlyList<EpicDto> Epics,
     IReadOnlyList<TaskDto> Tasks,
-    IReadOnlyList<LabelDto> Labels);
+    IReadOnlyList<LabelDto> Labels)
+{
+    public IReadOnlyList<EpicGroupDto> Groups { get; init; } = [];
+}
 
 public sealed class CreateBoardRequest
 {

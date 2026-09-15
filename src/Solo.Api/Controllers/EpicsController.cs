@@ -38,14 +38,17 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
             return NotFound();
         }
 
-        var existingRanks = await db.Epics.AsNoTracking()
-            .Where(e => e.BoardId == boardId).Select(e => e.Rank).ToListAsync(ct);
+        if (request.GroupId is { } groupId &&
+            !await db.EpicGroups.AnyAsync(g => g.Id == groupId && g.BoardId == boardId, ct))
+            return BadRequest("The group must belong to this board.");
+        var siblings = await EpicRanking.Siblings(db, boardId, request.GroupId, ct);
         var epic = new Epic
         {
             BoardId = boardId,
             Name = request.Name,
             Description = request.Description,
-            Rank = Ranking.ForAppend(existingRanks),
+            GroupId = request.GroupId,
+            Rank = Ranking.ForAppend(siblings.Select(i => i.Rank)),
         };
         db.Epics.Add(epic);
         await db.SaveChangesAsync(ct);
@@ -127,17 +130,13 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
             return NotFound();
         }
 
-        var siblings = await db.Epics
-            .Where(e => e.BoardId == epic.BoardId)
-            .OrderBy(e => e.Rank)
-            .ToListAsync(ct);
-        if (!Ranking.TryApplyMove(siblings, epicId, request.PrecedingId, request.FollowingId,
-                e => e.Id, e => e.Rank, (e, r) => e.Rank = r))
+        var siblings = await EpicRanking.Siblings(db, epic.BoardId, epic.GroupId, ct);
+        if (!EpicRanking.Move(siblings, epicId, request.PrecedingId, request.FollowingId))
         {
             return Problem(
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid rank target",
-                detail: "The neighbor ids are not epics on this board.");
+                detail: "The neighbor ids must belong to the same group or top-level board order.");
         }
 
         var conflict = await SaveOrConflictAsync(db, ct);
@@ -148,6 +147,28 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
 
         await notifier.BoardEntityChanged(epic.BoardId, EntityTypes.Epic, epicId,
             ChangeKind.Updated, nameof(epic.Rank));
+        return epic.ToDto();
+    }
+
+    [HttpPut("api/epics/{epicId:guid}/group")]
+    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    public async Task<ActionResult<EpicDto>> Move(Guid epicId, MoveEpicRequest request, CancellationToken ct)
+    {
+        var epic = await db.Epics.Include(e => e.Assignments).FirstOrDefaultAsync(e => e.Id == epicId, ct);
+        if (epic is null) return NotFound();
+        if (request.GroupId is { } groupId &&
+            !await db.EpicGroups.AnyAsync(g => g.Id == groupId && g.BoardId == epic.BoardId, ct))
+            return BadRequest("The group must belong to this board.");
+        var siblings = await EpicRanking.Siblings(db, epic.BoardId, request.GroupId, ct);
+        if (siblings.All(i => i.Id != epicId)) siblings.Add(EpicRankItem.For(epic));
+        if (!EpicRanking.Move(siblings, epicId, request.PrecedingId, request.FollowingId))
+            return BadRequest("The neighbors must belong to the destination group or board.");
+        epic.GroupId = request.GroupId;
+        UseClientVersion(db, epic, request.Version);
+        var conflict = await SaveOrConflictAsync(db, ct);
+        if (conflict is not null) return conflict;
+        await notifier.BoardEntityChanged(epic.BoardId, EntityTypes.Epic, epicId,
+            ChangeKind.Updated, nameof(epic.GroupId), nameof(epic.Rank));
         return epic.ToDto();
     }
 

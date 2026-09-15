@@ -29,13 +29,28 @@ public class Board : IVersioned
     public uint Version { get; set; }
 
     public Project? Project { get; set; }
+    public List<EpicGroup> EpicGroups { get; set; } = [];
     public List<Epic> Epics { get; set; } = [];
     public List<TaskItem> Tasks { get; set; } = [];
+}
+
+/// <summary>A ranked board section containing epics.</summary>
+public class EpicGroup : IVersioned
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public Guid BoardId { get; set; }
+    public required string Name { get; set; }
+    public decimal Rank { get; set; }
+    public uint Version { get; set; }
+    public Board? Board { get; set; }
+    public List<Epic> Epics { get; set; } = [];
 }
 
 /// <summary>Renders as a visual container surrounding its child tasks on the board.</summary>
 public class Epic : IVersioned
 {
+    public Guid? GroupId { get; set; }
+    public EpicGroup? Group { get; set; }
     public Guid Id { get; set; } = Guid.CreateVersion7();
     public Guid BoardId { get; set; }
     public required string Name { get; set; }

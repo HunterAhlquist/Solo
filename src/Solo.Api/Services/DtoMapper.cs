@@ -22,7 +22,10 @@ public static class DtoMapper
 
     public static EpicDto ToDto(this Epic e) =>
         new(e.Id, e.BoardId, e.Name, e.Description, e.Rank, e.Version,
-            e.Assignments.Select(a => a.UserId).ToList());
+            e.Assignments.Select(a => a.UserId).ToList(), e.GroupId);
+
+    public static EpicGroupDto ToDto(this EpicGroup g) =>
+        new(g.Id, g.BoardId, g.Name, g.Rank, g.Version);
 
     public static TaskDto ToDto(this TaskItem t) =>
         new(t.Id, t.BoardId, t.EpicId, t.Number, t.Name, t.LabelId, t.Description, t.Status,

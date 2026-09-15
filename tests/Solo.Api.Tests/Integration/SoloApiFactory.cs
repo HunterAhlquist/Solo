@@ -82,6 +82,9 @@ public sealed class SoloApiFactory(
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Keep integration tests independent of local development secrets.
+        builder.UseEnvironment("Testing");
+        builder.UseStaticWebAssets();
         var slot = 0;
         if (extensions.HasFlag(TestExtensions.Fixture))
         {

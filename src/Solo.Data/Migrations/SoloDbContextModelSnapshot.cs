@@ -17,7 +17,7 @@ namespace Solo.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.9")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -244,6 +244,9 @@ namespace Solo.Data.Migrations
                     b.Property<string>("Extensions")
                         .HasColumnType("jsonb");
 
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -263,7 +266,40 @@ namespace Solo.Data.Migrations
 
                     b.HasIndex("BoardId");
 
+                    b.HasIndex("GroupId");
+
                     b.ToTable("Epics");
+                });
+
+            modelBuilder.Entity("Solo.Data.Entities.EpicGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BoardId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<decimal>("Rank")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BoardId");
+
+                    b.ToTable("EpicGroups");
                 });
 
             modelBuilder.Entity("Solo.Data.Entities.ExtensionRegistration", b =>
@@ -719,6 +755,24 @@ namespace Solo.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Solo.Data.Entities.EpicGroup", "Group")
+                        .WithMany("Epics")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Board");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("Solo.Data.Entities.EpicGroup", b =>
+                {
+                    b.HasOne("Solo.Data.Entities.Board", "Board")
+                        .WithMany("EpicGroups")
+                        .HasForeignKey("BoardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Board");
                 });
 
@@ -810,6 +864,8 @@ namespace Solo.Data.Migrations
 
             modelBuilder.Entity("Solo.Data.Entities.Board", b =>
                 {
+                    b.Navigation("EpicGroups");
+
                     b.Navigation("Epics");
 
                     b.Navigation("Tasks");
@@ -822,6 +878,11 @@ namespace Solo.Data.Migrations
                     b.Navigation("Comments");
 
                     b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("Solo.Data.Entities.EpicGroup", b =>
+                {
+                    b.Navigation("Epics");
                 });
 
             modelBuilder.Entity("Solo.Data.Entities.Project", b =>

@@ -9,6 +9,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<Board> Boards => Set<Board>();
+    public DbSet<EpicGroup> EpicGroups => Set<EpicGroup>();
     public DbSet<Epic> Epics => Set<Epic>();
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
     public DbSet<SubTask> SubTasks => Set<SubTask>();
@@ -90,11 +91,21 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
                 .HasForeignKey(b => b.ProjectId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<EpicGroup>(e =>
+        {
+            e.Property(g => g.Name).HasMaxLength(300);
+            e.Property(g => g.Rank).HasPrecision(18, 6);
+            e.HasOne(g => g.Board).WithMany(b => b.EpicGroups)
+                .HasForeignKey(g => g.BoardId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Epic>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(300);
             e.Property(x => x.Rank).HasPrecision(18, 6);
             e.HasIndex(x => x.BoardId);
+            e.HasOne(x => x.Group).WithMany(g => g.Epics)
+                .HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Board).WithMany(b => b.Epics)
                 .HasForeignKey(x => x.BoardId).OnDelete(DeleteBehavior.Cascade);
         });

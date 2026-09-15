@@ -30,6 +30,7 @@ internal static class ProjectScopeResolver
                 case Comment { EpicId: { } eid }: neededEpicIds.Add(eid); break;
                 case Assignment { TaskId: { } tid }: neededTaskIds.Add(tid); break;
                 case Assignment { EpicId: { } eid }: neededEpicIds.Add(eid); break;
+                case EpicGroup g: neededBoardIds.Add(g.BoardId); break;
                 case Epic e: neededBoardIds.Add(e.BoardId); break;
                 case TaskItem t: neededBoardIds.Add(t.BoardId); break;
             }
@@ -53,6 +54,7 @@ internal static class ProjectScopeResolver
                 Board b => b.ProjectId,
                 Label l => l.ProjectId,
                 ProjectMember m => m.ProjectId,
+                EpicGroup g => ViaBoard(g.BoardId),
                 Epic e => ViaBoard(e.BoardId),
                 TaskItem t => ViaBoard(t.BoardId),
                 SubTask s => ViaTask(s.TaskId),

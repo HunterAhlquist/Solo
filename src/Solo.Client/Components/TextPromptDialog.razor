@@ -19,6 +19,11 @@
 @code {
     private string _text = string.Empty;
 
+    [Parameter]
+    public string InitialValue { get; set; } = string.Empty;
+
+    protected override void OnInitialized() => _text = InitialValue;
+
     [CascadingParameter]
     private IMudDialogInstance Dialog { get; set; } = default!;
 

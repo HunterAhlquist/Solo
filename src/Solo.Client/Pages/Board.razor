@@ -41,6 +41,10 @@ else
         {
             <div class="board-header__actions">
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateGroupAsync">
+                    Group
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
                            StartIcon="@Icons.Material.Filled.Add" OnClick="@CreateEpicAsync">
                     Epic
                 </MudButton>
@@ -82,13 +86,244 @@ else
             </div>
         </div>
 
-        @foreach (var epic in Store.Board.Epics)
+        @foreach (var item in TopLevelItems())
         {
-            @* The whole gutter is the "open epic" target; its own controls
-               (collapse chevron, action icons) stop the click instead. It is
-               also where a reorder drag may begin — from anywhere on it after a
-               press, or straight away from the six-dot handle. *@
-            <div class="kanban-lane" @key="epic.Id"
+            if (Store.Board.Groups.FirstOrDefault(g => g.Id == item.Id) is { } group)
+            {
+                <div @key="group.Id" class="epic-group-slot"
+                     data-drag-item="@(CanWrite ? group.Id.ToString() : null)"
+                     data-drag-from=".epic-group__header" data-drag-root-only>
+                    <section class="epic-group" data-drag-zone="@group.Id" data-drag-group="epic"
+                             data-drag-outline="group" aria-label="@($"Epic group {group.Name}")">
+                        <div class="epic-group__header" role="button" tabindex="0"
+                             aria-label="@($"Edit group {group.Name}")"
+                             @onclick="@(() => EditGroupAsync(group))"
+                             @onkeydown="@(e => GroupKeyDown(e, group))">
+                            <span @onclick:stopPropagation @onkeydown:stopPropagation>
+                                <MudIconButton Size="Size.Small"
+                                               Icon="@(IsGroupCollapsed(group.Id) ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
+                                               OnClick="@(() => ToggleGroup(group.Id))"
+                                               aria-label="@(IsGroupCollapsed(group.Id) ? "Expand group" : "Collapse group")" />
+                            </span>
+                            <MudText Typo="Typo.h2" Class="epic-group__title">@group.Name</MudText>
+                            <MudSpacer />
+                            @if (CanWrite)
+                            {
+                                <span class="epic-group__actions" @onclick:stopPropagation @onkeydown:stopPropagation>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                                   OnClick="@(() => CreateEpicInGroupAsync(group.Id))" aria-label="Add epic to group" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                   OnClick="@(() => DeleteGroupAsync(group))" aria-label="Delete group" />
+                                </span>
+                            }
+                        </div>
+                        @if (!IsGroupCollapsed(group.Id))
+                        {
+                            @foreach (var epic in Store.Board.Epics.Where(e => e.GroupId == group.Id).OrderBy(e => e.Rank))
+                            {
+                                @EpicLane(epic)
+                            }
+                        }
+                    </section>
+                </div>
+            }
+            else if (Store.Board.Epics.FirstOrDefault(e => e.Id == item.Id) is { } epic)
+            {
+                @EpicLane(epic)
+            }
+        }
+
+        @* The ad-hoc band: tasks that belong to no epic. Dropping here detaches.
+           Not a drag item — it has no rank of its own and always comes last. *@
+        <div class="kanban-lane kanban-lane--adhoc">
+            <div class="kanban-lane__gutter">
+                <div class="kanban-lane__title">
+                    <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Small" Color="Color.Secondary" />
+                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">No epic</MudText>
+                </div>
+            </div>
+
+            <div class="kanban-lane__zones">
+                @foreach (var status in BoardZones.Statuses)
+                {
+                    <KanbanZone @key="(BoardId, status)" Identifier="@BoardZones.Id(null, status)"
+                                Title="@BoardZones.Title(status)"
+                                IsFinished="@(status == TaskState.Finished)"
+                                Count="@ZoneCount(null, status)"
+                                HiddenCount="@HiddenCount(null, status)"
+                                OnExpand="@(() => ExpandFinished(null))">
+                        @foreach (var task in CardsIn(null, status))
+                        {
+                            @Card(task)
+                        }
+                    </KanbanZone>
+                }
+            </div>
+        </div>
+
+        @if (Store.Board.Epics.Count == 0 && Store.Board.Groups.Count == 0 && _ordered.Count == 0)
+        {
+            <EmptyState Message="This board is empty."
+                        Icon="@Icons.Material.Filled.ViewKanban"
+                        ActionText="@(CanWrite ? "Add a task" : null)"
+                        OnAction="@(() => CreateTaskAsync(null))"
+                        SecondaryActionText="@(CanWrite ? "Add an epic" : null)"
+                        OnSecondaryAction="@CreateEpicAsync" />
+        }
+    </div>
+
+    @* Column-swap targets for a drag on the phone carousel: the column you want
+       is usually off-screen when you pick a card up, so holding it against
+       either edge steps that band along. Painted here, lit from js/drag.js —
+       the drag reports a position every frame, which is no way to drive a
+       render. pointer-events:none, so they can never take the drop themselves. *@
+    <div class="board-edge board-edge--left" aria-hidden="true"></div>
+    <div class="board-edge board-edge--right" aria-hidden="true"></div>
+
+    <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite"
+                  CanModerate="@_canModerate" CanComment="@BoardIsOpen" OnClose="@CloseDrawerAsync" />
+}
+
+@code {
+    private readonly Dictionary<Guid, bool> _groupCollapsed = [];
+    private List<TaskDto> _ordered = [];
+    private readonly HashSet<Guid> _collapsed = [];
+    private readonly HashSet<Guid> _expandedFinished = [];
+    private readonly HashSet<Guid> _pulsing = [];
+    private HashSet<Guid> _folded = [];
+    private TaskDto? _openTask;
+    private EpicDto? _openEpic;
+    private bool _canWrite;
+    private bool _canModerate;
+
+    [Parameter]
+    public string ProjectAlias { get; set; } = string.Empty;
+
+    [Parameter]
+    public string BoardAlias { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Landing spot for ||serial|| links: ?task=N opens that task's drawer.
+    /// Bound as a string — a mistyped URL must not crash the route binder.
+    /// </summary>
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "task")]
+    public string? TaskQuery { get; set; }
+
+    /// <summary>
+    /// A closed board is read-only for everyone — comments included, which is why
+    /// this is its own flag rather than a term inside <see cref="CanWrite"/>.
+    /// </summary>
+    private bool BoardIsOpen => Store.Board?.IsOpen ?? false;
+
+    private bool CanWrite => _canWrite && BoardIsOpen;
+
+    private Guid BoardId => Store.Board?.Id ?? Guid.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnStoreChanged;
+        Store.Pulsed += OnPulsed;
+        await Drag.RegisterAsync("task", OnTaskDropAsync);
+        await Drag.RegisterAsync("epic", OnEpicDropAsync);
+
+        if (Session.Current is null)
+        {
+            try
+            {
+                await Session.LoadAsync();
+            }
+            catch (ApiException)
+            {
+                // The board load below reports the real problem.
+            }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var isCurrent = Store.Board is { } current &&
+            string.Equals(current.ProjectAlias, ProjectAlias, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(current.Alias, BoardAlias, StringComparison.OrdinalIgnoreCase);
+
+        if (!isCurrent)
+        {
+            try
+            {
+                _groupCollapsed.Clear();
+                await Store.LoadAsync(ProjectAlias, BoardAlias);
+                // On a board the owner surface means comment moderation only.
+                (_canModerate, _canWrite) = Session.AccessIn(Store.Members);
+                Rebuild();
+            }
+            catch (ApiException e)
+            {
+                Snackbar.Add(e.Detail ?? "Couldn't open that board.", Severity.Error);
+                return;
+            }
+        }
+
+        await OpenLinkedTaskAsync();
+    }
+
+    /// <summary>
+    /// Resolves a ?task=N query to its drawer, then strips the query (replacing
+    /// the history entry) so the plain board URL remains — and so clicking the
+    /// same link again is a fresh navigation rather than a no-op.
+    /// </summary>
+    private async Task OpenLinkedTaskAsync()
+    {
+        if (TaskQuery is null || Store.Board is not { } board)
+        {
+            return;
+        }
+
+        if (int.TryParse(TaskQuery, out var number))
+        {
+            if (board.Tasks.FirstOrDefault(t => t.Number == number) is { } task)
+            {
+                await OpenTask(task);
+            }
+            else
+            {
+                Snackbar.Add(
+                    $"{Aliases.Serial(board.ProjectAlias, board.Alias, number)} isn't on this board — " +
+                    "the task may have been deleted.", Severity.Warning);
+            }
+        }
+
+        Nav.NavigateTo($"projects/{board.ProjectAlias}/boards/{board.Alias}", replace: true);
+    }
+
+    // -- Rendering ----------------------------------------------------------
+
+    /// <summary>
+    /// The cards one zone shows, in rank order — everything a folded Finished
+    /// column has tucked away stays reachable behind its expander.
+    /// </summary>
+    private List<TaskDto> CardsIn(Guid? epicId, TaskState status) =>
+        _ordered
+            .Where(t => t.EpicId == epicId && t.Status == status && !_folded.Contains(t.Id))
+            .ToList();
+
+    /// <summary>
+    /// One card in a column. The wrapper, not the card itself, is the drag item:
+    /// it is what the engine fades in place, clones under the pointer and counts
+    /// when working out which slot the pointer is asking for.
+    /// </summary>
+    private RenderFragment<TaskDto> Card => task =>
+        @<div class="kanban-card-slot" @key="task.Id"
+              data-drag-item="@(CanWrite ? task.Id.ToString() : null)">
+            <TaskCard Task="@task"
+                      Label="@LabelOf(task)"
+                      Assignees="@MembersOf(task.AssigneeIds)"
+                      Presence="@Store.EditorsOn(EntityTypes.Task, task.Id)"
+                      Pulse="@_pulsing.Contains(task.Id)"
+                      OnOpen="@OpenTask" />
+        </div>;
+
+    private RenderFragment<EpicDto> EpicLane => epic =>
+        @<div class="kanban-lane" @key="epic.Id"
                  data-drag-item="@(CanWrite ? epic.Id.ToString() : null)"
                  data-drag-from=".kanban-lane__gutter"
                  data-drag-preview=".kanban-lane__gutter">
@@ -167,199 +402,19 @@ else
                         }
                     </div>
                 }
-            </div>
-        }
-
-        @* The ad-hoc band: tasks that belong to no epic. Dropping here detaches.
-           Not a drag item — it has no rank of its own and always comes last. *@
-        <div class="kanban-lane kanban-lane--adhoc">
-            <div class="kanban-lane__gutter">
-                <div class="kanban-lane__title">
-                    <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Small" Color="Color.Secondary" />
-                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">No epic</MudText>
-                </div>
-            </div>
-
-            <div class="kanban-lane__zones">
-                @foreach (var status in BoardZones.Statuses)
-                {
-                    <KanbanZone @key="(BoardId, status)" Identifier="@BoardZones.Id(null, status)"
-                                Title="@BoardZones.Title(status)"
-                                IsFinished="@(status == TaskState.Finished)"
-                                Count="@ZoneCount(null, status)"
-                                HiddenCount="@HiddenCount(null, status)"
-                                OnExpand="@(() => ExpandFinished(null))">
-                        @foreach (var task in CardsIn(null, status))
-                        {
-                            @Card(task)
-                        }
-                    </KanbanZone>
-                }
-            </div>
-        </div>
-
-        @if (Store.Board.Epics.Count == 0 && _ordered.Count == 0)
-        {
-            <EmptyState Message="This board is empty."
-                        Icon="@Icons.Material.Filled.ViewKanban"
-                        ActionText="@(CanWrite ? "Add a task" : null)"
-                        OnAction="@(() => CreateTaskAsync(null))"
-                        SecondaryActionText="@(CanWrite ? "Add an epic" : null)"
-                        OnSecondaryAction="@CreateEpicAsync" />
-        }
-    </div>
-
-    @* Column-swap targets for a drag on the phone carousel: the column you want
-       is usually off-screen when you pick a card up, so holding it against
-       either edge steps that band along. Painted here, lit from js/drag.js —
-       the drag reports a position every frame, which is no way to drive a
-       render. pointer-events:none, so they can never take the drop themselves. *@
-    <div class="board-edge board-edge--left" aria-hidden="true"></div>
-    <div class="board-edge board-edge--right" aria-hidden="true"></div>
-
-    <DetailDrawer Task="@_openTask" Epic="@_openEpic" CanWrite="@CanWrite"
-                  CanModerate="@_canModerate" CanComment="@BoardIsOpen" OnClose="@CloseDrawerAsync" />
-}
-
-@code {
-    private List<TaskDto> _ordered = [];
-    private readonly HashSet<Guid> _collapsed = [];
-    private readonly HashSet<Guid> _expandedFinished = [];
-    private readonly HashSet<Guid> _pulsing = [];
-    private HashSet<Guid> _folded = [];
-    private TaskDto? _openTask;
-    private EpicDto? _openEpic;
-    private bool _canWrite;
-    private bool _canModerate;
-
-    [Parameter]
-    public string ProjectAlias { get; set; } = string.Empty;
-
-    [Parameter]
-    public string BoardAlias { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Landing spot for ||serial|| links: ?task=N opens that task's drawer.
-    /// Bound as a string — a mistyped URL must not crash the route binder.
-    /// </summary>
-    [Parameter]
-    [SupplyParameterFromQuery(Name = "task")]
-    public string? TaskQuery { get; set; }
-
-    /// <summary>
-    /// A closed board is read-only for everyone — comments included, which is why
-    /// this is its own flag rather than a term inside <see cref="CanWrite"/>.
-    /// </summary>
-    private bool BoardIsOpen => Store.Board?.IsOpen ?? false;
-
-    private bool CanWrite => _canWrite && BoardIsOpen;
-
-    private Guid BoardId => Store.Board?.Id ?? Guid.Empty;
-
-    protected override async Task OnInitializedAsync()
-    {
-        Store.Changed += OnStoreChanged;
-        Store.Pulsed += OnPulsed;
-        await Drag.RegisterAsync("task", OnTaskDropAsync);
-        await Drag.RegisterAsync("epic", OnEpicDropAsync);
-
-        if (Session.Current is null)
-        {
-            try
-            {
-                await Session.LoadAsync();
-            }
-            catch (ApiException)
-            {
-                // The board load below reports the real problem.
-            }
-        }
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        var isCurrent = Store.Board is { } current &&
-            string.Equals(current.ProjectAlias, ProjectAlias, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(current.Alias, BoardAlias, StringComparison.OrdinalIgnoreCase);
-
-        if (!isCurrent)
-        {
-            try
-            {
-                await Store.LoadAsync(ProjectAlias, BoardAlias);
-                // On a board the owner surface means comment moderation only.
-                (_canModerate, _canWrite) = Session.AccessIn(Store.Members);
-                Rebuild();
-            }
-            catch (ApiException e)
-            {
-                Snackbar.Add(e.Detail ?? "Couldn't open that board.", Severity.Error);
-                return;
-            }
-        }
-
-        await OpenLinkedTaskAsync();
-    }
-
-    /// <summary>
-    /// Resolves a ?task=N query to its drawer, then strips the query (replacing
-    /// the history entry) so the plain board URL remains — and so clicking the
-    /// same link again is a fresh navigation rather than a no-op.
-    /// </summary>
-    private async Task OpenLinkedTaskAsync()
-    {
-        if (TaskQuery is null || Store.Board is not { } board)
-        {
-            return;
-        }
-
-        if (int.TryParse(TaskQuery, out var number))
-        {
-            if (board.Tasks.FirstOrDefault(t => t.Number == number) is { } task)
-            {
-                await OpenTask(task);
-            }
-            else
-            {
-                Snackbar.Add(
-                    $"{Aliases.Serial(board.ProjectAlias, board.Alias, number)} isn't on this board — " +
-                    "the task may have been deleted.", Severity.Warning);
-            }
-        }
-
-        Nav.NavigateTo($"projects/{board.ProjectAlias}/boards/{board.Alias}", replace: true);
-    }
-
-    // -- Rendering ----------------------------------------------------------
-
-    /// <summary>
-    /// The cards one zone shows, in rank order — everything a folded Finished
-    /// column has tucked away stays reachable behind its expander.
-    /// </summary>
-    private List<TaskDto> CardsIn(Guid? epicId, TaskState status) =>
-        _ordered
-            .Where(t => t.EpicId == epicId && t.Status == status && !_folded.Contains(t.Id))
-            .ToList();
-
-    /// <summary>
-    /// One card in a column. The wrapper, not the card itself, is the drag item:
-    /// it is what the engine fades in place, clones under the pointer and counts
-    /// when working out which slot the pointer is asking for.
-    /// </summary>
-    private RenderFragment<TaskDto> Card => task =>
-        @<div class="kanban-card-slot" @key="task.Id"
-              data-drag-item="@(CanWrite ? task.Id.ToString() : null)">
-            <TaskCard Task="@task"
-                      Label="@LabelOf(task)"
-                      Assignees="@MembersOf(task.AssigneeIds)"
-                      Presence="@Store.EditorsOn(EntityTypes.Task, task.Id)"
-                      Pulse="@_pulsing.Contains(task.Id)"
-                      OnOpen="@OpenTask" />
-        </div>;
+            </div>;
 
     private void Rebuild()
     {
         _ordered = (Store.Board?.Tasks ?? []).OrderBy(t => t.Rank).ToList();
+        if (Store.Board is { } board)
+        {
+            foreach (var group in board.Groups.Where(g => !_groupCollapsed.ContainsKey(g.Id)))
+            {
+                var epics = board.Epics.Where(e => e.GroupId == group.Id).Select(e => e.Id).ToHashSet();
+                _groupCollapsed[group.Id] = !_ordered.Any(t => t.EpicId is { } id && epics.Contains(id) && t.Status != TaskState.Finished);
+            }
+        }
 
         // Finished-column hygiene: past 25 cards the overflow folds away.
         _folded = [];
@@ -508,7 +563,9 @@ else
 
     // -- Epics --------------------------------------------------------------
 
-    private async Task CreateEpicAsync()
+    private Task CreateEpicAsync() => CreateEpicInGroupAsync(null);
+
+    private async Task CreateEpicInGroupAsync(Guid? groupId)
     {
         var name = await PromptAsync("New epic", "Epic name");
         if (name is null)
@@ -516,9 +573,10 @@ else
             return;
         }
 
-        var created = await Guard.RunAsync(() => Api.CreateEpicAsync(BoardId, new CreateEpicRequest { Name = name }));
+        var created = await Guard.RunAsync(() => Api.CreateEpicAsync(BoardId, new CreateEpicRequest { Name = name, GroupId = groupId }));
         if (created is not null)
         {
+            if (groupId is { } id) _groupCollapsed[id] = false;
             await Store.RefreshAsync();
         }
     }
@@ -532,35 +590,74 @@ else
     /// </summary>
     private async Task OnEpicDropAsync(DragDrop drop)
     {
-        var epics = Store.Board?.Epics.ToList();
-        if (epics is null || !CanWrite || drop.ItemGuid is not { } draggedId)
+        if (Store.Board is not { } board || !CanWrite || drop.ItemGuid is not { } id) return;
+        Guid? targetGroup = null;
+        if (drop.ZoneId != "epics")
         {
-            return;
+            if (!Guid.TryParse(drop.ZoneId, out var groupId) || board.Groups.All(g => g.Id != groupId)) return;
+            targetGroup = groupId;
         }
+        var group = board.Groups.FirstOrDefault(g => g.Id == id);
+        var epic = board.Epics.FirstOrDefault(e => e.Id == id);
+        if (group is null && epic is null || group is not null && targetGroup is not null) return;
+        var others = targetGroup is null
+            ? TopLevelItems().Where(i => i.Id != id).Select(i => i.Id).ToList()
+            : board.Epics.Where(e => e.GroupId == targetGroup && e.Id != id).OrderBy(e => e.Rank).Select(e => e.Id).ToList();
+        var destinationItems = targetGroup is null
+            ? TopLevelItems().Select(i => i.Id).ToList()
+            : board.Epics.Where(e => e.GroupId == targetGroup).OrderBy(e => e.Rank).Select(e => e.Id).ToList();
+        if ((group is not null || epic!.GroupId == targetGroup) &&
+            destinationItems.IndexOf(id) == Math.Clamp(drop.Index, 0, others.Count)) return;
+        var (preceding, following) = RankNeighbors.Compute(others, drop.Index);
+        if (group is not null)
+            await Guard.RunAsync(() => Api.RerankEpicGroupAsync(group, preceding, following), Store.RefreshAsync);
+        else
+            await Guard.RunAsync(() => Api.MoveEpicAsync(epic!, targetGroup, preceding, following), Store.RefreshAsync);
+        if (targetGroup is { } destination) _groupCollapsed[destination] = false;
+        await Store.RefreshAsync();
+    }
 
-        var sourceIndex = epics.FindIndex(e => e.Id == draggedId);
-        if (sourceIndex < 0)
+    private List<(Guid Id, decimal Rank)> TopLevelItems() => Store.Board is { } board
+        ? board.Groups.Select(g => (g.Id, g.Rank))
+            .Concat(board.Epics.Where(e => e.GroupId is null).Select(e => (e.Id, e.Rank)))
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id).ToList()
+        : [];
+
+    private bool IsGroupCollapsed(Guid id) => _groupCollapsed.GetValueOrDefault(id);
+    private void ToggleGroup(Guid id) => _groupCollapsed[id] = !IsGroupCollapsed(id);
+
+    private Task GroupKeyDown(KeyboardEventArgs e, EpicGroupDto group) =>
+        e.Key == "Enter" ? EditGroupAsync(group) : Task.CompletedTask;
+
+    private async Task CreateGroupAsync()
+    {
+        var name = await PromptAsync("New group", "Group title");
+        if (name is null) return;
+        await Guard.RunAsync(() => Api.CreateEpicGroupAsync(BoardId, name));
+        await Store.RefreshAsync();
+    }
+
+    private async Task EditGroupAsync(EpicGroupDto group)
+    {
+        if (!CanWrite) return;
+        var dialog = await Dialogs.ShowAsync<TextPromptDialog>("Edit group", new DialogParameters<TextPromptDialog>
         {
-            return;
-        }
+            { d => d.Label, "Group title" }, { d => d.InitialValue, group.Name }, { d => d.SaveText, "Save" },
+        });
+        if (await dialog.Result is not { Canceled: false, Data: string name }) return;
+        await Guard.RunAsync(() => Api.UpdateEpicGroupAsync(group, name), Store.RefreshAsync);
+        await Store.RefreshAsync();
+    }
 
-        var others = epics.Where(e => e.Id != draggedId).Select(e => e.Id).ToList();
-        var insertionIndex = Math.Clamp(drop.Index, 0, others.Count);
-        if (insertionIndex == sourceIndex)
+    private async Task DeleteGroupAsync(EpicGroupDto group)
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>("Delete group", new DialogParameters<ConfirmDialog>
         {
-            return;
-        }
-
-        var (preceding, following) = RankNeighbors.Compute(others, insertionIndex);
-
-        var moved = await Guard.RunAsync(
-            () => Api.RerankEpicAsync(draggedId, preceding, following), Store.RefreshAsync);
-        if (moved is not null)
-        {
-            Store.ApplyEpic(moved);
-        }
-
-        StateHasChanged();
+            { d => d.Message, $"Delete the group \"{group.Name}\"? Its epics and tasks will be kept, with the epics returned to the board in their current order." },
+        });
+        if (await dialog.Result is not { Canceled: false }) return;
+        await Guard.RunAsync(() => Api.DeleteEpicGroupAsync(group), Store.RefreshAsync);
+        await Store.RefreshAsync();
     }
 
     private async Task DeleteEpicAsync(EpicDto epic)

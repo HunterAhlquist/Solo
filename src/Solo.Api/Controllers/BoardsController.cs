@@ -90,6 +90,7 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         System.Linq.Expressions.Expression<Func<Board, bool>> filter, CancellationToken ct) =>
         db.Boards.AsNoTracking()
             .Include(b => b.Project)
+            .Include(b => b.EpicGroups)
             .Include(b => b.Epics).ThenInclude(e => e.Assignments)
             .Include(b => b.Tasks).ThenInclude(t => t.SubTasks)
             .Include(b => b.Tasks).ThenInclude(t => t.Assignments)
@@ -108,7 +109,10 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
             board.Icon, board.ImageId, board.IsOpen, board.Version,
             board.Epics.OrderBy(e => e.Rank).Select(e => e.ToDto()).ToList(),
             board.Tasks.OrderBy(t => t.Rank).Select(t => t.ToDto()).ToList(),
-            labels.Select(l => l.ToDto()).ToList());
+            labels.Select(l => l.ToDto()).ToList())
+        {
+            Groups = board.EpicGroups.OrderBy(g => g.Rank).Select(g => g.ToDto()).ToList(),
+        };
     }
 
     [HttpPut("api/boards/{boardId:guid}")]

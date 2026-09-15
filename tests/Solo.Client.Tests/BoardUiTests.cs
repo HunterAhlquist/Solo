@@ -113,6 +113,101 @@ public class BoardUiTests : ComponentTestBase
         Assert.DoesNotContain("Delete me", page.Markup);
     }
 
+    [Fact]
+    public void Groups_render_in_mixed_rank_order_and_no_epic_stays_outside()
+    {
+        var group = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "Village 1", 2048, 1);
+        var grouped = TestData.Epic() with { GroupId = group.Id };
+        var before = TestData.Epic(Guid.NewGuid(), 1024) with { Name = "Before" };
+        var after = TestData.Epic(Guid.NewGuid(), 3072) with { Name = "After" };
+        QueueBoard(TestData.Board(epics: [before, grouped, after], tasks: [TestData.Task(epicId: grouped.Id)]) with { Groups = [group] });
+        var page = RenderBoard();
+        var rootItems = page.FindAll(".kanban > [data-drag-item]");
+        Assert.Equal(new[] { before.Id.ToString(), group.Id.ToString(), after.Id.ToString() }, rootItems.Select(i => i.GetAttribute("data-drag-item")));
+        Assert.Single(page.FindAll(".epic-group .kanban-lane"));
+        Assert.Empty(page.FindAll(".epic-group .kanban-lane--adhoc"));
+        Assert.Equal(".epic-group__header", page.Find(".epic-group-slot").GetAttribute("data-drag-from"));
+        Assert.False(page.Find(".epic-group-slot").HasAttribute("data-drag-preview"));
+        Assert.Equal("group", page.Find(".epic-group").GetAttribute("data-drag-outline"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Empty_or_finished_groups_start_collapsed_and_can_be_expanded(bool empty)
+    {
+        var group = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "Village 1", 1024, 1);
+        var epic = TestData.Epic() with { GroupId = group.Id };
+        QueueBoard(TestData.Board(epics: empty ? [] : [epic], tasks: empty ? [] : [TestData.Task(epicId: epic.Id, status: TaskState.Finished)]) with { Groups = [group] });
+        var page = RenderBoard();
+        Assert.Empty(page.FindAll(".epic-group .kanban-lane"));
+        page.Find("[aria-label='Expand group']").Click();
+        Assert.Single(page.FindAll("[aria-label='Collapse group']"));
+        Assert.Equal(empty ? 0 : 1, page.FindAll(".epic-group .kanban-lane").Count);
+    }
+
+    [Fact]
+    public async Task Moving_an_epic_into_a_collapsed_group_sends_its_version_and_expands_it()
+    {
+        var group = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "Village 1", 1024, 1);
+        var epic = TestData.Epic() with { Rank = 2048 };
+        var board = TestData.Board(epics: [epic]) with { Groups = [group] };
+        QueueBoard(board);
+        var page = RenderBoard();
+        var moved = epic with { GroupId = group.Id, Version = 2 };
+        _http.RespondJson(moved);
+        _http.RespondJson(board with { Epics = [moved] });
+        await DropAsync(page, "epic", epic.Id, group.Id.ToString(), 0);
+        var path = $"PUT /api/epics/{epic.Id}/group";
+        var body = System.Text.Json.JsonDocument.Parse(_http.Bodies[_http.Paths.IndexOf(path)]).RootElement;
+        Assert.Equal(group.Id, body.GetProperty("groupId").GetGuid());
+        Assert.Equal(epic.Version, body.GetProperty("version").GetUInt32());
+        Assert.Single(page.FindAll(".epic-group .kanban-lane"));
+    }
+
+    [Fact]
+    public void Adding_an_epic_to_an_empty_group_expands_it()
+    {
+        var group = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "Village", 1024, 1);
+        var board = TestData.Board() with { Groups = [group] };
+        QueueBoard(board);
+        var dialogs = Render<MudDialogProvider>();
+        var page = RenderBoard();
+        page.Find("[aria-label='Add epic to group']").Click();
+        dialogs.Find("input").Input("Buildings");
+        var epic = TestData.Epic() with { Name = "Buildings", GroupId = group.Id };
+        _http.RespondJson(epic);
+        _http.RespondJson(board with { Epics = [epic] });
+        dialogs.FindAll("button").Single(b => b.TextContent.Contains("Create")).Click();
+        page.WaitForAssertion(() => Assert.Single(page.FindAll(".epic-group .kanban-lane")));
+    }
+
+    [Fact]
+    public async Task A_group_reranks_among_ungrouped_epics()
+    {
+        var group = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "Village", 2048, 7);
+        var epic = TestData.Epic();
+        var board = TestData.Board(epics: [epic]) with { Groups = [group] };
+        QueueBoard(board);
+        var page = RenderBoard();
+        _http.RespondJson(group with { Rank = 512, Version = 8 });
+        _http.RespondJson(board with { Groups = [group with { Rank = 512, Version = 8 }] });
+        await DropAsync(page, "epic", group.Id, "epics", 0);
+        Assert.Equal((null, epic.Id), NeighborsSentTo($"PUT /api/boards/{board.Id}/groups/{group.Id}/rank"));
+        Assert.Equal(group.Id.ToString(), page.Find(".kanban > [data-drag-item]").GetAttribute("data-drag-item"));
+    }
+
+    [Fact]
+    public async Task A_group_cannot_be_dropped_inside_another_group()
+    {
+        var first = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "First", 1024, 1);
+        var second = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "Second", 2048, 1);
+        QueueBoard(TestData.Board() with { Groups = [first, second] });
+        var page = RenderBoard();
+        await DropAsync(page, "epic", first.Id, second.Id.ToString(), 0);
+        Assert.DoesNotContain(_http.Paths, p => p.StartsWith("PUT"));
+    }
+
     // -- Epic bands reorder by dragging their gutter, not by move buttons --------
 
     private static readonly Guid EpicA = Guid.Parse("a0000000-0000-0000-0000-000000000001");
@@ -132,6 +227,7 @@ public class BoardUiTests : ComponentTestBase
         ]));
         var page = RenderBoard();
         _http.RespondJson(TestData.Epic(EpicC, 512m));
+        _http.RespondJson(TestData.Board(epics: [TestData.Epic(EpicC, 512m), TestData.Epic(EpicA), TestData.Epic(EpicB, 2048m)]));
         return page;
     }
 
@@ -146,7 +242,7 @@ public class BoardUiTests : ComponentTestBase
             .OnDropAsync(new DragDrop(group, itemId.ToString(), zoneId, index)));
 
     private (Guid? Preceding, Guid? Following) RerankOf(Guid epicId) =>
-        NeighborsSentTo($"PUT /api/epics/{epicId}/rank");
+        NeighborsSentTo($"PUT /api/epics/{epicId}/group");
 
     /// <summary>The neighbours a rerank asked the server to slot the item between.</summary>
     private (Guid? Preceding, Guid? Following) NeighborsSentTo(string put)

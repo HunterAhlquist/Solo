@@ -400,12 +400,20 @@ window.solo = window.solo || {};
         const line = document.createElement('div');
         line.className = 'solo-drag-line';
 
-        const zones = zonesOf(group);
+        // A group can only move among the board's top-level items. Its own
+        // nested zone and descendants must never receive the lifted group.
+        const sourceZone = item.parentElement.closest(`[${ZONE}]`);
+        const zones = zonesOf(group).filter(zone => !item.contains(zone) &&
+            (!item.hasAttribute('data-drag-root-only') || zone === sourceZone));
         const outlines = zones
             .filter(candidate => candidate.hasAttribute('data-drag-outline'))
             .map(candidate => {
                 const element = document.createElement('div');
                 element.className = 'solo-drag-target';
+                if (candidate.getAttribute('data-drag-outline') === 'group') {
+                    element.classList.add('solo-drag-target--group');
+                    if (candidate === sourceZone) element.classList.add('solo-drag-target--source-group');
+                }
                 return { zone: candidate, element };
             });
 
