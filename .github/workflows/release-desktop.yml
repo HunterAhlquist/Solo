@@ -147,18 +147,72 @@ jobs:
       - name: Publish Blazor client into shell
         run: npm run build:client
 
-      # Without the signing/notarization secrets below, electron-builder
-      # logs a warning and ships unsigned builds (mac users must
-      # right-click → Open on first launch). Add the secrets and the same
-      # workflow signs and notarizes with no other changes.
+      # electron-builder builds its own signing keychain when CSC_LINK is set,
+      # and that path is broken: it creates the keychain with a random password
+      # but then calls `security set-key-partition-list -k` with the *p12
+      # export* password (app-builder-lib importCerts). The two were never the
+      # same secret; it only worked because a just-created keychain is already
+      # unlocked, so the bogus password went unchecked. Since macos-latest
+      # moved to macOS 27 the unlock happens unconditionally and the build dies
+      # with "SecKeychainUnlock: The user name or passphrase you entered is not
+      # correct."
+      #
+      # So we own the keychain instead. With CSC_LINK unset electron-builder
+      # skips that code entirely and signs against CSC_KEYCHAIN.
+      - name: Import signing certificate
+        id: keychain
+        if: runner.os == 'macOS' && secrets.MAC_CSC_LINK != ''
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="${RUNNER_TEMP}/solo-signing.keychain-db"
+          # Only ever unlocks this throwaway keychain, on a throwaway runner.
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          CERT="${RUNNER_TEMP}/mac-csc.p12"
+
+          echo "$MAC_CSC_LINK" | base64 --decode > "$CERT"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # No auto-lock: a locked keychain is what broke the build in the
+          # first place, and codesign runs unattended minutes later.
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -k "$KEYCHAIN" -P "$MAC_CSC_KEY_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
+          # The keychain password, which is the one this actually wants.
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # codesign resolves the certificate chain through the search list,
+          # not through --keychain alone; keep the existing keychains on it.
+          security list-keychains -d user -s "$KEYCHAIN" \
+            $(security list-keychains -d user | tr -d '"')
+
+          rm -f "$CERT"
+          # find-identity exits 0 even when it found nothing, so check the
+          # count here rather than discovering it as an unsigned .dmg.
+          security find-identity -v -p codesigning "$KEYCHAIN" \
+            | tee "${RUNNER_TEMP}/identities"
+          ! grep -q "0 valid identities found" "${RUNNER_TEMP}/identities"
+          echo "CSC_KEYCHAIN=${KEYCHAIN}" >> "$GITHUB_ENV"
+
+      # Without the signing/notarization secrets, electron-builder logs a
+      # warning and ships unsigned builds (mac users must right-click → Open
+      # on first launch). Add the secrets and the same workflow signs and
+      # notarizes with no other changes.
       - name: Package
         run: npx electron-builder --publish never ${{ matrix.args }}
         env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # The runner is ephemeral, but the keychain outlives the job on a
+      # self-hosted one and leaving it on the search list breaks later builds.
+      - name: Remove signing keychain
+        if: always() && steps.keychain.outcome == 'success'
+        run: security delete-keychain "${RUNNER_TEMP}/solo-signing.keychain-db"
 
       - uses: actions/upload-artifact@v7
         with:
