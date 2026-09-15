@@ -6,14 +6,6 @@ using Solo.Shared.Dtos;
 
 namespace Solo.Mcp.Protocol;
 
-/// <summary>One MCP tool: what a client sees in <c>tools/list</c>, and what runs on <c>tools/call</c>.</summary>
-public sealed record McpTool(
-    string Name,
-    string Title,
-    string Description,
-    JsonObject InputSchema,
-    Func<JsonObject, CancellationToken, Task<JsonNode?>> Handler);
-
 /// <summary>
 /// The tool set, ported from the desktop shell's local MCP server.
 /// </summary>
