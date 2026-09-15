@@ -146,8 +146,9 @@ else
                     <div class="kanban-lane__zones">
                         @foreach (var status in BoardZones.Statuses)
                         {
-                            <KanbanZone Identifier="@BoardZones.Id(epic.Id, status)"
+                            <KanbanZone @key="(BoardId, epic.Id, status)" Identifier="@BoardZones.Id(epic.Id, status)"
                                         Title="@BoardZones.Title(status)"
+                                        IsFinished="@(status == TaskState.Finished)"
                                         Count="@ZoneCount(epic.Id, status)"
                                         HiddenCount="@HiddenCount(epic.Id, status)"
                                         OnExpand="@(() => ExpandFinished(epic.Id))">
@@ -175,8 +176,9 @@ else
             <div class="kanban-lane__zones">
                 @foreach (var status in BoardZones.Statuses)
                 {
-                    <KanbanZone Identifier="@BoardZones.Id(null, status)"
+                    <KanbanZone @key="(BoardId, status)" Identifier="@BoardZones.Id(null, status)"
                                 Title="@BoardZones.Title(status)"
+                                IsFinished="@(status == TaskState.Finished)"
                                 Count="@ZoneCount(null, status)"
                                 HiddenCount="@HiddenCount(null, status)"
                                 OnExpand="@(() => ExpandFinished(null))">
