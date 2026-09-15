@@ -11,6 +11,7 @@
     shared editor. Commenting needs membership, not write access, so there is no
     CanWrite gate here: read-only members comment too. Only the author edits a
     comment; the author — or a moderator (project owner / super admin) — deletes it.
+    A closed board is the one thing that stops all three: see CanComment.
 *@
 
 <MudText Typo="Typo.subtitle2" Class="mb-2">Comments</MudText>
@@ -33,7 +34,7 @@ else
                     @comment.CreatedAt.ToLocalTime().ToString("g")
                 </MudText>
                 <MudSpacer />
-                @if (comment.AuthorId == Session.UserId || CanModerate)
+                @if (CanComment && (comment.AuthorId == Session.UserId || CanModerate))
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                    OnClick="@(() => DeleteAsync(comment))" aria-label="Delete comment" />
@@ -49,7 +50,7 @@ else
             else
             {
                 <div class="markdown-clickable" @onclick="@(() => BeginEditAsync(comment))"
-                     style="@(comment.AuthorId == Session.UserId ? "cursor:text" : null)">
+                     style="@(CanComment && comment.AuthorId == Session.UserId ? "cursor:text" : null)">
                     <SoloMarkdown Value="@comment.Body" />
                 </div>
             }
@@ -61,9 +62,12 @@ else
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">No comments yet.</MudText>
     }
 
-    <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
-                    MaxLength="FieldLimits.Comment"
-                    Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
+    @if (CanComment)
+    {
+        <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
+                        MaxLength="FieldLimits.Comment"
+                        Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
+    }
 }
 
 @code {
@@ -81,9 +85,27 @@ else
     [Parameter]
     public bool CanModerate { get; set; }
 
+    /// <summary>
+    /// False once the board is closed, which freezes the thread: still readable,
+    /// but no new comment, no edit, no delete. Not <c>CanWrite</c> — that would
+    /// also shut out the read-only members this thread exists for.
+    /// </summary>
+    [Parameter]
+    public bool CanComment { get; set; } = true;
+
     protected override void OnInitialized() => Store.CommentsChanged += OnCommentsChanged;
 
-    protected override Task OnParametersSetAsync() => LoadAsync();
+    protected override Task OnParametersSetAsync()
+    {
+        // The board can close under an open editor — a hub update re-renders the
+        // drawer, and the draft has nowhere left to save to.
+        if (!CanComment)
+        {
+            _editingId = null;
+        }
+
+        return LoadAsync();
+    }
 
     private void OnCommentsChanged() => _ = InvokeAsync(async () =>
     {
@@ -111,7 +133,7 @@ else
     {
         // Following a link in a comment must not also open it for editing;
         // solo-interop's capture-phase shim saw the click first.
-        if (comment.AuthorId == Session.UserId &&
+        if (CanComment && comment.AuthorId == Session.UserId &&
             !await Js.InvokeAsync<bool>("solo.markdown.wasLinkClick"))
         {
             _editingId = comment.Id;

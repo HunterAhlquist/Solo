@@ -43,6 +43,11 @@ public sealed class CommentsController(
             return NotFound();
         }
 
+        if (await ValidateBoardOpen(boardId, ct) is { } closed)
+        {
+            return closed;
+        }
+
         return await Add(new Comment
         {
             AuthorId = currentUser.User!.Id,
@@ -61,6 +66,11 @@ public sealed class CommentsController(
         if (boardId is null)
         {
             return NotFound();
+        }
+
+        if (await ValidateBoardOpen(boardId, ct) is { } closed)
+        {
+            return closed;
         }
 
         return await Add(new Comment
@@ -82,6 +92,11 @@ public sealed class CommentsController(
         if (comment is null)
         {
             return NotFound();
+        }
+
+        if (await ValidateBoardOpen(await BoardIdOf(comment, ct), ct) is { } closed)
+        {
+            return closed;
         }
 
         if (comment.AuthorId != currentUser.User!.Id)
@@ -113,6 +128,11 @@ public sealed class CommentsController(
         if (comment is null)
         {
             return NotFound();
+        }
+
+        if (await ValidateBoardOpen(await BoardIdOf(comment, ct), ct) is { } closed)
+        {
+            return closed;
         }
 
         if (comment.AuthorId != currentUser.User!.Id)
@@ -158,14 +178,37 @@ public sealed class CommentsController(
 
     private async Task Notify(Comment comment, ChangeKind kind, CancellationToken ct, params string[] fields)
     {
-        var boardId = comment.EpicId is not null
-            ? await db.Epics.AsNoTracking()
-                .Where(e => e.Id == comment.EpicId).Select(e => (Guid?)e.BoardId).FirstOrDefaultAsync(ct)
-            : await db.Tasks.AsNoTracking()
-                .Where(t => t.Id == comment.TaskId).Select(t => (Guid?)t.BoardId).FirstOrDefaultAsync(ct);
+        var boardId = await BoardIdOf(comment, ct);
         if (boardId is not null)
         {
             await notifier.BoardEntityChanged(boardId.Value, EntityTypes.Comment, comment.Id, kind, fields);
         }
     }
+
+    /// <summary>The board the commented-on epic or task belongs to.</summary>
+    private Task<Guid?> BoardIdOf(Comment comment, CancellationToken ct) =>
+        comment.EpicId is not null
+            ? db.Epics.AsNoTracking()
+                .Where(e => e.Id == comment.EpicId).Select(e => (Guid?)e.BoardId).FirstOrDefaultAsync(ct)
+            : db.Tasks.AsNoTracking()
+                .Where(t => t.Id == comment.TaskId).Select(t => (Guid?)t.BoardId).FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// Closing a board freezes the conversation with it: the thread stays
+    /// readable, but takes no new comments and no edits to the ones already
+    /// there. The drawer hides the composer; this is the half a direct call
+    /// can't skip. A board that no longer exists reads as closed — the comment
+    /// it held is on its way out anyway.
+    /// </summary>
+    private async Task<ObjectResult?> ValidateBoardOpen(Guid? boardId, CancellationToken ct) =>
+        boardId is { } id && !await db.Boards.AsNoTracking().AnyAsync(b => b.Id == id && b.IsOpen, ct)
+            ? Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Board is closed",
+                detail: BoardClosedDetail)
+            : null;
+
+    /// <summary>Worded as the board's own banner words it, since a rejected save shows this.</summary>
+    private const string BoardClosedDetail =
+        "You cannot make changes to a board that is closed, reopen the board to enable editing.";
 }

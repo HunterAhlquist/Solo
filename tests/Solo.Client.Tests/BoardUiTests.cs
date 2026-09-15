@@ -456,7 +456,7 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
 
     // -- Comment moderation mirrors the API: author, project owner or super admin --
 
-    private IRenderedComponent<CommentThread> RenderThread(bool canModerate)
+    private IRenderedComponent<CommentThread> RenderThread(bool canModerate, bool canComment = true)
     {
         var taskId = Guid.NewGuid();
         _http.RouteJson("/comments", new[]
@@ -466,7 +466,8 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         });
         return Render<CommentThread>(p => p
             .Add(c => c.TaskId, taskId)
-            .Add(c => c.CanModerate, canModerate));
+            .Add(c => c.CanModerate, canModerate)
+            .Add(c => c.CanComment, canComment));
     }
 
     [Fact]
@@ -485,6 +486,44 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
 
         Assert.Contains("Nerf the shotgun", thread.Markup);
         Assert.Empty(thread.FindAll("[aria-label='Delete comment']"));
+    }
+
+    // -- Bug: a closed board still took comments ---------------------------------
+
+    /// <summary>
+    /// Closing a board freezes its conversation too. Read-only members comment on
+    /// an open board, so this can't ride on CanWrite — and a moderator, who may
+    /// delete anything anywhere, is the strongest case that the gate holds.
+    /// </summary>
+    [Fact]
+    public void A_closed_board_leaves_the_thread_readable_but_frozen()
+    {
+        var thread = RenderThread(canModerate: true, canComment: false);
+
+        Assert.Contains("Nerf the shotgun", thread.Markup);
+        Assert.Empty(thread.FindAll("[aria-label='Delete comment']"));
+        Assert.Empty(thread.FindAll("textarea"));
+    }
+
+    [Fact]
+    public void A_closed_board_says_why_nothing_can_be_edited()
+    {
+        QueueBoard(TestData.Board(tasks: [TestData.Task()], isOpen: false));
+        var page = RenderBoard();
+
+        page.WaitForAssertion(() => Assert.Contains(
+            "You cannot make changes to a board that is closed, reopen the board to enable editing.",
+            page.Find(".mud-alert").TextContent));
+    }
+
+    [Fact]
+    public void An_open_board_carries_no_such_banner()
+    {
+        QueueBoard(TestData.Board(tasks: [TestData.Task()]));
+        var page = RenderBoard();
+
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".kanban-lane")));
+        Assert.Empty(page.FindAll(".mud-alert"));
     }
 
     /// <summary>The description must be a real editor, not a dead one-line label.</summary>

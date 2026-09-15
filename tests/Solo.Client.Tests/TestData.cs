@@ -55,7 +55,8 @@ internal static class TestData
     public static BoardDetailDto Board(
         IReadOnlyList<TaskDto>? tasks = null,
         IReadOnlyList<EpicDto>? epics = null,
-        IReadOnlyList<LabelDto>? labels = null) =>
-        new(BoardId, ProjectId, "PROJ", "Board", "BRD", null, null, true, 1,
+        IReadOnlyList<LabelDto>? labels = null,
+        bool isOpen = true) =>
+        new(BoardId, ProjectId, "PROJ", "Board", "BRD", null, null, isOpen, 1,
             epics ?? [], tasks ?? [], labels ?? []);
 }
