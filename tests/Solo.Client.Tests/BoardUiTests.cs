@@ -26,6 +26,7 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
     public BoardUiTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        JSInterop.SetupModule("./js/finished-column.js");
         Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
 
@@ -862,6 +863,37 @@ public class BoardUiTests : BunitContext, IAsyncLifetime
         Assert.Equal(
             $"Finished {BoardZones.FinishedVisibleLimit + 3}",
             Headings(page.Find(".kanban-lane__zones"))[2]);
+    }
+
+    [Fact]
+    public async Task Overflowing_finished_columns_collapse_independently_and_remember_the_users_choice()
+    {
+        QueueBoard(TestData.Board(epics: [TestData.Epic()]));
+        var page = RenderBoard();
+        var finished = page.FindComponents<KanbanZone>().Where(c => c.Instance.IsFinished).ToArray();
+        Assert.Empty(page.FindAll(".kanban-column__toggle"));
+
+        foreach (var column in finished)
+            await page.InvokeAsync(() => column.Instance.OverflowChanged(true));
+
+        Assert.Equal(2, page.FindAll(".kanban-column--collapsed").Count);
+        Assert.Equal(4, page.FindAll("[data-drag-group='task']").Count);
+        Assert.All(page.FindAll(".kanban-column__toggle"),
+            button => Assert.Equal("false", button.GetAttribute("aria-expanded")));
+
+        finished[0].Find(".kanban-column__toggle").Click();
+        Assert.Single(page.FindAll(".kanban-column--collapsed"));
+        Assert.Equal("task", finished[0].Find(".kanban-zone").GetAttribute("data-drag-group"));
+        Assert.Equal("true", finished[0].Find(".kanban-column__toggle").GetAttribute("aria-expanded"));
+
+        // Resizing or editing cards can cross the threshold again; don't undo
+        // the user's choice when the column grows back past it.
+        await page.InvokeAsync(() => finished[0].Instance.OverflowChanged(false));
+        Assert.Empty(finished[0].FindAll(".kanban-column__toggle"));
+        await page.InvokeAsync(() => finished[0].Instance.OverflowChanged(true));
+        Assert.Equal("true", finished[0].Find(".kanban-column__toggle").GetAttribute("aria-expanded"));
+        finished[0].Find(".kanban-column__toggle").Click();
+        Assert.Equal(2, page.FindAll(".kanban-column--collapsed").Count);
     }
 
     /// <summary>Each column's heading, as "&lt;status&gt; &lt;count&gt;".</summary>

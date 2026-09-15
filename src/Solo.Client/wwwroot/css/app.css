@@ -491,6 +491,40 @@ code {
     transition: background-color 120ms ease-in-out;
 }
 
+/* Finished history can use the height active work already needs, but must not
+   keep stretching the lane on its own. */
+.kanban-zone--finished {
+    max-height: max(calc(32rem * 2 / 3), var(--kanban-active-height, 0px));
+    overflow-y: auto;
+}
+
+.kanban-zone__content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.kanban-column__toggle {
+    align-self: flex-start;
+    flex-shrink: 0;
+    margin: 0.25rem 0.5rem;
+}
+
+.kanban-column--collapsed {
+    position: relative;
+}
+
+/* Keep the cards measurable at the column's real width without letting their
+   height stretch the lane. visibility also removes their keyboard targets. */
+.kanban-column--collapsed .kanban-zone--finished {
+    position: absolute;
+    inset: 0 0 auto;
+    visibility: hidden;
+    pointer-events: none;
+}
+
 /* The wrapper the drag engine treats as the item, so the card itself keeps its
    own classes for the deadline tint and the change pulse. min-width:0 because a
    column flexbox stretches its items to the full width and would otherwise let
@@ -535,6 +569,11 @@ code {
 
 .kanban-card:active {
     cursor: grabbing;
+}
+
+/* Match the drag engine's opt-in, including closed boards and read-only access. */
+.kanban-card-slot:not([data-drag-item]) .kanban-card {
+    cursor: not-allowed;
 }
 
 .kanban-card__labels {

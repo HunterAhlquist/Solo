@@ -27,6 +27,7 @@ public class MarkupDump : BunitContext, IAsyncLifetime
     public MarkupDump()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        JSInterop.SetupModule("./js/finished-column.js");
         Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
 
@@ -42,6 +43,7 @@ public class MarkupDump : BunitContext, IAsyncLifetime
         Services.AddScoped<RecentProjectsStore>();
         Services.AddScoped<ProjectOrderStore>();
         Services.AddScoped<SaveGuard>();
+        Services.AddScoped<DragBridge>();
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
