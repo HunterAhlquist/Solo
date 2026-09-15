@@ -3,14 +3,8 @@ using Solo.Client.Theming;
 
 namespace Solo.Client.Tests;
 
-public sealed class ThemeStateTests : BunitContext, IAsyncLifetime
+public sealed class ThemeStateTests : SoloBunitContext
 {
-    public ThemeStateTests() => JSInterop.Mode = JSRuntimeMode.Loose;
-
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
-
     [Fact]
     public async Task Preference_changes_update_the_desktop_appearance_source()
     {

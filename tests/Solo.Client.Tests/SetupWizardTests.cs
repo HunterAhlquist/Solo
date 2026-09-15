@@ -16,15 +16,12 @@ namespace Solo.Client.Tests;
 /// one being entered), and getting that backwards silently fires the final handoff
 /// on step one — which 401s, because nobody has signed in yet.
 /// </summary>
-public class SetupWizardTests : BunitContext, IAsyncLifetime
+public class SetupWizardTests : ComponentTestBase
 {
     private readonly StubHttp _http = new();
 
     public SetupWizardTests()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
-
         var api = _http.CreateClient();
         var config = new AppConfig
         {
@@ -40,9 +37,6 @@ public class SetupWizardTests : BunitContext, IAsyncLifetime
         Services.AddScoped<GoogleIdentityService>();
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     private IRenderedComponent<Pages.Setup> RenderWizard()
     {

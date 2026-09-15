@@ -17,16 +17,10 @@ Derived from `Core Concept.md` (Obsidian: Solo Project Management vault). Solo i
 
 ## 1. Solution structure
 
-```
-Solo.sln
-├── src/
-│   ├── Solo.Api        — ASP.NET Core host: controllers, SignalR hub, auth, DI, serves WASM static files
-│   ├── Solo.Data       — EF Core DbContext, entities, migrations, audit interceptor, seeding
-│   └── Solo.Shared     — DTOs, enums, hub contract interfaces (referenced by both Api and the WASM client)
-└── tests/
-    ├── Solo.Api.Tests  — integration tests (Testcontainers Postgres, WebApplicationFactory)
-    └── Solo.Data.Tests — unit tests (status rollup, label scoping, audit writer)
-```
+Three projects were planned here — `Solo.Api` (host, hub, auth), `Solo.Data` (DbContext,
+entities, migrations, audit interceptor) and `Solo.Shared` (DTOs, enums, hub contracts) —
+with `Solo.Api.Tests` and `Solo.Data.Tests` over them. For the layout as it stands today,
+including the client and extension projects added since, see [CLAUDE.md](../CLAUDE.md).
 
 One deployable unit: the API host also serves the published Blazor WASM app, so deployment is a single container + Postgres.
 
@@ -87,7 +81,7 @@ REST controllers using DTOs from `Solo.Shared` (never entities). Mutations follo
 /api/projects/{id}/audit               paged, filterable query (admin/owner)
 ```
 
-Validation via FluentValidation (or data annotations — decide at scaffold time); ProblemDetails for errors; `409 Conflict` on concurrency-token mismatch so the client can re-fetch and merge.
+Validation via data annotations on the DTOs; ProblemDetails for errors; `409 Conflict` on concurrency-token mismatch so the client can re-fetch and merge.
 
 **The sidebar's project → board tree needs no new endpoint.** It composes `GET /api/projects` (already returns `ProjectSummaryDto` with the caller's `Role` and `IsOwner`, which is exactly what gates "Add board") with `GET /api/projects/{id}/boards`, fetched lazily the first time a project is expanded. A dedicated `/api/nav` payload was considered and rejected: it would duplicate two endpoints to save requests the user may never make, and it would need its own authorization rules. The N+1 is bounded by how many projects a person actually opens.
 
@@ -116,21 +110,7 @@ Single `BoardHub` with typed client contract in `Solo.Shared`:
 - **Unit:** status rollup (manual status without sub-tasks; derived Unstarted/InProgress/Finished with them), label resolution (board-owned labels, defaults copy/reset), per-provider OIDC claim mapping (Google, Microsoft), audit interceptor output, access-role decisions.
 - **Integration:** Testcontainers Postgres + `WebApplicationFactory` with a test auth handler — CRUD round-trips, authz denials (Read user attempting writes), audit rows produced per save event, concurrency 409s, SignalR broadcast received on save, setup handoff (static credentials rejected once `SetupCompleted` is true).
 
-## 9. Build order
-
-| Phase | Deliverable | Exit criterion |
-|---|---|---|
-| 0 | Solution scaffold, Docker/compose, CI, health endpoint | `docker compose up` serves a hello endpoint |
-| 1 | Entities, DbContext, migrations, label seeding | Migrations create full schema; seeds verified by test |
-| 2 | OIDC auth (configurable provider), first-run setup wizard + super admin handoff, membership + authz | Sign-in and handoff flows work; static account dead post-setup; role policies enforced in tests |
-| 3 | CRUD API for the full hierarchy + comments + labels | Integration suite green over Testcontainers |
-| 4 | Audit interceptor + retention background job | Every save event produces correct audit rows |
-| 5 | SignalR hub: change broadcast + presence | Two clients see each other's saves and presence live |
-| 6 | Hardening: concurrency handling, validation polish, docs | 409 merge path tested; README deployment guide |
-
-Phases 4 and 5 depend only on 1–3 and can proceed in parallel if desired.
-
-## 10. Decisions
+## 9. Decisions
 
 All initially open questions were resolved on 2026-07-07:
 

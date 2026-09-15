@@ -338,8 +338,6 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         return task.ToDto();
     }
 
-    private Guid ProjectId() => (Guid)HttpContext.Items[ProjectAccessHandler.ProjectIdItem]!;
-
     private async Task<TaskItem?> LoadTask(Guid taskId, CancellationToken ct, bool track)
     {
         // Sub-tasks and assignees are unrelated to each other, so a single join

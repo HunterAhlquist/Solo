@@ -15,7 +15,7 @@ namespace Solo.Client.Tests;
 /// demand. Boards must not be fetched until a project is expanded — otherwise
 /// signing in costs one request per project for a tree nobody opened.
 /// </summary>
-public class NavMenuTests : BunitContext, IAsyncLifetime
+public class NavMenuTests : ComponentTestBase
 {
     private static readonly Guid OtherProjectId = Guid.Parse("99999999-9999-9999-9999-999999999999");
 
@@ -23,9 +23,6 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
 
     public NavMenuTests()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
-
         var api = _http.CreateClient();
         Services.AddSingleton(api);
         Services.AddSingleton(new UserSession(api));
@@ -39,9 +36,6 @@ public class NavMenuTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(new ExtensionCatalog());
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     private static ProjectSummaryDto Project(Guid id, string name, ProjectRole role, bool isOwner) =>
         new(id, name, AliasOf(name), "Games", null, role, isOwner);

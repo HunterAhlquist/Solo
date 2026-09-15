@@ -163,8 +163,7 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
             return NotFound();
         }
 
-        var projectId = (Guid)HttpContext.Items[ProjectAccessHandler.ProjectIdItem]!;
-        var invalid = await AssignmentHelper.InvalidAssignees(db, projectId, request.UserIds, ct);
+        var invalid = await AssignmentHelper.InvalidAssignees(db, ProjectId(), request.UserIds, ct);
         if (invalid.Count > 0)
         {
             return AssignmentHelper.InvalidAssigneesProblem(this, invalid);

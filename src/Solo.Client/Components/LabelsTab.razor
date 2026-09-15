@@ -1,6 +1,7 @@
 @inject ApiClient Api
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@inject SaveGuard Guard
 
 @*
     Labels, split by what they apply to. With a BoardId this edits that board's
@@ -225,19 +226,7 @@ else
 
     private async Task GuardAsync(Func<Task> action)
     {
-        try
-        {
-            await action();
-        }
-        catch (ApiConflictException)
-        {
-            Snackbar.Add("Updated by someone else — your view was refreshed.", Severity.Info);
-        }
-        catch (ApiException e)
-        {
-            Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
-        }
-
+        await Guard.RunAsync(action);
         await LoadAsync();
         await Changed.InvokeAsync();
     }

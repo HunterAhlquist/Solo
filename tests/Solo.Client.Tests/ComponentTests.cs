@@ -5,6 +5,7 @@ using MudBlazor;
 using MudBlazor.Services;
 using Solo.Client.Components;
 using Solo.Client.Realtime;
+using Solo.Client.State;
 using Solo.Client.Theming;
 using Solo.Shared;
 using Solo.Shared.Dtos;
@@ -13,17 +14,29 @@ using Solo.Shared.Hubs;
 namespace Solo.Client.Tests;
 
 /// <summary>
-/// Renders MudBlazor components in isolation. Two accommodations are needed:
-/// popovers normally assert that a <c>MudPopoverProvider</c> is on the page (there
-/// is no layout here), and several MudBlazor services are async-disposable, which
-/// the synchronous xunit teardown can't handle — hence <see cref="IAsyncLifetime"/>.
+/// The bUnit plumbing every client test needs, MudBlazor or not: components
+/// chatter to JS on render and we're asserting markup, so interop runs loose; and
+/// several services are async-disposable, which the synchronous xunit teardown
+/// can't handle — hence <see cref="IAsyncLifetime"/>.
 /// </summary>
-public abstract class ComponentTestBase : BunitContext, IAsyncLifetime
+public abstract class SoloBunitContext : BunitContext, IAsyncLifetime
+{
+    protected SoloBunitContext() => JSInterop.Mode = JSRuntimeMode.Loose;
+
+    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
+
+    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
+}
+
+/// <summary>
+/// Renders MudBlazor components in isolation, adding the services they expect:
+/// popovers otherwise assert that a <c>MudPopoverProvider</c> is on the page, and
+/// there is no layout here.
+/// </summary>
+public abstract class ComponentTestBase : SoloBunitContext
 {
     protected ComponentTestBase()
     {
-        // MudBlazor components chatter to JS on render; we're asserting markup.
-        JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
 
@@ -31,11 +44,11 @@ public abstract class ComponentTestBase : BunitContext, IAsyncLifetime
         // components see the built-in fallback — which is what a test asserting
         // markup wants anyway.
         Services.AddScoped(sp => new ThemeState(sp.GetRequiredService<IJSRuntime>()));
+
+        // Every component that saves injects it, so it belongs here rather than
+        // in each test class that happens to render one.
+        Services.AddScoped<SaveGuard>();
     }
-
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 }
 
 /// <summary>Status-rollup display and presence badges (frontend plan §9).</summary>

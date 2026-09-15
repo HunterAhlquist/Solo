@@ -1,5 +1,6 @@
 using System.Net;
 using Solo.Client.Api;
+using Solo.Shared;
 using Solo.Shared.Dtos;
 
 namespace Solo.Client.State;
@@ -17,6 +18,21 @@ public sealed class UserSession(ApiClient api)
     public Guid? UserId => Current?.Id;
 
     public bool IsSuperAdmin => Current?.IsSuperAdmin ?? false;
+
+    /// <summary>
+    /// What this user may do in a project, from its membership list. Kept here
+    /// because both halves mirror a server rule and drift if they are restated:
+    /// the API's write policy accepts the owner flag or a read/write role and
+    /// nothing else, while the super admin's blanket rights reach the owner
+    /// surface — audit, settings, member and comment moderation — but never
+    /// write access it was not granted by membership.
+    /// </summary>
+    public (bool IsOwner, bool CanWrite) AccessIn(IEnumerable<ProjectMemberDto> members)
+    {
+        var me = members.FirstOrDefault(m => m.UserId == UserId);
+        var isOwner = me?.IsOwner ?? false;
+        return (IsSuperAdmin || isOwner, isOwner || me?.Role == ProjectRole.ReadWrite);
+    }
 
     /// <summary>
     /// The API refused the profile outright (403): signed in, but allowed nothing.

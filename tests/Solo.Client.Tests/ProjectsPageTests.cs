@@ -12,24 +12,18 @@ namespace Solo.Client.Tests;
 /// The project list doubles as a board index: each card carries its project's
 /// open boards, so the whole instance is one click deep from the landing page.
 /// </summary>
-public class ProjectsPageTests : BunitContext, IAsyncLifetime
+public class ProjectsPageTests : ComponentTestBase
 {
     private readonly StubHttp _http = new();
 
     public ProjectsPageTests()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
-
         var api = _http.CreateClient();
         Services.AddSingleton(api);
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     /// <summary>
     /// The boards route has to be offered first: its path contains "/api/projects"

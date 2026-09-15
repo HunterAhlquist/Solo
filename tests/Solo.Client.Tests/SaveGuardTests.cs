@@ -12,22 +12,17 @@ namespace Solo.Client.Tests;
 /// The 409 contract from the plan: refetch, replace local state, and tell the
 /// user once. Snackbar, not modal — with presence warnings this should be rare.
 /// </summary>
-public class SaveGuardTests : BunitContext, IAsyncLifetime
+public class SaveGuardTests : ComponentTestBase
 {
     private readonly SaveGuard _guard;
     private readonly ISnackbar _snackbar;
 
     public SaveGuardTests()
     {
-        JSInterop.Mode = JSRuntimeMode.Loose;
-        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         _snackbar = Services.GetRequiredService<ISnackbar>();
         _guard = new SaveGuard(_snackbar);
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
-
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     [Fact]
     public async Task A_successful_save_reports_success_and_says_nothing()

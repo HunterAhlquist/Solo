@@ -12,7 +12,7 @@
 >
 > Verified: 509 tests green (`Solo.Data.Tests` 51, `Solo.Client.Tests` 255, `Solo.Api.Tests` 203), including a fixture extension loaded from a real package directory into its own `AssemblyLoadContext` against Testcontainers Postgres.
 
-> **Update (2026-08-18):** the plan's worked example (§13) has been replaced in practice by **`solo-mcp`** ([src/Solo.Mcp](../src/Solo.Mcp) + [src/Solo.Mcp.Client](../src/Solo.Mcp.Client)), which exercises every capability here against a feature people actually want: its own schema and migrations (§6), namespaced endpoints (§5), a client assembly with its own page and static content (§9), and a package built and released by CI (§12).
+> **Update (2026-08-18):** the plan's worked example — a hypothetical `roadmap` extension — has been replaced in practice by **`solo-mcp`** ([src/Solo.Mcp](../src/Solo.Mcp) + [src/Solo.Mcp.Client](../src/Solo.Mcp.Client)), which exercises every capability here against a feature people actually want: its own schema and migrations (§6), namespaced endpoints (§5), a client assembly with its own page and static content (§9), and a package built and released by CI.
 >
 > Building it closed two gaps this plan left open, both now part of the contract:
 >
@@ -382,28 +382,7 @@ On web these are always one build. In the shell they are not, and an RCL compile
 
 The authorization-bypass test in the integration list is the one that matters most; write it first.
 
-## 12. Build order
-
-| Phase | Deliverable | Exit criterion |
-|---|---|---|
-| 0 | Outbound webhooks + scoped API tokens | An external script reacts to a task change. **No extension system involved** |
-| 1 | `Solo.Extensibility` + loader, load contexts, package format, admin failure surface | A fixture extension loads from a zip; a bad zip is reported, not fatal |
-| 2 | Endpoints: application parts + route-namespacing convention | Fixture endpoint answers at `/api/ext/…`, cannot shadow core |
-| 3 | Data: per-extension `DbContext`, schema, migrations, `ISoloQuery` | Fixture migrations land in `ext_*`; cross-project reads return empty; a failed migration disables that extension instead of leaving it half-wired |
-| 4 | Hooks: operation catalog, dispatcher filter, failure policy, admin visibility | A hook vetoes `task.setStatus` with a real ProblemDetails; a throwing hook fails closed and names itself |
-| 5 | Events: `IDomainEventPublisher`, `BoardNotifier` as subscriber | Extension handler observes a task change; a throwing handler doesn't break the write |
-| 6 | Client: version reporting in the config bootstrap, `AdditionalAssemblies`, manifest nav, trimming decision | A fixture page routes and renders in a **Release** build, and in the Electron shell against a newer instance — where an out-of-range extension degrades to an unavailable nav entry rather than a broken route |
-| 7 | Slots, JSONB field bag, admin management UI incl. remove/purge | Roadmap extension (§13) runs end to end; purging it leaves no schema and no JSONB keys behind |
-
-Phase 0 is not a stepping stone — it's a hedge. It covers most of what people mean by "extension support," ships in days, and `AuthSession` is already most of a bot token. Build it and see what's genuinely still missing before committing to phases 1–7.
-
-## 13. Worked example — the roadmap
-
-`roadmap.zip`: manifest declaring one nav entry and schema `ext_roadmap` → `server/Roadmap.dll` with a `MilestonesController` (published at `/api/ext/roadmap/milestones`) and a `RoadmapDbContext` owning a `Milestones` table → `client/Roadmap.Client.dll` with `@page "/roadmap/{ProjectAlias}"` built from MudBlazor → an event subscription on `task.updated` recomputing milestone rollups live → a Before hook on `task.setStatus` rejecting a move to Finished while its milestone is frozen.
-
-That single extension exercises every capability in this plan, which makes it the right thing to build phase 7 against.
-
-## 14. Decisions
+## 12. Decisions
 
 - **In-process, fully trusted.** No sandbox is attempted. The manifest's permissions are documentation. Installing an extension is deploying code, and the docs say so in those words.
 - **Extensions never touch `SoloDbContext`'s model.** Own context, own schema, own migration history. This is not negotiable without giving up automatic startup migrations.
@@ -422,6 +401,4 @@ That single extension exercises every capability in this plan, which makes it th
 - **Durable event delivery deferred.** In-process fire-and-forget; an outbox if someone ever needs it.
 - **`Solo.Shared` becomes a public contract.** Accepted — it effectively already is.
 
-### Open
 
-- **Whether phase 0 is enough.** Genuinely possible that webhooks plus API tokens end this plan at §12 phase 0, and that would be a good outcome rather than a failure.
