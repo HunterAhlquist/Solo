@@ -114,8 +114,16 @@ root README.
 ## Packaging
 
 ```sh
-npm run dist   # electron-builder → dist/ (dmg/zip, nsis, AppImage)
+npm run dist   # electron-builder → dist/ (universal dmg, nsis, AppImage)
 ```
+
+macOS ships as a single universal `.dmg` rather than a dmg/zip per architecture.
+That merge is stricter than it looks: `electron-liquid-glass` ships both darwin
+prebuilds in every install, so the x64 and arm64 halves carry byte-identical
+`.node` files, and `@electron/universal` treats an identical Mach-O in both
+halves as a packaging mistake unless it is listed in `mac.x64ArchFiles`. Both
+prebuilds belong in the bundle — the loader picks one by `process.arch` at
+runtime — so the glob there is an exemption, not a workaround.
 
 electron-builder's `latest` dist-tag on npm sits at 26.15.3 while the newest
 published 26.x is 26.15.7 (tagged `v26`), so `npm outdated` reports the pinned

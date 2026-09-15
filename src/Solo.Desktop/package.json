@@ -52,9 +52,12 @@
       "category": "public.app-category.productivity",
       "icon": "build/Solo.icon",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": "universal"
+        }
       ],
+      "x64ArchFiles": "**/electron-liquid-glass/prebuilds/**",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",

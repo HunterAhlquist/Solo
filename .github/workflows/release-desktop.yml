@@ -14,8 +14,8 @@ env:
 
 jobs:
   # Gate for the whole run. A tag that changes nothing the installers are built
-  # from would package identical apps on three runners for ~725 MB of upload,
-  # so it doesn't get built at all. Manual runs always fall through.
+  # from would package identical apps on three runners for several hundred MB
+  # of upload, so it doesn't get built at all. Manual runs always fall through.
   changes:
     name: Check release inputs
     runs-on: ubuntu-latest
@@ -93,8 +93,11 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            # One mac runner cross-builds both architectures.
-            args: --x64 --arm64
+            # Architecture comes from package.json's mac target, which asks for
+            # a single universal .dmg — one download instead of a per-arch
+            # dmg/zip grid. Don't pass --x64/--arm64 here; an arch flag
+            # overrides the config and splits the build back apart.
+            args: ""
           - os: windows-latest
             args: ""
           - os: ubuntu-latest
@@ -235,7 +238,6 @@ jobs:
           name: desktop-${{ matrix.os }}
           path: |
             src/Solo.Desktop/dist/*.dmg
-            src/Solo.Desktop/dist/*.zip
             src/Solo.Desktop/dist/*.exe
             src/Solo.Desktop/dist/*.AppImage
           if-no-files-found: error
@@ -262,8 +264,8 @@ jobs:
           files: artifacts/*
           generate_release_notes: true
 
-      # The installers are ~725 MB a build and now live on the release, where
-      # they cost nothing; as workflow artifacts they were only a handoff
+      # The installers are hundreds of MB a build and now live on the release,
+      # where they cost nothing; as workflow artifacts they were only a handoff
       # between the matrix jobs and this one, and they bill against the
       # account's shared Actions/Packages storage. Deliberately not
       # `if: always()` — a failed upload must leave the artifacts behind, or
