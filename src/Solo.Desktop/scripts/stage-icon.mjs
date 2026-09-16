@@ -109,9 +109,28 @@ export const reportDropped = (dropped) => {
     }
     const version = execFileSync('actool', ['--version'], { encoding: 'utf8' })
         .match(/<key>short-bundle-version<\/key>\s*<string>([^<]+)<\/string>/)?.[1] ?? 'unknown';
+    const summary = `dropped icon feature(s) [${dropped.join(', ')}] — actool ${version} doesn't support them`;
+
+    // A tag push is a release build. Everyone who installs it gets the degraded
+    // icon and nothing says so, which is worse than the run failing — the fix
+    // is a runner image with a newer Xcode, not a rebuild.
+    if (process.env.GITHUB_REF_TYPE === 'tag') {
+        throw new Error(
+            `${summary}.\nRefusing to package a release with a degraded icon: ` +
+            `build this on a runner image whose Xcode supports them.`);
+    }
+
+    // Anywhere else the fallback is fine, but a plain stdout line scrolls off
+    // the end of a CI log unread; an annotation lands on the run summary.
+    if (process.env.GITHUB_ACTIONS === 'true') {
+        console.warn(
+            `::warning title=Icon feature dropped::${summary}. The icon renders ` +
+            `without them; build on a newer Xcode to get them back.`);
+        return;
+    }
+
     console.warn(
-        `\nWarning: dropped icon feature(s) [${dropped.join(', ')}] — actool ${version} ` +
-        `doesn't support them.\nThe icon builds and renders without them; install a newer ` +
+        `\nWarning: ${summary}.\nThe icon builds and renders without them; install a newer ` +
         `Xcode and rebuild to get them back.\nIcons/Solo.icon itself is untouched.\n`);
 };
 

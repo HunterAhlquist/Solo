@@ -92,7 +92,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          # Not macos-latest: that's macOS 26 with Xcode 26.6 at newest, and
+          # actool 26.6 doesn't know the icon's `refractivity` feature, so
+          # stage-icon.mjs drops it and the app ships the macOS 26 rendering.
+          # `xcode-27` is the preview image (macOS 27 + Xcode 27), whose actool
+          # compiles the feature. It is a preview: thinner capacity, and its
+          # Xcode is a beta build that also signs and notarizes the release.
+          # Move back to macos-latest once macOS 27 is the GA image.
+          - os: xcode-27
             # Architecture comes from package.json's mac target, which asks for
             # a single universal .dmg — one download instead of a per-arch
             # dmg/zip grid. Don't pass --x64/--arm64 here; an arch flag
