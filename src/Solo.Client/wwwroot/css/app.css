@@ -342,14 +342,27 @@ code {
     gap: 0.75rem;
 }
 
+/* The column strip's height, fixed rather than left to the labels: the group
+   headers below pin themselves directly under it, and a header that measured
+   itself would leave them guessing. Nothing here wraps — three short uppercase
+   labels — so a set height costs nothing, and centring the strip inside it
+   keeps the labels where they were in every theme and in glass, where they are
+   set a size larger. */
+:root {
+    --solo-kanban-header-height: 2.75rem;
+}
+
 .kanban-header {
     display: grid;
     grid-template-columns: var(--kanban-lane-gutter, 13rem) 1fr;
     gap: 0.5rem;
     position: sticky;
-    top: 0;
+    /* The page scrolls behind the fixed app bar, so top:0 parks the labels out
+       of sight underneath it rather than at the top of what you can see. */
+    top: var(--solo-appbar-bottom, 5em);
     z-index: 3;
-    padding: 0.35rem 0;
+    height: var(--solo-kanban-header-height, 2.75rem);
+    align-items: center;
     background: var(--mud-palette-background);
 }
 
@@ -1241,9 +1254,10 @@ html.solo-desktop--glass .mud-drawer {
     background: color-mix(in srgb, var(--mud-palette-drawer-background) 52%, transparent);
 }
 
-/* These are the two headers visible on a board. They live in page content, not
-   in MudBlazor's global app bar, so they need their own renderer material. */
+/* The headers visible on a board. They live in page content, not in
+   MudBlazor's global app bar, so they need their own renderer material. */
 html.solo-desktop--glass .board-header,
+html.solo-desktop--glass .epic-group__header,
 html.solo-desktop--glass .kanban-header {
     background: transparent;
     -webkit-backdrop-filter: var(--solo-glass-page-defocus);
@@ -1464,6 +1478,13 @@ html.solo-desktop .solo-titlebar {
     background: var(--mud-palette-background);
 }
 
+/* Sticky under the column strip, but only for as long as its own group is on
+   screen — the header names the band you are inside, so it has to leave with
+   it. Sticky bottoms out at the group's own box, which is all it takes.
+   Negative margins pull the box out to the group's padding edges and its own
+   padding puts the content back where it was, so the background covers the full
+   width and the 0.5rem down to the first lane: pin it any smaller and cards
+   passing behind show around the edges. */
 .epic-group__header {
     display: flex;
     align-items: center;
@@ -1471,6 +1492,14 @@ html.solo-desktop .solo-titlebar {
     cursor: grab;
     user-select: none;
     -webkit-user-select: none;
+    position: sticky;
+    top: calc(var(--solo-appbar-bottom, 5em) + var(--solo-kanban-header-height, 2.75rem));
+    z-index: 2;
+    margin: -0.5rem;
+    padding: 0.5rem;
+    /* Follow the group's rounded top corners so the background stays inside. */
+    border-radius: var(--mud-default-borderradius) var(--mud-default-borderradius) 0 0;
+    background: var(--mud-palette-background);
 }
 
 .epic-group__title.mud-typography-h2 {
@@ -1502,4 +1531,16 @@ html.solo-desktop .solo-titlebar {
 
 @media (max-width: 959.98px) {
     .epic-group__title.mud-typography-h2 { font-size: 1.05rem; }
+
+    /* With the column strip gone (see the carousel block above), the lane
+       gutter below takes the one slot under the app bar — and it is the more
+       useful of the two here, naming the band and the column you have swiped
+       to. Two headers can't share the offset, so the group title scrolls away
+       with its band. */
+    .epic-group__header {
+        position: static;
+        margin: 0;
+        padding: 0;
+        background: none;
+    }
 }
