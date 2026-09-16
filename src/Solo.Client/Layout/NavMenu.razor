@@ -93,7 +93,7 @@
 
                                 @* Open the project home for members, labels, closed boards. *@
                                 <MudNavLink Href="@($"projects/{project.Alias}")" Match="NavLinkMatch.All"
-                                            Icon="@Icons.Material.Filled.Tune">
+                                            Class="nav-shell__muted" Icon="@Icons.Material.Filled.Tune">
                                     Project settings
                                 </MudNavLink>
 
@@ -112,7 +112,7 @@
 
                                 @if (ProjectNavStore.CanAddBoard(project))
                                 {
-                                    <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__add"
+                                    <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__muted"
                                                 OnClick="@(() => AddBoardAsync(project))">
                                         Add board
                                     </MudNavLink>
@@ -131,7 +131,10 @@
         @if (Session.IsSuperAdmin)
         {
             <MudNavMenu>
-                <MudNavLink Icon="@Icons.Material.Filled.CreateNewFolder" Class="nav-shell__add"
+                @* Full text colour, like the project and board names: this is the
+                   sidebar's own top-level action, not something hanging off one
+                   project the way "Add board" does. *@
+                <MudNavLink Icon="@Icons.Material.Filled.CreateNewFolder"
                             OnClick="@AddProjectAsync">
                     Add project
                 </MudNavLink>

@@ -240,12 +240,16 @@ code {
     flex: 0 0 auto;
 }
 
-/* The create actions are affordances, not destinations — never "active". */
-.nav-shell__add {
+/* Entries that hang off a project rather than being one of its places to work:
+   "Add board" and "Project settings". They read a step quieter than the board
+   names above them so the tree's destinations stay the thing you scan for.
+   Project settings is a real route, so it still takes the active highlight —
+   MudBlazor's .active rule outranks this one. */
+.nav-shell__muted {
     color: var(--mud-palette-text-secondary);
 }
 
-.nav-shell__add:hover {
+.nav-shell__muted:hover {
     color: var(--mud-palette-primary);
 }
 
