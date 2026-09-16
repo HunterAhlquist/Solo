@@ -7,10 +7,10 @@ namespace Solo.Mcp.Data;
 /// migration history.
 /// </summary>
 /// <remarks>
-/// <para>Everything the MCP feature persists lives here and nowhere else — no
-/// entity is contributed to <c>SoloDbContext</c> and no migration is added to
-/// core. Removing the package leaves this schema behind, attributable and
-/// purgeable from Admin settings; core's own tables are untouched either way.</para>
+/// <para>Credentials and usage live here, with no entity contributed to
+/// <c>SoloDbContext</c>. Task annotations use the host's extension field bag.
+/// Removing the package leaves this schema and its field key attributable and
+/// purgeable from Admin settings.</para>
 ///
 /// <para>Tokens reference their owner by OIDC identity (issuer + subject)
 /// rather than by core's user id: that pair is the stable contract core itself
@@ -27,9 +27,19 @@ public sealed class McpDbContext(DbContextOptions<McpDbContext> options) : DbCon
 
     public DbSet<McpTokenUsage> Usage => Set<McpTokenUsage>();
 
+    public DbSet<McpAuditAttribution> AuditAttributions => Set<McpAuditAttribution>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema);
+
+        modelBuilder.Entity<McpAuditAttribution>(e =>
+        {
+            e.ToTable("AuditAttributions");
+            e.HasKey(a => a.AuditEntryId);
+            // Core supplies ids. No FK crosses the extension boundary.
+            e.Property(a => a.AuditEntryId).ValueGeneratedNever();
+        });
 
         modelBuilder.Entity<McpToken>(e =>
         {
@@ -143,4 +153,11 @@ public sealed class McpTokenUsage
     public DateTimeOffset Hour { get; set; }
 
     public int Count { get; set; }
+}
+
+/// <summary>An audit row made through MCP access. The core audit retains the acting user.</summary>
+public sealed class McpAuditAttribution
+{
+    public long AuditEntryId { get; set; }
+    public Guid TokenId { get; set; }
 }

@@ -41,7 +41,8 @@ builder.Services.AddScoped<AuditSaveChangesInterceptor>();
 builder.Services.AddDbContext<SoloDbContext>((sp, options) =>
 {
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"));
-    options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
+    options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>(),
+        sp.GetRequiredService<ExtensionAuditInterceptor>());
 });
 
 // ---------------------------------------------------------------------------
@@ -180,6 +181,7 @@ builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
     });
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();
+builder.Services.AddScoped<IExtensionFieldNotifier, ExtensionFieldNotifier>();
 builder.Services.AddHostedService<AuditRetentionService>();
 builder.Services.AddHealthChecks().AddDbContextCheck<SoloDbContext>();
 

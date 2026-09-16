@@ -100,6 +100,15 @@ public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller,
             : null;
     }
 
+    public async Task<IReadOnlyList<AssigneeIdentity>> TaskAssigneeIdentitiesAsync(
+        Guid taskId, CancellationToken ct = default)
+    {
+        var task = await TaskAsync(taskId, ct);
+        if (task is null) return [];
+        return await db.Users.AsNoTracking().Where(u => task.AssigneeIds.Contains(u.Id))
+            .Select(u => new AssigneeIdentity(u.Id, u.Issuer, u.Subject)).ToListAsync(ct);
+    }
+
     public Task<bool> CanWriteBoardAsync(Guid boardId, CancellationToken ct = default) =>
         CanAccessBoardAsync(boardId, ProjectAccessLevel.Write, ct);
 

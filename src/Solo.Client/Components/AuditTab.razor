@@ -51,6 +51,10 @@
         </MudTd>
         <MudTd DataLabel="Who">
             <MudText Typo="Typo.body2">@(entry.UserDisplayName ?? "System")</MudText>
+            @foreach (var annotation in entry.Annotations.Values)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@annotation</MudText>
+            }
         </MudTd>
         <MudTd DataLabel="Table">@entry.TableName</MudTd>
         <MudTd DataLabel="Column">@(entry.ColumnName ?? "—")</MudTd>

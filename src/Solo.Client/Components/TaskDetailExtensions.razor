@@ -1,0 +1,33 @@
+@using Solo.Client.Extensions
+@using Solo.Shared.Extensibility
+@using System.Reflection
+@inject IServiceProvider Services
+
+@foreach (var component in Components)
+{
+    <ErrorBoundary @key="(Task.Id, component)">
+        <ChildContent>
+            <DynamicComponent Type="@component" Parameters="@Parameters" />
+        </ChildContent>
+        <ErrorContent>
+            <MudText Color="Color.Error">A task extension could not load.</MudText>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    [Parameter, EditorRequired] public TaskDto Task { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private IEnumerable<Type> Components =>
+        (Services.GetService<ExtensionCatalog>()?.Loaded ?? [])
+        .SelectMany(e => e.Assembly.GetExportedTypes())
+        .Where(t => !t.IsAbstract && typeof(IComponent).IsAssignableFrom(t) &&
+                    t.IsDefined(typeof(TaskDetailExtensionAttribute)));
+
+    private IDictionary<string, object> Parameters => new Dictionary<string, object>
+    {
+        ["Task"] = Task, ["CanWrite"] = CanWrite, ["OnChanged"] = OnChanged,
+    };
+}

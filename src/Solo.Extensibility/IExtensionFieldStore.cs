@@ -24,6 +24,10 @@ public interface IExtensionFieldStore
     Task SetAsync<T>(ExtensionEntity entity, Guid entityId, T value, CancellationToken ct = default)
         where T : class;
 
+    /// <summary>Save against the core entity version; throws DbUpdateConcurrencyException on conflict.</summary>
+    Task SetVersionedAsync<T>(ExtensionEntity entity, Guid entityId, T value, uint version,
+        CancellationToken ct = default) where T : class;
+
     Task ClearAsync(ExtensionEntity entity, Guid entityId, CancellationToken ct = default);
 }
 

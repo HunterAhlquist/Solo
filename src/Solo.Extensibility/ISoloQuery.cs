@@ -31,6 +31,11 @@ public interface ISoloQuery
     /// <summary>A single task, or null when it doesn't exist or the caller can't read it.</summary>
     Task<TaskDto?> TaskAsync(Guid taskId, CancellationToken ct = default);
 
+    /// <summary>Identities of a readable task's assignees; empty if access is denied.</summary>
+    Task<IReadOnlyList<AssigneeIdentity>> TaskAssigneeIdentitiesAsync(Guid taskId, CancellationToken ct = default);
+
     /// <summary>True when the caller may write to the project owning this board.</summary>
     Task<bool> CanWriteBoardAsync(Guid boardId, CancellationToken ct = default);
 }
+
+public sealed record AssigneeIdentity(Guid UserId, string Issuer, string Subject);

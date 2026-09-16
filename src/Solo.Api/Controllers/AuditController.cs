@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Data;
+using Solo.Extensions;
 using Solo.Shared.Dtos;
 
 namespace Solo.Api.Controllers;
@@ -10,7 +11,7 @@ namespace Solo.Api.Controllers;
 /// <summary>Paged, filterable audit query — project owners and the super admin.</summary>
 [Route("api/projects/{projectId:guid}/audit")]
 [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
-public sealed class AuditController(SoloDbContext db) : ApiControllerBase
+public sealed class AuditController(SoloDbContext db, ExtensionAuditContributions contributions) : ApiControllerBase
 {
     private const int MaxPageSize = 200;
 
@@ -63,7 +64,7 @@ public sealed class AuditController(SoloDbContext db) : ApiControllerBase
                 x.a.TableName, x.a.RowId, x.a.ColumnName, x.a.PreviousValue))
             .ToListAsync(ct);
 
-        return new PagedResult<AuditEntryDto>(items, page, pageSize, total);
+        return new PagedResult<AuditEntryDto>(await contributions.AnnotateAsync(items, ct), page, pageSize, total);
     }
 
     /// <summary>Npgsql maps timestamptz to UTC-kind DateTime only.</summary>

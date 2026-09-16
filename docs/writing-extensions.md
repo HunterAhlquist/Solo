@@ -355,3 +355,37 @@ curl -H "Authorization: Bearer $SOLO_TOKEN" \
 | No way to call the API from a client page | Inject `ISoloClientApi` — the host registers `HttpClient` only for its own typed clients. |
 | A copied URL sends people to `localhost:41321` | `Resolve` was used where `ResolveExternal` was needed. |
 | Nav entry renders once instead of per project | Its route has no `{projectAlias}`, which makes it instance-level by design. |
+
+## Task-detail contributions and audit sources (contract 1.2)
+
+A client component marked `[TaskDetailExtension]` (from
+`Solo.Shared.Extensibility`) is rendered below task assignments. It receives
+`Task` (`TaskDto`), `CanWrite` (`bool`), and `OnChanged` (`EventCallback`). Invoke
+`OnChanged` after saving so the host refreshes the task's concurrency version.
+Each contribution has an error boundary; only loaded extension assemblies can
+contribute. Eligibility and authorization still belong in your extension API.
+`Solo.Mcp.Client/LlmWork.razor` is the example.
+
+Use the keyed `IExtensionFieldStore` with `[FromKeyedServices("your-id")]`.
+`SetVersionedAsync` takes the core entity version and throws
+`DbUpdateConcurrencyException` on conflict; translate it to HTTP 409. Field
+writes are audited and broadcast to connected board clients after commit.
+`ISoloQuery.TaskAssigneeIdentitiesAsync` returns the OIDC identities of assignees
+only when the caller can read the task. Use it server-side for integrations;
+do not return identity subjects or credential records to the client.
+
+Register an `ISoloAuditContributor` to annotate core audit entries. `ShouldRecord`
+selects requests that need attribution. The host calls `RecordAsync` with the new
+audit ids and a shared connection/transaction before committing. Write only to
+your extension's own schema; do not commit or dispose the supplied transaction.
+A write failure rolls back the host-owned save. With an existing explicit
+transaction, its caller remains responsible for rollback. No core entity or
+DbContext crosses this contract, and no core migration is needed.
+
+`ReadAsync` receives only the ids on an already-authorized audit page. Its labels
+are returned in `AuditEntryDto.Annotations`, keyed by the host using the
+extension's id, and rendered by the audit UI. Read failures are logged and do
+not hide the core audit page. Disabled or uninstalled contributors do not run.
+The MCP extension's `McpAuditContributor` and `ext_mcp.AuditAttributions` show the
+pattern; removing MCP removes these annotations from the UI while preserving
+core audit history.

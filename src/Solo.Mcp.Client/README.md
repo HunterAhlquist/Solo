@@ -9,6 +9,11 @@ One page, [McpAccess.razor](McpAccess.razor): generate a token, copy the config
 your client wants, and — for a super admin — audit every token on the instance
 with a 24-hour usage graph and an emergency revoke-all.
 
+[LlmWork.razor](LlmWork.razor) contributes the task drawer's **Work for an LLM**
+checkbox through the shared `[TaskDetailExtension]` slot. It appears for tasks
+with an assignee who has active MCP access, and saves through the extension's
+versioned endpoint.
+
 ## What an extension page gets, and what it brings
 
 Everything ambient comes from the host's service provider: MudBlazor and its

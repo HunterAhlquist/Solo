@@ -111,3 +111,40 @@ its epics take the group's former position in their existing order.
 
 Build the updated archive with `build/pack-mcp-extension.sh`, install it, and
 restart Solo. Reconnect MCP clients to refresh their tool catalog.
+
+## LLM work and audit attribution (1.2.0)
+
+The task drawer offers **Work for an LLM** when at least one current assignee
+has an active MCP token. It defaults to false. Project writers can change it;
+readers can see it. This is metadata only: it does not launch an agent, claim a
+task, change its status, or grant additional access.
+
+The flag is stored under the MCP key in the task's extension field bag, with
+the eligible assignee ids at the time it was enabled. Reads intersect those ids
+with current assignments and active MCP access. Reassigning the task to someone
+else does not transfer the flag to their agent. Revoked access is excluded;
+restoring access for an originally flagged assignee makes their work visible again.
+
+Agent loops can use `list_llm_tasks` (board id), `get_task_llm_work` (task id or
+serial), and `set_task_llm_work` (task id or serial, `llmWork`). List results
+include the task, status, and flagged assignee ids; loops should select work for
+the intended user and status. The REST equivalents are
+`GET /api/ext/mcp/tasks/boards/{boardId}/llm-work` and
+`GET|PUT /api/ext/mcp/tasks/{taskId}/llm-work`. PUT requires `llmWork` and the
+current task `version`; a stale write returns 409.
+
+Audit entries made using MCP access retain the user's identity and add the
+annotation **LLM via MCP**, including tool calls that re-enter the REST API. This
+identifies use of the MCP credential, not independent detection of a language
+model; scripts using the same credential receive the same attribution. Normal
+browser actions and older audit entries have no source marker.
+
+This package requires Solo API and client contract 1.2 or later. Its own
+`AddAuditAttributions` migration creates `ext_mcp.AuditAttributions`, linking
+core audit-entry ids to the MCP token used. The generic host audit hook writes
+those links in the same transaction as the core change. Core's data model,
+migrations, and model snapshot are unchanged.
+
+Restart after installing the updated package. Removing MCP removes its task UI,
+endpoints, and audit annotations. Core audit history remains intact; MCP-owned
+attribution data stays in the extension schema until it is purged.

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Solo.Shared.Dtos;
+using Npgsql;
 using Xunit;
 
 namespace Solo.Api.Tests.Integration;
@@ -24,6 +25,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     private const string Endpoint = "/api/ext/mcp";
     private const string Tokens = "/api/ext/mcp/tokens";
 
+    private string _connectionString = null!;
     private SoloApiFactory _factory = null!;
     private HttpClient _admin = null!;
 
@@ -34,8 +36,8 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
             return;
         }
 
-        var connectionString = await postgres.CreateDatabaseAsync("mcp");
-        _factory = new SoloApiFactory(connectionString, TestExtensions.Mcp);
+        _connectionString = await postgres.CreateDatabaseAsync("mcp");
+        _factory = new SoloApiFactory(_connectionString, TestExtensions.Mcp);
         _admin = _factory.As("admin", "admin@example.com", "Admin");
         await TestClients.CompleteSetupAsync(_admin);
     }
@@ -181,9 +183,9 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
 
         Assert.Equal(
         [
-            "create_epic_group", "create_subtask", "create_task", "delete_epic_group", "get_task",
-            "list_boards", "list_epic_groups", "list_epics", "list_labels", "list_projects", "list_tasks",
-            "rerank_epic_group", "set_epic_group", "set_subtask_finished", "set_task_epic", "set_task_status",
+            "create_epic_group", "create_subtask", "create_task", "delete_epic_group", "get_task", "get_task_llm_work",
+            "list_boards", "list_epic_groups", "list_epics", "list_labels", "list_llm_tasks", "list_projects", "list_tasks",
+            "rerank_epic_group", "set_epic_group", "set_subtask_finished", "set_task_epic", "set_task_llm_work", "set_task_status",
             "update_epic_group", "update_subtask", "update_task",
         ], names);
     }
@@ -724,6 +726,208 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         var registration = Assert.Single(extensions.Extensions, e => e.ExtensionId == "mcp");
         Assert.Equal("ext_mcp", registration.SchemaName);
         Assert.Equal("Loaded", registration.State);
+    }
+
+    [SkippableFact]
+    public async Task Mcp_changes_keep_the_user_and_record_their_source_in_the_audit()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoardAsync("Attribution", "ATTR", "MAIN");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Human created" });
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        var token = await MintTokenAsync();
+        await CallToolAsync(McpClient(token.Value), "update_task", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(), ["name"] = "Agent edited",
+        });
+        var audit = await _admin.GetJson<PagedResult<AuditEntryDto>>($"/api/projects/{project.Id}/audit");
+        var edits = audit.Items.Where(e => e.RowId == task.Id.ToString() && e.ColumnName == "Name").ToList();
+        Assert.NotEmpty(edits);
+        Assert.All(edits, e => { Assert.Equal(me.Id, e.UserId); Assert.Equal("LLM via MCP", e.Annotations.GetValueOrDefault("mcp")); });
+        Assert.Contains(audit.Items, e => e.RowId == task.Id.ToString() && e.ColumnName == null && e.Annotations.GetValueOrDefault("mcp") == null);
+    }
+
+    [SkippableFact]
+    public async Task Attribution_covers_creation_deletion_and_extension_field_changes()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoardAsync("All audit paths", "PATH", "MAIN");
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        var task = await client.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Agent work" });
+        task = await client.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { me.Id } });
+        await client.PutJson<JsonObject>($"/api/ext/mcp/tasks/{task.Id}/llm-work",
+            new { llmWork = true, version = task.Version });
+        Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/tasks/{task.Id}")).StatusCode);
+        var audit = await _admin.GetJson<PagedResult<AuditEntryDto>>($"/api/projects/{project.Id}/audit");
+        var rows = audit.Items.Where(e => e.RowId == task.Id.ToString()).ToList();
+        Assert.Contains(rows, e => e.ColumnName is null);
+        Assert.Contains(rows, e => e.ColumnName == "Extensions");
+        Assert.Contains(rows, e => e.ColumnName == "Name");
+        Assert.All(rows, e =>
+        {
+            Assert.Equal(me.Id, e.UserId);
+            Assert.Equal("LLM via MCP", e.Annotations["mcp"]);
+        });
+    }
+
+    [SkippableFact]
+    public async Task Attribution_storage_is_extension_owned_and_removing_mcp_leaves_core_audits_usable()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoardAsync("Removability", "REM", "MAIN");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Before" });
+        var token = await MintTokenAsync();
+        await CallToolAsync(McpClient(token.Value), "update_task", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(), ["name"] = "After",
+        });
+        var audit = await _admin.GetJson<PagedResult<AuditEntryDto>>($"/api/projects/{project.Id}/audit");
+        var edit = Assert.Single(audit.Items, e => e.RowId == task.Id.ToString() && e.ColumnName == "Name");
+        Assert.Equal("LLM via MCP", edit.Annotations["mcp"]);
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using (var command = new NpgsqlCommand("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'AuditEntries' AND column_name = 'ActionSource'
+            """, connection))
+            Assert.Equal(0L, await command.ExecuteScalarAsync());
+        await using (var command = new NpgsqlCommand("""
+            SELECT "TokenId" FROM ext_mcp."AuditAttributions" WHERE "AuditEntryId" = @id
+            """, connection))
+        {
+            command.Parameters.AddWithValue("id", edit.Id);
+            Assert.Equal(token.Id, await command.ExecuteScalarAsync());
+        }
+
+        _factory.Dispose();
+        _factory = new SoloApiFactory(_connectionString, TestExtensions.None);
+        _admin = _factory.As("admin", "admin@example.com", "Admin");
+        var withoutMcp = await _admin.GetJson<PagedResult<AuditEntryDto>>($"/api/projects/{project.Id}/audit");
+        var preserved = Assert.Single(withoutMcp.Items, e => e.Id == edit.Id);
+        Assert.Empty(preserved.Annotations);
+        Assert.Equal(edit.UserId, preserved.UserId);
+        Assert.Equal("After", (await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).Name);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _admin.GetAsync($"/api/ext/mcp/tasks/{task.Id}/llm-work")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task An_attribution_write_failure_rolls_back_the_action_and_its_core_audit()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoardAsync("Atomic attribution", "ATOM", "MAIN");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Original" });
+        var token = await MintTokenAsync();
+        await using (var connection = new NpgsqlConnection(_connectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand("""
+                DROP TABLE ext_mcp."AuditAttributions"
+                """, connection);
+            await command.ExecuteNonQueryAsync();
+        }
+        var failed = await CallToolRawAsync(McpClient(token.Value), "update_task", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(), ["name"] = "Must roll back",
+        });
+        Assert.True(failed["isError"]!.GetValue<bool>());
+        Assert.Equal("Original", (await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).Name);
+        var audit = await _admin.GetJson<PagedResult<AuditEntryDto>>($"/api/projects/{project.Id}/audit");
+        Assert.DoesNotContain(audit.Items, e => e.RowId == task.Id.ToString() && e.ColumnName == "Name");
+    }
+
+    [SkippableFact]
+    public async Task Llm_work_defaults_false_requires_active_access_and_is_discoverable_by_tools()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoardAsync("LLM work", "WORK", "MAIN");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Implement" });
+        var path = $"/api/ext/mcp/tasks/{task.Id}/llm-work";
+        var initial = await _admin.GetJson<JsonObject>(path);
+        Assert.False(initial["eligible"]!.GetValue<bool>());
+        Assert.False(initial["llmWork"]!.GetValue<bool>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PutAsJsonAsync(path,
+            new { llmWork = true, version = task.Version }, TestClients.Json)).StatusCode);
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        task = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { me.Id } });
+        Assert.False((await _admin.GetJson<JsonObject>(path))["eligible"]!.GetValue<bool>());
+        var token = await MintTokenAsync();
+        var eligible = await _admin.GetJson<JsonObject>(path);
+        Assert.True(eligible["eligible"]!.GetValue<bool>());
+        Assert.False(eligible["llmWork"]!.GetValue<bool>());
+        var marked = await _admin.PutJson<JsonObject>(path, new { llmWork = true, version = task.Version });
+        Assert.True(marked["llmWork"]!.GetValue<bool>());
+        var list = await CallToolAsync(McpClient(token.Value), "list_llm_tasks", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(),
+        });
+        Assert.Single(list.AsArray());
+        var details = await CallToolAsync(McpClient(token.Value), "get_task_llm_work", new JsonObject
+        {
+            ["taskId"] = $"WORK-MAIN-{task.Number}",
+        });
+        Assert.True(details["llmWork"]!.GetValue<bool>());
+        Assert.Contains(me.Id.ToString(), details["assigneeIds"]!.ToJsonString());
+        var cleared = await CallToolAsync(McpClient(token.Value), "set_task_llm_work", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(), ["llmWork"] = false,
+        });
+        Assert.False(cleared["llmWork"]!.GetValue<bool>());
+        await CallToolAsync(McpClient(token.Value), "set_task_llm_work", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(), ["llmWork"] = true,
+        });
+        await _admin.DeleteAsync($"{Tokens}/current");
+        var revoked = await _admin.GetJson<JsonObject>(path);
+        Assert.False(revoked["eligible"]!.GetValue<bool>());
+        Assert.False(revoked["llmWork"]!.GetValue<bool>());
+    }
+
+    [SkippableFact]
+    public async Task Llm_work_rejects_stale_edits_and_does_not_transfer_to_another_assignee()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoardAsync("Reassignment", "REAS", "MAIN");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Work" });
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        await MintTokenAsync();
+        task = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { me.Id } });
+        var path = $"/api/ext/mcp/tasks/{task.Id}/llm-work";
+        await _admin.PutJson<JsonObject>(path, new { llmWork = true, version = task.Version });
+        Assert.Equal(HttpStatusCode.Conflict, (await _admin.PutAsJsonAsync(path,
+            new { llmWork = false, version = task.Version }, TestClients.Json)).StatusCode);
+        Assert.True((await _admin.GetJson<JsonObject>(path))["llmWork"]!.GetValue<bool>());
+
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{board.ProjectId}/members",
+            new { email = "other@example.com", role = "ReadWrite" });
+        var other = _factory.As("other", "other@example.com", "Other");
+        var otherUser = await other.GetJson<UserDto>("/api/users/me");
+        await MintTokenAsync(client: other);
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { otherUser.Id } });
+        var reassigned = await _admin.GetJson<JsonObject>(path);
+        Assert.True(reassigned["eligible"]!.GetValue<bool>());
+        Assert.False(reassigned["llmWork"]!.GetValue<bool>());
+    }
+
+    [SkippableFact]
+    public async Task Llm_work_obeys_project_permissions()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoardAsync("Permissions", "PERM", "MAIN");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Work" });
+        var path = $"/api/ext/mcp/tasks/{task.Id}/llm-work";
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{board.ProjectId}/members",
+            new { email = "reader@example.com", role = "Read" });
+        var reader = _factory.As("reader", "reader@example.com", "Reader");
+        Assert.Equal(HttpStatusCode.OK, (await reader.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PutAsJsonAsync(path,
+            new { llmWork = true, version = task.Version }, TestClients.Json)).StatusCode);
+        var stranger = _factory.As("stranger", "stranger@example.com", "Stranger");
+        Assert.False((await stranger.GetAsync(path)).IsSuccessStatusCode);
+        Assert.False((await stranger.GetAsync($"/api/ext/mcp/tasks/boards/{board.Id}/llm-work")).IsSuccessStatusCode);
     }
 
     // -----------------------------------------------------------------------

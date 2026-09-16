@@ -21,10 +21,12 @@ namespace Solo.Shared.Extensibility;
 ///
 /// <para>1.1.0 added <see cref="ISoloClientApi"/>: the client-side seam an
 /// extension's pages use to call the API.</para>
+/// <para>1.2.0 adds task-detail UI contributions, assignee identity reads,
+/// versioned extension fields and transactional audit contributions.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.1.0";
+    public const string Current = "1.2.0";
 
-    public static readonly Version Parsed = new(1, 1, 0);
+    public static readonly Version Parsed = new(1, 2, 0);
 }

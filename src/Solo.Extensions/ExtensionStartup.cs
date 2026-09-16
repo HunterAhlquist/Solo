@@ -31,6 +31,8 @@ public static class ExtensionStartup
         var state = ExtensionLoader.Load(builder.Services, options, connectionString, loggerFactory);
 
         builder.Services.AddSingleton(state);
+        builder.Services.AddScoped<ExtensionAuditContributions>();
+        builder.Services.AddScoped<ExtensionAuditInterceptor>();
         builder.Services.AddSingleton<HookCatalog>();
         // Scoped, not singleton: handlers are scoped (they hold the extension's
         // own DbContext), so the publisher has to resolve them from the request
@@ -46,7 +48,8 @@ public static class ExtensionStartup
         {
             var id = package.Id;
             builder.Services.AddKeyedScoped<IExtensionFieldStore>(id, (sp, _) =>
-                new ExtensionFieldStore(sp.GetRequiredService<Solo.Data.SoloDbContext>(), id));
+                new ExtensionFieldStore(sp.GetRequiredService<Solo.Data.SoloDbContext>(), id,
+                    sp.GetService<IExtensionFieldNotifier>()));
         }
 
         var assemblyMap = state.Packages

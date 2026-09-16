@@ -30,7 +30,8 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
         "or skip discovery: every taskId parameter also accepts a full serial " +
         "number like \"DMD-PXW26-2\" (project alias, board alias, task number). " +
         "Every call acts as the Solo user whose MCP token authorized it, and " +
-        "reaches only the projects that user is a member of.";
+        "reaches only the projects that user is a member of. Use list_llm_tasks to find " +
+        "tasks explicitly flagged for LLM work; the flag is metadata, not authorization or an automatic trigger.";
 
     private readonly IReadOnlyDictionary<string, McpTool> _tools =
         Build(rest).ToDictionary(tool => tool.Name, StringComparer.Ordinal);
@@ -84,6 +85,31 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
                 "label and sub-tasks.",
                 Schema(("boardId", Uuid("Board id"), true)),
                 (args, ct) => rest.GetAsync($"api/boards/{RequireGuid(args, "boardId")}/tasks", ct)),
+
+            new McpTool("list_llm_tasks", "List LLM work",
+                "Lists flagged tasks with eligible assignee ids on a board. Filter by your user's id " +
+                "and task status before choosing work; this metadata does not claim or start a task.",
+                Schema(("boardId", Uuid("Board id"), true)),
+                (args, ct) => rest.GetAsync($"api/ext/mcp/tasks/boards/{RequireGuid(args, "boardId")}/llm-work", ct)),
+
+            new McpTool("get_task_llm_work", "Get LLM work flag",
+                "Reads a task's LLM work flag, flagged assignees and concurrency version.",
+                Schema(("taskId", taskRef, true)),
+                async (args, ct) => await rest.GetAsync(
+                    $"api/ext/mcp/tasks/{await ResolveTaskIdAsync(rest, RequireString(args, "taskId"), ct)}/llm-work", ct)),
+
+            new McpTool("set_task_llm_work", "Set LLM work flag",
+                "Marks or unmarks a task for LLM work. Requires an assignee with active MCP access when enabling.",
+                Schema(("taskId", taskRef, true), ("llmWork", Flag("Whether an LLM should perform this work"), true)),
+                async (args, ct) =>
+                {
+                    var id = await ResolveTaskIdAsync(rest, RequireString(args, "taskId"), ct);
+                    var current = await rest.SendAsync<TaskDto>(HttpMethod.Get, $"api/tasks/{id}", null, ct)
+                        ?? throw new McpToolException("Task no longer exists.");
+                    return await Json(rest.SendAsync<Solo.Mcp.Controllers.LlmWorkDto>(HttpMethod.Put,
+                        $"api/ext/mcp/tasks/{id}/llm-work",
+                        new { llmWork = RequireBool(args, "llmWork"), version = current.Version }, ct));
+                }),
 
             new McpTool("get_task", "Get a task",
                 "Fetches one task by id or serial number, including its sub-tasks.",

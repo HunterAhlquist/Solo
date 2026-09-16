@@ -87,6 +87,11 @@
                 </div>
             }
 
+            @if (Task is not null)
+            {
+                <TaskDetailExtensions Task="@Task" CanWrite="@CanWrite" OnChanged="@RefreshTaskAsync" />
+            }
+
             <MudText Typo="Typo.subtitle2" Class="mb-1">Description</MudText>
             @* Keyed so switching entity (e.g. via a task link) can't carry a draft across. *@
             <MarkdownEditor @key="@EntityId" Value="@Description" CanWrite="@CanWrite"

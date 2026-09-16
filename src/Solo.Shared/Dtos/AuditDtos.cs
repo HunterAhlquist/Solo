@@ -10,7 +10,11 @@ public sealed record AuditEntryDto(
     string TableName,
     string RowId,
     string? ColumnName,
-    string? PreviousValue);
+    string? PreviousValue)
+{
+    /// <summary>Display labels contributed by loaded extensions, keyed by extension id.</summary>
+    public IReadOnlyDictionary<string, string> Annotations { get; init; } = new Dictionary<string, string>();
+}
 
 public sealed record PagedResult<T>(
     IReadOnlyList<T> Items,

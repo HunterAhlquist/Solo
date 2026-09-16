@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Solo.Extensibility;
 using Solo.Mcp.Auth;
+using Solo.Mcp.Auditing;
 using Solo.Mcp.Data;
 using Solo.Mcp.Protocol;
 using Solo.Mcp.Rest;
@@ -34,6 +35,7 @@ public sealed class McpExtension : ISoloExtension
         }
 
         services.AddExtensionDbContext<McpDbContext>(context);
+        services.AddScoped<ISoloAuditContributor, McpAuditContributor>();
 
         // The credential. A scheme so the handler is a normal one, plus a
         // startup filter that runs it at the front of the pipeline — core

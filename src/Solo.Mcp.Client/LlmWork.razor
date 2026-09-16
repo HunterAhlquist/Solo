@@ -1,0 +1,66 @@
+@attribute [TaskDetailExtension]
+@inject ISoloClientApi Api
+@inject ISnackbar Snackbar
+
+@if (_state?.Eligible == true)
+{
+    <MudCheckBox T="bool" Value="@_state.LlmWork" ValueChanged="@SaveAsync"
+                 Disabled="@(!CanWrite || _saving)" Label="Work for an LLM" Class="mb-3" />
+}
+@if (_error is not null)
+{
+    <MudText Typo="Typo.caption" Color="Color.Error">@_error</MudText>
+}
+
+@code {
+    [Parameter, EditorRequired] public TaskDto Task { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private WorkState? _state;
+    private bool _saving;
+    private string? _error;
+    private long _load;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var load = ++_load;
+        var taskId = Task.Id;
+        _state = null;
+        try
+        {
+            var state = await Api.GetAsync<WorkState>($"api/ext/mcp/tasks/{taskId}/llm-work");
+            if (load != _load) return;
+            _state = state;
+            _error = null;
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            if (load == _load) _error = "Could not load LLM work settings.";
+        }
+    }
+
+    private async Task SaveAsync(bool value)
+    {
+        if (!CanWrite || _saving || _state is null) return;
+        _saving = true;
+        var taskId = Task.Id;
+        try
+        {
+            var state = await Api.SendAsync<WorkState>(HttpMethod.Put,
+                $"api/ext/mcp/tasks/{taskId}/llm-work", new { llmWork = value, version = _state.Version });
+            if (Task.Id == taskId) _state = state;
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+            await OnChanged.InvokeAsync();
+            await OnParametersSetAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    public sealed record WorkState(Guid TaskId, bool Eligible, bool LlmWork,
+        IReadOnlyList<Guid> AssigneeIds, uint Version);
+}

@@ -18,10 +18,23 @@ namespace Solo.Mcp.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("ext_mcp")
-                .HasAnnotation("ProductVersion", "10.0.9")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Solo.Mcp.Data.McpAuditAttribution", b =>
+                {
+                    b.Property<long>("AuditEntryId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TokenId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("AuditEntryId");
+
+                    b.ToTable("AuditAttributions", "ext_mcp");
+                });
 
             modelBuilder.Entity("Solo.Mcp.Data.McpToken", b =>
                 {
