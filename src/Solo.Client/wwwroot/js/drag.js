@@ -25,6 +25,7 @@
 //   data-drag-handle           on a descendant: begins the drag *immediately*
 //   data-drag-preview="<sel>"  on the item: clone this instead of the whole item
 //   data-drag-outline          on the zone: paint it as a target while dragging
+//   data-drag-empty-after      on a zone's direct child: empty drops land below it
 //
 // Nothing here knows what a task or an epic is. A drop is reported to Blazor as
 // (group, itemId, zoneId, index) — index being the slot among the zone's *other*
@@ -222,7 +223,10 @@ window.solo = window.solo || {};
     const slotIn = (zone, y) => {
         const others = itemsOf(zone).filter(item => item !== drag.item);
         let index = 0;
-        let line = null;
+        // Headers remain visible in empty or collapsed containers. The first
+        // item belongs below that header, rather than at the zone's top edge.
+        const emptyAfter = zone.querySelector(':scope > [data-drag-empty-after]');
+        let line = emptyAfter ? rectOf(emptyAfter).bottom + 6 : null;
 
         for (const item of others) {
             const box = rectOf(item);

@@ -19,12 +19,14 @@ namespace Solo.Mcp.Protocol;
 /// concurrency, so each update fetches first and merges, and callers pass only
 /// the fields they mean to change.</para>
 /// </remarks>
-public sealed class McpToolCatalog(SoloRestClient rest)
+public sealed partial class McpToolCatalog(SoloRestClient rest)
 {
     public const string Instructions =
         "Task tools for the Solo project-management app. Hierarchy: projects → " +
-        "boards → tasks; a task may sit under an epic (same board) and carry " +
-        "sub-tasks. Discover ids with list_projects → list_boards → list_tasks, " +
+        "boards → optional epic groups → epics → tasks → sub-tasks. Groups contain only " +
+        "epics; ungrouped epics share the board's rank order with groups, and tasks " +
+        "without an epic remain outside all groups. Use list_epic_groups and list_epics " +
+        "to discover group and epic ids. Discover task ids with list_projects → list_boards → list_tasks, " +
         "or skip discovery: every taskId parameter also accepts a full serial " +
         "number like \"DMD-PXW26-2\" (project alias, board alias, task number). " +
         "Every call acts as the Solo user whose MCP token authorized it, and " +
@@ -64,9 +66,12 @@ public sealed class McpToolCatalog(SoloRestClient rest)
                 (args, ct) => rest.GetAsync($"api/projects/{RequireGuid(args, "projectId")}/boards", ct)),
 
             new McpTool("list_epics", "List epics",
-                "Lists the epics on a board. Tasks may be grouped under an epic via epicId.",
+                "Lists epics on a board, including groupId (null when ungrouped) and rank. " +
+                "Use list_epic_groups to resolve group names; ranks are local to each group or the board.",
                 Schema(("boardId", Uuid("Board id"), true)),
                 (args, ct) => rest.GetAsync($"api/boards/{RequireGuid(args, "boardId")}/epics", ct)),
+
+            ..GroupTools(rest),
 
             new McpTool("list_labels", "List labels",
                 "Lists a project's labels. A task or sub-task may carry one label (labelId); " +

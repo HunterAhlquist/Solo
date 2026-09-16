@@ -1,8 +1,9 @@
 # Solo.Mcp
 
 The MCP server, packaged as a Solo extension. An LLM client that speaks the
-Model Context Protocol can browse projects and boards and create, edit and move
-tasks — acting as the person whose token authorized the call.
+Model Context Protocol can browse projects and boards, create, edit and move
+tasks, and organize epics into groups — acting as the person whose token
+authorized the call.
 
 Everything the feature needs is in this project and its client half
 ([Solo.Mcp.Client](../Solo.Mcp.Client)): the credential, the schema and
@@ -77,3 +78,36 @@ dotnet ef migrations add <Name> --project src/Solo.Mcp --startup-project src/Sol
 
 A failed migration disables this extension only; its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Epic groups (1.1.0)
+
+These tools require a Solo instance with the Epic Groups REST endpoints:
+
+| Tool | Purpose |
+|---|---|
+| `list_epic_groups` | List a board's groups, titles, ranks, and versions. |
+| `create_epic_group` | Add an empty group at the end of the board. |
+| `update_epic_group` | Rename a group. |
+| `delete_epic_group` | Remove a group while keeping its epics and tasks. |
+| `rerank_epic_group` | Move a group among groups and ungrouped epics. |
+| `set_epic_group` | Move an epic into, between, or out of groups, or reorder it. |
+
+All take `boardId`; operations on an existing group also take `groupId`.
+`set_epic_group` takes `epicId` and requires `groupId`, with an explicit JSON
+`null` meaning ungroup. `list_epics` returns each epic's `groupId`; combine that
+with `list_epic_groups` to reconstruct the hierarchy.
+
+For `set_epic_group`, omitting both `precedingId` and `followingId` appends the
+epic to its destination. Passing null neighbors explicitly moves it to the
+front. `rerank_epic_group` moves to the front when neither neighbor is set.
+Neighbors must be in the destination scope: groups or ungrouped epics at board
+level, and epics within a group. When both neighbors are given, `precedingId`
+takes priority, matching the REST API.
+
+Updates, rank changes, moves, and deletion fetch the current version before
+writing. A concurrent edit produces a conflict rather than being retried or
+overwritten. Group deletion returns `{ "deleted": true, "groupId": "…" }`;
+its epics take the group's former position in their existing order.
+
+Build the updated archive with `build/pack-mcp-extension.sh`, install it, and
+restart Solo. Reconnect MCP clients to refresh their tool catalog.

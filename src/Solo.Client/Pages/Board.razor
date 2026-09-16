@@ -95,7 +95,7 @@ else
                      data-drag-from=".epic-group__header" data-drag-root-only>
                     <section class="epic-group" data-drag-zone="@group.Id" data-drag-group="epic"
                              data-drag-outline="group" aria-label="@($"Epic group {group.Name}")">
-                        <div class="epic-group__header" role="button" tabindex="0"
+                        <div class="epic-group__header" role="button" tabindex="0" data-drag-empty-after
                              aria-label="@($"Edit group {group.Name}")"
                              @onclick="@(() => EditGroupAsync(group))"
                              @onkeydown="@(e => GroupKeyDown(e, group))">
@@ -105,6 +105,15 @@ else
                                                OnClick="@(() => ToggleGroup(group.Id))"
                                                aria-label="@(IsGroupCollapsed(group.Id) ? "Expand group" : "Collapse group")" />
                             </span>
+                            @if (CanWrite)
+                            {
+                                <span class="epic-group__drag-handle" data-drag-handle
+                                      @onclick:stopPropagation
+                                      aria-label="@($"Drag to reorder {group.Name}")">
+                                    <MudIcon Icon="@Icons.Material.Filled.DragIndicator"
+                                             Size="Size.Small" Color="Color.Inherit" />
+                                </span>
+                            }
                             <MudText Typo="Typo.h2" Class="epic-group__title">@group.Name</MudText>
                             <MudSpacer />
                             @if (CanWrite)
@@ -325,8 +334,7 @@ else
     private RenderFragment<EpicDto> EpicLane => epic =>
         @<div class="kanban-lane" @key="epic.Id"
                  data-drag-item="@(CanWrite ? epic.Id.ToString() : null)"
-                 data-drag-from=".kanban-lane__gutter"
-                 data-drag-preview=".kanban-lane__gutter">
+                 data-drag-from=".kanban-lane__gutter">
                 <div class="kanban-lane__gutter kanban-lane__gutter--openable"
                      @onclick="@(() => OpenEpic(epic))"
                      role="button" aria-label="@($"Open epic {epic.Name}")">

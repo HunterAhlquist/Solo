@@ -435,13 +435,15 @@ code {
 /* The whole gutter is a drag source, so the handle is mostly an affordance —
    but it is also the one spot a finger can drag from with no press-and-hold, so
    it has to be a real target rather than a decoration. */
-.kanban-lane__drag-handle {
+.kanban-lane__drag-handle,
+.epic-group__drag-handle {
     display: inline-flex;
     padding: 5px;
     cursor: grab;
 }
 
-.kanban-lane__drag-handle:active {
+.kanban-lane__drag-handle:active,
+.epic-group__drag-handle:active {
     cursor: grabbing;
 }
 
@@ -1277,6 +1279,10 @@ html.solo-desktop--glass .kanban-lane:not(.kanban-lane--adhoc) {
     backdrop-filter: var(--solo-glass-dense-defocus);
 }
 
+html.solo-desktop--glass .epic-group {
+    background: color-mix(in srgb, var(--mud-palette-background) 5%, transparent);
+}
+
 /* The project cards' board panel. Against a native material even a neutral
    tint reads as a slab, so it thins to about half strength — enough to keep the
    list a section of its own without stacking another opaque layer on the glass. */
@@ -1472,6 +1478,11 @@ html.solo-desktop .solo-titlebar {
     line-height: 1.3;
     overflow-wrap: anywhere;
     min-width: 0;
+}
+
+.epic-group__drag-handle {
+    color: #616161;
+    flex-shrink: 0;
 }
 
 .epic-group__actions {
