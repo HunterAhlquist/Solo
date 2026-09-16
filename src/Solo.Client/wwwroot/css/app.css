@@ -1192,7 +1192,6 @@ html.solo-desktop--glass .mud-main-content {
 }
 
 html.solo-desktop--glass {
-    --solo-glass-appbar-blur: blur(22px) saturate(125%);
     --solo-glass-boot-blur: blur(40px) saturate(145%);
     --solo-glass-page-defocus: blur(64px) saturate(105%);
     --solo-glass-dense-defocus: blur(48px) saturate(110%);
@@ -1245,14 +1244,11 @@ html.solo-desktop--glass .boot-splash__bar span {
     box-shadow: 0 0 14px color-mix(in srgb, var(--solo-boot-fg) 58%, transparent);
 }
 
-/* Preserve the active theme as a translucent wash. The native view handles the
-   desktop; backdrop-filter additionally defocuses page content scrolling under
-   the fixed app bar inside Chromium. */
-html.solo-desktop--glass .mud-appbar {
-    background: color-mix(in srgb, var(--mud-palette-appbar-background) 38%, transparent);
-    -webkit-backdrop-filter: var(--solo-glass-appbar-blur);
-    backdrop-filter: var(--solo-glass-appbar-blur);
-}
+/* The app bar keeps the theme's own opaque background here — no wash, no
+   backdrop filter. It is the window's title bar as much as the app's toolbar:
+   the platform draws its window controls into it and it is the strip you drag
+   the window by, so it has to stay a solid edge rather than a pane the desktop
+   shows through. Everything below it is still glass. */
 
 html.solo-desktop--glass .mud-drawer {
     background: color-mix(in srgb, var(--mud-palette-drawer-background) 52%, transparent);
