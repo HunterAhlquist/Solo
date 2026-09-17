@@ -70,11 +70,12 @@ public sealed class McpPackageTests(PostgresFixture postgres) : IAsyncLifetime
         // and the downgrade guard compares against it on the next boot.
         Assert.False(string.IsNullOrWhiteSpace(registration.Version));
 
-        // Both halves came out of the one archive: the client assembly the
-        // browser will load, and the stylesheet its page links.
-        var anonymous = _factory.CreateClient();
+        // Both halves came out of the one archive: the client assembly a
+        // signed-in browser will load, and the stylesheet its page links with a
+        // plain <link>, which is why that one answers anonymously.
         Assert.Equal(HttpStatusCode.OK,
-            (await anonymous.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll")).StatusCode);
+            (await _admin.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll")).StatusCode);
+        var anonymous = _factory.CreateClient();
         Assert.Equal(HttpStatusCode.OK,
             (await anonymous.GetAsync("/api/extensions/mcp/content/mcp.css")).StatusCode);
 

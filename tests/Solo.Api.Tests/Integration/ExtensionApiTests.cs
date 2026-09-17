@@ -71,6 +71,40 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Empty(visibleToStranger);
     }
 
+    /// <summary>
+    /// The endpoints that boot the client half are authenticated, like anything
+    /// else on the fallback policy.
+    /// </summary>
+    /// <remarks>
+    /// They were briefly anonymous, because the client used to fetch them before
+    /// it had a credential to send. Nothing needs that: <c>ExtensionAccess</c> is
+    /// <c>Read | Write | Owner</c> — all levels of <em>project</em> access — so
+    /// no manifest can declare a page that renders before sign-in, and what the
+    /// anonymous form published was the instance's extension inventory and a set
+    /// of decompilable assemblies.
+    /// </remarks>
+    [SkippableFact]
+    public async Task TheClientInventoryAndAssemblies_AreNotPublic()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var anonymous = _factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync("/api/extensions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync("/api/extensions/fixture/client/Anything.dll")).StatusCode);
+
+        // 401 before 404: an anonymous caller cannot probe which ids exist.
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync("/api/extensions/no-such-extension/client/Anything.dll")).StatusCode);
+
+        // A signed-in caller gets the inventory — any signed-in caller, since an
+        // extension's own endpoints do their own authorization.
+        var stranger = _factory.As("stranger", "stranger@example.com");
+        Assert.Equal(HttpStatusCode.OK, (await stranger.GetAsync("/api/extensions")).StatusCode);
+    }
+
     // -----------------------------------------------------------------------
     // Routing
     // -----------------------------------------------------------------------

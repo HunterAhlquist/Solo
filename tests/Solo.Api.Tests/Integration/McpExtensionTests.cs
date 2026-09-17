@@ -664,10 +664,11 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     // -----------------------------------------------------------------------
-    // The client half. The browser fetches all of this before anyone has signed
-    // in — the router has to know an extension's routes to render the page
-    // behind sign-in at all — so these endpoints must answer anonymously or the
-    // whole client half silently never loads.
+    // The client half. The inventory and the assembly are for signed-in users:
+    // an extension page is never reachable before sign-in, because a manifest
+    // can only ask for a level of *project* access. content/ is the exception,
+    // and a structural one — a page links it with a plain <link>, which carries
+    // no Authorization header.
     // -----------------------------------------------------------------------
 
     [SkippableFact]
@@ -675,8 +676,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
 
-        var anonymous = _factory.CreateClient();
-        var extensions = await anonymous.GetJson<List<ClientExtensionDto>>("/api/extensions");
+        var extensions = await _admin.GetJson<List<ClientExtensionDto>>("/api/extensions");
 
         var mcp = Assert.Single(extensions, e => e.Id == "mcp");
         Assert.Equal("Solo.Mcp.Client", mcp.ClientAssembly);
@@ -690,20 +690,38 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
-    public async Task The_client_assembly_and_its_content_are_served_anonymously()
+    public async Task The_client_assembly_is_served_to_a_signed_in_caller_and_no_one_else()
     {
         postgres.SkipUnlessDockerAvailable();
 
-        var anonymous = _factory.CreateClient();
-
-        var assembly = await anonymous.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll");
+        var assembly = await _admin.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll");
         Assert.Equal(HttpStatusCode.OK, assembly.StatusCode);
         var bytes = await assembly.Content.ReadAsByteArrayAsync();
         // A PE image, not an error page or the SPA shell.
         Assert.Equal("MZ"u8.ToArray(), bytes[..2]);
 
-        // The page pulls its stylesheet with a plain <link>, which carries no
-        // Authorization header — so this one has to be anonymous too.
+        // A .NET assembly decompiles, so an anonymous visitor must not get one —
+        // nor the inventory that would tell them it exists.
+        var anonymous = _factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync("/api/extensions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll")).StatusCode);
+    }
+
+    /// <summary>
+    /// The page pulls its stylesheet with a plain <c>&lt;link&gt;</c>. A
+    /// subresource fetch carries no Authorization header and Solo has no cookie
+    /// to fall back on, so <c>content/</c> stays anonymous — the same constraint
+    /// that keeps a theme's assets anonymous.
+    /// </summary>
+    [SkippableFact]
+    public async Task Package_content_is_served_anonymously_because_a_link_tag_cannot_authenticate()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var anonymous = _factory.CreateClient();
+
         var stylesheet = await anonymous.GetAsync("/api/extensions/mcp/content/mcp.css");
         Assert.Equal(HttpStatusCode.OK, stylesheet.StatusCode);
         Assert.Equal("text/css", stylesheet.Content.Headers.ContentType?.MediaType);
