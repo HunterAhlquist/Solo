@@ -47,6 +47,13 @@ public class AppExtensionLoadTests : SoloBunitContext
 
     public AppExtensionLoadTests()
     {
+        // bUnit waits one second by default. The chain these tests wait on —
+        // an HTTP round trip, Assembly.Load over a real PE image, the router
+        // rescanning its exported types, then a MudBlazor page — is comfortably
+        // inside that on a developer machine and not on a loaded CI runner,
+        // where the same suite runs an order of magnitude slower.
+        DefaultWaitTimeout = TimeSpan.FromSeconds(15);
+
         Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
 
@@ -114,7 +121,12 @@ public class AppExtensionLoadTests : SoloBunitContext
         // changes, and the sign-in page then navigates to the returnUrl it was
         // handed. The instance is held mid-answer so the route cannot resolve
         // on some other component's redraw — only the load settling can do it.
-        var instanceAnswering = new TaskCompletionSource();
+        //
+        // RunContinuationsAsynchronously matters: without it the rest of the
+        // load resumes inline on whichever thread completes the task, which
+        // here is the test's, and the render it ends in never reaches the
+        // renderer's dispatcher.
+        var instanceAnswering = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _http.Pause = () => instanceAnswering.Task;
 
         authorization.SetAuthorized("Hunter");
