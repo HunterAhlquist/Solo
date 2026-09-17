@@ -212,10 +212,10 @@ is used, so it can carry the whole procedure — which board a task belongs on,
 which label kinds are legal where, the order a card moves in, and which
 questions the data cannot answer.
 
-**Why embedded rather than in `content/`.** That folder is served anonymously by
-design: the client fetches extension assets during bootstrap, before anyone has
-signed in. A guide should reach the same people the tools do — holders of a
-token — and nobody else. Embedding also means `pack-mcp-extension.sh` needs no
+**Why embedded rather than in `content/`.** That folder is served anonymously,
+and structurally has to be: a page links it with a plain `<link>` or `<img>`,
+and a subresource fetch carries no Authorization header. A guide should reach
+the same people the tools do — holders of a token — and nobody else. Embedding also means `pack-mcp-extension.sh` needs no
 change, because the DLL already ships.
 
 `McpToolCatalog.Instructions`, which every client receives on `initialize`,
