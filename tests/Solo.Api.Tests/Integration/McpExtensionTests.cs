@@ -184,7 +184,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(
         [
             "create_epic_group", "create_subtask", "create_task", "delete_epic_group", "get_me", "get_task",
-            "get_task_llm_work", "list_boards", "list_epic_groups", "list_epics", "list_labels", "list_llm_tasks",
+            "get_task_llm_work", "get_workflow", "list_boards", "list_epic_groups", "list_epics", "list_labels", "list_llm_tasks",
             "list_members", "list_projects", "list_tasks", "rerank_epic_group", "set_epic_group", "set_subtask_finished",
             "set_task_assignees", "set_task_epic", "set_task_llm_work", "set_task_status",
             "update_epic_group", "update_subtask", "update_task",
