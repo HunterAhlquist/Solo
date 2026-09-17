@@ -20,9 +20,14 @@ namespace Solo.Mcp.Protocol;
 /// concurrency, so each update fetches first and merges, and callers pass only
 /// the fields they mean to change.</para>
 /// </remarks>
-public sealed partial class McpToolCatalog(SoloRestClient rest)
+public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog prompts)
 {
     public const string Instructions =
+        "Before acting, call get_workflow to read the matching Solo workflow: " +
+        "solo-create-task for bug reports or requests to track work; solo-implement-task " +
+        "before implementing a task flagged for LLM work; solo-summarize-work for what to " +
+        "work on next; solo-recent-work for recent or finished work. Follow the returned " +
+        "guide, including its reporting limits and presentation instructions. " +
         "Task tools for the Solo project-management app. Hierarchy: projects → " +
         "boards → optional epic groups → epics → tasks → sub-tasks. Groups contain only " +
         "epics; ungrouped epics share the board's rank order with groups, and tasks " +
@@ -35,16 +40,11 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
         "ids: get_me returns the caller's own, list_members puts names to the rest. " +
         "Use list_llm_tasks to find " +
         "tasks explicitly flagged for LLM work; the flag is metadata, not authorization or an automatic trigger. " +
-        "This server also offers four workflow guides as prompts (prompts/list). Fetch the matching " +
-        "one with prompts/get BEFORE acting, not afterwards: solo-create-task when someone reports a " +
-        "bug or asks for work to be tracked; solo-implement-task before starting a task flagged for " +
-        "LLM work; solo-summarize-work when asked what to work on next; solo-recent-work when asked " +
-        "what was finished lately. They carry what these tools cannot enforce — which board a task " +
-        "belongs on, which label kinds are legal where, the order a card moves in, and which questions " +
-        "the data cannot actually answer.";
+        "The same guides are also available through prompts/list and prompts/get for clients " +
+        "with native prompt support.";
 
     private readonly IReadOnlyDictionary<string, McpTool> _tools =
-        Build(rest).ToDictionary(tool => tool.Name, StringComparer.Ordinal);
+        Build(rest, prompts).ToDictionary(tool => tool.Name, StringComparer.Ordinal);
 
     public IReadOnlyCollection<McpTool> Tools => (IReadOnlyCollection<McpTool>)_tools.Values;
 
@@ -54,7 +54,7 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
     // The catalog
     // -----------------------------------------------------------------------
 
-    private static List<McpTool> Build(SoloRestClient rest)
+    private static List<McpTool> Build(SoloRestClient rest, McpPromptCatalog prompts)
     {
         var taskRef = Text("Task: id (GUID) or full serial number like \"DMD-PXW26-2\"");
         var parentRef = Text("Parent task: id (GUID) or full serial number");
@@ -67,6 +67,8 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
 
         return
         [
+            WorkflowTool(prompts),
+
             new McpTool("list_projects", "List projects",
                 "Lists every Solo project the signed-in user is a member of.",
                 Schema(),

@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Solo.Mcp.Rest;
 
 namespace Solo.Mcp.Protocol;
 
@@ -27,6 +28,15 @@ public sealed record McpPrompt(
     /// </summary>
     public string Render(JsonObject? arguments)
     {
+        var missing = Arguments
+            .Where(a => a.Required && string.IsNullOrWhiteSpace(arguments?[a.Name]?.ToString()))
+            .Select(a => a.Name)
+            .ToList();
+        if (missing.Count > 0)
+        {
+            throw new McpToolException($"\"{Name}\" requires {string.Join(", ", missing)}.");
+        }
+
         var supplied = Arguments
             .Select(a => (a.Label, Value: arguments?[a.Name]?.ToString()))
             .Where(x => !string.IsNullOrWhiteSpace(x.Value))

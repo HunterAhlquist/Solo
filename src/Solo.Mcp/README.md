@@ -218,10 +218,42 @@ and a subresource fetch carries no Authorization header. A guide should reach
 the same people the tools do — holders of a token — and nobody else. Embedding also means `pack-mcp-extension.sh` needs no
 change, because the DLL already ships.
 
-`McpToolCatalog.Instructions`, which every client receives on `initialize`,
-names the four guides and says to fetch the matching one *before* acting. That
-is the only channel that needs no client feature beyond `initialize`: prompt
-support is uneven across MCP clients in a way tool support is not.
+### Tool access for clients without prompt support (1.3.1)
+
+Some clients expose Solo's tools to the model but provide no way to call
+`prompts/list` or `prompts/get`. Advertising those methods in initialization
+instructions does not make them callable. `get_workflow` exposes the same
+embedded guides as an ordinary tool, with the available names and arguments in
+its input schema:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "get_workflow",
+    "arguments": {
+      "name": "solo-recent-work",
+      "arguments": { "project": "Solo", "days": "14" }
+    }
+  }
+}
+```
+
+The tool returns `name` and `instructions` in its text result. It only retrieves
+the guide; the assistant then follows it using the data tools. Required prompt
+arguments still apply (`solo-implement-task` requires `arguments.task`).
+
+`McpToolCatalog.Instructions`, received on `initialize`, now leads with the
+instruction to call `get_workflow` *before* acting on a matching request. For
+example, "What work has been done recently in Solo?" should lead to
+`get_workflow` with `name: "solo-recent-work"`, then data gathering and the recap.
+This is guidance to the assistant, not a server-enforced trigger. Native prompt
+methods remain available for clients with prompt menus.
+
+Rebuild with `build/pack-mcp-extension.sh`, install the updated package, restart
+Solo, and reconnect MCP clients to refresh their tool catalog and instructions.
 
 The same files are the source for the repo's own `.claude/skills/` entries,
 which symlink to them, so a slash command and a local skill cannot drift apart.

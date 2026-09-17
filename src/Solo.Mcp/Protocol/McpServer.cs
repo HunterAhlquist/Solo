@@ -216,15 +216,6 @@ public sealed class McpServer(McpToolCatalog catalog, McpPromptCatalog prompts, 
                 $"Unknown prompt \"{name}\". Call prompts/list for what this server offers.");
         }
 
-        var missing = prompt.Arguments
-            .Where(a => a.Required && string.IsNullOrWhiteSpace(parameters?["arguments"]?[a.Name]?.ToString()))
-            .Select(a => a.Name)
-            .ToList();
-        if (missing.Count > 0)
-        {
-            throw new McpToolException($"\"{name}\" requires {string.Join(", ", missing)}.");
-        }
-
         return new JsonObject
         {
             ["description"] = prompt.Description,
