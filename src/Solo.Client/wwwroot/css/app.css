@@ -1294,7 +1294,7 @@ html.solo-desktop--glass .kanban-lane:not(.kanban-lane--adhoc) {
 }
 
 html.solo-desktop--glass .epic-group {
-    background: color-mix(in srgb, var(--mud-palette-background) 5%, transparent);
+    background: color-mix(in srgb, var(--mud-palette-background) 15%, transparent);
 }
 
 /* The project cards' board panel. Against a native material even a neutral
@@ -1510,7 +1510,6 @@ html.solo-desktop .solo-titlebar {
 }
 
 .epic-group__drag-handle {
-    color: #616161;
     flex-shrink: 0;
 }
 
