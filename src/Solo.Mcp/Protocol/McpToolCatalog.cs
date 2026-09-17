@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Solo.Mcp.Rest;
@@ -30,7 +31,9 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
         "or skip discovery: every taskId parameter also accepts a full serial " +
         "number like \"DMD-PXW26-2\" (project alias, board alias, task number). " +
         "Every call acts as the Solo user whose MCP token authorized it, and " +
-        "reaches only the projects that user is a member of. Use list_llm_tasks to find " +
+        "reaches only the projects that user is a member of. A task's assigneeIds are user " +
+        "ids: get_me returns the caller's own, list_members puts names to the rest. " +
+        "Use list_llm_tasks to find " +
         "tasks explicitly flagged for LLM work; the flag is metadata, not authorization or an automatic trigger. " +
         "This server also offers four workflow guides as prompts (prompts/list). Fetch the matching " +
         "one with prompts/get BEFORE acting, not afterwards: solo-create-task when someone reports a " +
@@ -60,6 +63,7 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
             $"Description (Markdown, ≤{FieldLimits.Description / 1000}k chars). Link to another task by " +
             "wrapping its serial number in double pipes, e.g. ||DMD-PXW26-2||",
             FieldLimits.Description);
+        var deadline = Date("Deadline, a calendar date in YYYY-MM-DD form");
 
         return
         [
@@ -67,6 +71,19 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
                 "Lists every Solo project the signed-in user is a member of.",
                 Schema(),
                 (_, ct) => rest.GetAsync("api/projects", ct)),
+
+            new McpTool("get_me", "Who am I",
+                "The Solo user this token belongs to. Its id is what a task's assigneeIds are " +
+                "matched against, so an agent assigning work to itself starts here.",
+                Schema(),
+                (_, ct) => rest.GetAsync("api/users/me", ct)),
+
+            new McpTool("list_members", "List project members",
+                "Lists a project's members — the only way to put a name to the assigneeIds a task " +
+                "carries. Assignment goes by userId, not the membership id: a pending invite has a " +
+                "null userId and cannot be assigned until that person first signs in.",
+                Schema(("projectId", Uuid("Project id"), true)),
+                (args, ct) => rest.GetAsync($"api/projects/{RequireGuid(args, "projectId")}/members", ct)),
 
             new McpTool("list_boards", "List boards",
                 "Lists the boards of a project.",
@@ -132,7 +149,8 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
                     ("name", taskName, true),
                     ("description", taskDescription, false),
                     ("epicId", Uuid("Epic on the same board; omit for an ad-hoc task"), false),
-                    ("labelId", Uuid("Task label from the project (see list_labels)"), false)),
+                    ("labelId", Uuid("Task label from the project (see list_labels)"), false),
+                    ("deadlineAt", deadline, false)),
                 (args, ct) => Json(rest.SendAsync<TaskDto>(
                     HttpMethod.Post,
                     $"api/boards/{RequireGuid(args, "boardId")}/tasks",
@@ -142,18 +160,20 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
                         Description = OptionalString(args, "description"),
                         EpicId = OptionalGuid(args, "epicId"),
                         LabelId = OptionalGuid(args, "labelId"),
+                        DeadlineAt = OptionalDate(args, "deadlineAt"),
                     },
                     ct))),
 
             new McpTool("update_task", "Update a task",
-                "Edits a task's name, description and/or label. Omitted fields keep " +
-                "their current value; pass null to clear the description or label. " +
-                "Status and epic have their own tools.",
+                "Edits a task's name, description, label and/or deadline. Omitted fields keep " +
+                "their current value; pass null to clear the description, label or deadline. " +
+                "Status, epic and assignees have their own tools.",
                 Schema(
                     ("taskId", taskRef, true),
                     ("name", taskName, false),
                     ("description", Nullable(taskDescription), false),
-                    ("labelId", Nullable(Uuid("Task label, or null to clear")), false)),
+                    ("labelId", Nullable(Uuid("Task label, or null to clear")), false),
+                    ("deadlineAt", Nullable(Date("Deadline (YYYY-MM-DD), or null to clear")), false)),
                 (args, ct) => Json(UpdateTaskAsync(rest, args, ct))),
 
             new McpTool("set_task_status", "Set task status",
@@ -177,6 +197,20 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
                     HttpMethod.Put,
                     $"api/tasks/{await ResolveTaskIdAsync(rest, RequireString(args, "taskId"), ct)}/epic",
                     new SetTaskEpicRequest { EpicId = OptionalGuid(args, "epicId") },
+                    ct))),
+
+            new McpTool("set_task_assignees", "Set task assignees",
+                "Replaces a task's assignees. Not a partial edit: anyone left out is unassigned, and " +
+                "an empty array clears the task, so read get_task's assigneeIds first when adding " +
+                "someone. Users must be activated members of the task's project (see list_members); " +
+                "get_me gives an agent its own id.",
+                Schema(
+                    ("taskId", taskRef, true),
+                    ("userIds", UuidList("User ids to assign; empty unassigns everyone"), true)),
+                async (args, ct) => await Json(rest.SendAsync<TaskDto>(
+                    HttpMethod.Put,
+                    $"api/tasks/{await ResolveTaskIdAsync(rest, RequireString(args, "taskId"), ct)}/assignees",
+                    new SetAssigneesRequest { UserIds = RequireGuidList(args, "userIds") },
                     ct))),
 
             new McpTool("create_subtask", "Create a sub-task",
@@ -220,10 +254,9 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
 
     // -----------------------------------------------------------------------
     // Read-modify-write. Core's PUTs replace the whole record, so anything the
-    // caller did not mention has to be carried across from the current value —
-    // including fields this tool set does not expose, which is why DeadlineAt
-    // appears here and in none of the schemas. (The desktop server omitted it,
-    // and so silently cleared a task's deadline on every edit.)
+    // caller did not mention has to be carried across from the current value.
+    // (Dropping one is how the desktop server silently cleared a task's deadline
+    // on every edit.)
     // -----------------------------------------------------------------------
 
     private static async Task<TaskDto?> UpdateTaskAsync(
@@ -240,7 +273,9 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
                 ? OptionalString(args, "description")
                 : current.Description,
             LabelId = args.ContainsKey("labelId") ? OptionalGuid(args, "labelId") : current.LabelId,
-            DeadlineAt = current.DeadlineAt,
+            DeadlineAt = args.ContainsKey("deadlineAt")
+                ? OptionalDate(args, "deadlineAt")
+                : current.DeadlineAt,
             Version = current.Version,
         }, ct);
     }
@@ -339,6 +374,45 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
             : throw new McpToolException($"\"{name}\" must be a GUID, not \"{text}\".");
     }
 
+    private static IReadOnlyList<Guid> RequireGuidList(JsonObject args, string name)
+    {
+        if (!args.TryGetPropertyValue(name, out var node) || node is not JsonArray array)
+        {
+            throw new McpToolException(
+                $"\"{name}\" is required and must be an array of ids — empty, not absent, to clear them.");
+        }
+
+        var ids = new List<Guid>(array.Count);
+        for (var i = 0; i < array.Count; i++)
+        {
+            if (array[i]?.GetValueKind() != JsonValueKind.String ||
+                !Guid.TryParse(array[i]!.GetValue<string>(), out var id))
+            {
+                throw new McpToolException($"\"{name}[{i}]\" must be a user id (GUID).");
+            }
+
+            ids.Add(id);
+        }
+
+        return ids;
+    }
+
+    /// <summary>A deadline is a calendar day, not an instant — no time zone is involved.</summary>
+    private static DateOnly? OptionalDate(JsonObject args, string name)
+    {
+        var text = OptionalString(args, name);
+        if (text is null)
+        {
+            return null;
+        }
+
+        return DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var date)
+            ? date
+            : throw new McpToolException(
+                $"\"{name}\" must be a date in YYYY-MM-DD form, not \"{text}\".");
+    }
+
     private static bool RequireBool(JsonObject args, string name)
     {
         if (args.TryGetPropertyValue(name, out var node) &&
@@ -407,6 +481,17 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
 
     private static JsonObject Uuid(string description) =>
         new() { ["type"] = "string", ["format"] = "uuid", ["description"] = description };
+
+    private static JsonObject Date(string description) =>
+        new() { ["type"] = "string", ["format"] = "date", ["description"] = description };
+
+    private static JsonObject UuidList(string description) =>
+        new()
+        {
+            ["type"] = "array",
+            ["items"] = new JsonObject { ["type"] = "string", ["format"] = "uuid" },
+            ["description"] = description,
+        };
 
     private static JsonObject Flag(string description) =>
         new() { ["type"] = "boolean", ["description"] = description };
