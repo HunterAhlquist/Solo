@@ -494,11 +494,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
             ["taskId"] = taskId.ToString(),
             ["userIds"] = new JsonArray(me.ToString()),
         });
-        // Distinct because core's PUT echoes its tracked navigation, and a
-        // freshly added assignment lands in it twice — once from
-        // AssignmentHelper.Sync, once from EF's relationship fixup. The stored
-        // row is single, as the canonical read below shows.
-        Assert.Equal([me], assigned["assigneeIds"]!.AsArray().Select(id => id!.GetValue<Guid>()).Distinct());
+        Assert.Equal([me], assigned["assigneeIds"]!.AsArray().Select(id => id!.GetValue<Guid>()));
 
         var flagged = await CallToolAsync(client, "set_task_llm_work", new JsonObject
         {
