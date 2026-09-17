@@ -19,16 +19,19 @@ log does record the status change, but it's project-owner-only REST
 (`GET /api/projects/{id}/audit`) with no tool in front of it. So "finished in the
 last two weeks" is *inferred*, and the report has to say so.
 
-**MCP has no member directory.** `list_projects` returns no members, and there is
-no `get_project` or `list_members` tool — `assigneeIds` are bare GUIDs. Names
-have to come from the user. Ask once for the ids you can't resolve, then reuse
-that mapping for the whole report.
+**Names come from a second call.** A task carries `assigneeIds` and nothing else,
+so build the directory first: `list_members(projectId)` for the roster and
+`get_me` for whose token you are holding. Match on **`userId`** — the `id` beside
+it is the membership row, not the person, and matching it silently yields nobody.
+An id that resolves to no member is someone who has since left the project; label
+them "former member" rather than dropping their work.
 
 ## Gather
 
-`list_projects` → `list_boards(projectId)` → `list_tasks(boardId)` for every open
-board. That's the whole dataset: status, `createdAt`, `version`, `assigneeIds`,
-`deadlineAt` and sub-tasks all come back on the task.
+`list_projects` → `list_members(projectId)` → `list_boards(projectId)` →
+`list_tasks(boardId)` for every open board. That's the whole dataset: status,
+`createdAt`, `version`, `assigneeIds`, `deadlineAt` and sub-tasks all come back
+on the task, and the roster puts names to the ids.
 
 ## Dating the window
 
@@ -52,9 +55,10 @@ report can't recover from. Don't.
 
 - Group finished and in-progress tasks by `assigneeId`.
 - **`assigneeIds: []` is normal on a one-person instance.** Nobody assigns work to
-  themselves when they're the only member. If the project has one member,
-  attribute everything to them and drop the per-member layout entirely — a
-  one-person report with an "Unassigned" column is noise pretending to be data.
+  themselves when they're the only member. `list_members` tells you which case
+  you're in: one member means attribute everything to them and drop the
+  per-member layout entirely — a one-person report with an "Unassigned" column is
+  noise pretending to be data.
 - On a multi-member project, unassigned finished work is real. Give it its own
   card at the end in a neutral color. Don't drop it and don't spread it across
   people.

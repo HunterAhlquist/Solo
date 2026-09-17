@@ -71,12 +71,20 @@ Adding sub-tasks does not move the parent. It stays Unstarted.
 **Only when the user mentions them.** An assignee or due date nobody asked for is
 a commitment you invented on someone's behalf.
 
-When they do ask: **MCP has no tool for either.** `create_task` and `update_task`
-cover name, description, label and epic only — assignees and `deadlineAt` exist
-in the REST API (`PUT /api/tasks/{id}/assignees`, `deadlineAt` on the task PUT)
-and are not exposed as tools. Report the serial and ask the user to set them in
-the task drawer. Don't drop the request silently, and don't fake it with a label
-or a line in the description.
+When they do ask, both are one call:
+
+- **Deadline** — `deadlineAt` on `create_task` and `update_task`, as `YYYY-MM-DD`.
+  It is a date, not an instant: "due 30 July" means the same thing in every
+  timezone.
+- **Assignees** — `set_task_assignees(taskId, userIds)`. `list_members(projectId)`
+  turns names into ids and `get_me` returns your own. Assign by **`userId`**, not
+  the `id` beside it — that one is the membership row, and the API rejects it as
+  not a member of the project. A member with `isPending: true` has been invited
+  but hasn't joined and cannot be assigned.
+
+`set_task_assignees` **replaces the whole set**, so anyone you leave out is
+unassigned. To add someone, read the task's current `assigneeIds` first and send
+them back along with the new one.
 
 ## "Work for an LLM"
 
@@ -90,13 +98,14 @@ an agent loop finds work meant for it — see the `solo-implement-task` guide.
 
 Two conditions, both of which fail loudly rather than quietly:
 
-- The task must **already be assigned** to a user with active MCP access, or the
-  call is a 400 (*"No assignee has MCP access"*). Since MCP cannot assign, that
-  means asking the user to assign it first — in practice to themselves, the
-  account whose token you are calling with. Check before you write:
-  `get_task_llm_work(taskId)` returns `eligible`, which is that same test run as
-  a read. `eligible: false` means the enable call will be rejected, so ask for
-  the assignment instead of firing it and reporting an error.
+- The task must be **assigned** to a user with active MCP access, or the call is
+  a 400 (*"No assignee has MCP access"*). When the user is asking for their own
+  agent to do the work, that user is you: `get_me` for your id, then
+  `set_task_assignees` before setting the flag. This is the one case where
+  assigning without being asked is right — it is what "my agent will pick this
+  up" means — but assign the caller, never someone else.
+- `get_task_llm_work(taskId)` returns `eligible`, the same test run as a read.
+  Check it rather than firing a write you can already tell will be refused.
 - The tool ships in MCP package **1.2.0**. On an older install it is simply
   absent from the catalog. Say so rather than substituting something else; a
   "for-LLM" label is not the same thing and `list_llm_tasks` will not see it.
