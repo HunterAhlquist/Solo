@@ -148,3 +148,39 @@ migrations, and model snapshot are unchanged.
 Restart after installing the updated package. Removing MCP removes its task UI,
 endpoints, and audit annotations. Core audit history remains intact; MCP-owned
 attribution data stays in the extension schema until it is purged.
+
+## Assignees and deadlines (1.3.0)
+
+Until now the catalog could read a task's `assigneeIds` but never set them, and
+never saw its deadline at all. That left two things an agent could not do on its
+own. It could not name the people behind a set of GUIDs, so per-person reporting
+was impossible. And because `set_task_llm_work` refuses a task whose assignees
+have no MCP access, an agent that created a task had to stop and ask a human to
+assign it in the browser before it could flag its own work.
+
+| Tool | Purpose |
+|---|---|
+| `get_me` | The user this token belongs to — the id an agent assigns to itself. |
+| `list_members` | A project's members, so assignee ids resolve to names. |
+| `set_task_assignees` | Replace a task's assignees. |
+
+`set_task_assignees` takes `taskId` (id or serial, like every other task tool)
+and `userIds`. It replaces rather than adds: anyone left out is unassigned, and
+an empty array clears the task, so read `get_task`'s `assigneeIds` first when
+adding someone. Assignees must be activated members of the task's project;
+core answers 400 naming the offending ids otherwise.
+
+`list_members` rows carry both an `id` and a `userId`, and only `userId`
+assigns — the `id` is the membership, not the person. A pending invite has a
+null `userId` and cannot be assigned until that person first signs in.
+
+`create_task` and `update_task` now take `deadlineAt`, a calendar date in
+`YYYY-MM-DD` form with no time or zone. On `update_task` it follows the same
+rule as description and label: omitted leaves the current deadline alone, an
+explicit `null` clears it. Anything that is not an ISO date is refused rather
+than guessed at, because `01/02/2026` is two different days depending on who
+wrote it.
+
+These call core endpoints that have existed since before this package, so the
+contract range is unchanged. Rebuild with `build/pack-mcp-extension.sh`,
+install, and restart; reconnect MCP clients to refresh their tool catalog.

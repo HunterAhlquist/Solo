@@ -183,9 +183,10 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
 
         Assert.Equal(
         [
-            "create_epic_group", "create_subtask", "create_task", "delete_epic_group", "get_task", "get_task_llm_work",
-            "list_boards", "list_epic_groups", "list_epics", "list_labels", "list_llm_tasks", "list_projects", "list_tasks",
-            "rerank_epic_group", "set_epic_group", "set_subtask_finished", "set_task_epic", "set_task_llm_work", "set_task_status",
+            "create_epic_group", "create_subtask", "create_task", "delete_epic_group", "get_me", "get_task",
+            "get_task_llm_work", "list_boards", "list_epic_groups", "list_epics", "list_labels", "list_llm_tasks",
+            "list_members", "list_projects", "list_tasks", "rerank_epic_group", "set_epic_group", "set_subtask_finished",
+            "set_task_assignees", "set_task_epic", "set_task_llm_work", "set_task_status",
             "update_epic_group", "update_subtask", "update_task",
         ], names);
     }
@@ -463,6 +464,205 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         });
 
         Assert.Null((await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).Description);
+    }
+
+    /// <summary>
+    /// The round trip the catalog previously could not make. set_task_llm_work
+    /// refuses a task whose assignees have no MCP access, so without an
+    /// assignment tool an agent had to stop and ask a human to assign the task
+    /// in the browser before it could flag its own work.
+    /// </summary>
+    [SkippableFact]
+    public async Task An_agent_can_create_assign_and_flag_work_without_leaving_mcp()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, board) = await CreateProjectWithBoardAsync("Assignment", "ASGN", "MAIN");
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+
+        var me = (await CallToolAsync(client, "get_me", new JsonObject()))["id"]!.GetValue<Guid>();
+        var created = await CallToolAsync(client, "create_task", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(),
+            ["name"] = "Triage the crash reports",
+        });
+        var taskId = created["id"]!.GetValue<Guid>();
+
+        var assigned = await CallToolAsync(client, "set_task_assignees", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["userIds"] = new JsonArray(me.ToString()),
+        });
+        // Distinct because core's PUT echoes its tracked navigation, and a
+        // freshly added assignment lands in it twice — once from
+        // AssignmentHelper.Sync, once from EF's relationship fixup. The stored
+        // row is single, as the canonical read below shows.
+        Assert.Equal([me], assigned["assigneeIds"]!.AsArray().Select(id => id!.GetValue<Guid>()).Distinct());
+
+        var flagged = await CallToolAsync(client, "set_task_llm_work", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["llmWork"] = true,
+        });
+        Assert.True(flagged["llmWork"]!.GetValue<bool>());
+
+        // Core agrees, so the assignment went through core's own write path.
+        Assert.Equal([me], (await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}")).AssigneeIds);
+    }
+
+    /// <summary>
+    /// Assignment replaces rather than adds, and an empty array is how a caller
+    /// clears one — which is why "userIds" is required even when it is empty.
+    /// </summary>
+    [SkippableFact]
+    public async Task Setting_assignees_replaces_the_whole_set()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (project, board) = await CreateProjectWithBoardAsync("Replacing", "RPL", "MAIN");
+        var other = _factory.As("other", "other@example.com", "Other");
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "other@example.com", role = "ReadWrite" });
+        var otherId = (await other.GetJson<UserDto>("/api/users/me")).Id;
+
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Shared work" });
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+        var me = (await CallToolAsync(client, "get_me", new JsonObject()))["id"]!.GetValue<Guid>();
+
+        await CallToolAsync(client, "set_task_assignees", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(),
+            ["userIds"] = new JsonArray(me.ToString(), otherId.ToString()),
+        });
+        Assert.Equal(
+            new HashSet<Guid> { me, otherId },
+            (await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).AssigneeIds.ToHashSet());
+
+        // Naming only one of them drops the other.
+        await CallToolAsync(client, "set_task_assignees", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(),
+            ["userIds"] = new JsonArray(otherId.ToString()),
+        });
+        Assert.Equal([otherId], (await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).AssigneeIds);
+
+        await CallToolAsync(client, "set_task_assignees", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(),
+            ["userIds"] = new JsonArray(),
+        });
+        Assert.Empty((await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).AssigneeIds);
+    }
+
+    /// <summary>
+    /// list_members is what turns a task's assigneeIds into people. Its rows
+    /// carry both a membership id and a userId, and only the latter assigns —
+    /// a pending invite has none at all until that person first signs in.
+    /// </summary>
+    [SkippableFact]
+    public async Task Members_resolve_assignee_ids_and_a_pending_invite_has_no_user_id()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (project, board) = await CreateProjectWithBoardAsync("Members", "MEM", "MAIN");
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "invited@example.com", role = "ReadWrite" });
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+        var me = (await CallToolAsync(client, "get_me", new JsonObject()))["id"]!.GetValue<Guid>();
+
+        var members = (await CallToolAsync(client, "list_members", new JsonObject
+        {
+            ["projectId"] = project.Id.ToString(),
+        })).AsArray();
+
+        var mine = Assert.Single(members, m => m!["userId"]?.GetValue<Guid>() == me);
+        Assert.Equal("admin@example.com", mine!["email"]!.GetValue<string>());
+        var pending = Assert.Single(members, m => m!["email"]!.GetValue<string>() == "invited@example.com");
+        Assert.True(pending!["isPending"]!.GetValue<bool>());
+        Assert.Null(pending["userId"]?.GetValue<Guid?>());
+
+        // The membership id is not a user id; assigning by it is refused rather than guessed at.
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Needs an owner" });
+        var refused = await CallToolRawAsync(client, "set_task_assignees", new JsonObject
+        {
+            ["taskId"] = task.Id.ToString(),
+            ["userIds"] = new JsonArray(mine["id"]!.GetValue<Guid>().ToString()),
+        });
+        Assert.True(refused["isError"]!.GetValue<bool>());
+        Assert.Contains("Invalid assignees", refused["content"]![0]!["text"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Empty((await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).AssigneeIds);
+    }
+
+    /// <summary>
+    /// A deadline is a calendar day. It can be set at creation, changed by
+    /// naming it, and cleared only by an explicit null — an omitted deadline
+    /// still survives the read-modify-write.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_deadline_is_set_changed_and_cleared_only_when_named()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, board) = await CreateProjectWithBoardAsync("Deadlines", "DUE", "MAIN");
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+
+        var created = await CallToolAsync(client, "create_task", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(),
+            ["name"] = "Ship the beta",
+            ["deadlineAt"] = "2026-12-24",
+        });
+        var taskId = created["id"]!.GetValue<Guid>();
+        Assert.Equal(new DateOnly(2026, 12, 24), (await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}")).DeadlineAt);
+
+        await CallToolAsync(client, "update_task", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["deadlineAt"] = "2027-01-15",
+        });
+        Assert.Equal(new DateOnly(2027, 1, 15), (await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}")).DeadlineAt);
+
+        await CallToolAsync(client, "update_task", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["name"] = "Ship the release candidate",
+        });
+        Assert.Equal(new DateOnly(2027, 1, 15), (await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}")).DeadlineAt);
+
+        await CallToolAsync(client, "update_task", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["deadlineAt"] = null,
+        });
+        Assert.Null((await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}")).DeadlineAt);
+    }
+
+    /// <summary>
+    /// An ambiguous date is rejected here rather than guessed at: "01/02/2026"
+    /// is two different days depending on who wrote it.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_deadline_that_is_not_a_calendar_date_is_a_readable_error()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, board) = await CreateProjectWithBoardAsync("Bad dates", "BAD", "MAIN");
+        var token = await MintTokenAsync();
+
+        var result = await CallToolRawAsync(McpClient(token.Value), "create_task", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(),
+            ["name"] = "Someday",
+            ["deadlineAt"] = "next Friday",
+        });
+
+        Assert.True(result["isError"]!.GetValue<bool>());
+        Assert.Contains("YYYY-MM-DD", result["content"]![0]!["text"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Empty(await _admin.GetJson<List<TaskDto>>($"/api/boards/{board.Id}/tasks"));
     }
 
     /// <summary>
