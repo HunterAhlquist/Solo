@@ -18,11 +18,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Solo.Extensibility\Solo.Extensibility.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The workflow guides, served as MCP prompts. Embedded in the assembly
+         rather than dropped in content/: that folder is anonymous by design, and
+         these should reach exactly the people the tools do. Embedding also means
+         the packaging script needs no change — the DLL already ships. -->
+    <EmbeddedResource Include="Skills\*.md" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,1 @@
+../../../src/Solo.Mcp/Skills/solo-implement-task.md

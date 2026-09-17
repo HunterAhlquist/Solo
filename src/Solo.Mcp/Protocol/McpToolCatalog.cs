@@ -31,7 +31,14 @@ public sealed partial class McpToolCatalog(SoloRestClient rest)
         "number like \"DMD-PXW26-2\" (project alias, board alias, task number). " +
         "Every call acts as the Solo user whose MCP token authorized it, and " +
         "reaches only the projects that user is a member of. Use list_llm_tasks to find " +
-        "tasks explicitly flagged for LLM work; the flag is metadata, not authorization or an automatic trigger.";
+        "tasks explicitly flagged for LLM work; the flag is metadata, not authorization or an automatic trigger. " +
+        "This server also offers four workflow guides as prompts (prompts/list). Fetch the matching " +
+        "one with prompts/get BEFORE acting, not afterwards: solo-create-task when someone reports a " +
+        "bug or asks for work to be tracked; solo-implement-task before starting a task flagged for " +
+        "LLM work; solo-summarize-work when asked what to work on next; solo-recent-work when asked " +
+        "what was finished lately. They carry what these tools cannot enforce — which board a task " +
+        "belongs on, which label kinds are legal where, the order a card moves in, and which questions " +
+        "the data cannot actually answer.";
 
     private readonly IReadOnlyDictionary<string, McpTool> _tools =
         Build(rest).ToDictionary(tool => tool.Name, StringComparer.Ordinal);

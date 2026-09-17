@@ -22,7 +22,7 @@ namespace Solo.Mcp.Protocol;
 /// endpoints, which is how that SDK attaches its transport. The surface a
 /// stateless server owes a client is small enough that the trade is worth it.</para>
 /// </remarks>
-public sealed class McpServer(McpToolCatalog catalog, ILogger<McpServer> logger)
+public sealed class McpServer(McpToolCatalog catalog, McpPromptCatalog prompts, ILogger<McpServer> logger)
 {
     /// <summary>Protocol revisions understood here, newest first.</summary>
     private static readonly string[] SupportedProtocols = ["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -108,6 +108,8 @@ public sealed class McpServer(McpToolCatalog catalog, ILogger<McpServer> logger)
             "ping" => new JsonObject(),
             "tools/list" => ToolList(),
             "tools/call" => await CallToolAsync(parameters, ct),
+            "prompts/list" => PromptList(),
+            "prompts/get" => GetPrompt(parameters),
             // Lifecycle notifications: acknowledged by not failing.
             "notifications/initialized" or "notifications/cancelled" => new JsonObject(),
             _ => null,
@@ -127,9 +129,11 @@ public sealed class McpServer(McpToolCatalog catalog, ILogger<McpServer> logger)
             ["protocolVersion"] = agreed,
             ["capabilities"] = new JsonObject
             {
-                // No listChanged: the catalog is fixed at build time, so
-                // promising change notifications would be a promise never kept.
+                // No listChanged on either: both catalogs are fixed at build
+                // time, so promising change notifications would be a promise
+                // never kept.
                 ["tools"] = new JsonObject(),
+                ["prompts"] = new JsonObject(),
             },
             ["serverInfo"] = new JsonObject
             {
@@ -156,6 +160,84 @@ public sealed class McpServer(McpToolCatalog catalog, ILogger<McpServer> logger)
         }
 
         return new JsonObject { ["tools"] = tools };
+    }
+
+    /// <summary>
+    /// The workflow guides. Listed with their arguments but not their bodies —
+    /// a client shows this to pick one, and shipping four full guides to render
+    /// a command list would be most of a token budget for nothing.
+    /// </summary>
+    private JsonObject PromptList()
+    {
+        var list = new JsonArray();
+        foreach (var prompt in prompts.Prompts.OrderBy(p => p.Name, StringComparer.Ordinal))
+        {
+            var arguments = new JsonArray();
+            foreach (var argument in prompt.Arguments)
+            {
+                arguments.Add(new JsonObject
+                {
+                    ["name"] = argument.Name,
+                    ["description"] = argument.Description,
+                    ["required"] = argument.Required,
+                });
+            }
+
+            var entry = new JsonObject
+            {
+                ["name"] = prompt.Name,
+                ["title"] = prompt.Title,
+                ["description"] = prompt.Description,
+            };
+            if (arguments.Count > 0)
+            {
+                entry["arguments"] = arguments;
+            }
+
+            list.Add(entry);
+        }
+
+        return new JsonObject { ["prompts"] = list };
+    }
+
+    /// <summary>
+    /// One guide, as a single user message. Unlike a tool call, a bad name here
+    /// is a protocol error — nothing was invoked, and there is no model-readable
+    /// result to hand back that would be better than saying so.
+    /// </summary>
+    private JsonNode? GetPrompt(JsonObject? parameters)
+    {
+        var name = parameters?["name"]?.GetValue<string>()
+            ?? throw new McpToolException("prompts/get needs a \"name\".");
+
+        if (prompts.Find(name) is not { } prompt)
+        {
+            throw new McpToolException(
+                $"Unknown prompt \"{name}\". Call prompts/list for what this server offers.");
+        }
+
+        var missing = prompt.Arguments
+            .Where(a => a.Required && string.IsNullOrWhiteSpace(parameters?["arguments"]?[a.Name]?.ToString()))
+            .Select(a => a.Name)
+            .ToList();
+        if (missing.Count > 0)
+        {
+            throw new McpToolException($"\"{name}\" requires {string.Join(", ", missing)}.");
+        }
+
+        return new JsonObject
+        {
+            ["description"] = prompt.Description,
+            ["messages"] = new JsonArray(new JsonObject
+            {
+                ["role"] = "user",
+                ["content"] = new JsonObject
+                {
+                    ["type"] = "text",
+                    ["text"] = prompt.Render(parameters?["arguments"] as JsonObject),
+                },
+            }),
+        };
     }
 
     /// <summary>

@@ -21,7 +21,9 @@ Auth/               the solomcp_ token, its authentication scheme, and the
                     the user
 Controllers/        POST /api/ext/mcp (protocol), /api/ext/mcp/tokens (management)
 Data/               McpDbContext + its migrations, in schema ext_mcp
-Protocol/           JSON-RPC dispatch and the tool catalog
+Protocol/           JSON-RPC dispatch, the tool catalog and the prompt catalog
+Skills/             the workflow guides, embedded in the assembly and served
+                    as MCP prompts
 Rest/               the loopback hop back into Solo's REST API
 content/            static files served at /api/extensions/mcp/content/
 ```
@@ -148,3 +150,42 @@ migrations, and model snapshot are unchanged.
 Restart after installing the updated package. Removing MCP removes its task UI,
 endpoints, and audit annotations. Core audit history remains intact; MCP-owned
 attribution data stays in the extension schema until it is purged.
+
+## Workflow guides as prompts (1.3.0)
+
+`Skills/*.md` are four agent-skill files — YAML frontmatter naming the workflow
+and saying when to reach for it, then the procedure — embedded in the assembly
+and served as MCP prompts:
+
+| Prompt | For |
+|---|---|
+| `solo-create-task` | Filing a reported bug or request as a task, with labelled sub-tasks. |
+| `solo-implement-task` | Picking up a task flagged for LLM work and moving it to Finished. |
+| `solo-summarize-work` | Recommending what to do next, with blockers inferred. |
+| `solo-recent-work` | A per-member recap of the last two weeks. |
+
+`prompts/list` returns names, descriptions and arguments; `prompts/get` returns
+one guide as a single user message, with any supplied arguments appended under
+a `## This request` heading rather than substituted into the prose. Arguments
+are declared in `McpPromptCatalog`, not in the frontmatter — they describe the
+MCP calling convention, which an agent skill has no notion of.
+
+**Why prompts rather than longer tool descriptions.** A tool description is paid
+for on every request and has to stay one line. A prompt is fetched only when it
+is used, so it can carry the whole procedure — which board a task belongs on,
+which label kinds are legal where, the order a card moves in, and which
+questions the data cannot answer.
+
+**Why embedded rather than in `content/`.** That folder is served anonymously by
+design: the client fetches extension assets during bootstrap, before anyone has
+signed in. A guide should reach the same people the tools do — holders of a
+token — and nobody else. Embedding also means `pack-mcp-extension.sh` needs no
+change, because the DLL already ships.
+
+`McpToolCatalog.Instructions`, which every client receives on `initialize`,
+names the four guides and says to fetch the matching one *before* acting. That
+is the only channel that needs no client feature beyond `initialize`: prompt
+support is uneven across MCP clients in a way tool support is not.
+
+The same files are the source for the repo's own `.claude/skills/` entries,
+which symlink to them, so a slash command and a local skill cannot drift apart.

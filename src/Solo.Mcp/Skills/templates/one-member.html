@@ -1,0 +1,106 @@
+<div class="solo-recap">
+<style>
+.solo-recap{
+  --sr-s1: var(--surface-1, #F1EFE8);
+  --sr-s2: var(--surface-2, #FFFFFF);
+  --sr-tp: var(--text-primary, #2C2C2A);
+  --sr-ts: var(--text-secondary, #5F5E5A);
+  --sr-tm: var(--text-muted, #888780);
+  --sr-bd: var(--border, rgba(44,44,42,.14));
+  --sr-rd: var(--radius, 8px);
+  --sr-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  color: var(--sr-tp);
+  padding: 1rem 0;
+  line-height: 1.7;
+}
+.solo-recap .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.rc-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:1.25rem}
+.rc-title{font-size:22px;font-weight:500;letter-spacing:-.01em}
+.rc-sub{font-size:13px;color:var(--sr-tm);line-height:1.5}
+.rc-solo{font-size:13px;color:var(--sr-ts);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.rc-solo i{font-size:16px;color:var(--sr-tm)}
+.rc-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:1.75rem}
+.rc-metric{background:var(--sr-s1);border-radius:var(--sr-rd);padding:1rem}
+.rc-metric .k{font-size:13px;color:var(--sr-ts);line-height:1.4}
+.rc-metric .v{font-size:24px;font-weight:500;line-height:1.3}
+.rc-sec{margin-bottom:1.5rem}
+.rc-h{display:flex;align-items:baseline;gap:8px;margin-bottom:.5rem}
+.rc-h h3{font-size:16px;font-weight:500;margin:0}
+.rc-h .n{font-size:13px;color:var(--sr-tm)}
+.rc-h .hint{font-size:12px;color:var(--sr-tm);margin-left:auto}
+.rc-list{background:var(--sr-s2);border:0.5px solid var(--sr-bd);border-radius:12px;overflow:hidden}
+.rc-row,.rc-prow{display:grid;align-items:center;gap:12px;padding:10px 16px;border-top:0.5px solid var(--sr-bd)}
+.rc-row{grid-template-columns:92px 74px minmax(0,1fr) 46px}
+.rc-prow{grid-template-columns:92px minmax(0,1fr) 92px 74px}
+.rc-list>:first-child{border-top:none}
+.rc-serial{font-family:var(--sr-mono);font-size:12px;color:var(--sr-tm);white-space:nowrap}
+.rc-name{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-when{font-size:12px;color:var(--sr-tm);text-align:right;white-space:nowrap}
+.rc-pill{font-size:11px;padding:2px 8px;border-radius:999px;text-align:center;white-space:nowrap}
+.p-bug{background:#FCEBEB;color:#791F1F}
+.p-feat{background:#EAF3DE;color:#27500A}
+.p-imp{background:#E6F1FB;color:#0C447C}
+.rc-track{display:block;height:4px;border-radius:2px;background:var(--sr-s1);overflow:hidden}
+.rc-fill{display:block;height:100%;background:var(--sr-ts)}
+.rc-prog{display:flex;align-items:center;gap:8px}
+.rc-prog .rc-track{flex:1}
+.rc-count{font-family:var(--sr-mono);font-size:11px;color:var(--sr-tm);white-space:nowrap}
+.rc-due{font-size:12px;color:var(--sr-tm);display:flex;align-items:center;gap:4px;justify-content:flex-end;white-space:nowrap}
+.rc-due i{font-size:14px}
+.rc-undated .rc-list{background:transparent}
+.rc-note{font-size:12px;color:var(--sr-tm);line-height:1.6;margin:1.25rem 0 0;padding-top:.75rem;border-top:0.5px solid var(--sr-bd)}
+@media (prefers-color-scheme: dark){
+  .p-bug{background:#791F1F;color:#F7C1C1}
+  .p-feat{background:#27500A;color:#C0DD97}
+  .p-imp{background:#0C447C;color:#B5D4F4}
+}
+</style>
+
+<h2 class="sr-only">Recap of Lanternfall for the two weeks to 16 September 2026: nine tasks finished, two in progress, one project member.</h2>
+
+<header class="rc-head">
+  <div>
+    <div class="rc-title">Lanternfall</div>
+    <div class="rc-sub">Last two weeks · 3–16 September 2026</div>
+  </div>
+  <div class="rc-solo"><i class="ti ti-user" aria-hidden="true"></i> One member — nothing is assigned</div>
+</header>
+
+<div class="rc-metrics">
+  <div class="rc-metric"><div class="k">Finished</div><div class="v">9</div></div>
+  <div class="rc-metric"><div class="k">In progress</div><div class="v">2</div></div>
+  <div class="rc-metric"><div class="k">Sub-tasks ticked</div><div class="v">23</div></div>
+</div>
+
+<section class="rc-sec">
+  <div class="rc-h"><h3>Finished</h3><span class="n">7</span><span class="hint">created and closed in the window</span></div>
+  <div class="rc-list">
+    <div class="rc-row"><span class="rc-serial">LTN-FEAT-18</span><span class="rc-pill p-feat">Feature</span><span class="rc-name">Tide-lock puzzle gates the harbour district</span><span class="rc-when">15 Sep</span></div>
+    <div class="rc-row"><span class="rc-serial">LTN-FEAT-17</span><span class="rc-pill p-imp">Improve</span><span class="rc-name">Rebalance lantern fuel drain to 90 seconds</span><span class="rc-when">14 Sep</span></div>
+    <div class="rc-row"><span class="rc-serial">LTN-BUGS-9</span><span class="rc-pill p-bug">Bug</span><span class="rc-name">Save slots overwrite each other on quick reload</span><span class="rc-when">12 Sep</span></div>
+    <div class="rc-row"><span class="rc-serial">LTN-FEAT-16</span><span class="rc-pill p-feat">Feature</span><span class="rc-name">Ambient rain layer on the cliff path</span><span class="rc-when">10 Sep</span></div>
+    <div class="rc-row"><span class="rc-serial">LTN-BUGS-8</span><span class="rc-pill p-bug">Bug</span><span class="rc-name">Dialogue box clips the last line at 1280×720</span><span class="rc-when">8 Sep</span></div>
+    <div class="rc-row"><span class="rc-serial">LTN-FEAT-15</span><span class="rc-pill p-imp">Improve</span><span class="rc-name">Controller glyphs swap with the input device</span><span class="rc-when">5 Sep</span></div>
+    <div class="rc-row"><span class="rc-serial">LTN-BUGS-7</span><span class="rc-pill p-bug">Bug</span><span class="rc-name">Fog volume pops when re-entering the crypt</span><span class="rc-when">4 Sep</span></div>
+  </div>
+</section>
+
+<section class="rc-sec rc-undated">
+  <div class="rc-h"><h3>Also closed recently</h3><span class="n">2</span><span class="hint">completion date not recorded</span></div>
+  <div class="rc-list">
+    <div class="rc-row"><span class="rc-serial">LTN-FEAT-9</span><span class="rc-pill p-feat">Feature</span><span class="rc-name">Journal entries persist across chapters</span><span class="rc-when">—</span></div>
+    <div class="rc-row"><span class="rc-serial">LTN-BUGS-3</span><span class="rc-pill p-bug">Bug</span><span class="rc-name">Footstep audio doubles on stone</span><span class="rc-when">—</span></div>
+  </div>
+</section>
+
+<section class="rc-sec">
+  <div class="rc-h"><h3>In progress now</h3><span class="n">2</span></div>
+  <div class="rc-list">
+    <div class="rc-prow"><span class="rc-serial">LTN-FEAT-19</span><span class="rc-name">Harbour district blockout</span><span class="rc-prog"><span class="rc-track"><span class="rc-fill" style="width:43%"></span></span><span class="rc-count">3/7</span></span><span class="rc-due"><i class="ti ti-clock" aria-hidden="true"></i>22 Sep</span></div>
+    <div class="rc-prow"><span class="rc-serial">LTN-BUGS-10</span><span class="rc-name">Lantern light leaks through closed doors</span><span class="rc-prog"><span class="rc-track"><span class="rc-fill" style="width:50%"></span></span><span class="rc-count">1/2</span></span><span class="rc-due"></span></div>
+  </div>
+</section>
+
+<p class="rc-note">Solo records when a task was created, not when it was finished. Dated rows were created and closed inside the window. Undated rows are finished tasks ordered by last write, which says recently touched, not recently completed.</p>
+</div>

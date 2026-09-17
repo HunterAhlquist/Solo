@@ -56,6 +56,10 @@ public sealed class McpExtension : ISoloExtension
 
         services.AddScoped<SoloRestClient>();
         services.AddScoped<McpToolCatalog>();
+        // Singleton: the guides are embedded resources, read once and identical
+        // for every caller, unlike the tool catalog which closes over a
+        // per-request REST client.
+        services.AddSingleton<McpPromptCatalog>();
         services.AddScoped<McpServer>();
     }
 }
