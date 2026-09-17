@@ -1003,4 +1003,57 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
             $"/api/tasks/{task.Id}/comments", new { body = "Back on" });
         Assert.Equal("Back on", reopened.Body);
     }
+
+    // -- Assignees -----------------------------------------------------------
+
+    /// <summary>
+    /// The PUT answers with the shape a later GET agrees with. It used to append each
+    /// new assignment to the navigation on top of EF's relationship fixup, which had
+    /// already put it there, so every newly added assignee came back listed twice.
+    /// </summary>
+    [SkippableFact]
+    public async Task SettingAssignees_ListsEachOneOnce_OnTasksAndEpics()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Assignees");
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "pair@example.com", role = "ReadWrite" });
+        var pair = await _factory.As("pair", "pair@example.com", "Pair").GetJson<UserDto>("/api/users/me");
+
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Assign me" });
+        var epic = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Assign us" });
+
+        // One brand-new assignment: the case the duplicate was first seen on.
+        var oneTask = await _admin.PutJson<TaskDto>(
+            $"/api/tasks/{task.Id}/assignees", new { userIds = new[] { me.Id } });
+        var oneEpic = await _admin.PutJson<EpicDto>(
+            $"/api/epics/{epic.Id}/assignees", new { userIds = new[] { me.Id } });
+        Assert.Equal([me.Id], oneTask.AssigneeIds);
+        Assert.Equal([me.Id], oneEpic.AssigneeIds);
+
+        // Adding one beside an assignee that is already there exercises both paths at once.
+        Guid[] both = [me.Id, pair.Id];
+        var bothTask = await _admin.PutJson<TaskDto>(
+            $"/api/tasks/{task.Id}/assignees", new { userIds = both });
+        var bothEpic = await _admin.PutJson<EpicDto>(
+            $"/api/epics/{epic.Id}/assignees", new { userIds = both });
+        Assert.Equal(both.Order(), bothTask.AssigneeIds.Order());
+        Assert.Equal(both.Order(), bothEpic.AssigneeIds.Order());
+
+        // Dropping one leaves the other named once, not re-added.
+        var droppedTask = await _admin.PutJson<TaskDto>(
+            $"/api/tasks/{task.Id}/assignees", new { userIds = new[] { pair.Id } });
+        var droppedEpic = await _admin.PutJson<EpicDto>(
+            $"/api/epics/{epic.Id}/assignees", new { userIds = new[] { pair.Id } });
+        Assert.Equal([pair.Id], droppedTask.AssigneeIds);
+        Assert.Equal([pair.Id], droppedEpic.AssigneeIds);
+
+        // What was stored all along: the response was the only thing ever wrong.
+        var storedTask = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
+        var storedEpic = (await _admin.GetJson<List<EpicDto>>($"/api/boards/{board.Id}/epics"))
+            .Single(e => e.Id == epic.Id);
+        Assert.Equal([pair.Id], storedTask.AssigneeIds);
+        Assert.Equal([pair.Id], storedEpic.AssigneeIds);
+    }
 }
