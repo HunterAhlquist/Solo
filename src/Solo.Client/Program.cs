@@ -8,7 +8,6 @@ using MudBlazor.Services;
 using Solo.Client;
 using Solo.Client.Api;
 using Solo.Client.Auth;
-using Solo.Client.Extensions;
 using Solo.Client.Realtime;
 using Solo.Client.State;
 using Solo.Shared.Dtos;
@@ -31,16 +30,12 @@ var instance = new InstanceConnection(builder.HostEnvironment.BaseAddress);
 var config = await LoadConfigAsync(instance);
 
 // ---------------------------------------------------------------------------
-// Extensions. Loaded before the host is built so their pages exist by the time
-// the router first renders. Every failure here is soft — a skipped extension
-// costs its own feature and nothing else, and the reasons surface in admin
-// settings rather than the console.
-// ---------------------------------------------------------------------------
-var extensions = await LoadExtensionsAsync(instance);
-builder.Services.AddSingleton(extensions);
-
-// ---------------------------------------------------------------------------
-// HTTP, realtime and state (see SoloClientServices for the lifetimes).
+// HTTP, realtime, state and the (empty) extension catalog — see
+// SoloClientServices for the lifetimes. Extensions are deliberately not loaded
+// here any more: the endpoints serving them are authenticated, and the
+// credential comes from an authentication provider that does not exist until
+// the host below is built. App.razor loads them on the first authenticated
+// state it sees and re-renders, which is what makes the router re-scan routes.
 // ---------------------------------------------------------------------------
 builder.Services.AddSoloClient(instance, config);
 
@@ -102,13 +97,6 @@ await host.Services.GetRequiredService<InstanceConnection>()
     .ResolveExternalAddressAsync(host.Services.GetRequiredService<IJSRuntime>());
 
 await host.RunAsync();
-
-// ---------------------------------------------------------------------------
-static async Task<ExtensionCatalog> LoadExtensionsAsync(InstanceConnection instance)
-{
-    using var http = new HttpClient { BaseAddress = instance.BaseAddress };
-    return await ExtensionBootstrapper.LoadAsync(http);
-}
 
 // ---------------------------------------------------------------------------
 static async Task<AppConfig> LoadConfigAsync(InstanceConnection instance)

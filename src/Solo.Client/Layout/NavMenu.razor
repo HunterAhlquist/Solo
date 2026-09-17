@@ -199,6 +199,10 @@
     {
         Nav.Changed += OnNavChanged;
 
+        // Extension entries arrive after sign-in rather than at boot, so the
+        // sidebar can well be on screen before the catalog has anything in it.
+        Extensions.Changed += OnNavChanged;
+
         // The sidebar renders for anyone signed in, but "Add project" is super-admin
         // only — so the session has to be here before the first paint.
         if (Session.Current is null)
@@ -421,6 +425,7 @@
     public void Dispose()
     {
         Nav.Changed -= OnNavChanged;
+        Extensions.Changed -= OnNavChanged;
         Drag.Unregister("project", OnProjectDropAsync);
     }
 }

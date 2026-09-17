@@ -25,14 +25,15 @@ public sealed class ExtensionsController(
     /// assembly will never register.
     /// </summary>
     /// <remarks>
-    /// Anonymous, and it has to be: the client fetches this during bootstrap,
-    /// before the router exists and long before anyone has signed in. The same
-    /// goes for the assembly and content endpoints below — an extension page has
-    /// to be routable on the sign-in screen, exactly as the active theme has to
-    /// be loadable there.
+    /// Authenticated, on the fallback policy. The inventory names every
+    /// extension an instance runs, with its version and its routes, and a
+    /// signed-out visitor has no use for it: <see cref="ExtensionAccess"/> is
+    /// <c>Read | Write | Owner</c>, all levels of <em>project</em> access, so no
+    /// manifest can declare a page that renders before sign-in. The client
+    /// fetches this once the user is authenticated and re-renders the router
+    /// then — see <c>App.razor</c>.
     /// </remarks>
     [HttpGet]
-    [AllowAnonymous]
     public ActionResult<IReadOnlyList<ClientExtensionDto>> List() =>
         state.Enabled
             .Where(p => p.ClientAssembly is not null)
@@ -48,17 +49,20 @@ public sealed class ExtensionsController(
             .ToList();
 
     /// <summary>
-    /// The extension's client assembly, fetched by the browser before the
-    /// router is built.
+    /// The extension's client assembly, fetched by the client once the user has
+    /// signed in and loaded into the browser's runtime.
     /// </summary>
     /// <remarks>
-    /// Under <c>/api/</c> deliberately: the Electron shell proxies that prefix
-    /// to the configured instance, so the desktop app picks up extensions from
-    /// the server it is pointed at with no shell change. Same-origin either way,
-    /// so <c>connect-src 'self'</c> already covers the fetch.
+    /// <para>Authenticated for the same reason the inventory is, and more so: a
+    /// .NET assembly decompiles, so serving one anonymously publishes the
+    /// extension's client source to anybody who asks.</para>
+    ///
+    /// <para>Under <c>/api/</c> deliberately: the Electron shell proxies that
+    /// prefix to the configured instance, so the desktop app picks up extensions
+    /// from the server it is pointed at with no shell change. Same-origin either
+    /// way, so <c>connect-src 'self'</c> already covers the fetch.</para>
     /// </remarks>
     [HttpGet("{extensionId}/client/{fileName}")]
-    [AllowAnonymous]
     public IActionResult GetClientAssembly(string extensionId, string fileName)
     {
         var package = state.Enabled.FirstOrDefault(p =>
@@ -79,6 +83,20 @@ public sealed class ExtensionsController(
     }
 
     /// <summary>Static assets from the package's <c>content/</c> folder.</summary>
+    /// <remarks>
+    /// The one extension endpoint that stays anonymous, and the reason is
+    /// structural rather than historical: <c>content/</c> is what a page links
+    /// as a browser subresource (<c>&lt;link rel="stylesheet"&gt;</c>, an
+    /// <c>&lt;img&gt;</c>), and a subresource fetch carries no Authorization
+    /// header. Solo authenticates with a bearer ID token and no cookie, so there
+    /// is nothing for the browser to send. Same constraint, and the same answer,
+    /// as a theme's background image.
+    ///
+    /// What that costs is bounded: these are static files shipped inside the
+    /// package, byte-for-byte what anyone with the package already has. The
+    /// inventory that would tell an anonymous caller which ids and paths exist
+    /// is not public — see <see cref="List"/>.
+    /// </remarks>
     [HttpGet("{extensionId}/content/{**path}")]
     [AllowAnonymous]
     public IActionResult GetContent(string extensionId, string path)

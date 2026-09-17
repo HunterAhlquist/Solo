@@ -60,6 +60,27 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
     public Task<ThemeScanResultDto> RescanThemesAsync(CancellationToken ct = default) =>
         SendAsync<ThemeScanResultDto>(HttpMethod.Post, "api/themes/rescan", null, ct);
 
+    /// <summary>
+    /// The extensions this instance serves a client half for. Authenticated
+    /// like everything else here — the inventory is not public — so it is
+    /// fetched after sign-in rather than during boot (see
+    /// <c>ExtensionBootstrapper</c>).
+    /// </summary>
+    public Task<List<ClientExtensionDto>> GetClientExtensionsAsync(CancellationToken ct = default) =>
+        GetAsync<List<ClientExtensionDto>>("api/extensions", ct);
+
+    /// <summary>
+    /// An extension's client assembly, as the bytes <c>Assembly.Load</c> wants.
+    /// The one call here that isn't JSON.
+    /// </summary>
+    public async Task<byte[]> GetExtensionAssemblyAsync(
+        string extensionId, string fileName, CancellationToken ct = default)
+    {
+        using var response = await http.GetAsync($"api/extensions/{extensionId}/client/{fileName}", ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
     /// <summary>Every extension this instance has seen, including ones whose package is gone.</summary>
     public Task<ExtensionAdminDto> GetExtensionsAsync(CancellationToken ct = default) =>
         GetAsync<ExtensionAdminDto>("api/extensions/admin", ct);

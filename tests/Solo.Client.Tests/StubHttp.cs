@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using Solo.Client.Api;
 
@@ -76,6 +77,22 @@ internal sealed class StubHttp : HttpMessageHandler
     }
 
     /// <summary>
+    /// A route answering with raw bytes rather than JSON — an extension's client
+    /// assembly is the one thing the app downloads that isn't a DTO.
+    /// </summary>
+    public StubHttp RouteBytes(string urlFragment, byte[] bytes)
+    {
+        _routes.Add((urlFragment, null, () => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(bytes)
+            {
+                Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") },
+            },
+        }));
+        return this;
+    }
+
+    /// <summary>
     /// The instance the stub's clients are pointed at. Exposed so a test can
     /// drive <see cref="InstanceConnection.ResolveExternalAddressAsync"/> —
     /// standing in for the desktop shell — rather than reaching past it.
@@ -85,9 +102,22 @@ internal sealed class StubHttp : HttpMessageHandler
     public ApiClient CreateClient() =>
         new(new HttpClient(this) { BaseAddress = Instance.BaseAddress }, Instance);
 
+    /// <summary>
+    /// Awaited before every reply. Lets a test hold responses open and assert
+    /// what the app shows while it waits — and, once released, that whatever
+    /// redraws afterwards is the code under test rather than something else that
+    /// happened to re-render in the meantime.
+    /// </summary>
+    public Func<Task>? Pause { get; set; }
+
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (Pause is not null)
+        {
+            await Pause();
+        }
+
         Requests.Add(request);
         Bodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
 

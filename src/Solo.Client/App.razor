@@ -1,5 +1,9 @@
+@using Solo.Client.Extensions
+@implements IDisposable
 @inject AppConfig Config
-@inject Solo.Client.Extensions.ExtensionCatalog Extensions
+@inject ExtensionCatalog Extensions
+@inject ApiClient Api
+@inject AuthenticationStateProvider AuthState
 
 @if (Config.LoadError is not null)
 {
@@ -9,7 +13,9 @@ else
 {
     <CascadingAuthenticationState>
         @* AdditionalAssemblies is what makes extension @page routes resolvable.
-           Only assemblies that actually loaded are in here — see ExtensionBootstrapper. *@
+           Only assemblies that actually loaded are in here — see ExtensionBootstrapper —
+           and they arrive after sign-in, so this value changes once and the
+           router rebuilds its route table on the re-render that follows. *@
         <Router AppAssembly="@typeof(App).Assembly" AdditionalAssemblies="@Extensions.RouteAssemblies">
             <Found Context="routeData">
                 <SetupGate>
@@ -34,12 +40,125 @@ else
                 <FocusOnNavigate RouteData="@routeData" Selector="h1" />
             </Found>
             <NotFound>
-                <LayoutView Layout="@typeof(MainLayout)">
-                    <MudAlert Severity="Severity.Warning" Class="ma-8">
-                        That page doesn't exist.
-                    </MudAlert>
-                </LayoutView>
+                @* An unmatched route is only genuinely missing once the extension
+                   assemblies are in: until then the router has no entry for any
+                   page they register, and "that page doesn't exist" would be
+                   wrong about exactly the routes this is waiting on. *@
+                @if (_extensions is ExtensionLoad.Pending)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else if (_extensions is ExtensionLoad.Unauthenticated)
+                {
+                    @* Could be an extension page; there is no way to tell without
+                       signing in, so assume it is and come back afterwards. The
+                       returnUrl survives the round trip and the route resolves
+                       once the assemblies land. *@
+                    <RedirectToSignIn />
+                }
+                else
+                {
+                    <LayoutView Layout="@typeof(MainLayout)">
+                        <MudAlert Severity="Severity.Warning" Class="ma-8">
+                            That page doesn't exist.
+                        </MudAlert>
+                    </LayoutView>
+                }
             </NotFound>
         </Router>
     </CascadingAuthenticationState>
+}
+
+@code {
+    /// <summary>
+    /// How much the router can be trusted about a route it cannot match.
+    /// <see cref="Ready"/> means the extension assemblies are in (or were
+    /// offered and skipped), so an unmatched route really is missing.
+    /// </summary>
+    private enum ExtensionLoad { Pending, Unauthenticated, Ready }
+
+    private ExtensionLoad _extensions = ExtensionLoad.Pending;
+    private bool _loading;
+
+    protected override void OnInitialized() =>
+        AuthState.AuthenticationStateChanged += OnAuthenticationStateChanged;
+
+    protected override Task OnInitializedAsync() => LoadAsync(AuthState.GetAuthenticationStateAsync());
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> state)
+    {
+        // Synchronously, before the await below: signing in navigates in the
+        // same beat, and a NotFound rendered in between would send the user
+        // straight back to the sign-in page they just came from.
+        if (_extensions is ExtensionLoad.Unauthenticated)
+        {
+            _extensions = ExtensionLoad.Pending;
+        }
+
+        _ = InvokeAsync(() => LoadAsync(state));
+    }
+
+    /// <summary>
+    /// Loads the extension client halves, once, on the first authenticated state
+    /// this app sees.
+    /// </summary>
+    /// <remarks>
+    /// <para>This is why the catalog is mutable and why the load is not in
+    /// <c>Program.cs</c> any more: the endpoints serving it are authenticated,
+    /// and on the web build the credential comes from
+    /// <c>GoogleAuthenticationStateProvider</c>, which does not exist until the
+    /// host is built.</para>
+    ///
+    /// <para>Nothing unloads afterwards. An assembly cannot be unloaded, and a
+    /// signing-out user keeping a few routes costs nothing: the server
+    /// authorizes every endpoint behind them regardless.</para>
+    /// </remarks>
+    private async Task LoadAsync(Task<AuthenticationState> state)
+    {
+        if (_loading || _extensions is ExtensionLoad.Ready)
+        {
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            if ((await state).User.Identity?.IsAuthenticated != true)
+            {
+                Settle(ExtensionLoad.Unauthenticated);
+                return;
+            }
+
+            Settle(ExtensionLoad.Pending);
+            try
+            {
+                await ExtensionBootstrapper.LoadAsync(Extensions, Api);
+            }
+            finally
+            {
+                // Ready either way. Every failure the loader knows about is soft
+                // — a skipped extension costs its own feature and nothing else,
+                // and the reasons surface in admin settings — and one it doesn't
+                // must not leave the router spinning.
+                Settle(ExtensionLoad.Ready);
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Re-renders, which is what hands the router a new
+    /// <c>AdditionalAssemblies</c> and makes it re-resolve the current URL —
+    /// the step that lands a deep link on the page it originally asked for.
+    /// </summary>
+    private void Settle(ExtensionLoad state)
+    {
+        _extensions = state;
+        StateHasChanged();
+    }
+
+    public void Dispose() => AuthState.AuthenticationStateChanged -= OnAuthenticationStateChanged;
 }

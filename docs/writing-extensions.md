@@ -282,6 +282,10 @@ A Razor Class Library. Its `@page` routes join the app's router automatically, a
 
 **`Resolve` vs `ResolveExternal` is a real trap.** Both build absolute URLs; use `Resolve` for something *this browser* fetches (a stylesheet from `content/`, an image) and `ResolveExternal` for any address a **person copies out of the app** into another tool. They differ in exactly one place that matters — the desktop shell, where `Resolve` yields `http://localhost:41321/…`, correct for a fetch and useless pasted into someone else's config.
 
+**`content/` is served anonymously; the assembly is not.** A `<link>` or `<img>` carries no `Authorization` header, so the host has no way to authenticate a subresource fetch — put nothing in `content/` you would not hand to a stranger, since it is a static file in a package anyone holding the package already has. The inventory and the client assembly are authenticated, so neither is reachable without a signed-in user.
+
+**There is no pre-authentication extension page.** The client half is fetched after sign-in, so its routes do not exist before then — and `requires` can only name a level of *project* access anyway. A page that needs to render on the sign-in screen is a theme, not an extension.
+
 **Nav entries** come from the manifest and only render if the assembly actually loaded, so a version mismatch degrades to a missing entry rather than a dead link. A route containing `{projectAlias}` renders **per project** inside that project's group; a route without one is an **instance-level** entry, rendered once in the sidebar footer.
 
 Declare `soloClientVersion` honestly: the client re-checks it against its own build before loading, because the Electron shell bundles a client that can be older than the instance.

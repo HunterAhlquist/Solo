@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Solo.Client.Api;
 using Solo.Client.Auth;
+using Solo.Client.Extensions;
 using Solo.Client.Realtime;
 using Solo.Client.State;
 using Solo.Client.Theming;
@@ -22,6 +23,11 @@ public static class SoloClientServices
     {
         services.AddSingleton(instance);
         services.AddSingleton(config);
+
+        // Empty at boot. The endpoints serving extension client halves are
+        // authenticated, so App.razor fills this once there is a signed-in user
+        // and re-renders to let the router pick up their routes.
+        services.AddSingleton<ExtensionCatalog>();
 
         // HTTP: one authenticated client for the API, one bare client for the
         // setup scheme (static credentials, not a bearer token).
