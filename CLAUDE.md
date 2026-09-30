@@ -11,7 +11,8 @@ src/Solo.Extensions     the extension host (loader, hook dispatch, registry)
 src/Solo.Client         Blazor WASM client
 src/Solo.Desktop        Electron shell (serves the published client, proxies /api)
 src/Solo.Mcp(.Client)   an EXTENSION, not core — the reference example
-tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests
+src/Solo.Roadmap(.Client) an EXTENSION, not core — timelines; uses every 1.3 seam
+tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, Solo.Roadmap.Tests
 ```
 
 Build and test: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. Integration tests need Docker (Testcontainers Postgres). To run and drive the app locally, use the `verify` skill.
