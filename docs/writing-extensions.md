@@ -397,7 +397,9 @@ core audit history.
 ## Contract 1.3
 
 Declare `"soloApiVersion": ">=1.3 <2.0"` (and the same `soloClientVersion` for a
-client half) to use anything in this section.
+client half) to use anything in this section. `src/Solo.Roadmap` and
+`src/Solo.Roadmap.Client` use every addition here (calling `task.setSchedule`
+rather than hooking it), if you want a working example.
 
 ### Task start dates and `task.setSchedule`
 
