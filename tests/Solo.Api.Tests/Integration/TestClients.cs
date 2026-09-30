@@ -29,6 +29,9 @@ public enum TestExtensions
 
     /// <summary>The shipped MCP package (src/Solo.Mcp).</summary>
     Mcp = 2,
+
+    /// <summary>The shipped Roadmaps package (src/Solo.Roadmap).</summary>
+    Roadmap = 4,
 }
 
 public static class TestClients

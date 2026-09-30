@@ -13,15 +13,16 @@ env:
   TAG_PREFIX: server-v
 
 jobs:
-  # Decide what this tag actually releases. The server image and MCP extension
-  # have overlapping dependencies, but neither should be republished merely
-  # because the other one (or tests/docs/release plumbing) changed.
+  # Decide what this tag actually releases. The server image and the extension
+  # packages have overlapping dependencies, but none should be republished
+  # merely because another one (or tests/docs/release plumbing) changed.
   changes:
     name: Check release inputs
     runs-on: ubuntu-latest
     outputs:
       server: ${{ steps.diff.outputs.server }}
       mcp: ${{ steps.diff.outputs.mcp }}
+      roadmap: ${{ steps.diff.outputs.roadmap }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,6 +49,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
             echo "server=true" >> "$GITHUB_OUTPUT"
             echo "mcp=true" >> "$GITHUB_OUTPUT"
+            echo "roadmap=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -81,6 +83,16 @@ jobs:
             ":(exclude)src/Solo.Mcp.Client/README.md"
           )
 
+          # The same, for the Roadmaps package.
+          ROADMAP_PATHS=(
+            src/Solo.Extensibility
+            src/Solo.Roadmap
+            src/Solo.Roadmap.Client
+            src/Solo.Shared
+            build/pack-roadmap-extension.sh
+            ":(exclude)src/Solo.Roadmap/README.md"
+          )
+
           # Nearest earlier tag in this series that HEAD descends from. The
           # --exclude keeps the tag being pushed from matching itself; when a
           # second tag sits on the same commit the diff is correctly empty.
@@ -91,6 +103,7 @@ jobs:
             echo "No earlier ${TAG_PREFIX}* tag in this history — building."
             echo "server=true" >> "$GITHUB_OUTPUT"
             echo "mcp=true" >> "$GITHUB_OUTPUT"
+            echo "roadmap=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -112,9 +125,21 @@ jobs:
             echo "mcp=true" >> "$GITHUB_OUTPUT"
           fi
 
+          if git diff --quiet "${PREVIOUS}" HEAD -- "${ROADMAP_PATHS[@]}"; then
+            echo "::notice::No Roadmaps package inputs changed since ${PREVIOUS}; skipping extension publication."
+            echo "roadmap=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Roadmaps package inputs changed since ${PREVIOUS}:"
+            git diff --name-only "${PREVIOUS}" HEAD -- "${ROADMAP_PATHS[@]}"
+            echo "roadmap=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build-test:
     needs: changes
-    if: needs.changes.outputs.server == 'true' || needs.changes.outputs.mcp == 'true'
+    if: >-
+      needs.changes.outputs.server == 'true' ||
+      needs.changes.outputs.mcp == 'true' ||
+      needs.changes.outputs.roadmap == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -160,10 +185,24 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # The Roadmaps extension, packaged and gated the same way.
+      - name: Package the Roadmaps extension
+        if: github.event_name == 'pull_request' || needs.changes.outputs.roadmap == 'true'
+        run: build/pack-roadmap-extension.sh
+
+      - name: Upload the Roadmaps extension package
+        if: github.event_name == 'pull_request' || needs.changes.outputs.roadmap == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: roadmap-extension
+          path: artifacts/solo-roadmap-*.zip
+          if-no-files-found: error
+          retention-days: 7
+
   publish-image:
     name: Publish image to GHCR
     needs: [changes, build-test]
-    # PR builds just validate. An MCP-only tag must not move the server tags.
+    # PR builds just validate. An extension-only tag must not move the server tags.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/server-v') && needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -212,7 +251,7 @@ jobs:
   release:
     name: Publish changed release artifacts
     needs: [changes, build-test, publish-image]
-    # `always()` lets an MCP-only release proceed past the intentionally
+    # `always()` lets an extension-only release proceed past the intentionally
     # skipped image job. A changed server must have published successfully
     # before its GitHub release is created.
     if: >-
@@ -220,7 +259,9 @@ jobs:
       github.event_name == 'push' &&
       startsWith(github.ref, 'refs/tags/server-v') &&
       needs.build-test.result == 'success' &&
-      (needs.changes.outputs.server == 'true' || needs.changes.outputs.mcp == 'true') &&
+      (needs.changes.outputs.server == 'true' ||
+       needs.changes.outputs.mcp == 'true' ||
+       needs.changes.outputs.roadmap == 'true') &&
       (needs.changes.outputs.server != 'true' || needs.publish-image.result == 'success')
     runs-on: ubuntu-latest
     permissions:
@@ -232,22 +273,29 @@ jobs:
           name: mcp-extension
           path: artifacts
 
-      # A changed server still gets release notes when the extension did not
-      # change; the already-published MCP package is not attached again.
-      - name: Create release without an unchanged MCP package
-        if: needs.changes.outputs.mcp != 'true'
+      - uses: actions/download-artifact@v8
+        if: needs.changes.outputs.roadmap == 'true'
+        with:
+          name: roadmap-extension
+          path: artifacts
+
+      # A changed server still gets release notes when no extension changed;
+      # an already-published package is not attached again.
+      - name: Create release without unchanged extension packages
+        if: needs.changes.outputs.mcp != 'true' && needs.changes.outputs.roadmap != 'true'
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
 
       # Creates the release for the tag if it doesn't exist yet; otherwise
-      # attaches the changed package. The image is published separately to
-      # GHCR; this asset is what an operator installs by hand.
-      - name: Create release and attach the changed MCP package
-        if: needs.changes.outputs.mcp == 'true'
+      # attaches the changed packages — only those were downloaded above. The
+      # image is published separately to GHCR; these assets are what an
+      # operator installs by hand.
+      - name: Create release and attach the changed extension packages
+        if: needs.changes.outputs.mcp == 'true' || needs.changes.outputs.roadmap == 'true'
         uses: softprops/action-gh-release@v3
         with:
-          files: artifacts/solo-mcp-*.zip
+          files: artifacts/solo-*.zip
           generate_release_notes: true
 
   # NO AUTOMATIC GHCR PRUNING. A `prune-images` job lived here for exactly one

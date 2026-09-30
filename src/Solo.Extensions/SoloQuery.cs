@@ -134,7 +134,7 @@ public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller,
         return AccessPolicy.Allows(membership?.Role, membership?.IsOwner ?? false, user.IsSuperAdmin, level);
     }
 
-    private async Task<ExtensionCaller> CallerAsync(CancellationToken ct)
+    public async Task<ExtensionCaller> CallerAsync(CancellationToken ct = default)
     {
         var context = http.HttpContext;
         if (context is null)

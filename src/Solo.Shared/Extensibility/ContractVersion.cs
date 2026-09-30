@@ -25,7 +25,8 @@ namespace Solo.Shared.Extensibility;
 /// versioned extension fields and transactional audit contributions.</para>
 /// <para>1.3.0 adds task start dates (<c>TaskDto.StartAt</c>) with the
 /// <c>task.setSchedule</c> operation, project sidebar sections, the host task
-/// drawer (<c>ISoloTaskDrawer</c>) and Admin settings panels.</para>
+/// drawer (<see cref="ISoloTaskDrawer"/>), Admin settings panels and
+/// <c>ISoloQuery.CallerAsync</c>.</para>
 /// </remarks>
 public static class ContractVersion
 {

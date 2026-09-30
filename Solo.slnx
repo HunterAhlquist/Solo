@@ -7,6 +7,8 @@
     <Project Path="src/Solo.Extensions/Solo.Extensions.csproj" />
     <Project Path="src/Solo.Mcp/Solo.Mcp.csproj" />
     <Project Path="src/Solo.Mcp.Client/Solo.Mcp.Client.csproj" />
+    <Project Path="src/Solo.Roadmap/Solo.Roadmap.csproj" />
+    <Project Path="src/Solo.Roadmap.Client/Solo.Roadmap.Client.csproj" />
     <Project Path="src/Solo.Shared/Solo.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -14,5 +16,6 @@
     <Project Path="tests/Solo.Client.Tests/Solo.Client.Tests.csproj" />
     <Project Path="tests/Solo.Data.Tests/Solo.Data.Tests.csproj" />
     <Project Path="tests/Solo.Extension.Fixture/Solo.Extension.Fixture.csproj" />
+    <Project Path="tests/Solo.Roadmap.Tests/Solo.Roadmap.Tests.csproj" />
   </Folder>
 </Solution>
