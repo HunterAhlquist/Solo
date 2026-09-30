@@ -257,3 +257,47 @@ Solo, and reconnect MCP clients to refresh their tool catalog and instructions.
 
 The same files are the source for the repo's own `.claude/skills/` entries,
 which symlink to them, so a slash command and a local skill cannot drift apart.
+
+## Epics (1.4.0)
+
+The catalog could list epics and move them between groups, but not create,
+rename or remove one, so an agent planning work had to stop and ask for the
+epic to be made in the browser first.
+
+| Tool | Purpose |
+|---|---|
+| `create_epic` | Add an epic at the end of a group, or of the board. |
+| `update_epic` | Rename an epic or change its description. |
+| `delete_epic` | Remove an epic while keeping its tasks. |
+
+All three take `boardId`; `update_epic` and `delete_epic` also take `epicId`.
+`create_epic` takes an optional `groupId` and appends the epic there, or after
+the board's groups and ungrouped epics when it is omitted — the same placement
+as `create_epic_group`. Moving it afterwards is `set_epic_group`'s job.
+
+`update_epic` follows `update_task`: omitted fields keep their value, an
+explicit `null` clears the description, and the current version is read first
+so a concurrent edit surfaces as a conflict. Core has no single-epic GET, so
+the read is the board's epic list, and an `epicId` that is not on the named
+board is refused rather than edited.
+
+`delete_epic` returns `{ "deleted": true, "epicId": "…" }`. Its tasks become
+ad-hoc (`epicId` null) with everything else intact, exactly as when an epic is
+deleted in the browser. Core's delete takes no version, so there is no conflict
+check; the same board check is what stops a mispaired id from deleting an epic
+somewhere else the caller can write.
+
+These call core endpoints that predate the 1.2 contract floor, so the range is
+unchanged. Rebuild with `build/pack-mcp-extension.sh`, install, and restart;
+reconnect MCP clients to refresh their tool catalog.
+
+## Board labels (1.4.0)
+
+`list_labels` took a `projectId` and returned the project's labels, but those
+are only defaults: each board is stamped with its own copies when it is made,
+and a task or sub-task may carry only its board's. Every id the tool returned
+was refused by `create_task` and `create_subtask` with a 400. It now takes a
+`boardId` and returns that board's labels, which are also the only list a
+task's `labelId` resolves against. The project defaults have no tool, since
+nothing an agent writes can use them. A client holding the old schema gets a
+"boardId is required" error until it reconnects.

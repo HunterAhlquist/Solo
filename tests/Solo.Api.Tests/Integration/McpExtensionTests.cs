@@ -170,7 +170,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
-    public async Task Tools_list_includes_group_management()
+    public async Task Tools_list_includes_epic_and_group_management()
     {
         postgres.SkipUnlessDockerAvailable();
 
@@ -183,11 +183,11 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
 
         Assert.Equal(
         [
-            "create_epic_group", "create_subtask", "create_task", "delete_epic_group", "get_me", "get_task",
-            "get_task_llm_work", "get_workflow", "list_boards", "list_epic_groups", "list_epics", "list_labels", "list_llm_tasks",
-            "list_members", "list_projects", "list_tasks", "rerank_epic_group", "set_epic_group", "set_subtask_finished",
-            "set_task_assignees", "set_task_epic", "set_task_llm_work", "set_task_status",
-            "update_epic_group", "update_subtask", "update_task",
+            "create_epic", "create_epic_group", "create_subtask", "create_task", "delete_epic", "delete_epic_group",
+            "get_me", "get_task", "get_task_llm_work", "get_workflow", "list_boards", "list_epic_groups", "list_epics",
+            "list_labels", "list_llm_tasks", "list_members", "list_projects", "list_tasks", "rerank_epic_group",
+            "set_epic_group", "set_subtask_finished", "set_task_assignees", "set_task_epic", "set_task_llm_work",
+            "set_task_status", "update_epic", "update_epic_group", "update_subtask", "update_task",
         ], names);
     }
 
@@ -242,6 +242,135 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         var task = Assert.Single(tasks);
         Assert.Equal("Write the release notes", task.Name);
         Assert.Equal(project.Id, board.ProjectId);
+    }
+
+    /// <summary>
+    /// The labels an agent is shown must be ones it can use. A board carries its
+    /// own copies of the project defaults, and listing the defaults instead handed
+    /// back ids that every task and sub-task write rejected.
+    /// </summary>
+    [SkippableFact]
+    public async Task Listed_labels_are_the_boards_own_and_accepted_on_its_tasks_and_subtasks()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, board) = await CreateProjectWithBoardAsync("Labels", "LBL", "MAIN");
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+
+        var labels = (await CallToolAsync(client, "list_labels", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(),
+        })).AsArray();
+        Assert.NotEmpty(labels);
+        Assert.All(labels, l => Assert.Equal(board.Id, l!["boardId"]!.GetValue<Guid>()));
+
+        string IdOf(string kind) =>
+            labels.First(l => l!["kind"]!.GetValue<string>() == kind)!["id"]!.GetValue<string>();
+
+        var task = await CallToolAsync(client, "create_task", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(),
+            ["name"] = "Labelled",
+            ["labelId"] = IdOf("Task"),
+        });
+        Assert.Equal(IdOf("Task"), task["labelId"]!.GetValue<string>());
+
+        var subTask = await CallToolAsync(client, "create_subtask", new JsonObject
+        {
+            ["taskId"] = task["id"]!.GetValue<string>(),
+            ["name"] = "Labelled step",
+            ["labelId"] = IdOf("SubTask"),
+        });
+        Assert.Equal(IdOf("SubTask"), subTask["labelId"]!.GetValue<string>());
+    }
+
+    [SkippableFact]
+    public async Task Epic_tools_create_edit_and_delete_while_preserving_work()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoardAsync("Epics", "EPICS", "MAIN");
+        var client = McpClient((await MintTokenAsync()).Value);
+        var group = await _admin.PostJson<EpicGroupDto>($"/api/boards/{board.Id}/groups", new { name = "Village" });
+        var sibling = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Sibling", groupId = group.Id });
+        var created = await CallToolAsync(client, "create_epic", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(), ["name"] = "Buildings",
+            ["description"] = "All the houses", ["groupId"] = group.Id.ToString(),
+        });
+        var id = created["id"]!.GetValue<string>();
+        Assert.Equal(group.Id.ToString(), created["groupId"]!.GetValue<string>());
+        Assert.True(created["rank"]!.GetValue<decimal>() > sibling.Rank);
+        var ungrouped = await CallToolAsync(client, "create_epic", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(), ["name"] = "Loose",
+        });
+        Assert.Null(ungrouped["groupId"]);
+        Assert.True(ungrouped["rank"]!.GetValue<decimal>() > group.Rank);
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "House", epicId = Guid.Parse(id) });
+
+        // Each edit names one field; the other has to survive core's whole-record PUT.
+        var args = new JsonObject { ["boardId"] = board.Id.ToString(), ["epicId"] = id, ["name"] = "Houses" };
+        var renamed = await CallToolAsync(client, "update_epic", args);
+        Assert.Equal("Houses", renamed["name"]!.GetValue<string>());
+        Assert.Equal("All the houses", renamed["description"]!.GetValue<string>());
+        args.Remove("name");
+        args["description"] = null;
+        var cleared = await CallToolAsync(client, "update_epic", args);
+        Assert.Equal("Houses", cleared["name"]!.GetValue<string>());
+        Assert.Null(cleared["description"]);
+
+        var deleted = await CallToolAsync(client, "delete_epic", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(), ["epicId"] = id,
+        });
+        Assert.True(deleted["deleted"]!.GetValue<bool>());
+        var detail = await _admin.GetJson<BoardDetailDto>($"/api/boards/{board.Id}");
+        Assert.DoesNotContain(detail.Epics, e => e.Id == Guid.Parse(id));
+        Assert.Equal(2, detail.Epics.Count);
+        Assert.Single(detail.Groups);
+        Assert.Null(detail.Tasks.Single(t => t.Id == task.Id).EpicId);
+    }
+
+    [SkippableFact]
+    public async Task Epic_tools_refuse_readers_and_ids_from_another_board()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoardAsync("Epic access", "EPACC", "MAIN");
+        var (_, other) = await CreateProjectWithBoardAsync("Epic foreign", "EPFOR", "MAIN");
+        var epic = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Kept", description = "Unchanged" });
+        var foreign = await _admin.PostJson<EpicGroupDto>($"/api/boards/{other.Id}/groups", new { name = "Foreign" });
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members", new { email = "reader@example.com", role = "Read" });
+        var reader = McpClient((await MintTokenAsync(client: _factory.As("reader", "reader@example.com"))).Value);
+        foreach (var tool in new[] { "create_epic", "update_epic", "delete_epic" })
+        {
+            var result = await CallToolRawAsync(reader, tool, new JsonObject
+            {
+                ["boardId"] = board.Id.ToString(), ["epicId"] = epic.Id.ToString(), ["name"] = "Denied",
+            });
+            Assert.True(result["isError"]!.GetValue<bool>());
+            Assert.Contains("403", result["content"]![0]!["text"]!.GetValue<string>());
+        }
+
+        // The writer can reach both boards, so only the board check stands
+        // between a mispaired id and the wrong epic.
+        var writer = McpClient((await MintTokenAsync()).Value);
+        foreach (var tool in new[] { "update_epic", "delete_epic" })
+        {
+            var result = await CallToolRawAsync(writer, tool, new JsonObject
+            {
+                ["boardId"] = other.Id.ToString(), ["epicId"] = epic.Id.ToString(), ["name"] = "Mispaired",
+            });
+            Assert.True(result["isError"]!.GetValue<bool>());
+        }
+        var misgrouped = await CallToolRawAsync(writer, "create_epic", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(), ["name"] = "Stray", ["groupId"] = foreign.Id.ToString(),
+        });
+        Assert.True(misgrouped["isError"]!.GetValue<bool>());
+        var kept = Assert.Single(await _admin.GetJson<List<EpicDto>>($"/api/boards/{board.Id}/epics"));
+        Assert.Equal("Kept", kept.Name);
+        Assert.Equal("Unchanged", kept.Description);
     }
 
     [SkippableFact]

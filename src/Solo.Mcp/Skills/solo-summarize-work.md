@@ -15,8 +15,9 @@ back a list of everything.
 ## Read the whole project
 
 `list_projects` → `list_boards(projectId)` → for each board with `isOpen: true`:
-`list_epic_groups`, `list_epics`, `list_tasks`. `list_labels(projectId)` once, to
-turn `labelId`s into names.
+`list_epic_groups`, `list_epics`, `list_tasks`, `list_labels`. Labels belong to
+the board, so a task's `labelId` only resolves to a name against its own board's
+list.
 
 Every board. A project's real next action is often on the board the user wasn't
 looking at.

@@ -11,7 +11,7 @@ come back and ask what you already knew.
 
 ## Find the destination first
 
-`list_projects` → `list_boards(projectId)` → `list_labels(projectId)` →
+`list_projects` → `list_boards(projectId)` → `list_labels(boardId)` →
 `list_epics(boardId)`.
 
 Board choice is the expensive mistake. A project usually has a **Bugs** board and
@@ -19,10 +19,12 @@ a **Features** board, and a task on the wrong one is invisible to whoever triage
 it. Match the board to the kind of work. Ask when two boards are plausible or the
 project is ambiguous — never guess across projects.
 
-Labels carry a `kind`. A `Task` label goes on the task, a `SubTask` label goes on
-sub-tasks, and crossing them is a 400 (*"The label must belong to this board and
-be a sub-task label"*), not a silent no-op. A label with a non-null `boardId`
-only works on that one board.
+Labels belong to a board. Every board has its own copies of the project's
+defaults, so choose the board first and list *its* labels: an id from another
+board is a 400 even when the name matches. Labels also carry a `kind`. A `Task`
+label goes on the task, a `SubTask` label goes on sub-tasks, and crossing them
+is the same 400 (*"The label must belong to this board and match the item
+kind"*), not a silent no-op.
 
 ## The task
 

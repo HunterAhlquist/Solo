@@ -59,10 +59,7 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
         var taskRef = Text("Task: id (GUID) or full serial number like \"DMD-PXW26-2\"");
         var parentRef = Text("Parent task: id (GUID) or full serial number");
         var taskName = Text($"Name (plain text, ≤{FieldLimits.ItemName} chars)", FieldLimits.ItemName);
-        var taskDescription = Text(
-            $"Description (Markdown, ≤{FieldLimits.Description / 1000}k chars). Link to another task by " +
-            "wrapping its serial number in double pipes, e.g. ||DMD-PXW26-2||",
-            FieldLimits.Description);
+        var taskDescription = MarkdownDescription();
         var deadline = Date("Deadline, a calendar date in YYYY-MM-DD form");
 
         return
@@ -92,19 +89,18 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                 Schema(("projectId", Uuid("Project id"), true)),
                 (args, ct) => rest.GetAsync($"api/projects/{RequireGuid(args, "projectId")}/boards", ct)),
 
-            new McpTool("list_epics", "List epics",
-                "Lists epics on a board, including groupId (null when ungrouped) and rank. " +
-                "Use list_epic_groups to resolve group names; ranks are local to each group or the board.",
-                Schema(("boardId", Uuid("Board id"), true)),
-                (args, ct) => rest.GetAsync($"api/boards/{RequireGuid(args, "boardId")}/epics", ct)),
-
+            ..EpicTools(rest),
             ..GroupTools(rest),
 
+            // The board's labels, not the project's: those are only defaults
+            // stamped onto each new board as copies, and no task can carry one.
             new McpTool("list_labels", "List labels",
-                "Lists a project's labels. A task or sub-task may carry one label (labelId); " +
-                "labels are scoped by kind (Task/SubTask) and optionally to a single board.",
-                Schema(("projectId", Uuid("Project id"), true)),
-                (args, ct) => rest.GetAsync($"api/projects/{RequireGuid(args, "projectId")}/labels", ct)),
+                "Lists a board's labels: the only ones its tasks and sub-tasks can carry, and the " +
+                "names behind the labelIds list_tasks returns. A task or sub-task may carry one " +
+                "label (labelId) of the matching kind (Task/SubTask). Every board has its own " +
+                "copies, so a label id from one board is rejected on another.",
+                Schema(("boardId", Uuid("Board id"), true)),
+                (args, ct) => rest.GetAsync($"api/boards/{RequireGuid(args, "boardId")}/labels", ct)),
 
             new McpTool("list_tasks", "List tasks",
                 "Lists every task on a board in rank order, including status, epic, " +
@@ -151,7 +147,7 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                     ("name", taskName, true),
                     ("description", taskDescription, false),
                     ("epicId", Uuid("Epic on the same board; omit for an ad-hoc task"), false),
-                    ("labelId", Uuid("Task label from the project (see list_labels)"), false),
+                    ("labelId", Uuid("Task label from this board (see list_labels)"), false),
                     ("deadlineAt", deadline, false)),
                 (args, ct) => Json(rest.SendAsync<TaskDto>(
                     HttpMethod.Post,
@@ -174,7 +170,7 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                     ("taskId", taskRef, true),
                     ("name", taskName, false),
                     ("description", Nullable(taskDescription), false),
-                    ("labelId", Nullable(Uuid("Task label, or null to clear")), false),
+                    ("labelId", Nullable(Uuid("Task label from the task's board (see list_labels), or null to clear")), false),
                     ("deadlineAt", Nullable(Date("Deadline (YYYY-MM-DD), or null to clear")), false)),
                 (args, ct) => Json(UpdateTaskAsync(rest, args, ct))),
 
@@ -220,7 +216,7 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                 Schema(
                     ("taskId", parentRef, true),
                     ("name", taskName, true),
-                    ("labelId", Uuid("Sub-task label from the project (see list_labels)"), false)),
+                    ("labelId", Uuid("Sub-task label from the parent task's board (see list_labels)"), false)),
                 async (args, ct) => await Json(rest.SendAsync<SubTaskDto>(
                     HttpMethod.Post,
                     $"api/tasks/{await ResolveTaskIdAsync(rest, RequireString(args, "taskId"), ct)}/subtasks",
@@ -238,7 +234,7 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                     ("taskId", parentRef, true),
                     ("subTaskId", Uuid("Sub-task id"), true),
                     ("name", taskName, false),
-                    ("labelId", Nullable(Uuid("Sub-task label, or null to clear")), false)),
+                    ("labelId", Nullable(Uuid("Sub-task label from the parent task's board (see list_labels), or null to clear")), false)),
                 (args, ct) => Json(UpdateSubTaskAsync(rest, args, ct))),
 
             new McpTool("set_subtask_finished", "Finish a sub-task",
@@ -480,6 +476,12 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
 
         return schema;
     }
+
+    /// <summary>Task and epic descriptions render in the same drawer, so serial links work in both.</summary>
+    private static JsonObject MarkdownDescription() => Text(
+        $"Description (Markdown, ≤{FieldLimits.Description / 1000}k chars). Link to a task by " +
+        "wrapping its serial number in double pipes, e.g. ||DMD-PXW26-2||",
+        FieldLimits.Description);
 
     private static JsonObject Uuid(string description) =>
         new() { ["type"] = "string", ["format"] = "uuid", ["description"] = description };
