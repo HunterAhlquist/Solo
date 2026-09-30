@@ -1,0 +1,10 @@
+@* A sidebar section's label, with a rule filling the rest of the row. *@
+<div class="nav-section-header" role="presentation">
+    <span class="nav-section-header__caption">@Title</span>
+    <span class="nav-section-header__rule"></span>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Title { get; set; }
+}
