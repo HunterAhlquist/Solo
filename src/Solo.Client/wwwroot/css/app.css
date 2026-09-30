@@ -253,6 +253,28 @@ code {
     color: var(--mud-palette-primary);
 }
 
+/* A labelled divider between the sets of links inside a project group —
+   Boards, then any sections extensions contribute. The caption sits where the
+   nested links' text starts, and the rule runs out to the edge. */
+.nav-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem 0.125rem 2.25rem;
+}
+
+.nav-section-header__caption {
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+}
+
+.nav-section-header__rule {
+    flex: 1;
+    border-top: 1px solid var(--mud-palette-divider);
+}
+
 /* Project reordering mirrors the epic bands: drag only from the entity icon,
    fade the item being moved, and paint a horizontal insertion line between
    complete project groups (including their expanded board children). */

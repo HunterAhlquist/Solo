@@ -417,3 +417,29 @@ The schedule endpoint is hookable as `Operations.TaskSetSchedule`
 a task's dates does it from its client half, through `ISoloClientApi`, so the
 change passes through core's authorization, hooks, audit and broadcast like
 any other edit.
+
+### Project sidebar sections
+
+A project's group in the sidebar is split into labelled sections: **Boards**
+first, then one per contributed section, then Project settings and manifest
+nav entries below a plain divider. A client component marked
+`[ProjectNavSection("Title", Order = 0)]` (from `Solo.Shared.Extensibility`)
+becomes one of those sections. Core draws the `Title ────` header, and your
+component renders only the items under it, usually `MudNavLink`s plus the
+section's own create action. It receives:
+
+| Parameter | Type | |
+|---|---|---|
+| `Project` | `ProjectSummaryDto` | The project whose group this is. |
+| `CanWrite` | `bool` | The same test core uses to show **Add board**. Use it to gate your create action. |
+
+Sections are ordered by `Order`, then by extension id. Each renders inside its
+own error boundary: a section that throws shows one line of error text and the
+rest of the sidebar keeps working. Only loaded extension assemblies contribute,
+and they load after sign-in, so a section appears a moment after the boards do.
+A project group renders its children only once it is expanded. Load your data
+when the component first renders, not before.
+
+A client half can't register DI services, because its assembly loads after the
+container is built. To refresh the section when your own pages change something,
+use a static event inside your assembly and unsubscribe in `Dispose`.
