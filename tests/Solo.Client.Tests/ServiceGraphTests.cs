@@ -32,6 +32,7 @@ public class ServiceGraphTests
 
         // Supplied by the Blazor host and MudBlazor in the real app.
         services.AddSingleton<IJSRuntime, StubJsRuntime>();
+        services.AddSingleton<NavigationManager, StubNavigationManager>();
         services.AddSingleton<ISnackbar, StubSnackbar>();
         return services;
     }
@@ -100,6 +101,10 @@ public class ServiceGraphTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<SaveGuard>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IBoardHubClient>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<GoogleIdentityService>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<TaskDrawerService>());
+        Assert.Same(
+            scope.ServiceProvider.GetRequiredService<TaskDrawerService>(),
+            scope.ServiceProvider.GetRequiredService<Solo.Shared.Extensibility.ISoloTaskDrawer>());
     }
 
     [Theory]
@@ -123,6 +128,11 @@ public class ServiceGraphTests
 
         public ValueTask<TValue> InvokeAsync<TValue>(
             string identifier, CancellationToken cancellationToken, object?[]? args) => default;
+    }
+
+    private sealed class StubNavigationManager : NavigationManager
+    {
+        public StubNavigationManager() => Initialize("https://solo.test/", "https://solo.test/");
     }
 
     private sealed class StubSnackbar : ISnackbar

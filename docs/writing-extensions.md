@@ -443,3 +443,37 @@ when the component first renders, not before.
 A client half can't register DI services, because its assembly loads after the
 container is built. To refresh the section when your own pages change something,
 use a static event inside your assembly and unsubscribe in `Dispose`.
+
+### Opening the task drawer: `ISoloTaskDrawer`
+
+To show a task in the same drawer a board uses, with its presence, editing
+warning, checklist and comments, inject `ISoloTaskDrawer` (from
+`Solo.Shared.Extensibility`) into a client page and call
+`OpenAsync(taskId)`. The drawer opens over your page. You can't render
+`DetailDrawer` yourself, because it depends on board state inside `Solo.Client`.
+
+```razor
+@inject ISoloTaskDrawer Drawer
+@implements IDisposable
+
+@code {
+    protected override void OnInitialized() => Drawer.Changed += OnDrawerChanged;
+
+    private void OnDrawerChanged(TaskDrawerChange change) => InvokeAsync(() =>
+    {
+        // Saved: change.Task is the fresh TaskDto, version included.
+        // Moved: change.Task has its new board; the drawer then navigates there.
+        // Deleted: change.Task is null.
+        StateHasChanged();
+    });
+
+    public void Dispose() => Drawer.Changed -= OnDrawerChanged;
+}
+```
+
+`Changed` reports every change to the open task: edits in the drawer, checklist
+ticks, assignee changes, and remote edits. `Closed` fires when the drawer closes.
+The drawer uses the board page's permission rules, so a read-only member sees
+it read-only. Navigating away closes it. If a board page is already showing a
+different board when you call `OpenAsync`, the host follows the task to its own
+board page, as a task link does.

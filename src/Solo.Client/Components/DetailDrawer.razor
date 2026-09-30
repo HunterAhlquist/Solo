@@ -1,3 +1,4 @@
+@using Solo.Shared.Extensibility
 @inject ApiClient Api
 @inject BoardStore Store
 @inject IBoardHubClient Hub
@@ -167,6 +168,13 @@
 
     [Parameter]
     public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// A delete or a board move, announced before the card leaves the store —
+    /// by then the drawer is the only one who knows which of the two it was.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TaskDrawerChange> OnTaskChanged { get; set; }
 
     private bool IsOpen => Entity is not null;
 
@@ -456,6 +464,8 @@
             return;
         }
 
+        await OnTaskChanged.InvokeAsync(new TaskDrawerChange(TaskDrawerChangeKind.Moved, task.Id, moved));
+
         // Drop the card from the board being left before navigating, so it can't
         // flash back in the frame between the save and the new board's load.
         Store.RemoveTask(task.Id);
@@ -482,7 +492,11 @@
 
         if (Task is { } task)
         {
-            await Guard.RunAsync(() => Api.DeleteTaskAsync(task.Id));
+            if (await Guard.RunAsync(() => Api.DeleteTaskAsync(task.Id)))
+            {
+                await OnTaskChanged.InvokeAsync(new TaskDrawerChange(TaskDrawerChangeKind.Deleted, task.Id, null));
+            }
+
             Store.RemoveTask(task.Id);
         }
         else if (Epic is { } epic)

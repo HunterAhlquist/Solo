@@ -249,11 +249,19 @@ else
         }
     }
 
+    /// <summary>
+    /// The board this page instance loaded. The store is shared — the host's task
+    /// drawer can have it on this very board when a task link lands here — so the
+    /// page loads for itself rather than trusting a board someone else fetched,
+    /// and so works out its own access to it.
+    /// </summary>
+    private (string Project, string Board)? _loaded;
+
     protected override async Task OnParametersSetAsync()
     {
-        var isCurrent = Store.Board is { } current &&
-            string.Equals(current.ProjectAlias, ProjectAlias, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(current.Alias, BoardAlias, StringComparison.OrdinalIgnoreCase);
+        var isCurrent = Store.Board is not null && _loaded is (var loadedProject, var loadedBoard) &&
+            string.Equals(loadedProject, ProjectAlias, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(loadedBoard, BoardAlias, StringComparison.OrdinalIgnoreCase);
 
         if (!isCurrent)
         {
@@ -261,6 +269,7 @@ else
             {
                 _groupCollapsed.Clear();
                 await Store.LoadAsync(ProjectAlias, BoardAlias);
+                _loaded = (ProjectAlias, BoardAlias);
                 // On a board the owner surface means comment moderation only.
                 (_canModerate, _canWrite) = Session.AccessIn(Store.Members);
                 Rebuild();
