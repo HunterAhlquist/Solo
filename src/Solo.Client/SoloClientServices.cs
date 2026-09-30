@@ -57,6 +57,10 @@ public static class SoloClientServices
         services.AddScoped<ProjectOrderStore>();
         services.AddScoped<SaveGuard>();
         services.AddScoped<DragBridge>();
+        // The task drawer, opened over extension pages. Extension client halves
+        // inject the interface; they can't register services of their own.
+        services.AddScoped<TaskDrawerService>();
+        services.AddScoped<ISoloTaskDrawer>(sp => sp.GetRequiredService<TaskDrawerService>());
 
         // The site theme arrives with the bootstrap config; the colour scheme is
         // read from localStorage on first render (see SoloThemeProvider).

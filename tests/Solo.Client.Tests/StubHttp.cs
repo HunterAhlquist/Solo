@@ -77,6 +77,27 @@ internal sealed class StubHttp : HttpMessageHandler
     }
 
     /// <summary>
+    /// A route whose status, as well as its body, is decided per call — for a
+    /// resource that exists on one request and is gone on the next.
+    /// </summary>
+    public StubHttp Route(
+        string urlFragment, Func<(HttpStatusCode Status, object? Value)> reply, HttpMethod? method = null)
+    {
+        _routes.Add((urlFragment, method, () =>
+        {
+            var (status, value) = reply();
+            return new HttpResponseMessage(status)
+            {
+                Content = new StringContent(
+                    value is null ? string.Empty : System.Text.Json.JsonSerializer.Serialize(value, SoloJson.Options),
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+        }));
+        return this;
+    }
+
+    /// <summary>
     /// A route answering with raw bytes rather than JSON — an extension's client
     /// assembly is the one thing the app downloads that isn't a DTO.
     /// </summary>

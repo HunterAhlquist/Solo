@@ -1,0 +1,22 @@
+@implements IDisposable
+@inject TaskDrawerService Drawer
+
+@*
+    The task drawer an extension page opens through ISoloTaskDrawer. Rendered
+    once, in the layout, and only while something has opened it — a board page
+    keeps its own drawer and never touches this one.
+*@
+@if (Drawer.Task is { } task)
+{
+    <DetailDrawer Task="@task" CanWrite="@Drawer.CanWrite" CanModerate="@Drawer.CanModerate"
+                  CanComment="@Drawer.CanComment" OnClose="@Drawer.CloseAsync"
+                  OnTaskChanged="@Drawer.Report" />
+}
+
+@code {
+    protected override void OnInitialized() => Drawer.StateChanged += OnStateChanged;
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Drawer.StateChanged -= OnStateChanged;
+}
