@@ -37,6 +37,11 @@
                       ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\..\src\Solo.Mcp.Client\Solo.Mcp.Client.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- And the Roadmaps extension, the same way. -->
+    <ProjectReference Include="..\..\src\Solo.Roadmap\Solo.Roadmap.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\src\Solo.Roadmap.Client\Solo.Roadmap.Client.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <!-- Lay the fixture out as a package directory under the test output, so
@@ -71,6 +76,27 @@
           DestinationFolder="$(OutDir)extension-fixtures\mcp\content\%(RecursiveDir)" />
     <Copy SourceFiles="..\..\src\Solo.Mcp\extension.json"
           DestinationFolder="$(OutDir)extension-fixtures\mcp" />
+  </Target>
+
+  <!-- The Roadmaps package, laid out like the MCP one. -->
+  <Target Name="StageRoadmapExtension" AfterTargets="Build">
+    <MSBuild Projects="..\..\src\Solo.Roadmap\Solo.Roadmap.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="RoadmapAssembly" />
+    </MSBuild>
+    <MSBuild Projects="..\..\src\Solo.Roadmap.Client\Solo.Roadmap.Client.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="RoadmapClientAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <RoadmapContent Include="..\..\src\Solo.Roadmap\content\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(RoadmapAssembly)"
+          DestinationFolder="$(OutDir)extension-fixtures\roadmap\server" />
+    <Copy SourceFiles="@(RoadmapClientAssembly)"
+          DestinationFolder="$(OutDir)extension-fixtures\roadmap\client" />
+    <Copy SourceFiles="@(RoadmapContent)"
+          DestinationFolder="$(OutDir)extension-fixtures\roadmap\content\%(RecursiveDir)" />
+    <Copy SourceFiles="..\..\src\Solo.Roadmap\extension.json"
+          DestinationFolder="$(OutDir)extension-fixtures\roadmap" />
   </Target>
 
 </Project>

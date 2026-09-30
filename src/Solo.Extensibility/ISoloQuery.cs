@@ -36,6 +36,13 @@ public interface ISoloQuery
 
     /// <summary>True when the caller may write to the project owning this board.</summary>
     Task<bool> CanWriteBoardAsync(Guid boardId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The signed-in caller — who to record as the author of a row the extension
+    /// writes. <see cref="ExtensionCaller.UserId"/> is empty for an anonymous
+    /// request; role and owner flag are set on a project-scoped route.
+    /// </summary>
+    Task<ExtensionCaller> CallerAsync(CancellationToken ct = default);
 }
 
 public sealed record AssigneeIdentity(Guid UserId, string Issuer, string Subject);

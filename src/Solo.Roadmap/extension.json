@@ -1,0 +1,13 @@
+{
+  "id": "roadmap",
+  "name": "Roadmaps",
+  "version": "1.0.0",
+  "soloApiVersion": ">=1.3 <2.0",
+  "soloClientVersion": ">=1.3 <2.0",
+  "server": "server/Solo.Roadmap.dll",
+  "client": "client/Solo.Roadmap.Client.dll",
+  "schema": "ext_roadmap",
+  "nav": [],
+  "hooks": [],
+  "failOpen": false
+}

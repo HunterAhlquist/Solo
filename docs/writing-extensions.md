@@ -494,3 +494,10 @@ Nothing about this is special on the server. Your panel calls your own
 endpoints through `ISoloClientApi`, and those endpoints guard themselves with
 `[Authorize(Policy = SoloPolicies.SuperAdmin)]`. The page is for super admins,
 but that alone doesn't protect an endpoint.
+
+### Who is calling: `ISoloQuery.CallerAsync`
+
+`CallerAsync()` returns the signed-in caller as an `ExtensionCaller`, with their
+Solo user id, email, display name and super-admin flag, plus their role and owner
+flag when the route names a project. Use it to record who created a row in your
+own schema. The user id is `Guid.Empty` for an anonymous request.

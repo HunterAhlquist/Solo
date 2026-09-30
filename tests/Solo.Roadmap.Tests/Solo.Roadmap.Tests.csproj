@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Roadmaps extension's own tests: its context against a real Postgres,
+       and the pure functions (ranking, the stripe anchor). References the
+       server half directly — unlike Solo.Api.Tests, which loads the package
+       the way a deployment does — because these test its internals, not its
+       loading. Deleting src/Solo.Roadmap* and this project removes the feature. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Solo.Roadmap\Solo.Roadmap.csproj" />
+  </ItemGroup>
+
+</Project>

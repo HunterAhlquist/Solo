@@ -100,7 +100,12 @@ public sealed class SoloApiFactory(
 
         if (extensions.HasFlag(TestExtensions.Mcp))
         {
-            builder.UseSetting($"Extensions:DevelopmentDirectories:{slot}", PackageDirectory("mcp"));
+            builder.UseSetting($"Extensions:DevelopmentDirectories:{slot++}", PackageDirectory("mcp"));
+        }
+
+        if (extensions.HasFlag(TestExtensions.Roadmap))
+        {
+            builder.UseSetting($"Extensions:DevelopmentDirectories:{slot}", PackageDirectory("roadmap"));
         }
 
         if (extensions.HasFlag(TestExtensions.Mcp) || extensionsDirectory is not null)
