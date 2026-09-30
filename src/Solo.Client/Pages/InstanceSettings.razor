@@ -1,6 +1,11 @@
 @page "/settings"
 @attribute [Authorize]
+@implements IDisposable
+@using System.Reflection
+@using Solo.Client.Extensions
+@using Solo.Shared.Extensibility
 @inject ApiClient Api
+@inject IServiceProvider Services
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 @inject ThemeState Theme
@@ -155,6 +160,29 @@ else
                                 Intercepts: @string.Join(", ", extension.Hooks)
                             </MudText>
                         }
+
+                        @* The extension's own settings, from its client half. Only a
+                           loaded extension has one to offer: a disabled one's routes
+                           answer 503, and a missing package has no assembly at all. *@
+                        @if (extension.State == "Loaded")
+                        {
+                            @foreach (var panel in SettingsPanels(extension.ExtensionId))
+                            {
+                                <div class="extension-settings mt-3">
+                                    <ErrorBoundary @key="(extension.ExtensionId, panel)">
+                                        <ChildContent>
+                                            <DynamicComponent Type="@panel"
+                                                              Parameters="@PanelParameters(extension.ExtensionId)" />
+                                        </ChildContent>
+                                        <ErrorContent>
+                                            <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
+                                                This extension's settings couldn't load.
+                                            </MudText>
+                                        </ErrorContent>
+                                    </ErrorBoundary>
+                                </div>
+                            }
+                        }
                     </div>
 
                     @if (extension.CanPurge)
@@ -189,8 +217,37 @@ else
     private bool _rescanning;
     private string? _error;
 
+    private ExtensionCatalog? Catalog => Services.GetService<ExtensionCatalog>();
+
+    /// <summary>Components the extension's own loaded client assembly marks as its settings.</summary>
+    private IEnumerable<Type> SettingsPanels(string extensionId) =>
+        (Catalog?.Loaded ?? [])
+        .Where(e => e.Descriptor.Id == extensionId)
+        .SelectMany(e => e.Assembly.GetExportedTypes())
+        .Where(t => !t.IsAbstract && typeof(IComponent).IsAssignableFrom(t) &&
+                    t.IsDefined(typeof(ExtensionSettingsAttribute)));
+
+    private static IDictionary<string, object> PanelParameters(string extensionId) =>
+        new Dictionary<string, object> { ["ExtensionId"] = extensionId };
+
+    /// <summary>Client halves load after sign-in, possibly after this page first rendered.</summary>
+    private void OnCatalogChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        if (Catalog is { } catalog)
+        {
+            catalog.Changed -= OnCatalogChanged;
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        if (Catalog is { } catalog)
+        {
+            catalog.Changed += OnCatalogChanged;
+        }
+
         try
         {
             _settings = await Api.GetInstanceSettingsAsync();

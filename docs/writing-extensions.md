@@ -477,3 +477,20 @@ The drawer uses the board page's permission rules, so a read-only member sees
 it read-only. Navigating away closes it. If a board page is already showing a
 different board when you call `OpenAsync`, the host follows the task to its own
 board page, as a task link does.
+
+### Settings panels on Admin settings
+
+Admin settings lists every extension. A client component marked
+`[ExtensionSettings]` (from `Solo.Shared.Extensibility`) renders inside its own
+extension's entry there, below the id, version and schema line. It receives one
+parameter, `ExtensionId` (`string`).
+
+The panel only renders for a **loaded** extension whose client assembly loaded.
+A disabled extension, or one whose package is missing, shows no panel. Each
+panel has its own error boundary, so one that throws shows a line of error text
+and the rest of the page keeps working.
+
+Nothing about this is special on the server. Your panel calls your own
+endpoints through `ISoloClientApi`, and those endpoints guard themselves with
+`[Authorize(Policy = SoloPolicies.SuperAdmin)]`. The page is for super admins,
+but that alone doesn't protect an endpoint.
