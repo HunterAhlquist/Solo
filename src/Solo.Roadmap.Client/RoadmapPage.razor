@@ -1,0 +1,234 @@
+@page "/projects/{ProjectAlias}/roadmaps/{RoadmapId:guid}"
+@implements IAsyncDisposable
+
+@*
+    A roadmap: its tasks as bars on a day grid that scrolls sideways between the
+    instance's bounds, one task per row in the roadmap's own order. Writers add
+    tasks from the header's day cells or empty grid, drag rows to reorder them
+    and drag a bar's edges to reschedule it; everyone can open a task in the
+    board's drawer by clicking its bar. Missed deadlines flash, and are listed
+    under the grid.
+*@
+
+<PageTitle>@(_timeline?.Title ?? "Roadmap") · Solo</PageTitle>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Warning">@_error</MudAlert>
+}
+else if (_timeline is null || _project is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <div class="roadmap-page">
+        <div class="roadmap-header">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
+                           Href="@($"projects/{_project.Alias}")" aria-label="Back to project" />
+            <MudIcon Icon="@Icons.Material.Filled.Timeline" Color="Color.Primary" />
+            <MudText Typo="Typo.h1" Class="roadmap-header__title">@_timeline.Title</MudText>
+            <MudSpacer />
+            @if (CanWrite)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => PickAsync(_today))">
+                    Add task
+                </MudButton>
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" aria-label="Roadmap actions"
+                         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@RenameAsync">Rename</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error" OnClick="@DeleteAsync">
+                        Delete
+                    </MudMenuItem>
+                </MudMenu>
+            }
+        </div>
+
+        <div class="roadmap-timeline" @ref="_scroller"
+             style="--roadmap-day-width:@(DayWidth)px;--roadmap-row-height:@(RowHeight)px">
+            <div class="roadmap-canvas" style="width:@(_window.Days * DayWidth)px">
+                <div class="roadmap-head" data-roadmap-head>
+                    <div class="roadmap-months">
+                        @foreach (var month in Months())
+                        {
+                            <div class="roadmap-month" @key="month.First"
+                                 style="left:@(month.First * DayWidth)px;width:@(month.Length * DayWidth)px;@(month.StartsMonth ? "" : "border-left:0")">
+                                <span class="roadmap-month__label">@month.Label</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="roadmap-days">
+                        @for (var index = _rendered.First; index <= _rendered.Last; index++)
+                        {
+                            var day = _window.DayAt(index);
+                            <div class="@DayClass(day)" @key="index"
+                                 style="left:@(index * DayWidth)px;width:@(DayWidth)px"
+                                 title="@day.ToString("dddd d MMMM yyyy")"
+                                 @onclick="@(() => OnHeaderClick(day))">
+                                <span>@day.Day</span>
+                                <span class="roadmap-day__weekday">@Weekday(day)</span>
+                                @if (CanWrite)
+                                {
+                                    <span class="roadmap-day__add" aria-hidden="true">+</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="roadmap-body" data-roadmap-body style="@BodyStyle">
+                    <div class="roadmap-today" style="left:@(_window.IndexOf(_today) * DayWidth)px"></div>
+                    @if (CanWrite)
+                    {
+                        <div class="roadmap-add-marker" data-roadmap-marker aria-hidden="true">+</div>
+                    }
+                    <div class="roadmap-drop-indicator" data-roadmap-drop></div>
+
+                    @if (_entries.Count == 0)
+                    {
+                        <div class="roadmap-empty">
+                            @(CanWrite
+                                ? "No tasks on this roadmap yet. Click a day, or Add task, to put one on it."
+                                : "No tasks on this roadmap yet.")
+                        </div>
+                    }
+
+                    @for (var i = 0; i < _entries.Count; i++)
+                    {
+                        var entry = _entries[i];
+                        var span = Timeline.Span(entry.Task, entry.AnchorDay);
+                        var place = _window.Place(span);
+                        <div class="roadmap-row" @key="entry.Id" data-roadmap-entry="@entry.Id"
+                             data-start="@place.StartIndex" data-end="@place.EndIndex"
+                             style="top:@(i * RowHeight)px">
+                            <span class="roadmap-hint roadmap-hint--before" data-roadmap-hint>
+                                ‹ @Serial(entry) · @entry.Task.Name
+                            </span>
+
+                            @if (place.Overlaps(_rendered.First, _rendered.Last))
+                            {
+                                <div class="@BarClass(entry)" data-roadmap-bar tabindex="0" role="button"
+                                     title="@BarTitle(entry, span)" aria-label="@BarTitle(entry, span)"
+                                     style="@BarStyle(entry, place)"
+                                     @onkeydown="@(e => OnBarKeyDownAsync(entry, e))">
+                                    @if (CanWrite && !place.ClippedStart)
+                                    {
+                                        <span class="roadmap-bar__handle roadmap-bar__handle--start"
+                                              data-roadmap-handle="start" aria-hidden="true"></span>
+                                    }
+                                    @if (place.ClippedStart)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Class="roadmap-bar__clip" />
+                                    }
+                                    <span class="roadmap-bar__label">
+                                        <span class="roadmap-bar__serial">@Serial(entry)</span>
+                                        <span class="roadmap-bar__name">@entry.Task.Name</span>
+                                    </span>
+                                    <span class="roadmap-bar__spacer"></span>
+                                    @if (place.Length * DayWidth >= AvatarBarWidth && Assignees(entry.Task) is { Count: > 0 } assignees)
+                                    {
+                                        <span class="roadmap-bar__avatars">
+                                            @foreach (var member in assignees.Take(3))
+                                            {
+                                                <MemberAvatar Member="@member" AvatarUrl="@Api.Avatar" />
+                                            }
+                                        </span>
+                                    }
+                                    @if (place.ClippedEnd)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Class="roadmap-bar__clip" />
+                                    }
+                                    @if (CanWrite)
+                                    {
+                                        <button type="button" class="roadmap-bar__more" data-roadmap-menu
+                                                aria-label="@($"More for {Serial(entry)}")"
+                                                @onclick="@(e => OpenMenu(entry, e.ClientX, e.ClientY))">⋯</button>
+                                        @if (!place.ClippedEnd)
+                                        {
+                                            <span class="roadmap-bar__handle roadmap-bar__handle--end"
+                                                  data-roadmap-handle="end" aria-hidden="true"></span>
+                                        }
+                                    }
+                                </div>
+                            }
+
+                            <span class="roadmap-hint roadmap-hint--after" data-roadmap-hint>
+                                @Serial(entry) · @entry.Task.Name ›
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <section class="roadmap-missed" aria-label="Missed deadlines">
+            <MudText Typo="Typo.h4" Class="mb-2">Missed deadlines</MudText>
+            @if (Missed() is { Count: > 0 } missed)
+            {
+                <div class="roadmap-missed__table">
+                    <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                        <thead>
+                            <tr>
+                                <th>Serial</th>
+                                <th>Title</th>
+                                <th>Assigned</th>
+                                <th>Overdue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in missed)
+                            {
+                                var overdue = Timeline.DaysOverdue(entry.Task, _today);
+                                <tr class="roadmap-missed__row" @key="entry.Id" tabindex="0"
+                                    @onclick="@(() => OpenTaskAsync(entry))"
+                                    @onkeydown="@(e => e.Key == "Enter" ? OpenTaskAsync(entry) : Task.CompletedTask)">
+                                    <td>@Serial(entry)</td>
+                                    <td>@entry.Task.Name</td>
+                                    <td>
+                                        <span class="roadmap-missed__assignees">
+                                            @foreach (var member in Assignees(entry.Task))
+                                            {
+                                                <span class="roadmap-missed__assignee">
+                                                    <MemberAvatar Member="@member" AvatarUrl="@Api.Avatar" />
+                                                    @(member.DisplayName ?? member.Email)
+                                                </span>
+                                            }
+                                        </span>
+                                    </td>
+                                    <td class="roadmap-missed__overdue">
+                                        @overdue @(overdue == 1 ? "day" : "days")
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No missed deadlines.</MudText>
+            }
+        </section>
+    </div>
+
+    @if (_menu is { } menu)
+    {
+        <div class="roadmap-menu-backdrop" @onclick="@CloseMenu"
+             @oncontextmenu="@CloseMenu" @oncontextmenu:preventDefault="true"></div>
+        <MudPaper Class="roadmap-menu" Elevation="8" Style="@MenuStyle(menu)" role="menu"
+                  @onkeydown="@(e => e.Key == "Escape" ? CloseMenu() : Task.CompletedTask)">
+            <button type="button" class="roadmap-menu__item" role="menuitem"
+                    @onclick="@(() => MenuOpenAsync(menu.Entry))">
+                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" /> Open task
+            </button>
+            @if (CanWrite)
+            {
+                <button type="button" class="roadmap-menu__item roadmap-menu__item--danger" role="menuitem"
+                        @onclick="@(() => MenuRemoveAsync(menu.Entry))">
+                    <MudIcon Icon="@Icons.Material.Filled.RemoveCircleOutline" Size="Size.Small" /> Remove from roadmap
+                </button>
+            }
+        </MudPaper>
+    }
+}

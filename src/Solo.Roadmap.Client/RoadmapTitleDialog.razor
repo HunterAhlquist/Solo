@@ -1,0 +1,65 @@
+@*
+    Names a roadmap, new or renamed. The host has a prompt dialog of its own in
+    Solo.Client, which an extension can't reference, so this package brings one;
+    MudBlazor's dialog service resolves from the host either way.
+*@
+
+<MudDialog DefaultFocus="DefaultFocus.None">
+    <DialogContent>
+        <MudTextField @ref="_field" @bind-Value="_title" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" AutoFocus="true" MaxLength="@RoadmapLimits.Title" OnKeyUp="@OnKeyUp" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@string.IsNullOrWhiteSpace(_title)" OnClick="@Save">
+            @SaveText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private MudTextField<string>? _field;
+    private string _title = string.Empty;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter]
+    public string InitialTitle { get; set; } = string.Empty;
+
+    [Parameter]
+    public string SaveText { get; set; } = "Create";
+
+    protected override void OnInitialized() => _title = InitialTitle;
+
+    /// <summary>The dialog's focus handling would otherwise take focus from the field's autofocus.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _field is not null)
+        {
+            await _field.FocusAsync();
+        }
+    }
+
+    /// <summary>
+    /// On keyup, not keydown: closing on keydown hands focus back to the button
+    /// that opened the dialog while Enter is still held, and the tail of the
+    /// press clicks it again.
+    /// </summary>
+    private void OnKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Save();
+        }
+    }
+
+    private void Save()
+    {
+        if (!string.IsNullOrWhiteSpace(_title))
+        {
+            Dialog.Close(DialogResult.Ok(_title.Trim()));
+        }
+    }
+}

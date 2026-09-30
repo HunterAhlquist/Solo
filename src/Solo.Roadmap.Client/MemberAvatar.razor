@@ -1,0 +1,66 @@
+@*
+    A member's picture, or their initials on a colour derived from their name —
+    the same rule the host's avatars follow, restated here because an extension
+    can't reference Solo.Client. The picture comes through core's same-origin
+    avatar proxy, never the provider's CDN.
+*@
+<MudTooltip Text="@(Member.DisplayName ?? Member.Email)">
+    <MudAvatar Size="Size.Small" Class="roadmap-avatar" Style="@Style">
+        @if (!string.IsNullOrEmpty(Member.AvatarUrl) && Member.UserId is { } userId)
+        {
+            <img src="@AvatarUrl(userId)" alt="@Member.DisplayName"
+                 style="width:100%;height:100%;object-fit:cover;border-radius:inherit" />
+        }
+        else
+        {
+            @Initials
+        }
+    </MudAvatar>
+</MudTooltip>
+
+@code {
+    private static readonly string[] Palette =
+    [
+        "#8d7ffa", "#4fd1c5", "#f6ad55", "#f56565",
+        "#63b3ed", "#48bb78", "#ed64a6", "#ecc94b",
+    ];
+
+    [Parameter, EditorRequired]
+    public required ProjectMemberDto Member { get; set; }
+
+    [Parameter, EditorRequired]
+    public required Func<Guid, Uri> AvatarUrl { get; set; }
+
+    private string Name => Member.DisplayName ?? Member.Email;
+
+    private string Style => $"background-color:{Palette[ColorIndex]};color:#15151f;font-size:.65rem";
+
+    /// <summary>FNV-1a, as the host uses: string.GetHashCode is salted per process.</summary>
+    private int ColorIndex
+    {
+        get
+        {
+            var hash = 2166136261u;
+            foreach (var c in string.IsNullOrWhiteSpace(Name) ? Member.Id.ToString() : Name)
+            {
+                hash = (hash ^ c) * 16777619u;
+            }
+
+            return (int)(hash % (uint)Palette.Length);
+        }
+    }
+
+    private string Initials
+    {
+        get
+        {
+            var parts = Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length switch
+            {
+                0 => "?",
+                1 => parts[0][..1].ToUpperInvariant(),
+                _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant(),
+            };
+        }
+    }
+}

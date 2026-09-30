@@ -1,0 +1,137 @@
+@attribute [ExtensionSettings]
+@inject ISoloClientApi Client
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+@*
+    The timeline's instance-wide settings, inside the Roadmaps entry on Admin
+    settings. The endpoint guards itself — super admins only — rather than
+    relying on this page being theirs. Changes apply the next time a roadmap
+    page loads.
+*@
+
+@if (_error is not null)
+{
+    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">@_error</MudText>
+}
+else if (_settings is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudText Typo="Typo.subtitle2" Class="mb-1">Scroll bounds</MudText>
+    <div class="roadmap-settings__group">
+        <MudNumericField T="int" @bind-Value="_pastDays" Label="Days before today" Variant="Variant.Outlined"
+                         Margin="Margin.Dense" Min="RoadmapLimits.MinBoundDays" Max="RoadmapLimits.MaxBoundDays" />
+        <MudNumericField T="int" @bind-Value="_futureDays" Label="Days after today" Variant="Variant.Outlined"
+                         Margin="Margin.Dense" Min="RoadmapLimits.MinBoundDays" Max="RoadmapLimits.MaxBoundDays" />
+    </div>
+
+    <MudText Typo="Typo.subtitle2" Class="mb-1">Stripes</MudText>
+    <div class="roadmap-settings__group">
+        <MudNumericField T="int" @bind-Value="_dayOfYear" Label="Stripes begin on day of year"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="366" />
+        <MudNumericField T="int" @bind-Value="_interval" Label="Stripe interval (days)" Variant="Variant.Outlined"
+                         Margin="Margin.Dense" Min="RoadmapLimits.MinStripeIntervalDays"
+                         Max="RoadmapLimits.MaxStripeIntervalDays" />
+    </div>
+    <MudText Typo="Typo.caption" Color="@(ReadBack is null ? Color.Error : Color.Secondary)" Class="d-block mb-3">
+        @(ReadBack ?? $"{Year} has no day {_dayOfYear}.")
+    </MudText>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+               Disabled="@(_saving || !Changed || ReadBack is null)" OnClick="@SaveAsync">
+        Save
+    </MudButton>
+}
+
+@code {
+    private RoadmapSettingsDto? _settings;
+    private int _pastDays;
+    private int _futureDays;
+    private int _dayOfYear;
+    private int _interval;
+    private bool _saving;
+    private string? _error;
+
+    [Parameter]
+    public string ExtensionId { get; set; } = "";
+
+    private RoadmapApi Api => new(Client);
+
+    /// <summary>The day of year is saved as a date in the current year — the one the server will use.</summary>
+    private static int Year => DateTime.UtcNow.Year;
+
+    /// <summary>What the stripe fields mean, in words: "Stripes start 5 Jan 2026 and alternate every 14 days."</summary>
+    private string? ReadBack =>
+        _dayOfYear < 1 || _dayOfYear > (DateTime.IsLeapYear(Year) ? 366 : 365) || _interval < 1
+            ? null
+            : $"Stripes start {new DateOnly(Year, 1, 1).AddDays(_dayOfYear - 1):d MMM yyyy} and alternate " +
+              $"every {_interval} day{(_interval == 1 ? "" : "s")}.";
+
+    private bool Changed => _settings is not null &&
+        (_pastDays, _futureDays, _dayOfYear, _interval) !=
+        (_settings.PastDays, _settings.FutureDays, _settings.StripeStartDayOfYear, _settings.StripeIntervalDays);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RoadmapAssets.EnsureStylesAsync(JS, Api);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            Apply(await Api.SettingsAsync());
+            _error = null;
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _error = "Couldn't load the roadmap settings.";
+        }
+    }
+
+    private void Apply(RoadmapSettingsDto settings)
+    {
+        _settings = settings;
+        (_pastDays, _futureDays, _dayOfYear, _interval) =
+            (settings.PastDays, settings.FutureDays, settings.StripeStartDayOfYear, settings.StripeIntervalDays);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            Apply(await Api.SaveSettingsAsync(new UpdateRoadmapSettingsRequest
+            {
+                PastDays = _pastDays,
+                FutureDays = _futureDays,
+                StripeStartDayOfYear = _dayOfYear,
+                StripeIntervalDays = _interval,
+                Version = _settings.Version,
+            }));
+            Snackbar.Add("Saved. Roadmaps pick this up the next time they load.", Severity.Success);
+        }
+        catch (SoloApiException e) when (e.StatusCode == HttpStatusCode.Conflict)
+        {
+            await LoadAsync();
+            Snackbar.Add("These settings changed elsewhere; they've been reloaded.", Severity.Info);
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            Snackbar.Add(e.Message, Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

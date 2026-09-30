@@ -1,0 +1,67 @@
+@attribute [TaskDetailExtension]
+@inject ISoloClientApi Client
+@inject IJSRuntime JS
+
+@*
+    The roadmaps a task is on, in its task view — every drawer, the board's
+    included. Nothing at all when it's on none.
+*@
+
+@if (_roadmaps is { Count: > 0 })
+{
+    <div class="roadmap-memberships mb-3">
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="roadmap-memberships__label">Roadmaps:</MudText>
+        @foreach (var roadmap in _roadmaps)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Timeline"
+                     Href="@($"projects/{roadmap.ProjectAlias}/roadmaps/{roadmap.Id}")">
+                @roadmap.Title
+            </MudChip>
+        }
+    </div>
+}
+
+@code {
+    private List<TaskRoadmapDto>? _roadmaps;
+    private Guid _loadedFor;
+    private long _load;
+
+    [Parameter, EditorRequired]
+    public TaskDto Task { get; set; } = null!;
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    protected override void OnInitialized() => _ = RoadmapAssets.EnsureStylesAsync(JS, new RoadmapApi(Client));
+
+    /// <summary>
+    /// Asks again only when the drawer switches task — a save re-renders the
+    /// drawer with a fresh TaskDto for the same task, which changes nothing here.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Task.Id == _loadedFor)
+        {
+            return;
+        }
+
+        _loadedFor = Task.Id;
+        _roadmaps = null;
+        var load = ++_load;
+        try
+        {
+            var roadmaps = await new RoadmapApi(Client).RoadmapsOfTaskAsync(Task.Id);
+            if (load == _load)
+            {
+                _roadmaps = roadmaps;
+            }
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            // Roadmaps are a footnote in the task view; a failed read leaves it out.
+        }
+    }
+}
