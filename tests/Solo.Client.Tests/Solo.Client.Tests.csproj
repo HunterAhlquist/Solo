@@ -25,6 +25,8 @@
          package: bUnit renders components, and the loader that would normally
          deliver this assembly is covered by the integration suite instead. -->
     <ProjectReference Include="..\..\src\Solo.Mcp.Client\Solo.Mcp.Client.csproj" />
+    <!-- The Roadmaps extension's client half, the same way. -->
+    <ProjectReference Include="..\..\src\Solo.Roadmap.Client\Solo.Roadmap.Client.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,1 +1,667 @@
-/* Filled in with the timeline page. */
+/* ---------------------------------------------------------------------------
+   The Roadmaps extension's styles. Served from the package's content/ folder
+   and added to the page by roadmap.js (ensureStyles) the first time any of its
+   components renders — not through HeadContent, which holds one owner's markup
+   at a time and would push the instance theme's stylesheet out.
+
+   Everything is drawn from MudBlazor's palette variables so it follows the
+   theme and the colour scheme; nothing depends on core's own class names.
+   --------------------------------------------------------------------------- */
+
+:root {
+    /* Today's column: a muted tint of the theme's primary. A light tint nearly
+       vanishes on a dark surface, so dark mode mixes in more of it. */
+    --roadmap-today: color-mix(in srgb, var(--mud-palette-primary) 14%, transparent);
+    --roadmap-stripe: color-mix(in srgb, var(--mud-palette-text-primary) 4%, transparent);
+    --roadmap-grid-line: color-mix(in srgb, var(--mud-palette-text-primary) 7%, transparent);
+    --roadmap-missed: var(--mud-palette-error);
+}
+
+html[data-color-scheme="dark"] {
+    --roadmap-today: color-mix(in srgb, var(--mud-palette-primary) 22%, transparent);
+    --roadmap-stripe: color-mix(in srgb, var(--mud-palette-text-primary) 5%, transparent);
+    --roadmap-grid-line: color-mix(in srgb, var(--mud-palette-text-primary) 9%, transparent);
+}
+
+/* -- Sidebar ---------------------------------------------------------------- */
+
+/* "Add roadmap" reads a step quieter than the roadmaps above it, as "Add board" does. */
+.roadmap-nav__add {
+    color: var(--mud-palette-text-secondary);
+}
+
+.roadmap-nav__add:hover {
+    color: var(--mud-palette-primary);
+}
+
+/* -- Task view chips -------------------------------------------------------- */
+
+.roadmap-memberships {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.roadmap-memberships__label {
+    margin-right: 0.25rem;
+}
+
+/* -- Page ------------------------------------------------------------------- */
+
+.roadmap-page {
+    min-width: 0;
+}
+
+.roadmap-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.roadmap-header__title.mud-typography {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* -- Timeline --------------------------------------------------------------- */
+
+/* The one scroller, both ways. The page itself never scrolls sideways: at any
+   width this box is as wide as its column and the canvas scrolls inside it. */
+.roadmap-timeline {
+    --roadmap-head-height: 3.5rem;
+    position: relative;
+    width: 100%;
+    max-height: 70vh;
+    overflow: auto;
+    overscroll-behavior-x: contain;
+    border: 1px solid var(--mud-palette-divider);
+    border-radius: var(--mud-default-borderradius, 4px);
+    background: var(--mud-palette-surface);
+}
+
+.roadmap-canvas {
+    position: relative;
+}
+
+.roadmap-head {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    height: var(--roadmap-head-height);
+    background: var(--mud-palette-surface);
+    border-bottom: 1px solid var(--mud-palette-divider);
+}
+
+.roadmap-months,
+.roadmap-days {
+    position: relative;
+}
+
+.roadmap-months {
+    height: 1.375rem;
+}
+
+.roadmap-days {
+    height: calc(var(--roadmap-head-height) - 1.375rem);
+}
+
+.roadmap-month {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--mud-palette-divider);
+    font-size: 0.75rem;
+    line-height: 1.375rem;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+}
+
+/* The label stays on screen while its month is, however far into it the view is. */
+.roadmap-month__label {
+    position: sticky;
+    left: 0;
+    padding: 0 0.375rem;
+}
+
+.roadmap-day {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    color: var(--mud-palette-text-primary);
+    user-select: none;
+}
+
+.roadmap-day__weekday {
+    font-size: 0.625rem;
+    color: var(--mud-palette-text-secondary);
+}
+
+.roadmap-day--weekend,
+.roadmap-day--weekend .roadmap-day__weekday {
+    color: var(--mud-palette-text-disabled);
+}
+
+.roadmap-day--today {
+    color: var(--mud-palette-primary);
+    font-weight: 700;
+}
+
+.roadmap-day--today .roadmap-day__weekday {
+    color: var(--mud-palette-primary);
+}
+
+/* A writer's way to add from the header: hover shows the plus, click picks. */
+.roadmap-day__add {
+    position: absolute;
+    inset: 2px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.roadmap-day--addable {
+    cursor: pointer;
+}
+
+.roadmap-day--addable:hover .roadmap-day__add {
+    display: flex;
+}
+
+/* The grid body: stripes, then day lines, as backgrounds — one layer each,
+   rather than an element per band or per day. --roadmap-stripe-period and
+   --roadmap-stripe-offset come from the page, which knows the anchor. */
+.roadmap-body {
+    position: relative;
+    background-image:
+        repeating-linear-gradient(to right,
+            transparent 0,
+            transparent calc(var(--roadmap-day-width) - 1px),
+            var(--roadmap-grid-line) calc(var(--roadmap-day-width) - 1px),
+            var(--roadmap-grid-line) var(--roadmap-day-width)),
+        repeating-linear-gradient(to right,
+            transparent 0,
+            transparent calc(var(--roadmap-stripe-period) / 2),
+            var(--roadmap-stripe) calc(var(--roadmap-stripe-period) / 2),
+            var(--roadmap-stripe) var(--roadmap-stripe-period));
+    background-size: auto, var(--roadmap-stripe-period) 100%;
+    background-position: 0 0, var(--roadmap-stripe-offset) 0;
+}
+
+/* Above the stripes, below the bars. */
+.roadmap-today {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: var(--roadmap-day-width);
+    background: var(--roadmap-today);
+    pointer-events: none;
+}
+
+.roadmap-empty {
+    position: sticky;
+    left: 0;
+    padding: 1.5rem 1rem;
+    max-width: 30rem;
+    color: var(--mud-palette-text-secondary);
+}
+
+/* Follows the pointer over empty grid (roadmap.js), marking where a click adds. */
+.roadmap-add-marker {
+    position: absolute;
+    display: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin: calc((var(--roadmap-row-height) - 1.5rem) / 2) calc((var(--roadmap-day-width) - 1.5rem) / 2);
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+    font-weight: 700;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.roadmap-add-marker.is-visible {
+    display: flex;
+}
+
+.roadmap-drop-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    margin-top: -1px;
+    display: none;
+    background: var(--mud-palette-primary);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--mud-palette-primary) 30%, transparent);
+    pointer-events: none;
+    z-index: 3;
+}
+
+.roadmap-drop-indicator.is-visible {
+    display: block;
+}
+
+/* -- Rows and bars ---------------------------------------------------------- */
+
+.roadmap-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--roadmap-row-height);
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+}
+
+.roadmap-row.is-dragging {
+    z-index: 5;
+}
+
+.roadmap-row.is-dragging .roadmap-bar {
+    box-shadow: var(--mud-elevation-8);
+    cursor: grabbing;
+}
+
+/* Where to look when a row's bar is scrolled out of view: pinned to the edge
+   of the viewport on the side the bar went (roadmap.js sets data-offscreen). */
+.roadmap-hint {
+    position: sticky;
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 14rem;
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--mud-palette-surface) 85%, transparent);
+    border: 1px solid var(--mud-palette-divider);
+    font-size: 0.75rem;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+@media (max-width: 599.98px) {
+    .roadmap-hint {
+        max-width: 9rem;
+    }
+}
+
+.roadmap-hint--before {
+    left: 0.25rem;
+}
+
+.roadmap-hint--after {
+    right: 0.25rem;
+    margin-left: auto;
+}
+
+.roadmap-row[data-offscreen="before"] .roadmap-hint--before,
+.roadmap-row[data-offscreen="after"] .roadmap-hint--after {
+    display: inline-flex;
+}
+
+.roadmap-bar {
+    position: absolute;
+    top: calc((var(--roadmap-row-height) - 1.75rem) / 2);
+    left: var(--roadmap-preview-left, var(--bar-left));
+    width: var(--roadmap-preview-width, var(--bar-width));
+    height: 1.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.5rem 0 0.625rem;
+    border-radius: 0.375rem;
+    border: 1px solid color-mix(in srgb, var(--mud-palette-primary) 55%, transparent);
+    border-left: 4px solid var(--bar-label, color-mix(in srgb, var(--mud-palette-primary) 55%, transparent));
+    background: color-mix(in srgb, var(--mud-palette-primary) 16%, var(--mud-palette-surface));
+    color: var(--mud-palette-text-primary);
+    font-size: 0.8125rem;
+    /* clip, not hidden: hidden would make the bar its own scroll container, and
+       the sticky label below would then stick to the bar instead of the view. */
+    overflow: clip;
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: pan-x pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.roadmap-bar:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 1px;
+}
+
+/* A task with no deadline yet: a dashed one-day pill on the day it was added. */
+.roadmap-bar--pill {
+    border-style: dashed;
+    border-left-style: solid;
+    border-radius: 0.875rem;
+    background: color-mix(in srgb, var(--mud-palette-primary) 7%, var(--mud-palette-surface));
+    padding: 0 0.375rem 0 0.5rem;
+}
+
+.roadmap-bar--finished {
+    opacity: 0.55;
+    transition: opacity 120ms ease-in-out;
+}
+
+.roadmap-bar--finished:hover {
+    opacity: 1;
+}
+
+/* Missed: the deadline day has ended and the task isn't finished. The timing is
+   the board's overdue ring's, in keyframes of this package's own. */
+.roadmap-bar--missed {
+    border-color: var(--roadmap-missed);
+    border-left-color: var(--roadmap-missed);
+    background: color-mix(in srgb, var(--roadmap-missed) 22%, var(--mud-palette-surface));
+    animation: roadmap-missed-blink 1s ease-in-out infinite;
+}
+
+@keyframes roadmap-missed-blink {
+    50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .roadmap-bar--missed { animation: none; }
+}
+
+/* A bar that starts off to the left keeps its serial and name in view. It
+   keeps its natural width — sticky can only slide an element within spare
+   room in its bar, and one stretched to fill the bar has none. */
+.roadmap-bar__label {
+    position: sticky;
+    left: 0.5rem;
+    display: flex;
+    flex: 0 1 auto;
+    align-items: baseline;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.roadmap-bar__spacer {
+    flex: 1 1 0;
+}
+
+.roadmap-bar__serial {
+    flex: 0 0 auto;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+}
+
+.roadmap-bar__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.roadmap-bar__avatars {
+    display: flex;
+    flex: 0 0 auto;
+}
+
+.roadmap-bar__avatars .roadmap-avatar {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-left: -0.25rem;
+    border: 1px solid var(--mud-palette-surface);
+}
+
+.roadmap-bar__clip {
+    flex: 0 0 auto;
+    font-size: 1rem;
+    color: var(--mud-palette-text-secondary);
+}
+
+/* Edge handles: a thin grip you can see, and a wider strip you can hit. */
+.roadmap-bar__handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0.75rem;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 1;
+}
+
+.roadmap-bar__handle--start {
+    left: -0.25rem;
+}
+
+.roadmap-bar__handle--end {
+    right: -0.25rem;
+}
+
+.roadmap-bar__handle::after {
+    content: "";
+    position: absolute;
+    top: 25%;
+    bottom: 25%;
+    left: calc(50% - 1px);
+    width: 2px;
+    border-radius: 1px;
+    background: var(--mud-palette-text-secondary);
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+}
+
+.roadmap-bar:hover .roadmap-bar__handle::after,
+.roadmap-bar.is-resizing .roadmap-bar__handle::after {
+    opacity: 0.7;
+}
+
+.roadmap-bar__more {
+    flex: 0 0 auto;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--mud-palette-text-secondary);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.roadmap-bar:hover .roadmap-bar__more,
+.roadmap-bar:focus-within .roadmap-bar__more {
+    display: inline-flex;
+}
+
+.roadmap-bar__more:hover {
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 10%, transparent);
+}
+
+/* No hover on a touchscreen: the menu button stays in sight instead. */
+@media (hover: none) {
+    .roadmap-bar__more {
+        display: inline-flex;
+    }
+}
+
+.roadmap-resize-label {
+    position: fixed;
+    z-index: 1500;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    background: var(--mud-palette-dark, #333);
+    color: var(--mud-palette-dark-text, #fff);
+    font-size: 0.75rem;
+    pointer-events: none;
+    transform: translate(-50%, -130%);
+    white-space: nowrap;
+}
+
+/* -- Bar menu --------------------------------------------------------------- */
+
+.roadmap-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+}
+
+.roadmap-menu {
+    position: fixed;
+    z-index: 1401;
+    min-width: 12rem;
+    padding: 0.25rem 0;
+}
+
+.roadmap-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    border: 0;
+    background: transparent;
+    color: var(--mud-palette-text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.roadmap-menu__item:hover,
+.roadmap-menu__item:focus-visible {
+    background: color-mix(in srgb, var(--mud-palette-primary) 10%, transparent);
+    outline: none;
+}
+
+.roadmap-menu__item--danger {
+    color: var(--mud-palette-error);
+}
+
+/* -- Missed deadlines ------------------------------------------------------- */
+
+.roadmap-missed {
+    margin-top: 1.5rem;
+}
+
+.roadmap-missed__table {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.roadmap-missed__row {
+    cursor: pointer;
+}
+
+.roadmap-missed__row:hover {
+    background: color-mix(in srgb, var(--mud-palette-primary) 6%, transparent);
+}
+
+.roadmap-missed__assignees {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+}
+
+.roadmap-missed__assignee {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.roadmap-missed__overdue {
+    color: var(--roadmap-missed);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* -- Task picker ------------------------------------------------------------ */
+
+.roadmap-picker__results {
+    max-height: 55vh;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+}
+
+.roadmap-picker__board {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.5rem 0.5rem 0.25rem;
+    background: var(--mud-palette-surface);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+}
+
+.roadmap-picker__option {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+}
+
+.roadmap-picker__option:hover,
+.roadmap-picker__option.is-active {
+    background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
+}
+
+.roadmap-picker__serial {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+}
+
+.roadmap-picker__name {
+    flex: 1 1 12rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.roadmap-picker__dates {
+    font-size: 0.75rem;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+}
+
+/* -- Settings panel --------------------------------------------------------- */
+
+.roadmap-settings__group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Wide enough that "Stripes begin on day of year" isn't cut short. */
+.roadmap-settings__group .mud-input-control {
+    flex: 1 1 17rem;
+    max-width: 19rem;
+}

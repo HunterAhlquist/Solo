@@ -1,0 +1,25 @@
+@* Yes/no for a destructive action — this package's own, for the same reason as RoadmapTitleDialog. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body1">@Message</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled"
+                   OnClick="@(() => Dialog.Close(DialogResult.Ok(true)))">
+            @ConfirmText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public required string Message { get; set; }
+
+    [Parameter]
+    public string ConfirmText { get; set; } = "Delete";
+}
