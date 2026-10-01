@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Solo.Extensibility;
 using Solo.Roadmap.Data;
 
@@ -31,9 +30,6 @@ public sealed class RoadmapExtension : ISoloExtension
 
         services.AddExtensionDbContext<RoadmapDbContext>(context);
         services.AddEventHandler<TaskDeletedHandler>();
-
-        // TryAdd, so a host (or a test) that already supplies a clock keeps its own.
-        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<RoadmapSettingsStore>();
     }
 }

@@ -259,6 +259,30 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
         return NoContent();
     }
 
+    /// <summary>
+    /// Moves the day a task with no deadline is drawn on. A task with dates is
+    /// moved by rescheduling it through core; this is only for the pill, whose
+    /// day is the roadmap's to keep.
+    /// </summary>
+    [HttpPut("{roadmapId:guid}/entries/{entryId:guid}/anchor")]
+    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    public async Task<IActionResult> SetAnchor(
+        Guid projectId, Guid roadmapId, Guid entryId, SetRoadmapEntryAnchorRequest request, CancellationToken ct)
+    {
+        if (request.AnchorDay == default)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "No day given",
+                detail: "Say which day the task should be drawn on.");
+        }
+
+        var updated = await db.Entries
+            .Where(e => e.Id == entryId && e.RoadmapId == roadmapId && e.Roadmap.ProjectId == projectId)
+            .ExecuteUpdateAsync(set => set.SetProperty(e => e.AnchorDay, request.AnchorDay), ct);
+        return updated == 0 ? NotFound() : NoContent();
+    }
+
     /// <summary>Takes a task off the roadmap. The task itself is untouched.</summary>
     [HttpDelete("{roadmapId:guid}/entries/{entryId:guid}")]
     [Authorize(Policy = SoloPolicies.ProjectWrite)]

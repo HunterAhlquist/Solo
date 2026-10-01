@@ -159,28 +159,6 @@ html[data-color-scheme="dark"] {
     color: var(--mud-palette-primary);
 }
 
-/* A writer's way to add from the header: hover shows the plus, click picks. */
-.roadmap-day__add {
-    position: absolute;
-    inset: 2px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: var(--mud-palette-primary);
-    color: var(--mud-palette-primary-text);
-    font-size: 1rem;
-    font-weight: 700;
-}
-
-.roadmap-day--addable {
-    cursor: pointer;
-}
-
-.roadmap-day--addable:hover .roadmap-day__add {
-    display: flex;
-}
-
 /* The grid body: stripes, then day lines, as backgrounds — one layer each,
    rather than an element per band or per day. --roadmap-stripe-period and
    --roadmap-stripe-offset come from the page, which knows the anchor. */
@@ -219,7 +197,8 @@ html[data-color-scheme="dark"] {
     color: var(--mud-palette-text-secondary);
 }
 
-/* Follows the pointer over empty grid (roadmap.js), marking where a click adds. */
+/* Follows the pointer over the empty rows below the last task (roadmap.js),
+   marking where a click adds one. */
 .roadmap-add-marker {
     position: absolute;
     display: none;
@@ -395,9 +374,24 @@ html[data-color-scheme="dark"] {
     left: 0.5rem;
     display: flex;
     flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.roadmap-bar__track {
+    display: flex;
+    min-width: 0;
+}
+
+.roadmap-bar__text {
+    display: flex;
     align-items: baseline;
     gap: 0.375rem;
     min-width: 0;
+}
+
+.roadmap-bar__text--copy {
+    display: none;
 }
 
 .roadmap-bar__spacer {
@@ -417,6 +411,36 @@ html[data-color-scheme="dark"] {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* A hovered label that doesn't fit scrolls past like a news ticker: roadmap.js
+   sets data-ticker plus the distance and duration. While it runs, the text
+   takes its full width and its copy follows a gap behind, so when the loop
+   comes round the copy is exactly where the original started. */
+.roadmap-bar__label[data-ticker] .roadmap-bar__track {
+    animation: roadmap-ticker var(--roadmap-ticker-duration) linear 0.6s infinite;
+}
+
+.roadmap-bar__label[data-ticker] .roadmap-bar__text {
+    flex: 0 0 auto;
+    padding-right: var(--roadmap-ticker-gap);
+}
+
+.roadmap-bar__label[data-ticker] .roadmap-bar__text--copy {
+    display: flex;
+}
+
+.roadmap-bar__label[data-ticker] .roadmap-bar__name {
+    overflow: visible;
+    text-overflow: clip;
+}
+
+@keyframes roadmap-ticker {
+    to { transform: translateX(calc(-1 * var(--roadmap-ticker-distance))); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .roadmap-bar__label[data-ticker] .roadmap-bar__track { animation: none; }
 }
 
 .roadmap-bar__avatars {
@@ -660,8 +684,9 @@ html[data-color-scheme="dark"] {
     margin-bottom: 0.75rem;
 }
 
-/* Wide enough that "Stripes begin on day of year" isn't cut short. */
-.roadmap-settings__group .mud-input-control {
+/* Each field, whatever MudBlazor wraps it in (a select adds a layer a numeric
+   field doesn't), as one flex item of the same width. */
+.roadmap-settings__group > * {
     flex: 1 1 17rem;
     max-width: 19rem;
 }

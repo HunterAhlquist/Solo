@@ -18,15 +18,20 @@ public sealed partial class RoadmapPage
 
     public const int RowHeight = 40;
 
-    /// <summary>Rows the grid shows even when the roadmap has fewer, so an empty one still has a surface to click.</summary>
-    private const int MinimumRows = 6;
-
     /// <summary>How wide a bar has to be before its assignees' avatars fit beside the name.</summary>
     private const int AvatarBarWidth = 200;
 
     private ElementReference _scroller;
     private DotNetObjectReference<RoadmapPage>? _self;
     private IJSObjectReference? _timelineHandle;
+
+    /// <summary>
+    /// The attach in flight. Attaching awaits the module import, and any render
+    /// that lands meanwhile would otherwise start a second one — two sets of
+    /// gesture handlers on one grid, and every click on it counted twice.
+    /// </summary>
+    private Task? _attaching;
+
     private (string Alias, Guid Roadmap)? _loadedFor;
 
     private ProjectSummaryDto? _project;
@@ -197,7 +202,8 @@ public sealed partial class RoadmapPage
 
         if (_timelineHandle is null)
         {
-            await AttachTimelineAsync();
+            _attaching ??= AttachTimelineAsync();
+            await _attaching;
             return;
         }
 
@@ -214,6 +220,7 @@ public sealed partial class RoadmapPage
                 dayWidth = DayWidth,
                 rowHeight = RowHeight,
                 days = _window.Days,
+                entries = _entries.Count,
                 canWrite = CanWrite,
                 firstDay = _window.First.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             });
@@ -235,7 +242,8 @@ public sealed partial class RoadmapPage
 
         try
         {
-            await _timelineHandle.InvokeVoidAsync("configure", new { days = _window.Days, canWrite = CanWrite });
+            await _timelineHandle.InvokeVoidAsync("configure",
+                new { days = _window.Days, entries = _entries.Count, canWrite = CanWrite });
             await _timelineHandle.InvokeVoidAsync("refresh");
         }
         catch (JSDisconnectedException)
@@ -243,23 +251,28 @@ public sealed partial class RoadmapPage
         }
     }
 
+    /// <remarks>
+    /// The handle leaves the field before anything is awaited: a render landing
+    /// mid-dispose would otherwise refresh through a reference already disposed.
+    /// </remarks>
     private async Task DetachTimelineAsync()
     {
-        if (_timelineHandle is null)
+        var handle = _timelineHandle;
+        _timelineHandle = null;
+        _attaching = null;
+        if (handle is null)
         {
             return;
         }
 
         try
         {
-            await _timelineHandle.InvokeVoidAsync("dispose");
-            await _timelineHandle.DisposeAsync();
+            await handle.InvokeVoidAsync("dispose");
+            await handle.DisposeAsync();
         }
         catch (JSDisconnectedException)
         {
         }
-
-        _timelineHandle = null;
     }
 
     private async Task ScrollToDayAsync(int index)
@@ -340,6 +353,37 @@ public sealed partial class RoadmapPage
         }
     });
 
+    /// <summary>
+    /// A row dragged <paramref name="days"/> along the timeline: both ends move
+    /// together, so it keeps its length, and it stops at the window's edge. A task
+    /// with dates is rescheduled through core like any resize; a no-deadline pill
+    /// has no dates to move, so the roadmap moves the day it's drawn on.
+    /// </summary>
+    [JSInvokable]
+    public Task OnMove(string entryId, int days) => InvokeAsync(async () =>
+    {
+        if (!CanWrite || Find(entryId) is not { } entry)
+        {
+            return;
+        }
+
+        var span = Timeline.Span(entry.Task, entry.AnchorDay);
+        var shift = _window.ClampMove(span, days);
+        if (shift == 0)
+        {
+            return;
+        }
+
+        if (entry.Task.DeadlineAt is null)
+        {
+            await MoveAnchorAsync(entry, entry.AnchorDay.AddDays(shift));
+            return;
+        }
+
+        var moved = Timeline.Move(span, shift);
+        await RescheduleAsync(entry, (moved.Start, moved.End));
+    });
+
     /// <summary>A bar's edge dropped on column <paramref name="index"/>.</summary>
     [JSInvokable]
     public Task OnResize(string entryId, string edge, int index) => InvokeAsync(async () =>
@@ -386,6 +430,28 @@ public sealed partial class RoadmapPage
         StateHasChanged();
     }
 
+    /// <summary>Moves a pill at once; a failed save puts it back.</summary>
+    private async Task MoveAnchorAsync(RoadmapEntryDto entry, DateOnly day)
+    {
+        var index = _entries.FindIndex(e => e.Id == entry.Id);
+        _entries[index] = entry with { AnchorDay = day };
+        StateHasChanged();
+        try
+        {
+            await Api.SetAnchorAsync(_project!.Id, RoadmapId, entry.Id, day);
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            if (_entries.FindIndex(x => x.Id == entry.Id) is var at and >= 0)
+            {
+                _entries[at] = _entries[at] with { AnchorDay = entry.AnchorDay };
+            }
+
+            Snackbar.Add($"Couldn't move {Serial(entry)}: {e.Message}", Severity.Error);
+            StateHasChanged();
+        }
+    }
+
     private async Task RefetchTaskAsync(Guid entryId, TaskDto fallback)
     {
         try
@@ -424,8 +490,6 @@ public sealed partial class RoadmapPage
 
     // -- Adding and removing ----------------------------------------------------------
 
-    private Task OnHeaderClick(DateOnly day) => CanWrite ? PickAsync(day) : Task.CompletedTask;
-
     private async Task PickAsync(DateOnly day)
     {
         if (!CanWrite || _project is null)
@@ -450,9 +514,10 @@ public sealed partial class RoadmapPage
     }
 
     /// <summary>
-    /// Puts the task on the roadmap. A task with no dates becomes a one-day bar on
-    /// the chosen day; one that has dates keeps them — nobody's deadline moves
-    /// without them seeing it — and the view goes to where its bar is.
+    /// Puts the task on the roadmap. A task with no dates gets them from the chosen
+    /// day (see <see cref="Timeline.ScheduleOnAdd"/>); one that has dates keeps
+    /// them — nobody's deadline moves without them seeing it — and the view goes
+    /// to where its bar is.
     /// </summary>
     private async Task AddAsync(RoadmapCandidateDto picked, DateOnly day)
     {
@@ -472,9 +537,14 @@ public sealed partial class RoadmapPage
 
         if (entry.Task.DeadlineAt is null)
         {
-            if (await ScheduleOnDayAsync(entry.Task, day) is { } scheduled)
+            var dates = Timeline.ScheduleOnAdd(day, _today);
+            if (await ScheduleOnAddAsync(entry.Task, dates) is { } scheduled)
             {
                 Replace(entry.Id, scheduled);
+                if (dates.End != dates.Start && scheduled.DeadlineAt == dates.End)
+                {
+                    Snackbar.Add($"Added. {Dates.Day(day)} has passed, so it runs through today.", Severity.Info);
+                }
             }
         }
         else
@@ -487,12 +557,12 @@ public sealed partial class RoadmapPage
         await ScrollToAsync(entry.Id);
     }
 
-    /// <summary>Gives a dateless task the one day it was added on — retrying once over a stale version.</summary>
-    private async Task<TaskDto?> ScheduleOnDayAsync(TaskDto task, DateOnly day)
+    /// <summary>Gives a dateless task its first dates — retrying once over a stale version.</summary>
+    private async Task<TaskDto?> ScheduleOnAddAsync(TaskDto task, DaySpan dates)
     {
         try
         {
-            return await Api.SetScheduleAsync(task.Id, day, day, task.Version);
+            return await Api.SetScheduleAsync(task.Id, dates.Start, dates.End, task.Version);
         }
         catch (SoloApiException e) when (e.StatusCode == HttpStatusCode.Conflict)
         {
@@ -505,7 +575,7 @@ public sealed partial class RoadmapPage
                     return fresh;
                 }
 
-                return await Api.SetScheduleAsync(fresh.Id, day, day, fresh.Version);
+                return await Api.SetScheduleAsync(fresh.Id, dates.Start, dates.End, fresh.Version);
             }
             catch (Exception retry) when (retry is SoloApiException or HttpRequestException)
             {
@@ -709,10 +779,11 @@ public sealed partial class RoadmapPage
         get
         {
             var settings = _timeline!.Settings;
-            var period = 2 * settings.StripeIntervalDays * DayWidth;
-            var offset = _window.StripeOffset(settings.StripeAnchor, settings.StripeIntervalDays, DayWidth);
+            var sprintDays = settings.SprintLengthWeeks * 7;
+            var period = 2 * sprintDays * DayWidth;
+            var offset = _window.StripeOffset(RoadmapSprints.Anchor(settings.SprintStartDay), sprintDays, DayWidth);
             return FormattableString.Invariant(
-                $"height:{Math.Max(_entries.Count, MinimumRows) * RowHeight}px;--roadmap-stripe-period:{period}px;--roadmap-stripe-offset:{offset}px");
+                $"height:{Timeline.Rows(_entries.Count) * RowHeight}px;--roadmap-stripe-period:{period}px;--roadmap-stripe-offset:{offset}px");
         }
     }
 
@@ -741,8 +812,7 @@ public sealed partial class RoadmapPage
     private string DayClass(DateOnly day) =>
         "roadmap-day" +
         (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday ? " roadmap-day--weekend" : "") +
-        (day == _today ? " roadmap-day--today" : "") +
-        (CanWrite ? " roadmap-day--addable" : "");
+        (day == _today ? " roadmap-day--today" : "");
 
     private static string Weekday(DateOnly day) =>
         CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedDayName(day.DayOfWeek)[..1];

@@ -11,6 +11,21 @@ namespace Solo.Roadmap.Client;
 /// </summary>
 public static class Timeline
 {
+    /// <summary>Rows the grid shows even when the roadmap has fewer, so an empty one still has a surface to click.</summary>
+    public const int MinimumRows = 9;
+
+    /// <summary>Empty rows kept below the last task, however many there are: where a new one is added.</summary>
+    public const int SpareRows = 2;
+
+    public static int Rows(int entries) => Math.Max(MinimumRows, entries + SpareRows);
+
+    /// <summary>
+    /// The dates a task with none gets when it's added on <paramref name="day"/>:
+    /// that day alone, or — on a day already past — from it through today, so it
+    /// doesn't arrive already missed.
+    /// </summary>
+    public static DaySpan ScheduleOnAdd(DateOnly day, DateOnly today) => new(day, day < today ? today : day);
+
     /// <summary>A task's start: its own, or the day it was created — the same fallback its board card uses.</summary>
     public static DateOnly EffectiveStart(TaskDto task) =>
         task.StartAt ?? DateOnly.FromDateTime(task.CreatedAt.ToLocalTime());
@@ -88,6 +103,9 @@ public static class Timeline
         };
     }
 
+    /// <summary>A row's days moved <paramref name="days"/> along the timeline, its length unchanged.</summary>
+    public static DaySpan Move(DaySpan span, int days) => new(span.Start.AddDays(days), span.End.AddDays(days));
+
     private static DateOnly Min(DateOnly a, DateOnly b) => a <= b ? a : b;
 
     private static DateOnly Max(DateOnly a, DateOnly b) => a >= b ? a : b;
@@ -118,6 +136,14 @@ public sealed record TimelineWindow(DateOnly First, DateOnly Last)
     public DateOnly DayAt(int index) => First.AddDays(index);
 
     public DateOnly Clamp(DateOnly day) => day < First ? First : day > Last ? Last : day;
+
+    /// <summary>
+    /// How far a row may move by up to <paramref name="days"/> and stay inside
+    /// the window — or not move at all, if it's already past an edge.
+    /// </summary>
+    public int ClampMove(DaySpan span, int days) =>
+        days < 0 ? Math.Min(Math.Max(days, First.DayNumber - span.Start.DayNumber), 0)
+                 : Math.Max(Math.Min(days, Last.DayNumber - span.End.DayNumber), 0);
 
     /// <summary>
     /// Where a row's bar sits, in column indexes, clipped to the window. A span
