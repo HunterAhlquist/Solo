@@ -180,7 +180,9 @@ builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
         },
     });
 builder.Services.AddSingleton<PresenceRegistry>();
+builder.Services.AddSingleton<TopicRegistry>();
 builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();
+builder.Services.AddScoped<Solo.Extensibility.ISoloLiveUpdates, LiveUpdates>();
 builder.Services.AddScoped<IExtensionFieldNotifier, ExtensionFieldNotifier>();
 builder.Services.AddHostedService<AuditRetentionService>();
 builder.Services.AddHealthChecks().AddDbContextCheck<SoloDbContext>();

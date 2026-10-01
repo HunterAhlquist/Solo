@@ -24,12 +24,29 @@ public sealed record BoardPresenceSnapshot(
     Guid BoardId,
     IReadOnlyList<PresenceEntry> Entries);
 
+/// <summary>
+/// A message an extension published on one of its live topics in a project.
+/// <paramref name="Kind"/> and <paramref name="Data"/> mean whatever the
+/// extension says they mean; core only routes them.
+/// </summary>
+public sealed record TopicMessage(Guid ProjectId, string Topic, string Kind, string? Data, Guid ActorUserId);
+
+/// <summary>One user's presence on a topic.</summary>
+public sealed record TopicPresenceEntry(Guid UserId, string? DisplayName, PresenceMode Mode);
+
+/// <summary>Everyone present on a topic, broadcast to its subscribers on every change.</summary>
+public sealed record TopicPresenceSnapshot(Guid ProjectId, string Topic, IReadOnlyList<TopicPresenceEntry> Entries);
+
 /// <summary>Typed SignalR client contract for <c>BoardHub</c>.</summary>
 public interface IBoardClient
 {
     Task EntityChanged(EntityChangedEvent change);
 
     Task PresenceChanged(BoardPresenceSnapshot snapshot);
+
+    Task TopicMessage(TopicMessage message);
+
+    Task TopicPresenceChanged(TopicPresenceSnapshot snapshot);
 }
 
 /// <summary>Server methods a client can invoke on <c>BoardHub</c>.</summary>
@@ -41,6 +58,17 @@ public interface IBoardHubServer
 
     /// <summary>Report viewing/editing an entity; <see cref="PresenceMode.None"/> clears it.</summary>
     Task SetPresence(string entityType, Guid entityId, PresenceMode mode);
+
+    /// <summary>
+    /// Start receiving an extension topic's messages and presence. Needs read
+    /// access to the project, checked here the way <see cref="JoinBoard"/> checks it.
+    /// </summary>
+    Task SubscribeTopic(Guid projectId, string topic);
+
+    Task UnsubscribeTopic(Guid projectId, string topic);
+
+    /// <summary>Report viewing/editing a subscribed topic; <see cref="PresenceMode.None"/> clears it.</summary>
+    Task SetTopicPresence(Guid projectId, string topic, PresenceMode mode);
 }
 
 /// <summary>Entity type names used in change events and presence reports.</summary>
@@ -68,4 +96,12 @@ public static class BoardHubConstants
     public const string ConnectionIdHeader = "X-Connection-Id";
 
     public static string BoardGroup(Guid boardId) => $"board:{boardId}";
+
+    public static string TopicGroup(Guid projectId, string topic) => $"topic:{projectId:N}:{topic}";
+
+    /// <summary>Longest topic name accepted; topics are short keys like "roadmap:{id}", not payloads.</summary>
+    public const int TopicMaxLength = 200;
+
+    /// <summary>Topics one connection may hold at once — a page and its sidebar need a handful.</summary>
+    public const int TopicsPerConnection = 64;
 }

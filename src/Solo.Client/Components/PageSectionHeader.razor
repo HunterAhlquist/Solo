@@ -1,0 +1,11 @@
+@* A page section's title, with a rule filling the rest of the row: the sidebar's
+   NavSectionHeader at page scale. *@
+<div class="page-section-header" role="presentation">
+    <MudText Typo="Typo.h4" Class="page-section-header__title">@Title</MudText>
+    <span class="page-section-header__rule"></span>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public required string Title { get; set; }
+}

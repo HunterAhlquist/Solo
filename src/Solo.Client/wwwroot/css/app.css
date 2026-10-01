@@ -1572,3 +1572,35 @@ html.solo-desktop .solo-titlebar {
         background: none;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   Page sections: a title and a rule, the sidebar's section header at page scale.
+   Project home splits its first tab into Boards and whatever extensions add.
+   --------------------------------------------------------------------------- */
+.page-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1.5rem 0 0.75rem;
+}
+
+.page-section-header:first-child {
+    margin-top: 0.5rem;
+}
+
+.page-section-header__title {
+    white-space: nowrap;
+}
+
+.page-section-header__rule {
+    flex: 1;
+    border-top: 1px solid var(--mud-palette-divider);
+}
+
+/* A project card's boards, and each extension's surface below them, named once
+   there's more than one to tell apart. */
+.project-card__surface-title {
+    padding: 0.125rem 0.4rem 0.25rem;
+    font-size: 0.75rem;
+    color: var(--mud-palette-text-secondary);
+}

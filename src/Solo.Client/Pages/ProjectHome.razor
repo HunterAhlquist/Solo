@@ -1,6 +1,9 @@
 @page "/projects/{ProjectAlias}"
 @attribute [Authorize]
+@using Solo.Client.Extensions
+@implements IDisposable
 @inject ApiClient Api
+@inject ExtensionCatalog Extensions
 @inject UserSession Session
 @inject RecentProjectsStore Recent
 @inject ISnackbar Snackbar
@@ -19,8 +22,31 @@ else
     </div>
 
     <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true">
-        <MudTabPanel Text="Boards" Icon="@Icons.Material.Filled.ViewKanban">
+        <MudTabPanel Text="@WorkTabText" Icon="@Icons.Material.Filled.ViewKanban">
+            @* Headers only once an extension adds a section: alone, Boards needs no
+               label beyond its tab. *@
+            @if (HomeSections.Count > 0)
+            {
+                <PageSectionHeader Title="Boards" />
+            }
             <BoardsGrid ProjectId="@_project.Id" ProjectAlias="@_project.Alias" CanWrite="@_canWrite" />
+
+            @* Each contributed section under its own boundary, as in the sidebar:
+               one that throws costs a line of error text, not the page. *@
+            @foreach (var section in HomeSections)
+            {
+                <PageSectionHeader Title="@section.Title" />
+                <ErrorBoundary @key="(_project.Id, section.Component)">
+                    <ChildContent>
+                        <DynamicComponent Type="@section.Component" Parameters="@SectionParameters(_project)" />
+                    </ChildContent>
+                    <ErrorContent>
+                        <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
+                            @section.Title couldn't load.
+                        </MudText>
+                    </ErrorContent>
+                </ErrorBoundary>
+            }
         </MudTabPanel>
 
         <MudTabPanel Text="Members" Icon="@Icons.Material.Filled.People">
@@ -62,6 +88,8 @@ else
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        Extensions.Changed += OnExtensionsChanged;
+
         if (Session.Current is null)
         {
             try
@@ -115,4 +143,36 @@ else
     }
 
     private void OnProjectSaved(ProjectDto project) => _project = project;
+
+    private IReadOnlyList<ContributedSection>? _sections;
+
+    private IReadOnlyList<ContributedSection> HomeSections => _sections ??=
+        ContributedSections.Find<Solo.Shared.Extensibility.ProjectHomeSectionAttribute>(
+            Extensions, a => a.Title, a => a.Order);
+
+    /// <summary>"Boards", or "Boards & Roadmaps" once an extension adds a section to the tab.</summary>
+    private string WorkTabText => HomeSections.Count == 0
+        ? "Boards"
+        : string.Join(", ", HomeSections.SkipLast(1).Select(s => s.Title).Prepend("Boards")) +
+          " & " + HomeSections[^1].Title;
+
+    /// <summary>The same shape the sidebar's sections get, so one component can serve both.</summary>
+    private IDictionary<string, object> SectionParameters(ProjectDto project)
+    {
+        var me = project.Members.FirstOrDefault(m => m.UserId == Session.UserId);
+        return new Dictionary<string, object>
+        {
+            ["Project"] = new ProjectSummaryDto(project.Id, project.Name, project.Alias, project.Icon,
+                project.ImageId, me?.Role ?? ProjectRole.Read, me?.IsOwner ?? false),
+            ["CanWrite"] = _canWrite,
+        };
+    }
+
+    private void OnExtensionsChanged()
+    {
+        _sections = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Extensions.Changed -= OnExtensionsChanged;
 }

@@ -22,6 +22,7 @@ public class ProjectsPageTests : ComponentTestBase
         Services.AddSingleton(api);
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
+        Services.AddSingleton(new Solo.Client.Extensions.ExtensionCatalog());
     }
 
 

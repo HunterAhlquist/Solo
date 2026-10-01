@@ -50,6 +50,10 @@ public static class SoloClientServices
         // already makes "scoped" mean one instance for the app's lifetime.
         services.AddScoped<BoardHubClient>();
         services.AddScoped<IBoardHubClient>(sp => sp.GetRequiredService<BoardHubClient>());
+        // Extensions' live topics ride the same connection, so a page with both a
+        // board and an extension's live view holds one socket, not two.
+        services.AddScoped<LiveTopics>();
+        services.AddScoped<ISoloLiveTopics>(sp => sp.GetRequiredService<LiveTopics>());
         services.AddScoped<BoardStore>();
         services.AddScoped<ProjectNavStore>();
         services.AddScoped<UserSession>();

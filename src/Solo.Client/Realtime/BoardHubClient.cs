@@ -10,8 +10,8 @@ namespace Solo.Client.Realtime;
 /// <summary>
 /// Typed wrapper over the <c>/hubs/board</c> connection, implementing the shared
 /// <see cref="IBoardHubServer"/> contract and surfacing <see cref="IBoardClient"/>
-/// callbacks as C# events. Survives reconnects by rejoining the board and
-/// replaying the last presence report.
+/// callbacks as C# events. Survives reconnects by rejoining the board and the
+/// extension topics it holds, and replaying the last presence reports.
 /// </summary>
 /// <remarks>
 /// The hub protocol is left at ASP.NET's default JSON settings — the server does
@@ -29,18 +29,28 @@ public sealed class BoardHubClient(
     private Guid? _boardId;
     private (string EntityType, Guid EntityId, PresenceMode Mode)? _presence;
 
+    /// <summary>
+    /// Topics held, counted: a page and its sidebar section can share one, and
+    /// the subscription goes only when the last of them lets go.
+    /// </summary>
+    private readonly Dictionary<(Guid ProjectId, string Topic), (int Holders, PresenceMode Mode)> _topics = [];
+
     /// <summary>A change landed from another client. Field names only — refetch to get values.</summary>
     public event Func<EntityChangedEvent, Task>? EntityChanged;
 
     /// <summary>Full presence snapshot for the joined board.</summary>
     public event Func<BoardPresenceSnapshot, Task>? PresenceChanged;
 
+    public event Func<TopicMessage, Task>? TopicMessage;
+
+    public event Func<TopicPresenceSnapshot, Task>? TopicPresenceChanged;
+
     /// <summary>Raised when the connection state changes, so the UI can show a "reconnecting" hint.</summary>
     public event Func<Task>? ConnectionStateChanged;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
-    public bool IsActive => _boardId is not null;
+    public bool IsActive => _boardId is not null || _topics.Values.Any(t => t.Mode != PresenceMode.None);
 
     public async Task JoinBoard(Guid boardId)
     {
@@ -118,6 +128,95 @@ public sealed class BoardHubClient(
         }
     }
 
+    public async Task SubscribeTopic(Guid projectId, string topic)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_topics.TryGetValue((projectId, topic), out var held))
+            {
+                _topics[(projectId, topic)] = held with { Holders = held.Holders + 1 };
+                return;
+            }
+
+            // Held before the call, so a connection that comes up later still
+            // subscribes it on reconnect — unless the server refused it outright.
+            _topics[(projectId, topic)] = (1, PresenceMode.None);
+            await EnsureStartedAsync();
+            try
+            {
+                await _connection!.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), projectId, topic);
+            }
+            catch (HubException)
+            {
+                _topics.Remove((projectId, topic));
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task UnsubscribeTopic(Guid projectId, string topic)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (!_topics.TryGetValue((projectId, topic), out var held))
+            {
+                return;
+            }
+
+            if (held.Holders > 1)
+            {
+                _topics[(projectId, topic)] = held with { Holders = held.Holders - 1 };
+                return;
+            }
+
+            _topics.Remove((projectId, topic));
+            if (_connection is { State: HubConnectionState.Connected })
+            {
+                await _connection.InvokeAsync(nameof(IBoardHubServer.UnsubscribeTopic), projectId, topic);
+            }
+
+            await Notify();
+        }
+        catch (Exception e) when (e is HubException or InvalidOperationException)
+        {
+            // Leaving over a dead connection: the server forgets it on disconnect anyway.
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task SetTopicPresence(Guid projectId, string topic, PresenceMode mode)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (!_topics.TryGetValue((projectId, topic), out var held))
+            {
+                return;
+            }
+
+            _topics[(projectId, topic)] = held with { Mode = mode };
+            if (_connection is { State: HubConnectionState.Connected })
+            {
+                await _connection.InvokeAsync(nameof(IBoardHubServer.SetTopicPresence), projectId, topic, mode);
+            }
+
+            await Notify();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task SetPresenceCoreAsync(string entityType, Guid entityId, PresenceMode mode)
     {
         if (_connection is not { State: HubConnectionState.Connected })
@@ -156,12 +255,20 @@ public sealed class BoardHubClient(
             nameof(IBoardClient.PresenceChanged),
             snapshot => PresenceChanged?.Invoke(snapshot) ?? Task.CompletedTask);
 
+        connection.On<TopicMessage>(
+            nameof(IBoardClient.TopicMessage),
+            message => TopicMessage?.Invoke(message) ?? Task.CompletedTask);
+
+        connection.On<TopicPresenceSnapshot>(
+            nameof(IBoardClient.TopicPresenceChanged),
+            snapshot => TopicPresenceChanged?.Invoke(snapshot) ?? Task.CompletedTask);
+
         connection.Reconnecting += _ => Notify();
         connection.Closed += _ => Notify();
         connection.Reconnected += async _ =>
         {
             // A reconnect lands in a new connection id and empty groups: rejoin
-            // the board and restate presence, then let the page refetch.
+            // the board and the topics and restate presence, then let the page refetch.
             connections.ConnectionId = connection.ConnectionId;
             if (_boardId is { } boardId)
             {
@@ -171,6 +278,24 @@ public sealed class BoardHubClient(
                     await connection.InvokeAsync(
                         nameof(IBoardHubServer.SetPresence),
                         presence.EntityType, presence.EntityId, presence.Mode);
+                }
+            }
+
+            foreach (var ((projectId, topic), held) in _topics.ToList())
+            {
+                try
+                {
+                    await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), projectId, topic);
+                    if (held.Mode != PresenceMode.None)
+                    {
+                        await connection.InvokeAsync(
+                            nameof(IBoardHubServer.SetTopicPresence), projectId, topic, held.Mode);
+                    }
+                }
+                catch (HubException)
+                {
+                    // Access lost while away, say: that topic stays quiet, the rest carry on.
+                    _topics.Remove((projectId, topic));
                 }
             }
 
