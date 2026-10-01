@@ -222,8 +222,8 @@ html[data-color-scheme="dark"] {
     color: var(--mud-palette-text-secondary);
 }
 
-/* Follows the pointer over the empty rows below the last task (roadmap.js),
-   marking where a click adds one. */
+/* Follows the pointer over any day no bar covers (roadmap.js), marking where a
+   click adds a task. */
 .roadmap-add-marker {
     position: absolute;
     display: none;

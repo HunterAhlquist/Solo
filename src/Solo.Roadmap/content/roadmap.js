@@ -1,9 +1,10 @@
 // The Roadmaps timeline's browser half: scroll reporting for virtualization,
 // and the pointer gestures a Blazor event can't express — dragging a bar up or
 // down to reorder it or sideways to move its dates, dragging its edges to
-// resize it, the hover marker over the empty rows, and the ticker that scrolls
-// a label too long for its bar. Self-contained on purpose: core's js/drag.js and DragBridge
-// belong to Solo.Client, and an extension can't count on either. Loaded as a
+// resize it, the hover marker on days no bar covers, and the ticker that
+// scrolls a label too long for its bar. Self-contained on purpose: core's
+// js/drag.js and DragBridge belong to Solo.Client, and an extension can't count
+// on either. Loaded as a
 // module from the package's content/ folder (same-origin, so script-src 'self'
 // covers it on the web and through the desktop shell's proxy alike).
 //
@@ -41,9 +42,9 @@ export function scrollIntoView(target) {
 }
 
 /**
- * Wires a timeline. `options`: dayWidth, rowHeight, days, entries (how many
- * rows hold a task), canWrite, firstDay (ISO date of column 0). Returns a
- * handle .NET keeps: scrollToDay, refresh, configure, dispose.
+ * Wires a timeline. `options`: dayWidth, rowHeight, days, canWrite, firstDay
+ * (ISO date of column 0). Returns a handle .NET keeps: scrollToDay, revealRow,
+ * refresh, configure, dispose.
  */
 export function attach(scroller, dotnet, options) {
     attached.get(scroller)?.dispose();
@@ -141,10 +142,20 @@ export function attach(scroller, dotnet, options) {
 
     // -- Hover marker: where a click adds a task ---------------------------------
 
-    // Only the empty rows below the last task: a new task takes a row of its own
-    // at the end, so a plus beside an existing bar would promise a place it
-    // can't have.
-    const isSpareRow = clientY => rowAtClientY(clientY) >= state.entries;
+    // Any day no bar covers, in a task's row or below the last one. Either way
+    // the new task takes a row of its own at the end, since a row holds one
+    // task; the click picks the day, and .NET brings the new row into view.
+    const isOpenDay = (clientX, clientY) => {
+        const index = rowAtClientY(clientY);
+        const list = rows();
+        if (index >= list.length) {
+            return true;
+        }
+
+        const row = list[index];
+        const day = dayAtClientX(clientX);
+        return !!row && (day < Number(row.dataset.start) || day > Number(row.dataset.end));
+    };
 
     const marker = () => scroller.querySelector('[data-roadmap-marker]');
 
@@ -153,7 +164,8 @@ export function attach(scroller, dotnet, options) {
     const onHover = e => {
         const target = marker();
         if (!target || !state.canWrite || press || e.pointerType !== 'mouse' ||
-            !e.target.closest('[data-roadmap-body]') || !isSpareRow(e.clientY)) {
+            !e.target.closest('[data-roadmap-body]') ||
+            e.target.closest('[data-roadmap-bar], [data-roadmap-hint]') || !isOpenDay(e.clientX, e.clientY)) {
             hideMarker();
             return;
         }
@@ -247,7 +259,7 @@ export function attach(scroller, dotnet, options) {
             return;
         }
 
-        if (target.closest('[data-roadmap-body]') && state.canWrite && isSpareRow(e.clientY)) {
+        if (target.closest('[data-roadmap-body]') && state.canWrite && isOpenDay(e.clientX, e.clientY)) {
             press = {
                 mode: 'empty',
                 pointerId: e.pointerId,
@@ -679,6 +691,16 @@ export function attach(scroller, dotnet, options) {
         scrollToDay: index => {
             scroller.scrollLeft = Math.max(index, 0) * state.dayWidth;
             report();
+        },
+        /** Scrolls the least distance that shows the row whole, below the sticky day header. */
+        revealRow: index => {
+            const head = scroller.querySelector('[data-roadmap-head]')?.offsetHeight ?? 0;
+            const top = index * state.rowHeight;
+            if (top < scroller.scrollTop) {
+                scroller.scrollTop = top;
+            } else if (head + top + state.rowHeight > scroller.scrollTop + scroller.clientHeight) {
+                scroller.scrollTop = head + top + state.rowHeight - scroller.clientHeight;
+            }
         },
         refresh: () => updateOffscreen(),
         configure: next => Object.assign(state, next),
