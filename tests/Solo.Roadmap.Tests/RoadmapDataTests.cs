@@ -97,10 +97,15 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
         _db.Entries.AddRange(Entry(first, doomed, 1024m), Entry(second, doomed, 1024m), Entry(first, survivor, 2048m));
         await _db.SaveChangesAsync();
 
-        var handler = new TaskDeletedHandler(_db, new StubQuery(task: null));
+        var live = new RecordingLive();
+        var handler = new TaskEventsHandler(_db, new StubQuery(task: null), live);
         await handler.HandleAsync(Deleted(doomed), CancellationToken.None);
 
         Assert.Equal([survivor], await _db.Entries.Select(e => e.TaskId).ToListAsync());
+        // Both roadmaps that held it hear that they lost a row.
+        Assert.Equal(
+            new[] { Contracts.RoadmapTopics.Roadmap(first.Id), Contracts.RoadmapTopics.Roadmap(second.Id) }.Order(),
+            live.Published.Where(p => p.Kind == Contracts.RoadmapTopics.EntriesChanged).Select(p => p.Topic).Order());
     }
 
     /// <summary>
@@ -119,11 +124,29 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
 
         var stillThere = new TaskDto(moved, Guid.NewGuid(), null, 3, "Moved", null, null, TaskState.Unstarted,
             DateTime.UtcNow, null, 1024m, 1, [], []);
-        await new TaskDeletedHandler(_db, new StubQuery(stillThere)).HandleAsync(Deleted(moved), CancellationToken.None);
-        await new TaskDeletedHandler(_db, new StubQuery(task: null)).HandleAsync(
+        var live = new RecordingLive();
+        await new TaskEventsHandler(_db, new StubQuery(stillThere), live).HandleAsync(Deleted(moved), CancellationToken.None);
+        await new TaskEventsHandler(_db, new StubQuery(task: null), live).HandleAsync(
             Deleted(moved) with { Kind = ChangeKind.Updated }, CancellationToken.None);
 
         Assert.Equal(1, await _db.Entries.CountAsync());
+        // The move still changes its row (its board), and the edit names the task.
+        Assert.Equal(
+            [(Contracts.RoadmapTopics.EntriesChanged, (string?)null), (Contracts.RoadmapTopics.TaskChanged, moved.ToString())],
+            live.Published.Select(p => (p.Kind, p.Data)));
+    }
+
+    [SkippableFact]
+    public async Task A_task_on_no_roadmap_announces_nothing()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await _db.Database.MigrateAsync();
+        var live = new RecordingLive();
+
+        await new TaskEventsHandler(_db, new StubQuery(task: null), live).HandleAsync(
+            Deleted(Guid.NewGuid()) with { Kind = ChangeKind.Updated }, CancellationToken.None);
+
+        Assert.Empty(live.Published);
     }
 
     [SkippableFact]
@@ -199,6 +222,18 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     /// <summary>Answers only the one question the handler asks: can the caller still find this task?</summary>
+    private sealed class RecordingLive : ISoloLiveUpdates
+    {
+        public List<(Guid ProjectId, string Topic, string Kind, string? Data)> Published { get; } = [];
+
+        public Task PublishAsync(Guid projectId, string topic, string kind, string? data = null,
+            CancellationToken ct = default)
+        {
+            Published.Add((projectId, topic, kind, data));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class StubQuery(TaskDto? task) : ISoloQuery
     {
         public Task<TaskDto?> TaskAsync(Guid taskId, CancellationToken ct = default) => Task.FromResult(task);

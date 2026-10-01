@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.SignalR.Client;
 using Npgsql;
 using Solo.Shared.Dtos;
+using Solo.Shared.Hubs;
 using Xunit;
 
 namespace Solo.Api.Tests.Integration;
@@ -425,6 +428,14 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         var crash = candidates.Single(c => c["task"]!["name"]!.GetValue<string>() == "Crash");
         Assert.Equal("BUGS", crash["boardAlias"]!.GetValue<string>());
         Assert.Equal("Bugs", crash["boardName"]!.GetValue<string>());
+        Assert.True(crash["boardIsOpen"]!.GetValue<bool>());
+
+        // A closed board's tasks still come back, flagged, for the picker to hide.
+        await _admin.PutJson<BoardDto>($"/api/boards/{bugs.Id}/open", new { isOpen = false });
+        var afterClosing = await _admin.GetJson<List<JsonObject>>(
+            $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/candidates");
+        Assert.False(afterClosing.Single(c => c["task"]!["name"]!.GetValue<string>() == "Crash")
+            ["boardIsOpen"]!.GetValue<bool>());
     }
 
     [SkippableFact]
@@ -524,6 +535,76 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
 
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
     }
+
+    // -----------------------------------------------------------------------
+    // Live updates (Roadmaps 1.2)
+    // -----------------------------------------------------------------------
+
+    [SkippableFact]
+    public async Task Changes_are_announced_to_open_pages_but_not_echoed_to_whoever_made_them()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await ProjectAsync("Live", "LIVE");
+        var task = await TaskAsync(board, "Watched");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var topic = $"roadmap:{roadmap:N}";
+
+        await using var page = Connect();
+        var heard = new List<TopicMessage>();
+        var arrived = new SemaphoreSlim(0);
+        page.On<TopicMessage>(nameof(IBoardClient.TopicMessage), m => { lock (heard) { heard.Add(m); } arrived.Release(); });
+        await page.StartAsync();
+        await page.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), project.Id, topic);
+        await page.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), project.Id, "roadmap:list");
+
+        var read = 0;
+        async Task<TopicMessage> NextAsync()
+        {
+            Assert.True(await arrived.WaitAsync(TimeSpan.FromSeconds(10)), "no message arrived");
+            lock (heard) { return heard[read++]; }
+        }
+
+        // Someone else adds a task: the page hears its entries changed.
+        await AddAsync(project, roadmap, task);
+        var added = await NextAsync();
+        Assert.Equal((topic, "entries"), (added.Topic, added.Kind));
+
+        // A core edit to a task on the roadmap reaches the roadmap's page, naming the task.
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/schedule",
+            new { startAt = "2026-10-05", deadlineAt = "2026-10-09", version = task.Version });
+        var taskMessage = await NextAsync();
+        Assert.Equal((topic, "task", task.Id.ToString()), (taskMessage.Topic, taskMessage.Kind, taskMessage.Data));
+
+        // A rename tells lists and the page.
+        var current = await _admin.GetJson<JsonObject>($"{Base}/projects/{project.Id}/roadmaps/{roadmap}");
+        await _admin.PutJson<JsonObject>($"{Base}/projects/{project.Id}/roadmaps/{roadmap}",
+            new { title = "Renamed", version = current["version"]!.GetValue<uint>() });
+        var renamed = new[] { await NextAsync(), await NextAsync() }.Select(m => (m.Topic, m.Kind)).ToList();
+        Assert.Contains(("roadmap:list", "changed"), renamed);
+        Assert.Contains((topic, "renamed"), renamed);
+
+        // The page's own change, sent with its connection id, isn't echoed back to it.
+        var other = await TaskAsync(board, "Mine");
+        var mine = new HttpRequestMessage(HttpMethod.Post, $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries")
+        {
+            Content = JsonContent.Create(new { taskId = other.Id, anchorDay = "2026-10-01" }, options: TestClients.Json),
+        };
+        mine.Headers.Add(BoardHubConstants.ConnectionIdHeader, page.ConnectionId);
+        (await _admin.SendAsync(mine)).EnsureSuccessStatusCode();
+        Assert.False(await arrived.WaitAsync(TimeSpan.FromMilliseconds(800)), "the change echoed back to its sender");
+    }
+
+    private HubConnection Connect() =>
+        new HubConnectionBuilder()
+            .WithUrl(new Uri(_factory.Server.BaseAddress, BoardHubConstants.Path), options =>
+            {
+                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                options.Transports = HttpTransportType.LongPolling;
+                options.Headers[TestAuthHandler.SubHeader] = "admin";
+                options.Headers[TestAuthHandler.EmailHeader] = "admin@example.com";
+                options.Headers[TestAuthHandler.NameHeader] = "Admin";
+            })
+            .Build();
 
     // -----------------------------------------------------------------------
 

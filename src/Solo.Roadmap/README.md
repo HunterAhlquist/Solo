@@ -4,28 +4,38 @@ Roadmaps, packaged as a Solo extension. A roadmap is a named timeline inside a
 project that gathers tasks from any of its boards into one row each, drawn as
 bars from start date to deadline over a day grid. People reorder the rows
 without touching board order, drag a bar's edges to reschedule the task, and see
-missed deadlines flash red and listed under the grid.
+missed deadlines flash red and listed under the grid. Everyone with the roadmap
+open sees each other's changes as they happen, and who else is there.
 
 Everything the feature needs is in this project and its client half
 ([Solo.Roadmap.Client](../Solo.Roadmap.Client)): the schema and migrations, the
-endpoints, the sidebar section, the timeline page, the task-view chips and the
-Admin settings panel. Nothing about roadmaps exists in `Solo.Api`, `Solo.Data`
-or `Solo.Client`. Delete the package and the instance loses roadmaps and nothing
-else. The sidebar keeps its Boards section, task drawers lose their Roadmaps
-chips, and Admin settings lists the extension as *data present, package missing*
-until someone purges `ext_roadmap`.
+endpoints, the sidebar section, the project home and project card sections, the
+timeline page, the task-view chips and the Admin settings panel. Nothing about
+roadmaps exists in `Solo.Api`, `Solo.Data` or `Solo.Client`. Delete the package
+and the instance loses roadmaps and nothing else:
+- the sidebar keeps its Boards section;
+- project homes go back to a plain Boards tab, and project cards to their boards;
+- task drawers lose their Roadmaps chips;
+- Admin settings lists the extension as *data present, package missing* until
+  someone purges `ext_roadmap`.
 
 ## What it adds
 
 - **A Roadmaps section in each project's sidebar**, under its own header,
   listing the project's roadmaps with **Add roadmap** for writers.
+- **A Roadmaps section on each project's home**, under the boards in the
+  "Boards & Roadmaps" tab. Each roadmap is a card that opens it; writers get
+  **Rename** on each card and a tile to start a new one.
+- **A Roadmaps surface on each project's card on All projects**, below its
+  boards, with a link per roadmap.
 - **The timeline page** at `projects/{alias}/roadmaps/{id}`:
   - The day grid is virtualized and bounded, with sprint stripes and today's
     column highlighted. It always shows at least nine rows, and two empty ones
     below the last task.
   - It opens scrolled to the oldest start among the tasks running through today.
   - Writers add a task by clicking a day in the empty rows below the last one,
-    or with **Add task**, and pick it from a search grouped by board.
+    or with **Add task**, and pick it from a search grouped by board. Finished
+    tasks and tasks on closed boards are hidden until switched on.
   - Dragging a bar up or down reranks it; dragging it sideways moves its start
     and deadline together. The way the pointer first goes decides which, so a
     reorder never shifts dates by accident.
@@ -34,6 +44,10 @@ until someone purges `ext_roadmap`.
   - Hovering a bar whose label is cut off scrolls the label past like a ticker,
     except under reduced motion.
   - Clicking a bar opens the same task drawer the board uses.
+  - Changes anyone else makes to the roadmap or its tasks redraw it in place,
+    without moving the view.
+  - Whoever else has the roadmap open shows in the header. An outlined,
+    pulsing avatar means they're dragging a bar or have a roadmap dialog open.
 - **A Roadmaps line in every task drawer** with a chip per roadmap the task is
   on. It shows nothing when the task is on none.
 - **Timeline settings in Admin settings**:
@@ -62,7 +76,8 @@ extension.json      manifest: id "roadmap", schema "ext_roadmap", both
 Contracts/          DTOs and limits, linked into the client project too
 Controllers/        roadmaps and entries, a task's roadmaps, the settings
 Data/               RoadmapDbContext, the settings row, ranking, and the
-                    handler that drops a deleted task's entries
+                    handler that drops a deleted task's entries and tells
+                    open roadmaps when one of their tasks changes
 Migrations/         in schema ext_roadmap
 content/            roadmap.js (scroll, drag, resize) and roadmap.css, served
                     at /api/extensions/roadmap/content/
@@ -115,13 +130,22 @@ boards raises a delete event on the board it left. So the delete handler drops
 entries only once `ISoloQuery` can no longer find the task. Event delivery is
 best-effort, so the timeline read also prunes any entry whose task has gone.
 
+**Live changes are nudges, and wait for the person editing.** Every write
+publishes on the roadmap's topic (`roadmap:{id}`) or the project's list topic
+(`roadmap:list`). Task edits made anywhere in Solo reach open roadmaps through
+the task event handler. A page that hears one refetches the timeline. While
+that person is mid-drag, or has a save of their own on its way, the refetch
+waits, because the server's copy doesn't have their change yet and would snap
+the bar back. Messages heard meanwhile fold into one read once both settle.
+`RoadmapTopics` in `Contracts/` lists the topics and kinds.
+
 **The stylesheet is added by the extension's own module**, as a `<link>`
 appended when the page first loads it. `HeadContent` shows one owner's markup at
 a time, and a second use would push out the theme's stylesheet.
 
-## Its one dependency on core
+## Its dependency on core
 
-Contract **1.3**, for two things:
+Contract **1.4**. From 1.3, two things on the server:
 - the task's optional `StartAt`, which turns a deadline into a range;
 - the hookable `task.setSchedule` endpoint that sets a task's start and
   deadline together.
@@ -131,8 +155,14 @@ The client half also uses the 1.3 seams:
 - `ISoloTaskDrawer` to open the board's drawer over the timeline;
 - `[ExtensionSettings]` for the Admin panel.
 
-Hence `>=1.3 <2.0` on both sides of the manifest. See
-[writing-extensions.md](../../docs/writing-extensions.md#contract-13).
+From 1.4:
+- `[ProjectHomeSection]` and `[ProjectCardSection]` for the project home and
+  the All projects cards;
+- `ISoloLiveUpdates` on the server and `ISoloLiveTopics` on the client, for live
+  changes and presence.
+
+Hence `>=1.4 <2.0` on both sides of the manifest. See
+[writing-extensions.md](../../docs/writing-extensions.md#contract-14).
 
 ## Building the package
 
@@ -160,6 +190,12 @@ dotnet ef migrations add <Name> --project src/Solo.Roadmap --startup-project src
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.1
+
+1.2 adds no migration, but it needs a host on contract 1.4. On the desktop app,
+that means updating the app as well as the server. Until a client is on 1.4,
+it skips the package and shows no roadmaps, while the server keeps them.
 
 ## Upgrading from 1.0
 

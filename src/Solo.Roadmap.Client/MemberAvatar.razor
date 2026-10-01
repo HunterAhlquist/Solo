@@ -4,8 +4,8 @@
     can't reference Solo.Client. The picture comes through core's same-origin
     avatar proxy, never the provider's CDN.
 *@
-<MudTooltip Text="@(Member.DisplayName ?? Member.Email)">
-    <MudAvatar Size="Size.Small" Class="roadmap-avatar" Style="@Style">
+<MudTooltip Text="@(Tooltip ?? Name)">
+    <MudAvatar Size="Size.Small" Class="@($"roadmap-avatar {Class}")" Style="@Style">
         @if (!string.IsNullOrEmpty(Member.AvatarUrl) && Member.UserId is { } userId)
         {
             <img src="@AvatarUrl(userId)" alt="@Member.DisplayName"
@@ -30,6 +30,13 @@
 
     [Parameter, EditorRequired]
     public required Func<Guid, Uri> AvatarUrl { get; set; }
+
+    /// <summary>What hovering says; their name unless given.</summary>
+    [Parameter]
+    public string? Tooltip { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
 
     private string Name => Member.DisplayName ?? Member.Email;
 

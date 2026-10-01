@@ -12,7 +12,7 @@ namespace Solo.Roadmap.Data;
 /// key crossing into core's schema: an FK would stop core from ever changing its
 /// own tables, and would make core's deletes depend on this package. Every read
 /// tolerates a task that has since gone (see <c>RoadmapsController</c>'s prune
-/// and <see cref="TaskDeletedHandler"/>).
+/// and <see cref="TaskEventsHandler"/>).
 /// </remarks>
 public sealed class RoadmapDbContext(DbContextOptions<RoadmapDbContext> options) : DbContext(options)
 {

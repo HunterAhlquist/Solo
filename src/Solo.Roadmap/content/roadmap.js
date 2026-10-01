@@ -66,6 +66,17 @@ export function attach(scroller, dotnet, options) {
             }
         });
 
+    // Tells .NET while a bar is being dragged or resized: others see this person
+    // editing, and a live change waits until the bar lands rather than
+    // redrawing the rows out from under the pointer.
+    let gesturing = false;
+    const setGesturing = active => {
+        if (gesturing !== active) {
+            gesturing = active;
+            call('OnGesture', active);
+        }
+    };
+
     const body = () => scroller.querySelector('[data-roadmap-body]');
     const rows = () => Array.from(scroller.querySelectorAll('[data-roadmap-entry]'));
 
@@ -308,12 +319,15 @@ export function attach(scroller, dotnet, options) {
                 break;
             case 'drag':
                 await endDrag(ended);
+                setGesturing(false);
                 break;
             case 'move':
                 await endMove(ended);
+                setGesturing(false);
                 break;
             case 'resize':
                 await endResize(ended);
+                setGesturing(false);
                 break;
             case 'empty':
                 await call('OnDayClick', dayAtClientX(ended.x));
@@ -345,6 +359,7 @@ export function attach(scroller, dotnet, options) {
 
         unlisten();
         press = null;
+        setGesturing(false);
     };
 
     /** Touch only: the hold is up, so this press is the timeline's, not the page's. */
@@ -388,6 +403,7 @@ export function attach(scroller, dotnet, options) {
     // deadline as a side effect.
     const startGesture = () => {
         stopTicker();
+        setGesturing(true);
         if (Math.abs(press.x - press.x0) > Math.abs(press.y - press.y0)) {
             startMove();
         } else {
@@ -468,11 +484,16 @@ export function attach(scroller, dotnet, options) {
         autoScroll = requestAnimationFrame(scrollNearSides);
     };
 
-    /** Snaps to whole days, and stops at the window's edges. */
+    /**
+     * Snaps to whole days, and stops at the window's edges. The preview offset
+     * goes on the bar, not the row: when .NET redraws the bar in its new place
+     * it rewrites the bar's style, which drops the offset in the same update — on
+     * the row it would outlive the redraw for a frame and add to the new place.
+     */
     const moveShift = () => {
         const dx = press.x - press.x0 + (scroller.scrollLeft - press.scrollLeft0);
         press.shift = Math.min(Math.max(Math.round(dx / state.dayWidth), -press.start), state.days - 1 - press.end);
-        press.row.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
+        press.bar.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
 
         const from = press.start + press.shift;
         const to = press.end + press.shift;
@@ -500,7 +521,7 @@ export function attach(scroller, dotnet, options) {
     };
 
     const clearMove = ended => {
-        ended.row.style.removeProperty('transform');
+        ended.bar.style.removeProperty('transform');
         ended.row.classList.remove('is-dragging');
         label?.remove();
         label = null;
@@ -562,6 +583,7 @@ export function attach(scroller, dotnet, options) {
 
         bar.classList.add('is-resizing');
         stopTicker();
+        setGesturing(true);
         label = document.createElement('div');
         label.className = 'roadmap-resize-label';
         document.body.appendChild(label);

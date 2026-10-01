@@ -11,7 +11,7 @@ src/Solo.Extensions     the extension host (loader, hook dispatch, registry)
 src/Solo.Client         Blazor WASM client
 src/Solo.Desktop        Electron shell (serves the published client, proxies /api)
 src/Solo.Mcp(.Client)   an EXTENSION, not core — the reference example
-src/Solo.Roadmap(.Client) an EXTENSION, not core — timelines; uses every 1.3 seam
+src/Solo.Roadmap(.Client) an EXTENSION, not core — timelines; uses every 1.3 and 1.4 seam
 tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, Solo.Roadmap.Tests
 ```
 
