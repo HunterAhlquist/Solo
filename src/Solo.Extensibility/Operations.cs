@@ -18,6 +18,7 @@ public static class Operations
     public const string TaskSetStatus = "task.setStatus";
     public const string TaskSetEpic = "task.setEpic";
     public const string TaskMove = "task.move";
+    public const string TaskSetSchedule = "task.setSchedule";
 
     public const string EpicCreate = "epic.create";
     public const string EpicUpdate = "epic.update";
@@ -30,7 +31,7 @@ public static class Operations
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
-        TaskCreate, TaskUpdate, TaskDelete, TaskSetStatus, TaskSetEpic, TaskMove,
+        TaskCreate, TaskUpdate, TaskDelete, TaskSetStatus, TaskSetEpic, TaskMove, TaskSetSchedule,
         EpicCreate, EpicUpdate, EpicDelete,
         SubTaskCreate, SubTaskUpdate, SubTaskDelete, SubTaskSetFinished,
     };

@@ -72,11 +72,19 @@
                     </div>
 
                     @* Width via Class, not Style: MudPicker copies Style onto the calendar
-                       popup's paper too, where a fixed width crops the Fri/Sat columns. *@
-                    <MudDatePicker Date="@DeadlineDate" DateChanged="@OnDeadlineChanged" Label="Deadline"
-                                   Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
-                                   Editable="true" Placeholder="No deadline" Disabled="@(!CanWrite)"
-                                   Class="deadline-picker" />
+                       popup's paper too, where a fixed width crops the Fri/Sat columns.
+                       A start only means something against a deadline, so it waits for one. *@
+                    <div class="detail-drawer__dates">
+                        <MudDatePicker Date="@StartDate" DateChanged="@OnStartChanged" Label="Start"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                                       Editable="true" Placeholder="@StartPlaceholder" MaxDate="@DeadlineDate"
+                                       Disabled="@(!CanWrite || Task.DeadlineAt is null)"
+                                       Class="start-picker" />
+                        <MudDatePicker Date="@DeadlineDate" DateChanged="@OnDeadlineChanged" Label="Deadline"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                                       Editable="true" Placeholder="No deadline" Disabled="@(!CanWrite)"
+                                       Class="deadline-picker" />
+                    </div>
                 </div>
             }
             else
@@ -180,6 +188,11 @@
 
     /// <summary>MudDatePicker speaks DateTime; the deadline is a plain date.</summary>
     private DateTime? DeadlineDate => Task?.DeadlineAt?.ToDateTime(TimeOnly.MinValue);
+
+    private DateTime? StartDate => Task?.StartAt?.ToDateTime(TimeOnly.MinValue);
+
+    /// <summary>With no start set, the countdown runs from creation — so that is what the empty field says.</summary>
+    private string StartPlaceholder => Task is { } task ? $"Created {task.CreatedAt.ToLocalTime():d MMM}" : "";
 
     private IReadOnlyList<PresenceEntry> PresenceEntries =>
         Entity is null ? [] : Store.PresenceOn(EntityType, EntityId);
@@ -310,7 +323,33 @@
             return;
         }
 
-        await SaveTaskAsync(task, task.Name, task.LabelId, task.Description, deadline);
+        // The server's rule for a plain update, applied here too: a start left
+        // with no deadline, or stranded past a new one, goes rather than blocks.
+        var start = deadline is { } end && task.StartAt <= end ? task.StartAt : null;
+        await SaveScheduleAsync(task, start, deadline);
+    }
+
+    private async Task OnStartChanged(DateTime? date)
+    {
+        var start = date is { } d ? DateOnly.FromDateTime(d) : (DateOnly?)null;
+        if (Task is not { } task || task.StartAt == start)
+        {
+            return;
+        }
+
+        await SaveScheduleAsync(task, start, task.DeadlineAt);
+    }
+
+    private async Task SaveScheduleAsync(TaskDto task, DateOnly? start, DateOnly? deadline)
+    {
+        var saved = await Guard.RunAsync(
+            () => Api.SetTaskScheduleAsync(task.Id, start, deadline, task.Version),
+            Store.RefreshAsync);
+
+        if (saved is not null)
+        {
+            Store.ApplyTask(saved);
+        }
     }
 
     /// <summary>

@@ -295,6 +295,133 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Schedule_SetsStartAndDeadlineAsAPair_AndRoundTrips()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("Schedule");
+
+        var task = await _admin.PostJson<TaskDto>(
+            $"/api/boards/{board.Id}/tasks", new { name = "Plan the launch" });
+        Assert.Null(task.StartAt);
+
+        var start = new DateOnly(2026, 10, 1);
+        var due = new DateOnly(2026, 10, 14);
+        var scheduled = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/schedule",
+            new { startAt = start, deadlineAt = due, version = task.Version });
+        Assert.Equal(start, scheduled.StartAt);
+        Assert.Equal(due, scheduled.DeadlineAt);
+
+        var fetched = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
+        Assert.Equal((start, due), (fetched.StartAt, fetched.DeadlineAt));
+        var listed = Assert.Single(await _admin.GetJson<List<TaskDto>>($"/api/boards/{board.Id}/tasks"));
+        Assert.Equal(start, listed.StartAt);
+
+        // Create takes the pair too.
+        var created = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks",
+            new { name = "Born scheduled", startAt = start, deadlineAt = due });
+        Assert.Equal((start, due), (created.StartAt, created.DeadlineAt));
+    }
+
+    [SkippableFact]
+    public async Task Schedule_RefusesAStartWithoutADeadline_OrAfterIt()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("BadSched");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Undated" });
+
+        var noDeadline = await _admin.PutAsJsonAsync($"/api/tasks/{task.Id}/schedule",
+            new { startAt = new DateOnly(2026, 10, 1), version = task.Version }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, noDeadline.StatusCode);
+
+        var backwards = await _admin.PutAsJsonAsync($"/api/tasks/{task.Id}/schedule",
+            new { startAt = new DateOnly(2026, 10, 10), deadlineAt = new DateOnly(2026, 10, 5), version = task.Version },
+            TestClients.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, backwards.StatusCode);
+
+        // Create applies the same two rules.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PostAsJsonAsync($"/api/boards/{board.Id}/tasks",
+            new { name = "x", startAt = new DateOnly(2026, 10, 1) }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PostAsJsonAsync($"/api/boards/{board.Id}/tasks",
+            new { name = "x", startAt = new DateOnly(2026, 10, 2), deadlineAt = new DateOnly(2026, 10, 1) },
+            TestClients.Json)).StatusCode);
+
+        // A one-day range — start on the deadline — is fine.
+        var oneDay = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/schedule",
+            new { startAt = new DateOnly(2026, 10, 1), deadlineAt = new DateOnly(2026, 10, 1), version = task.Version });
+        Assert.Equal(oneDay.StartAt, oneDay.DeadlineAt);
+    }
+
+    /// <summary>
+    /// The full-replace PUT can't carry a start, so an older client renaming a
+    /// task must not wipe one — but when it takes the deadline away, or moves it
+    /// before the start, the start goes with it rather than failing the edit.
+    /// </summary>
+    [SkippableFact]
+    public async Task UpdatingATask_LeavesItsStartAlone_UntilTheDeadlineStopsCoveringIt()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("KeepStart");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Ranged" });
+        var start = new DateOnly(2026, 10, 5);
+        var due = new DateOnly(2026, 10, 20);
+        task = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/schedule",
+            new { startAt = start, deadlineAt = due, version = task.Version });
+
+        var renamed = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}",
+            new { name = "Renamed", deadlineAt = due, version = task.Version });
+        Assert.Equal(start, renamed.StartAt);
+
+        var extended = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}",
+            new { name = "Renamed", deadlineAt = due.AddDays(3), version = renamed.Version });
+        Assert.Equal(start, extended.StartAt);
+
+        var cleared = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}",
+            new { name = "Renamed", version = extended.Version });
+        Assert.Null(cleared.DeadlineAt);
+        Assert.Null(cleared.StartAt);
+
+        task = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/schedule",
+            new { startAt = start, deadlineAt = due, version = cleared.Version });
+        var beforeStart = await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}",
+            new { name = "Renamed", deadlineAt = start.AddDays(-1), version = task.Version });
+        Assert.Equal(start.AddDays(-1), beforeStart.DeadlineAt);
+        Assert.Null(beforeStart.StartAt);
+    }
+
+    [SkippableFact]
+    public async Task Schedule_WithAStaleVersion_Is409()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await CreateProjectWithBoard("StaleSched");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Contended" });
+        var due = new DateOnly(2026, 10, 20);
+
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/schedule",
+            new { deadlineAt = due, version = task.Version });
+        var stale = await _admin.PutAsJsonAsync($"/api/tasks/{task.Id}/schedule",
+            new { startAt = due, deadlineAt = due, version = task.Version }, TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Null((await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).StartAt);
+    }
+
+    [SkippableFact]
+    public async Task Schedule_NeedsWriteAccess()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("ReadSched");
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Guarded" });
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members",
+            new { email = "schedreader@example.com", role = "Read" });
+        var reader = _factory.As("schedreader", "schedreader@example.com");
+
+        var response = await reader.PutAsJsonAsync($"/api/tasks/{task.Id}/schedule",
+            new { deadlineAt = new DateOnly(2026, 10, 20), version = task.Version }, TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [SkippableFact]
     public async Task ManualStatus_IsAllowed_WithSubtasks_AndTogglesDoNotDeriveIt()
     {
         postgres.SkipUnlessDockerAvailable();

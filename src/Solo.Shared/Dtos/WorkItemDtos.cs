@@ -26,7 +26,8 @@ public sealed record TaskDto(
     decimal Rank,
     uint Version,
     IReadOnlyList<Guid> AssigneeIds,
-    IReadOnlyList<SubTaskDto> SubTasks);
+    IReadOnlyList<SubTaskDto> SubTasks,
+    DateOnly? StartAt = null);
 
 public sealed record SubTaskDto(
     Guid Id,
@@ -73,8 +74,16 @@ public sealed class CreateTaskRequest
     public string? Description { get; init; }
 
     public DateOnly? DeadlineAt { get; init; }
+
+    /// <summary>Needs <see cref="DeadlineAt"/>, and may not fall after it.</summary>
+    public DateOnly? StartAt { get; init; }
 }
 
+/// <summary>
+/// Deliberately carries no <c>StartAt</c>. This PUT replaces every field it names,
+/// so a client built before the start date existed would null it on every rename;
+/// the start moves only through <see cref="SetTaskScheduleRequest"/>.
+/// </summary>
 public sealed class UpdateTaskRequest
 {
     [Required, MaxLength(FieldLimits.ItemName)]
@@ -84,6 +93,17 @@ public sealed class UpdateTaskRequest
 
     [MaxLength(FieldLimits.Description)]
     public string? Description { get; init; }
+
+    public DateOnly? DeadlineAt { get; init; }
+
+    public uint Version { get; init; }
+}
+
+/// <summary>A task's date range, set as a pair so the start can be checked against the deadline.</summary>
+public sealed class SetTaskScheduleRequest
+{
+    /// <summary>Needs <see cref="DeadlineAt"/>, and may not fall after it.</summary>
+    public DateOnly? StartAt { get; init; }
 
     public DateOnly? DeadlineAt { get; init; }
 

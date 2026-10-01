@@ -301,3 +301,27 @@ was refused by `create_task` and `create_subtask` with a 400. It now takes a
 task's `labelId` resolves against. The project defaults have no tool, since
 nothing an agent writes can use them. A client holding the old schema gets a
 "boardId is required" error until it reconnects.
+
+## Start dates (1.5.0)
+
+Core 1.3 gave tasks an optional start date, turning a deadline into a date
+range. The catalog follows:
+
+| Tool | Change |
+|---|---|
+| `create_task` | Takes `startAt` (`YYYY-MM-DD`) beside `deadlineAt`. |
+| `set_task_schedule` | New. Sets `startAt` and `deadlineAt` together through `PUT api/tasks/{id}/schedule`. |
+
+`set_task_schedule` is read-modify-write like `update_task`: a field left out
+keeps its current value and an explicit `null` clears it. A start needs a
+deadline and can't fall after it; core answers 400 otherwise, which reaches the
+model as a readable tool error. `update_task` still never carries a start —
+core's full-replace PUT has no start field, precisely so an older client can't
+wipe one — but clearing the deadline there, or moving it before the start,
+clears the start too.
+
+The server half now compiles against `CreateTaskRequest.StartAt`, which only
+exists from contract 1.3, so `soloApiVersion` rises to `>=1.3`. The client half
+touches nothing new and keeps `>=1.2`, so an older desktop shell still shows
+the MCP access page. Rebuild with `build/pack-mcp-extension.sh`, install,
+restart, and reconnect MCP clients to refresh their tool catalog.

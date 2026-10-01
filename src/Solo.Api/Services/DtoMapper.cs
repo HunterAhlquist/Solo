@@ -31,7 +31,8 @@ public static class DtoMapper
         new(t.Id, t.BoardId, t.EpicId, t.Number, t.Name, t.LabelId, t.Description, t.Status,
             t.CreatedAt, t.DeadlineAt, t.Rank, t.Version,
             t.Assignments.Select(a => a.UserId).ToList(),
-            t.SubTasks.OrderBy(s => s.Rank).Select(s => s.ToDto()).ToList());
+            t.SubTasks.OrderBy(s => s.Rank).Select(s => s.ToDto()).ToList(),
+            t.StartAt);
 
     public static SubTaskDto ToDto(this SubTask s) =>
         new(s.Id, s.TaskId, s.Name, s.LabelId, s.IsFinished, s.Rank, s.Version);

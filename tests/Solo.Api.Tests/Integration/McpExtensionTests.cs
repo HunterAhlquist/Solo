@@ -187,7 +187,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
             "get_me", "get_task", "get_task_llm_work", "get_workflow", "list_boards", "list_epic_groups", "list_epics",
             "list_labels", "list_llm_tasks", "list_members", "list_projects", "list_tasks", "rerank_epic_group",
             "set_epic_group", "set_subtask_finished", "set_task_assignees", "set_task_epic", "set_task_llm_work",
-            "set_task_status", "update_epic", "update_epic_group", "update_subtask", "update_task",
+            "set_task_schedule", "set_task_status", "update_epic", "update_epic_group", "update_subtask", "update_task",
         ], names);
     }
 
@@ -764,6 +764,51 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
             ["deadlineAt"] = null,
         });
         Assert.Null((await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}")).DeadlineAt);
+    }
+
+    [SkippableFact]
+    public async Task A_start_date_is_set_through_create_and_the_schedule_tool()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, board) = await CreateProjectWithBoardAsync("Ranges", "RNG", "MAIN");
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+
+        var created = await CallToolAsync(client, "create_task", new JsonObject
+        {
+            ["boardId"] = board.Id.ToString(),
+            ["name"] = "Sprint work",
+            ["startAt"] = "2026-12-01",
+            ["deadlineAt"] = "2026-12-14",
+        });
+        var taskId = created["id"]!.GetValue<Guid>();
+        var task = await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}");
+        Assert.Equal((new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 14)), (task.StartAt, task.DeadlineAt));
+
+        // Naming only the deadline keeps the start.
+        await CallToolAsync(client, "set_task_schedule", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["deadlineAt"] = "2026-12-20",
+        });
+        task = await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}");
+        Assert.Equal((new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 20)), (task.StartAt, task.DeadlineAt));
+
+        await CallToolAsync(client, "set_task_schedule", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["startAt"] = null,
+        });
+        Assert.Null((await _admin.GetJson<TaskDto>($"/api/tasks/{taskId}")).StartAt);
+
+        // Core's rule surfaces as a readable tool error rather than a guess.
+        var refused = await CallToolRawAsync(client, "set_task_schedule", new JsonObject
+        {
+            ["taskId"] = taskId.ToString(),
+            ["startAt"] = "2027-01-01",
+        });
+        Assert.True(refused["isError"]!.GetValue<bool>());
     }
 
     /// <summary>

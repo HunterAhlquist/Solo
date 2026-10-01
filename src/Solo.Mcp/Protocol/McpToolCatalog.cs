@@ -148,7 +148,9 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                     ("description", taskDescription, false),
                     ("epicId", Uuid("Epic on the same board; omit for an ad-hoc task"), false),
                     ("labelId", Uuid("Task label from this board (see list_labels)"), false),
-                    ("deadlineAt", deadline, false)),
+                    ("deadlineAt", deadline, false),
+                    ("startAt", Date("First day of the work, YYYY-MM-DD; needs deadlineAt and can't fall after it"),
+                        false)),
                 (args, ct) => Json(rest.SendAsync<TaskDto>(
                     HttpMethod.Post,
                     $"api/boards/{RequireGuid(args, "boardId")}/tasks",
@@ -159,13 +161,15 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                         EpicId = OptionalGuid(args, "epicId"),
                         LabelId = OptionalGuid(args, "labelId"),
                         DeadlineAt = OptionalDate(args, "deadlineAt"),
+                        StartAt = OptionalDate(args, "startAt"),
                     },
                     ct))),
 
             new McpTool("update_task", "Update a task",
                 "Edits a task's name, description, label and/or deadline. Omitted fields keep " +
                 "their current value; pass null to clear the description, label or deadline. " +
-                "Status, epic and assignees have their own tools.",
+                "Clearing the deadline, or moving it before the task's start, also clears the start. " +
+                "Status, epic, assignees and the start date have their own tools.",
                 Schema(
                     ("taskId", taskRef, true),
                     ("name", taskName, false),
@@ -173,6 +177,16 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
                     ("labelId", Nullable(Uuid("Task label from the task's board (see list_labels), or null to clear")), false),
                     ("deadlineAt", Nullable(Date("Deadline (YYYY-MM-DD), or null to clear")), false)),
                 (args, ct) => Json(UpdateTaskAsync(rest, args, ct))),
+
+            new McpTool("set_task_schedule", "Set task schedule",
+                "Sets a task's start date and deadline — the date range a roadmap draws. Omitted " +
+                "fields keep their current value; pass null to clear. A start needs a deadline and " +
+                "can't fall after it.",
+                Schema(
+                    ("taskId", taskRef, true),
+                    ("startAt", Nullable(Date("Start (YYYY-MM-DD), or null to clear")), false),
+                    ("deadlineAt", Nullable(Date("Deadline (YYYY-MM-DD), or null to clear")), false)),
+                (args, ct) => Json(SetTaskScheduleAsync(rest, args, ct))),
 
             new McpTool("set_task_status", "Set task status",
                 "Moves a task between the Kanban columns.",
@@ -274,6 +288,21 @@ public sealed partial class McpToolCatalog(SoloRestClient rest, McpPromptCatalog
             DeadlineAt = args.ContainsKey("deadlineAt")
                 ? OptionalDate(args, "deadlineAt")
                 : current.DeadlineAt,
+            Version = current.Version,
+        }, ct);
+    }
+
+    private static async Task<TaskDto?> SetTaskScheduleAsync(
+        SoloRestClient rest, JsonObject args, CancellationToken ct)
+    {
+        var taskId = await ResolveTaskIdAsync(rest, RequireString(args, "taskId"), ct);
+        var current = await rest.SendAsync<TaskDto>(HttpMethod.Get, $"api/tasks/{taskId}", null, ct)
+            ?? throw new McpToolException($"Task {taskId} no longer exists.");
+
+        return await rest.SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/schedule", new SetTaskScheduleRequest
+        {
+            StartAt = args.ContainsKey("startAt") ? OptionalDate(args, "startAt") : current.StartAt,
+            DeadlineAt = args.ContainsKey("deadlineAt") ? OptionalDate(args, "deadlineAt") : current.DeadlineAt,
             Version = current.Version,
         }, ct);
     }
