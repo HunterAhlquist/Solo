@@ -62,6 +62,12 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             return labelProblem;
         }
 
+        var scheduleProblem = ValidateSchedule(request.StartAt, request.DeadlineAt);
+        if (scheduleProblem is not null)
+        {
+            return scheduleProblem;
+        }
+
         var existingRanks = await db.Tasks.AsNoTracking()
             .Where(t => t.BoardId == boardId).Select(t => t.Rank).ToListAsync(ct);
         var task = new TaskItem
@@ -71,6 +77,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             Name = request.Name,
             LabelId = request.LabelId,
             Description = request.Description,
+            StartAt = request.StartAt,
             DeadlineAt = request.DeadlineAt,
             Rank = Ranking.ForAppend(existingRanks),
         };
@@ -105,6 +112,60 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         task.LabelId = request.LabelId;
         task.Description = request.Description;
         task.DeadlineAt = request.DeadlineAt;
+
+        // This request can't carry a start (see UpdateTaskRequest), but it can
+        // pull the deadline out from under one. A start with nothing to run
+        // toward — or one past its own end — is dropped rather than refused, so
+        // a client that has never heard of start dates can still edit deadlines.
+        var startCleared = task.StartAt is { } start &&
+                           (task.DeadlineAt is not { } deadline || deadline < start);
+        if (startCleared)
+        {
+            task.StartAt = null;
+        }
+
+        UseClientVersion(db, task, request.Version);
+        var conflict = await SaveOrConflictAsync(db, ct);
+        if (conflict is not null)
+        {
+            return conflict;
+        }
+
+        string[] changed =
+        [
+            nameof(task.Name), nameof(task.LabelId), nameof(task.Description), nameof(task.DeadlineAt),
+            .. startCleared ? [nameof(task.StartAt)] : Array.Empty<string>(),
+        ];
+        await notifier.BoardEntityChanged(task.BoardId, EntityTypes.Task, taskId, ChangeKind.Updated, changed);
+        return task.ToDto();
+    }
+
+    /// <summary>
+    /// The one write path for <see cref="TaskItem.StartAt"/>, and the natural one
+    /// for anything that treats a task as a date range (a timeline resizing a
+    /// bar). The pair is set together so the start is always checked against the
+    /// deadline it will actually sit beside.
+    /// </summary>
+    [HttpPut("api/tasks/{taskId:guid}/schedule")]
+    [SoloOperation(Operations.TaskSetSchedule)]
+    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    public async Task<ActionResult<TaskDto>> SetSchedule(
+        Guid taskId, SetTaskScheduleRequest request, CancellationToken ct)
+    {
+        var task = await LoadTask(taskId, ct, track: true);
+        if (task is null)
+        {
+            return NotFound();
+        }
+
+        var scheduleProblem = ValidateSchedule(request.StartAt, request.DeadlineAt);
+        if (scheduleProblem is not null)
+        {
+            return scheduleProblem;
+        }
+
+        task.StartAt = request.StartAt;
+        task.DeadlineAt = request.DeadlineAt;
         UseClientVersion(db, task, request.Version);
         var conflict = await SaveOrConflictAsync(db, ct);
         if (conflict is not null)
@@ -113,8 +174,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         }
 
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.Task, taskId,
-            ChangeKind.Updated, nameof(task.Name), nameof(task.LabelId), nameof(task.Description),
-            nameof(task.DeadlineAt));
+            ChangeKind.Updated, nameof(task.StartAt), nameof(task.DeadlineAt));
         return task.ToDto();
     }
 
@@ -482,6 +542,19 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
 
         return null;
     }
+
+    private ObjectResult? ValidateSchedule(DateOnly? startAt, DateOnly? deadlineAt) => (startAt, deadlineAt) switch
+    {
+        ({ }, null) => Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Start needs a deadline",
+            detail: "A task can only have a start date once it has a deadline."),
+        ({ } start, { } deadline) when start > deadline => Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Start after deadline",
+            detail: "The start date can't fall after the deadline."),
+        _ => null,
+    };
 
     private ObjectResult EpicNotOnBoardProblem() => Problem(
         statusCode: StatusCodes.Status400BadRequest,

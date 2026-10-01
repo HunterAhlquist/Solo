@@ -23,10 +23,13 @@ namespace Solo.Shared.Extensibility;
 /// extension's pages use to call the API.</para>
 /// <para>1.2.0 adds task-detail UI contributions, assignee identity reads,
 /// versioned extension fields and transactional audit contributions.</para>
+/// <para>1.3.0 adds task start dates (<c>TaskDto.StartAt</c>) with the
+/// <c>task.setSchedule</c> operation, project sidebar sections, the host task
+/// drawer (<c>ISoloTaskDrawer</c>) and Admin settings panels.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.2.0";
+    public const string Current = "1.3.0";
 
-    public static readonly Version Parsed = new(1, 2, 0);
+    public static readonly Version Parsed = new(1, 3, 0);
 }

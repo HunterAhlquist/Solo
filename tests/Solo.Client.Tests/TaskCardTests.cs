@@ -142,6 +142,47 @@ public class TaskCardTests : ComponentTestBase
         Assert.Empty(card.FindAll(".deadline-ring__days"));
     }
 
+    /// <summary>
+    /// A start date moves the countdown's anchor: a task created long ago but only
+    /// started two days into a five-day window is about half spent, not nearly done.
+    /// </summary>
+    [Fact]
+    public void The_countdown_runs_from_the_start_date_when_there_is_one()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var fromCreation = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task(
+            createdAt: DateTime.UtcNow.AddDays(-100), deadline: today.AddDays(2))));
+        var fromStart = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task(
+            createdAt: DateTime.UtcNow.AddDays(-100), deadline: today.AddDays(2), start: today.AddDays(-2))));
+
+        Assert.True(Hue(fromCreation) < 10);
+        Assert.InRange(Hue(fromStart), 40, 80);
+    }
+
+    [Fact]
+    public void Before_its_start_date_the_ring_is_full()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var task = TestData.Task(
+            createdAt: DateTime.UtcNow.AddDays(-30), deadline: today.AddDays(10), start: today.AddDays(3));
+
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
+
+        Assert.Equal(120, Hue(card));
+    }
+
+    [Fact]
+    public void The_tooltip_mentions_a_start_only_when_one_is_set()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var started = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task(
+            deadline: today.AddDays(5), start: new DateOnly(2026, 9, 12))));
+        var unstarted = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task(deadline: today.AddDays(5))));
+
+        Assert.StartsWith("Starts 12 Sep 2026. Due ", started.Find(".deadline-ring").GetAttribute("aria-label"));
+        Assert.StartsWith("Due ", unstarted.Find(".deadline-ring").GetAttribute("aria-label"));
+    }
+
     [Fact]
     public void A_missed_deadline_blinks_red()
     {
@@ -174,6 +215,13 @@ public class TaskCardTests : ComponentTestBase
         Assert.Empty(card.FindAll(".deadline-ring"));
         Assert.Empty(card.FindAll(".kanban-card--deadline"));
         Assert.DoesNotContain("--deadline-color", card.Markup);
+    }
+
+    private static int Hue(IRenderedComponent<TaskCard> card)
+    {
+        var style = card.Find(".kanban-card").GetAttribute("style")!;
+        var start = style.IndexOf("hsl(", StringComparison.Ordinal) + 4;
+        return int.Parse(style[start..style.IndexOf(' ', start)]);
     }
 
     [Fact]

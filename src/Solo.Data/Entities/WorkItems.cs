@@ -98,9 +98,19 @@ public class TaskItem : IVersioned
     /// (see <c>TaskStateCalculator</c>) and manual writes are rejected by the API.
     /// </summary>
     public TaskState Status { get; set; }
-    /// <summary>Anchors the deadline countdown: progress runs from here to <see cref="DeadlineAt"/>.</summary>
+    /// <summary>The countdown's fallback anchor, for a task with a deadline but no <see cref="StartAt"/>.</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    /// <summary>Optional due date. A date, not an instant — "due July 30" regardless of timezone.</summary>
+    /// <summary>
+    /// Optional first day of the work, turning the deadline into a date range. A
+    /// date like the deadline, and only meaningful alongside one: the API refuses
+    /// a start without a deadline or after it, and clears it when an update takes
+    /// the deadline away from under it.
+    /// </summary>
+    public DateOnly? StartAt { get; set; }
+    /// <summary>
+    /// Optional due date, and the end of the range when <see cref="StartAt"/> is
+    /// set. A date, not an instant — "due July 30" regardless of timezone.
+    /// </summary>
     public DateOnly? DeadlineAt { get; set; }
     public decimal Rank { get; set; }
     /// <summary>

@@ -439,6 +439,80 @@ public class BoardUiTests : ComponentTestBase
         Assert.Single(ownership.QuerySelectorAll(".deadline-picker"));
     }
 
+    // -- Start dates: a second picker, and both save as a pair ------------------
+
+    private static IRenderedComponent<MudDatePicker> Picker(IRenderedComponent<DetailDrawer> drawer, string label) =>
+        drawer.FindComponents<MudDatePicker>().Single(p => p.Instance.Label == label);
+
+    private System.Text.Json.JsonElement BodySentTo(string request) =>
+        System.Text.Json.JsonDocument.Parse(_http.Bodies[_http.Paths.IndexOf(request)]).RootElement;
+
+    [Fact]
+    public async Task The_start_picker_waits_for_a_deadline_and_names_the_creation_fallback()
+    {
+        var created = new DateTime(2026, 9, 12, 12, 0, 0, DateTimeKind.Utc);
+        var dateless = TestData.Task(createdAt: created);
+        var dated = TestData.Task(createdAt: created, deadline: new DateOnly(2026, 10, 1));
+        await LoadStoreAsync(TestData.Board(tasks: [dateless, dated]));
+
+        var withoutDeadline = Render<DetailDrawer>(p => p.Add(d => d.Task, dateless).Add(d => d.CanWrite, true));
+        var withDeadline = Render<DetailDrawer>(p => p.Add(d => d.Task, dated).Add(d => d.CanWrite, true));
+
+        Assert.True(Picker(withoutDeadline, "Start").Instance.Disabled);
+        Assert.False(Picker(withDeadline, "Start").Instance.Disabled);
+        Assert.Equal("Created 12 Sep", Picker(withDeadline, "Start").Instance.Placeholder);
+    }
+
+    [Fact]
+    public async Task Both_date_pickers_save_through_the_schedule_endpoint()
+    {
+        var task = TestData.Task(deadline: new DateOnly(2026, 10, 10));
+        await LoadStoreAsync(TestData.Board(tasks: [task]));
+        var drawer = Render<DetailDrawer>(p => p.Add(d => d.Task, task).Add(d => d.CanWrite, true));
+        _http.RespondJson(task with { StartAt = new DateOnly(2026, 10, 1), Version = 2 });
+
+        await drawer.InvokeAsync(() =>
+            Picker(drawer, "Start").Instance.DateChanged.InvokeAsync(new DateTime(2026, 10, 1)));
+
+        var body = BodySentTo($"PUT /api/tasks/{task.Id}/schedule");
+        Assert.Equal("2026-10-01", body.GetProperty("startAt").GetString());
+        Assert.Equal("2026-10-10", body.GetProperty("deadlineAt").GetString());
+        Assert.DoesNotContain($"PUT /api/tasks/{task.Id}", _http.Paths);
+        Assert.Equal(new DateOnly(2026, 10, 1), _store.Board!.Tasks.Single().StartAt);
+    }
+
+    /// <summary>The server refuses a start with no deadline, so clearing one takes the other along.</summary>
+    [Fact]
+    public async Task Clearing_the_deadline_clears_the_start_with_it()
+    {
+        var task = TestData.Task(deadline: new DateOnly(2026, 10, 10), start: new DateOnly(2026, 10, 1));
+        await LoadStoreAsync(TestData.Board(tasks: [task]));
+        var drawer = Render<DetailDrawer>(p => p.Add(d => d.Task, task).Add(d => d.CanWrite, true));
+        _http.RespondJson(task with { StartAt = null, DeadlineAt = null, Version = 2 });
+
+        await drawer.InvokeAsync(() => Picker(drawer, "Deadline").Instance.DateChanged.InvokeAsync(null));
+
+        var body = BodySentTo($"PUT /api/tasks/{task.Id}/schedule");
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, body.GetProperty("startAt").ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, body.GetProperty("deadlineAt").ValueKind);
+    }
+
+    [Fact]
+    public async Task Moving_the_deadline_before_the_start_drops_the_start()
+    {
+        var task = TestData.Task(deadline: new DateOnly(2026, 10, 10), start: new DateOnly(2026, 10, 5));
+        await LoadStoreAsync(TestData.Board(tasks: [task]));
+        var drawer = Render<DetailDrawer>(p => p.Add(d => d.Task, task).Add(d => d.CanWrite, true));
+        _http.RespondJson(task with { StartAt = null, DeadlineAt = new DateOnly(2026, 10, 3), Version = 2 });
+
+        await drawer.InvokeAsync(() =>
+            Picker(drawer, "Deadline").Instance.DateChanged.InvokeAsync(new DateTime(2026, 10, 3)));
+
+        var body = BodySentTo($"PUT /api/tasks/{task.Id}/schedule");
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, body.GetProperty("startAt").ValueKind);
+        Assert.Equal("2026-10-03", body.GetProperty("deadlineAt").GetString());
+    }
+
     [Fact]
     public async Task Opening_an_epic_drawer_renders_without_throwing()
     {

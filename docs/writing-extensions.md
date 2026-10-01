@@ -393,3 +393,27 @@ not hide the core audit page. Disabled or uninstalled contributors do not run.
 The MCP extension's `McpAuditContributor` and `ext_mcp.AuditAttributions` show the
 pattern; removing MCP removes these annotations from the UI while preserving
 core audit history.
+
+## Contract 1.3
+
+Declare `"soloApiVersion": ">=1.3 <2.0"` (and the same `soloClientVersion` for a
+client half) to use anything in this section.
+
+### Task start dates and `task.setSchedule`
+
+`TaskDto.StartAt` (`DateOnly?`, the record's last parameter) is a task's optional
+first day. With it, `DeadlineAt` is the end of a date range rather than only a due
+date. A task's **effective start** is `StartAt ?? DateOnly.FromDateTime(CreatedAt)`,
+so a task with only a deadline still has a range.
+
+A start needs a deadline and can't fall after it. `PUT api/tasks/{taskId}/schedule`
+with `{ startAt, deadlineAt, version }` is the only way to set it, and it answers
+400 for either violation and 409 for a stale version. `PUT api/tasks/{taskId}` never
+carries a start, so older clients can't wipe one. When that update clears the
+deadline, or moves it before the start, the server clears the start.
+
+The schedule endpoint is hookable as `Operations.TaskSetSchedule`
+(`"task.setSchedule"`). `ISoloQuery` stays read-only: an extension that changes
+a task's dates does it from its client half, through `ISoloClientApi`, so the
+change passes through core's authorization, hooks, audit and broadcast like
+any other edit.

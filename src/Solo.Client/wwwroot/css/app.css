@@ -613,9 +613,16 @@ code {
     min-width: 0;
 }
 
+.detail-drawer__dates {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
 /* MudPicker re-applies its Style parameter to the calendar popup's paper, which
    would crop the calendar to the field's width. Custom classes stay on the
    field root, so the width belongs here instead of in an inline style. */
+.start-picker,
 .deadline-picker {
     width: 14rem;
     max-width: 14rem;

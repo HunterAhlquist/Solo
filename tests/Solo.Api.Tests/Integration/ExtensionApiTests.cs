@@ -180,7 +180,7 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         // Loaded this boot, so purge is refused — that gate is what makes
         // dropping the schema safe without any locking.
         Assert.False(fixture.CanPurge);
-        Assert.Equal(["task.update", "task.setStatus"], fixture.Hooks);
+        Assert.Equal(["task.update", "task.setStatus", "task.setSchedule"], fixture.Hooks);
     }
 
     [SkippableFact]
@@ -314,6 +314,27 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         var response = await _admin.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task SetSchedule_IsHookable_AsTaskSetSchedule()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var task = await CreateTaskAsync("Scheduled", "SCHD");
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/api/tasks/{task.Id}/schedule")
+        {
+            Content = JsonContent.Create(
+                new { deadlineAt = new DateOnly(2026, 10, 20), version = task.Version }, options: TestClients.Json),
+        };
+        request.Headers.Add("X-Fixture-Hook", "reject");
+        var response = await _admin.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.Equal("fixture", problem!["extension"].ToString());
+        Assert.Null((await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).DeadlineAt);
     }
 
     [SkippableFact]

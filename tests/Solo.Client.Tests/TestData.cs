@@ -21,7 +21,8 @@ internal static class TestData
         IReadOnlyList<Guid>? assignees = null,
         int number = 1,
         DateTime? createdAt = null,
-        DateOnly? deadline = null) =>
+        DateOnly? deadline = null,
+        DateOnly? start = null) =>
         new(
             id ?? Guid.NewGuid(),
             BoardId,
@@ -36,7 +37,8 @@ internal static class TestData
             rank,
             1,
             assignees ?? [],
-            subTasks ?? []);
+            subTasks ?? [],
+            start);
 
     public static SubTaskDto SubTask(bool finished, Guid? taskId = null) =>
         new(Guid.NewGuid(), taskId ?? Guid.NewGuid(), "Sub", null, finished, 1024m, 1);

@@ -50,6 +50,12 @@ public sealed partial class ApiClient
         Guid taskId, UpdateTaskRequest request, CancellationToken ct = default) =>
         SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}", request, ct);
 
+    /// <summary>The only write path for a task's start date; sets start and deadline as a pair.</summary>
+    public Task<TaskDto> SetTaskScheduleAsync(
+        Guid taskId, DateOnly? startAt, DateOnly? deadlineAt, uint version, CancellationToken ct = default) =>
+        SendAsync<TaskDto>(HttpMethod.Put, $"api/tasks/{taskId}/schedule",
+            new SetTaskScheduleRequest { StartAt = startAt, DeadlineAt = deadlineAt, Version = version }, ct);
+
     public Task DeleteTaskAsync(Guid taskId, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"api/tasks/{taskId}", null, ct);
 

@@ -5,6 +5,6 @@
   "soloApiVersion": ">=1.0 <2.0",
   "server": "server/Solo.Extension.Fixture.dll",
   "schema": "ext_fixture",
-  "hooks": ["task.update", "task.setStatus"],
+  "hooks": ["task.update", "task.setStatus", "task.setSchedule"],
   "failOpen": false
 }

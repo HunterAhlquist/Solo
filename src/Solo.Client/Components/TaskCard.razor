@@ -99,8 +99,9 @@
 
     // -- Deadline countdown ---------------------------------------------------
     // The ring sits bottom-left (where the serial number used to be) and drains
-    // as the creation→deadline window burns down; its colour — shared with the
+    // as the start→deadline window burns down; its colour — shared with the
     // card outline via --deadline-color — slides green→red over the same window.
+    // The start is StartAt when the task has one, and its creation otherwise.
 
     /// <summary>The deadline is only news while the task is still open.</summary>
     private bool ShowDeadline => Task.DeadlineAt is not null && !IsFinished;
@@ -112,12 +113,15 @@
     /// <summary>A deadline covers its whole day; it is only missed once the day ends.</summary>
     private bool IsOverdue => DaysLeft < 0;
 
-    /// <summary>Fraction of the creation→end-of-deadline-day window already elapsed, clamped to [0,1].</summary>
+    /// <summary>
+    /// Fraction of the start→end-of-deadline-day window already elapsed, clamped
+    /// to [0,1] — so before a future start date the ring is still full.
+    /// </summary>
     private double ElapsedFraction
     {
         get
         {
-            var start = Task.CreatedAt.ToLocalTime();
+            var start = Task.StartAt?.ToDateTime(TimeOnly.MinValue) ?? Task.CreatedAt.ToLocalTime();
             var end = Task.DeadlineAt!.Value.AddDays(1).ToDateTime(TimeOnly.MinValue);
             var total = (end - start).TotalSeconds;
             return total <= 0 ? 1 : Math.Clamp((DateTime.Now - start).TotalSeconds / total, 0, 1);
@@ -152,7 +156,8 @@
                 1 => "1 day left",
                 _ => $"{days} days left",
             };
-            return $"Due {Task.DeadlineAt!.Value:d MMM yyyy} — {when}";
+            var due = $"Due {Task.DeadlineAt!.Value:d MMM yyyy} — {when}";
+            return Task.StartAt is { } start ? $"Starts {start:d MMM yyyy}. {due}" : due;
         }
     }
 

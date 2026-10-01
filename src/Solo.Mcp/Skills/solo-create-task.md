@@ -78,6 +78,12 @@ When they do ask, both are one call:
 - **Deadline** — `deadlineAt` on `create_task` and `update_task`, as `YYYY-MM-DD`.
   It is a date, not an instant: "due 30 July" means the same thing in every
   timezone.
+- **Start date** — only when the user gives a range ("the week of 5 Oct",
+  "from the 1st to the 14th"): `startAt` on `create_task`, or
+  `set_task_schedule(taskId, startAt, deadlineAt)` on an existing task. A start
+  needs a deadline and can't fall after it — both are a 400. Without one the
+  countdown simply runs from when the task was created. `update_task` never sets
+  a start, and clearing the deadline there clears the start too.
 - **Assignees** — `set_task_assignees(taskId, userIds)`. `list_members(projectId)`
   turns names into ids and `get_me` returns your own. Assign by **`userId`**, not
   the `id` beside it — that one is the membership row, and the API rejects it as

@@ -154,7 +154,8 @@ public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller,
         new(t.Id, t.BoardId, t.EpicId, t.Number, t.Name, t.LabelId, t.Description, t.Status,
             t.CreatedAt, t.DeadlineAt, t.Rank, t.Version,
             t.Assignments.Select(a => a.UserId).ToList(),
-            t.SubTasks.OrderBy(s => s.Rank).Select(ToDto).ToList());
+            t.SubTasks.OrderBy(s => s.Rank).Select(ToDto).ToList(),
+            t.StartAt);
 
     private static SubTaskDto ToDto(SubTask s) =>
         new(s.Id, s.TaskId, s.Name, s.LabelId, s.IsFinished, s.Rank, s.Version);
