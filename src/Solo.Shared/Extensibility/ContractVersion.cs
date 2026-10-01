@@ -27,10 +27,15 @@ namespace Solo.Shared.Extensibility;
 /// <c>task.setSchedule</c> operation, project sidebar sections, the host task
 /// drawer (<see cref="ISoloTaskDrawer"/>), Admin settings panels and
 /// <c>ISoloQuery.CallerAsync</c>.</para>
+/// <para>1.4.0 adds sections on a project's home page and surfaces on its card
+/// on All projects (<see cref="ProjectHomeSectionAttribute"/>,
+/// <see cref="ProjectCardSectionAttribute"/>), and live topics with presence:
+/// <c>ISoloLiveUpdates</c> to publish on the server, <see cref="ISoloLiveTopics"/>
+/// to subscribe in the browser.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.3.0";
+    public const string Current = "1.4.0";
 
-    public static readonly Version Parsed = new(1, 3, 0);
+    public static readonly Version Parsed = new(1, 4, 0);
 }

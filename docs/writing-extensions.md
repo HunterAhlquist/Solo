@@ -503,3 +503,92 @@ but that alone doesn't protect an endpoint.
 Solo user id, email, display name and super-admin flag, plus their role and owner
 flag when the route names a project. Use it to record who created a row in your
 own schema. The user id is `Guid.Empty` for an anonymous request.
+
+## Contract 1.4
+
+Declare `"soloApiVersion": ">=1.4 <2.0"` (and the same `soloClientVersion` for a
+client half) to use anything in this section. Roadmaps 1.2 uses all of it.
+
+### Project home and project card sections
+
+Two more places a client component can contribute to, both from
+`Solo.Shared.Extensibility` and both given the same parameters as a sidebar
+section (`Project` and `CanWrite`):
+
+| Attribute | Where it renders |
+|---|---|
+| `[ProjectHomeSection("Title", Order = 0)]` | The project home's first tab, below the boards. Core puts a **Boards** header over the boards and a `Title` header over each section. The tab is named after them ("Boards & Roadmaps"). |
+| `[ProjectCardSection("Title", Order = 0)]` | Each project's card on All projects, as a surface of its own below the card's boards, titled `Title`. |
+
+Core draws the header or title. Your component renders only what goes under it.
+As with sidebar sections, each one has its own error boundary, sections order by
+`Order` and then extension id, and they appear a moment after the boards do,
+once extension assemblies have loaded.
+
+A card section renders once per project on All projects, so it loads once per
+project. Keep its read cheap.
+
+### Live topics: `ISoloLiveUpdates` and `ISoloLiveTopics`
+
+Core's own broadcasts cover core's entities. To keep your pages current while
+someone else edits your data, publish on a **topic** from the server half and
+subscribe from the client half. Both go over the host's existing realtime
+connection.
+
+```csharp
+// Server half: after the change is saved.
+public sealed class PlansController(PlansDbContext db, ISoloLiveUpdates live) : ControllerBase
+{
+    [HttpPut("projects/{projectId:guid}/plans/{id:guid}")]
+    public async Task<IActionResult> Update(Guid projectId, Guid id, UpdatePlanRequest request, CancellationToken ct)
+    {
+        // ... save ...
+        await live.PublishAsync(projectId, $"plans:{id:N}", "changed", ct: ct);
+        return NoContent();
+    }
+}
+```
+
+```csharp
+// Client half.
+[Inject] private ISoloLiveTopics Live { get; set; } = null!;
+
+private IAsyncDisposable? _live;
+
+protected override async Task OnInitializedAsync()
+{
+    _live = await Live.SubscribeAsync(Project.Id, $"plans:{PlanId:N}",
+        message => InvokeAsync(ReloadAsync),
+        others => InvokeAsync(() => { _others = others; StateHasChanged(); }));
+    await Live.SetPresenceAsync(Project.Id, $"plans:{PlanId:N}", PresenceMode.Viewing);
+}
+
+public async ValueTask DisposeAsync()
+{
+    if (_live is not null)
+    {
+        await _live.DisposeAsync();
+    }
+}
+```
+
+- **A message is a nudge, not state.** `Kind` and `Data` are yours to define. Say
+  what changed and refetch through your API, which applies the access checks.
+  Publishing doesn't check access; only members of the project can subscribe to
+  its topics.
+- **The sender is left out.** When the publishing request came from a client
+  with a live connection, that connection doesn't hear its own change, as with
+  core's broadcasts. Its page already applied it.
+- **Topics** are up to 200 characters and are scoped to the project. Prefix them
+  with something of your own so two extensions can't collide. A connection can
+  hold 64 at once.
+- **Presence** is optional and separate from subscribing. `SetPresenceAsync`
+  reports the signed-in user as `Viewing` or `Editing` on a topic they hold, and
+  `PresenceMode.None` clears it. The `onPresence` callback hears everyone else on
+  the topic, one entry per user (their strongest mode), with the signed-in user
+  left out. Disposing the subscription clears presence.
+- **Reconnects are handled.** Held topics and reported presence are restated on
+  the new connection. Delivery is best-effort, so a page should still work if it
+  hears nothing.
+- **Callbacks arrive off the render cycle**, so wrap them in `InvokeAsync`. A
+  handler that throws is logged and doesn't stop other subscribers.

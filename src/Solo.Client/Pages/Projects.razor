@@ -1,7 +1,9 @@
 @page "/"
 @attribute [Authorize]
+@using Solo.Client.Extensions
 @implements IDisposable
 @inject ApiClient Api
+@inject ExtensionCatalog Extensions
 @inject UserSession Session
 @inject ProjectNavStore Nav
 @inject IDialogService Dialogs
@@ -76,6 +78,10 @@ else
                             @{
                                 var boards = Nav.BoardsOf(project.Id);
                             }
+                            @if (CardSections.Count > 0)
+                            {
+                                <div class="project-card__surface-title">Boards</div>
+                            }
                             @if (boards is null)
                             {
                                 <MudSkeleton SkeletonType="SkeletonType.Text" Width="60%" />
@@ -97,6 +103,26 @@ else
                                 }
                             }
                         </div>
+
+                        @* Each extension's own surface, styled like the boards above it;
+                           the component fills it, core titles and bounds it. *@
+                        @foreach (var section in CardSections)
+                        {
+                            <div class="project-card__boards">
+                                <div class="project-card__surface-title">@section.Title</div>
+                                <ErrorBoundary @key="(project.Id, section.Component)">
+                                    <ChildContent>
+                                        <DynamicComponent Type="@section.Component"
+                                                          Parameters="@SectionParameters(project)" />
+                                    </ChildContent>
+                                    <ErrorContent>
+                                        <MudText Typo="Typo.caption" Color="Color.Error" Class="px-1">
+                                            @section.Title couldn't load.
+                                        </MudText>
+                                    </ErrorContent>
+                                </ErrorBoundary>
+                            </div>
+                        }
                     </MudCardContent>
 
                     @* The only way into the project home from here: the card itself is
@@ -129,6 +155,7 @@ else
         // Each card's board list arrives after the card does; the store announces
         // each project's boards as they land.
         Nav.Changed += OnNavChanged;
+        Extensions.Changed += OnExtensionsChanged;
 
         // The layout also loads the session, but a direct hit on this page can
         // race it — and the "New project" button depends on IsSuperAdmin.
@@ -207,5 +234,28 @@ else
         }
     }
 
-    public void Dispose() => Nav.Changed -= OnNavChanged;
+    private IReadOnlyList<ContributedSection>? _sections;
+
+    private IReadOnlyList<ContributedSection> CardSections => _sections ??=
+        ContributedSections.Find<Solo.Shared.Extensibility.ProjectCardSectionAttribute>(
+            Extensions, a => a.Title, a => a.Order);
+
+    private static IDictionary<string, object> SectionParameters(ProjectSummaryDto project) =>
+        new Dictionary<string, object>
+        {
+            ["Project"] = project,
+            ["CanWrite"] = ProjectNavStore.CanAddBoard(project),
+        };
+
+    private void OnExtensionsChanged()
+    {
+        _sections = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Nav.Changed -= OnNavChanged;
+        Extensions.Changed -= OnExtensionsChanged;
+    }
 }

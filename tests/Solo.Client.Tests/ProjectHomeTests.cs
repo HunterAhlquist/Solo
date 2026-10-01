@@ -24,6 +24,7 @@ public class ProjectHomeTests : ComponentTestBase
         Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(new ProjectNavStore(api));
         Services.AddScoped<RecentProjectsStore>();
+        Services.AddSingleton(new Solo.Client.Extensions.ExtensionCatalog());
     }
 
     private void Route(bool isSuperAdmin, bool isOwner, ProjectRole role = ProjectRole.ReadWrite)

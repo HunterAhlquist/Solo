@@ -11,6 +11,10 @@ internal sealed class FakeBoardHub : IBoardHubClient
 
     public event Func<BoardPresenceSnapshot, Task>? PresenceChanged;
 
+    public event Func<TopicMessage, Task>? TopicMessage;
+
+    public event Func<TopicPresenceSnapshot, Task>? TopicPresenceChanged;
+
     public event Func<Task>? ConnectionStateChanged;
 
     public bool IsConnected { get; set; } = true;
@@ -40,6 +44,36 @@ internal sealed class FakeBoardHub : IBoardHubClient
         PresenceReports.Add((entityType, entityId, mode));
         return Task.CompletedTask;
     }
+
+    public List<(Guid ProjectId, string Topic)> Subscribed { get; } = [];
+
+    public List<(Guid ProjectId, string Topic)> Unsubscribed { get; } = [];
+
+    public List<(Guid ProjectId, string Topic, PresenceMode Mode)> TopicPresenceReports { get; } = [];
+
+    public Task SubscribeTopic(Guid projectId, string topic)
+    {
+        Subscribed.Add((projectId, topic));
+        return Task.CompletedTask;
+    }
+
+    public Task UnsubscribeTopic(Guid projectId, string topic)
+    {
+        Unsubscribed.Add((projectId, topic));
+        return Task.CompletedTask;
+    }
+
+    public Task SetTopicPresence(Guid projectId, string topic, PresenceMode mode)
+    {
+        TopicPresenceReports.Add((projectId, topic, mode));
+        return Task.CompletedTask;
+    }
+
+    public Task RaiseTopicMessage(TopicMessage message) =>
+        TopicMessage?.Invoke(message) ?? Task.CompletedTask;
+
+    public Task RaiseTopicPresence(TopicPresenceSnapshot snapshot) =>
+        TopicPresenceChanged?.Invoke(snapshot) ?? Task.CompletedTask;
 
     public Task RaiseEntityChanged(EntityChangedEvent change) =>
         EntityChanged?.Invoke(change) ?? Task.CompletedTask;
