@@ -27,10 +27,11 @@ public class RoadmapPageTests : ComponentTestBase
 
     public RoadmapPageTests()
     {
-        Services.AddSingleton<ISoloClientApi>(_http.CreateClient());
+        var client = _http.CreateClient();
+        Services.AddSingleton<ISoloClientApi>(client);
         Services.AddSingleton<ISoloLiveTopics>(_live);
         Services.AddSingleton<ISoloTaskDrawer>(new IdleDrawer());
-        JSInterop.SetupModule("https://solo.test/api/extensions/roadmap/content/roadmap.js");
+        JSInterop.SetupModule(new RoadmapApi(client).Content("roadmap.js").ToString());
 
         _http.RouteJson("/members", new[]
         {

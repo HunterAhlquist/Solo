@@ -144,6 +144,11 @@ the bar back. Messages heard meanwhile fold into one read once both settle.
 appended when the page first loads it. `HeadContent` shows one owner's markup at
 a time, and a second use would push out the theme's stylesheet.
 
+**Both content URLs carry the package version** (`roadmap.js?v=1.2.2`). The
+page and its script change together, and a cache between the app and the
+server, such as a proxy that adds its own headers or the desktop app's disk
+cache, could otherwise pair a new page with an old script.
+
 ## Its dependency on core
 
 Contract **1.4**. From 1.3, two things on the server:

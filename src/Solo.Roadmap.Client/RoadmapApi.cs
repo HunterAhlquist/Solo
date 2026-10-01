@@ -20,8 +20,19 @@ public sealed class RoadmapApi(ISoloClientApi api)
 {
     private const string Base = "api/ext/roadmap";
 
+    private static readonly string PackageVersion =
+        typeof(RoadmapApi).Assembly.GetName().Version?.ToString(3) ?? "0";
+
     /// <summary>Absolute URL of a file in the package's <c>content/</c> folder, fetched by this browser.</summary>
-    public Uri Content(string fileName) => api.Resolve($"api/extensions/roadmap/content/{fileName}");
+    /// <remarks>
+    /// Carries the package version, so the page and its script always match. The
+    /// server sends these files without cache headers, but a proxy in front of
+    /// it may add its own, and the desktop app's cache outlives a restart. With
+    /// an unversioned URL, 1.2.1's page ran beside a cached 1.2.0 roadmap.js:
+    /// no add marker, and clicks on empty days went nowhere.
+    /// </remarks>
+    public Uri Content(string fileName) =>
+        api.Resolve($"api/extensions/roadmap/content/{fileName}?v={PackageVersion}");
 
     /// <summary>Absolute URL of a user's avatar, through core's same-origin proxy.</summary>
     public Uri Avatar(Guid userId) => api.Resolve($"api/users/{userId}/avatar");
