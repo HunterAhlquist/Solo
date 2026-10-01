@@ -7,7 +7,8 @@
     tasks from the empty rows below the last one, drag a bar up or down to
     reorder it or sideways to move its dates, and drag its edges to reschedule
     it; everyone can open a task in the board's drawer by clicking its bar.
-    Missed deadlines flash, and are listed under the grid.
+    Missed deadlines flash, and are listed under the grid. Everyone else's
+    changes arrive live, and whoever else has it open shows in the header.
 *@
 
 <PageTitle>@(_timeline?.Title ?? "Roadmap") · Solo</PageTitle>
@@ -28,6 +29,21 @@ else
                            Href="@($"projects/{_project.Alias}")" aria-label="Back to project" />
             <MudIcon Icon="@Icons.Material.Filled.Timeline" Color="Color.Primary" />
             <MudText Typo="Typo.h1" Class="roadmap-header__title">@_timeline.Title</MudText>
+            @if (_present.Count > 0)
+            {
+                <span class="roadmap-presence">
+                    @foreach (var person in _present.Take(MaxPresent))
+                    {
+                        <MemberAvatar @key="person.UserId" Member="@PresentMember(person)" AvatarUrl="@Api.Avatar"
+                                      Tooltip="@DescribePresence(person)"
+                                      Class="@(person.Mode == PresenceMode.Editing ? "roadmap-presence--editing" : null)" />
+                    }
+                    @if (_present.Count > MaxPresent)
+                    {
+                        <MudAvatar Size="Size.Small" Class="roadmap-avatar">+@(_present.Count - MaxPresent)</MudAvatar>
+                    }
+                </span>
+            }
             <MudSpacer />
             @if (CanWrite)
             {

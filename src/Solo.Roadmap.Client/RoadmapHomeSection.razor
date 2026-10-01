@@ -1,0 +1,65 @@
+@attribute [ProjectHomeSection("Roadmaps", Order = 10)]
+@inherits RoadmapListComponent
+
+@*
+    The project's roadmaps on its home page, under the Roadmaps header core
+    draws after Boards: a card each, laid out like the boards above, opening
+    the roadmap on a click. Writers can rename one from its card, or start a
+    new one.
+*@
+
+@if (Roadmaps is null && Error is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (Error is not null)
+{
+    <MudText Typo="Typo.body2" Color="Color.Error">@Error</MudText>
+}
+else if (Roadmaps!.Count == 0)
+{
+    <MudPaper Elevation="0" Class="roadmap-home__empty">
+        <MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.body1" Color="Color.Secondary">No roadmaps yet.</MudText>
+        @if (CanWrite)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@CreateAsync">Create one</MudButton>
+        }
+    </MudPaper>
+}
+else
+{
+    <div class="roadmap-home">
+        <MudGrid>
+            @foreach (var roadmap in Roadmaps!)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="1" Class="roadmap-home__card">
+                        <MudCardContent Class="roadmap-home__open" @onclick="@(() => Navigation.NavigateTo(Href(roadmap)))">
+                            <MudIcon Icon="@Icons.Material.Filled.Timeline" Color="Color.Primary" />
+                            <MudText Typo="Typo.h4" Class="text-truncate flex-grow-1">@roadmap.Title</MudText>
+                        </MudCardContent>
+                        @if (CanWrite)
+                        {
+                            <MudCardActions>
+                                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit"
+                                           OnClick="@(() => RenameAsync(roadmap))">Rename</MudButton>
+                            </MudCardActions>
+                        }
+                    </MudCard>
+                </MudItem>
+            }
+            @if (CanWrite)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudTooltip Text="New roadmap" RootClass="h-100">
+                        <button type="button" class="roadmap-home__add" aria-label="New roadmap" @onclick="@CreateAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Large" />
+                        </button>
+                    </MudTooltip>
+                </MudItem>
+            }
+        </MudGrid>
+    </div>
+}

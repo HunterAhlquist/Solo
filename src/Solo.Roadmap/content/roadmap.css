@@ -66,6 +66,31 @@ html[data-color-scheme="dark"] {
     overflow-wrap: anywhere;
 }
 
+/* Who else has the roadmap open, as the board marks it: overlapping avatars,
+   and an outlined pulse on whoever is mid-change. */
+.roadmap-presence {
+    display: inline-flex;
+    align-items: center;
+}
+
+.roadmap-presence > * + * {
+    margin-left: -0.4rem;
+}
+
+.roadmap-presence--editing {
+    outline: 2px solid var(--mud-palette-warning);
+    animation: roadmap-presence-breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes roadmap-presence-breathe {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .roadmap-presence--editing { animation: none; }
+}
+
 /* -- Timeline --------------------------------------------------------------- */
 
 /* The one scroller, both ways. The page itself never scrolls sideways: at any
@@ -640,14 +665,28 @@ html[data-color-scheme="dark"] {
     color: var(--mud-palette-text-secondary);
 }
 
+/* The status chip keeps a column of its own, the last and of one width, so
+   the chips line up down the list whatever the dates before them say. */
 .roadmap-picker__option {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto 6.5rem;
     align-items: center;
-    gap: 0.25rem 0.5rem;
+    column-gap: 0.5rem;
     padding: 0.375rem 0.5rem;
     border-radius: 0.25rem;
     cursor: pointer;
+}
+
+.roadmap-picker__status {
+    grid-column: 4;
+    justify-self: start;
+}
+
+.roadmap-picker__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 1rem;
+    margin-top: 0.25rem;
 }
 
 .roadmap-picker__option:hover,
@@ -662,7 +701,6 @@ html[data-color-scheme="dark"] {
 }
 
 .roadmap-picker__name {
-    flex: 1 1 12rem;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -670,6 +708,7 @@ html[data-color-scheme="dark"] {
 }
 
 .roadmap-picker__dates {
+    justify-self: end;
     font-size: 0.75rem;
     color: var(--mud-palette-text-secondary);
     white-space: nowrap;
@@ -689,4 +728,64 @@ html[data-color-scheme="dark"] {
 .roadmap-settings__group > * {
     flex: 1 1 17rem;
     max-width: 19rem;
+}
+
+/* -- Project home and project card ---------------------------------------------- */
+
+/* Spaced like core's board grid above it, so the two sections read as one page. */
+.roadmap-home {
+    padding-top: 0.5rem;
+}
+
+.roadmap-home__open {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+}
+
+.roadmap-home__add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 96px;
+    padding: 0;
+    cursor: pointer;
+    border: 1px dashed var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    background: transparent;
+    color: var(--mud-palette-text-secondary);
+}
+
+.roadmap-home__add:hover,
+.roadmap-home__add:focus-visible {
+    border-color: var(--mud-palette-primary);
+    color: var(--mud-palette-primary);
+}
+
+.roadmap-home__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 2rem;
+    border: 1px dashed var(--mud-palette-lines-default);
+}
+
+.roadmap-card-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: var(--mud-default-borderradius);
+    color: var(--mud-palette-text-primary);
+    text-decoration: none;
+}
+
+.roadmap-card-link:hover,
+.roadmap-card-link:focus-visible {
+    background: color-mix(in srgb, var(--mud-palette-primary) 14%, transparent);
+    color: var(--mud-palette-primary);
 }

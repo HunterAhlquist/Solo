@@ -3,8 +3,9 @@
 
 @*
     Picks a task to put on the roadmap: any task in the project not already on
-    it, searchable by name or serial, grouped by board. Arrow keys move through
-    the results and Enter takes the highlighted one.
+    it, searchable by name or serial, grouped by board. Finished tasks and closed
+    boards' tasks are hidden until switched on. Arrow keys move through the
+    results and Enter takes the highlighted one.
 *@
 
 <MudDialog DefaultFocus="DefaultFocus.None">
@@ -13,6 +14,14 @@
                       Placeholder="Search by name or serial" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                       AutoFocus="true" OnKeyDown="@OnKeyDown" aria-label="Search tasks" />
+
+        <div class="roadmap-picker__filters">
+            <MudSwitch T="bool" Value="@_filter.Finished" ValueChanged="@(on => Refilter(_filter with { Finished = on }))"
+                       Label="Finished tasks" Color="Color.Primary" Size="Size.Small" />
+            <MudSwitch T="bool" Value="@_filter.ClosedBoards"
+                       ValueChanged="@(on => Refilter(_filter with { ClosedBoards = on }))"
+                       Label="Closed boards" Color="Color.Primary" Size="Size.Small" />
+        </div>
 
         <div class="roadmap-picker__results" role="listbox" aria-label="Tasks">
             @if (_error is not null)
@@ -26,7 +35,11 @@
             else if (_groups.Count == 0)
             {
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-2">
-                    @(_candidates.Count == 0 ? "Every task in this project is already on the roadmap." : "No tasks match.")
+                    @(_candidates.Count == 0
+                        ? "Every task in this project is already on the roadmap."
+                        : string.IsNullOrWhiteSpace(_query)
+                            ? "No open tasks left to add. Finished tasks and closed boards are hidden unless switched on above."
+                            : "No tasks match.")
                 </MudText>
             }
             else
@@ -34,7 +47,9 @@
                 var index = 0;
                 @foreach (var group in _groups)
                 {
-                    <div class="roadmap-picker__board">@group.BoardName</div>
+                    <div class="roadmap-picker__board">
+                        @group.BoardName@(group.BoardIsOpen ? "" : " · closed")
+                    </div>
                     @foreach (var candidate in group.Candidates)
                     {
                         var position = index++;
@@ -44,12 +59,15 @@
                              @onclick="@(() => Pick(candidate))">
                             <span class="roadmap-picker__serial">@CandidateSearch.Serial(candidate, ProjectAlias)</span>
                             <span class="roadmap-picker__name">@candidate.Task.Name</span>
-                            <MudChip T="string" Size="Size.Small" Color="@StatusColor(candidate.Task.Status)"
-                                     Variant="Variant.Text">@StatusText(candidate.Task.Status)</MudChip>
                             @if (DatesOf(candidate.Task) is { } dates)
                             {
                                 <span class="roadmap-picker__dates">@dates</span>
                             }
+                            @* Wrapped so the grid places this span: MudChip adds a container of its own. *@
+                            <span class="roadmap-picker__status">
+                                <MudChip T="string" Size="Size.Small" Color="@StatusColor(candidate.Task.Status)"
+                                         Variant="Variant.Text" Class="ma-0">@StatusText(candidate.Task.Status)</MudChip>
+                            </span>
                         </div>
                     }
                 }
@@ -67,6 +85,7 @@
     private IReadOnlyList<CandidateGroup> _groups = [];
     private List<RoadmapCandidateDto> _flat = [];
     private string _query = string.Empty;
+    private CandidateFilter _filter = CandidateFilter.Default;
     private int _active;
     private string? _error;
 
@@ -114,9 +133,15 @@
         Filter();
     }
 
+    private void Refilter(CandidateFilter filter)
+    {
+        _filter = filter;
+        Filter();
+    }
+
     private void Filter()
     {
-        _groups = CandidateSearch.Filter(_candidates ?? [], ProjectAlias, _query);
+        _groups = CandidateSearch.Filter(_candidates ?? [], ProjectAlias, _query, _filter);
         _flat = _groups.SelectMany(g => g.Candidates).ToList();
         _active = 0;
     }

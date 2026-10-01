@@ -21,10 +21,14 @@ namespace Solo.Roadmap.Controllers;
 ///
 /// <para>Core is read through <see cref="ISoloQuery"/> only, and never written:
 /// a task's dates are the client's to set, through core's schedule endpoint.</para>
+///
+/// <para>Every change is announced on its live topic once it's saved (see
+/// <see cref="RoadmapTopics"/>), so other people's open pages follow it.</para>
 /// </remarks>
 [ApiController]
 [Route("projects/{projectId:guid}/roadmaps")]
-public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, RoadmapSettingsStore settings)
+public sealed class RoadmapsController(
+    RoadmapDbContext db, ISoloQuery query, RoadmapSettingsStore settings, ISoloLiveUpdates live)
     : ControllerBase
 {
     [HttpGet]
@@ -50,6 +54,7 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
         };
         db.Roadmaps.Add(roadmap);
         await db.SaveChangesAsync(ct);
+        await live.PublishAsync(projectId, RoadmapTopics.List, RoadmapTopics.ListChanged, ct: ct);
 
         return CreatedAtAction(nameof(Get), new { projectId, roadmapId = roadmap.Id },
             new RoadmapSummaryDto(roadmap.Id, roadmap.Title, roadmap.Version));
@@ -77,6 +82,8 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
             return ChangedElsewhere();
         }
 
+        await live.PublishAsync(projectId, RoadmapTopics.List, RoadmapTopics.ListChanged, ct: ct);
+        await live.PublishAsync(projectId, RoadmapTopics.Roadmap(roadmapId), RoadmapTopics.Renamed, ct: ct);
         return new RoadmapSummaryDto(roadmap.Id, roadmap.Title, roadmap.Version);
     }
 
@@ -88,7 +95,14 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
         var deleted = await db.Roadmaps
             .Where(r => r.Id == roadmapId && r.ProjectId == projectId)
             .ExecuteDeleteAsync(ct);
-        return deleted == 0 ? NotFound() : NoContent();
+        if (deleted == 0)
+        {
+            return NotFound();
+        }
+
+        await live.PublishAsync(projectId, RoadmapTopics.List, RoadmapTopics.ListChanged, ct: ct);
+        await live.PublishAsync(projectId, RoadmapTopics.Roadmap(roadmapId), RoadmapTopics.Deleted, ct: ct);
+        return NoContent();
     }
 
     /// <summary>
@@ -156,7 +170,7 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
         {
             candidates.AddRange((await query.TasksAsync(board.Id, ct))
                 .Where(t => !onRoadmap.Contains(t.Id))
-                .Select(t => new RoadmapCandidateDto(t, board.Id, board.Name, board.Alias)));
+                .Select(t => new RoadmapCandidateDto(t, board.Id, board.Name, board.Alias, board.IsOpen)));
         }
 
         return candidates;
@@ -215,6 +229,7 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
                 detail: "That task is already on this roadmap.");
         }
 
+        await EntriesChangedAsync(projectId, roadmapId, ct);
         return Created((string?)null, ToDto(entry, (task, board)));
     }
 
@@ -256,6 +271,7 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
             return ChangedElsewhere();
         }
 
+        await EntriesChangedAsync(projectId, roadmapId, ct);
         return NoContent();
     }
 
@@ -280,7 +296,13 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
         var updated = await db.Entries
             .Where(e => e.Id == entryId && e.RoadmapId == roadmapId && e.Roadmap.ProjectId == projectId)
             .ExecuteUpdateAsync(set => set.SetProperty(e => e.AnchorDay, request.AnchorDay), ct);
-        return updated == 0 ? NotFound() : NoContent();
+        if (updated == 0)
+        {
+            return NotFound();
+        }
+
+        await EntriesChangedAsync(projectId, roadmapId, ct);
+        return NoContent();
     }
 
     /// <summary>Takes a task off the roadmap. The task itself is untouched.</summary>
@@ -291,8 +313,17 @@ public sealed class RoadmapsController(RoadmapDbContext db, ISoloQuery query, Ro
         var deleted = await db.Entries
             .Where(e => e.Id == entryId && e.RoadmapId == roadmapId && e.Roadmap.ProjectId == projectId)
             .ExecuteDeleteAsync(ct);
-        return deleted == 0 ? NotFound() : NoContent();
+        if (deleted == 0)
+        {
+            return NotFound();
+        }
+
+        await EntriesChangedAsync(projectId, roadmapId, ct);
+        return NoContent();
     }
+
+    private Task EntriesChangedAsync(Guid projectId, Guid roadmapId, CancellationToken ct) =>
+        live.PublishAsync(projectId, RoadmapTopics.Roadmap(roadmapId), RoadmapTopics.EntriesChanged, ct: ct);
 
     /// <summary>Every task in the project with the board it sits on, keyed by task id.</summary>
     private async Task<Dictionary<Guid, (TaskDto Task, BoardDto Board)>> ProjectTasksAsync(

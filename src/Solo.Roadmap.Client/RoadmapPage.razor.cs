@@ -8,6 +8,7 @@ using Solo.Roadmap.Contracts;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
+using Solo.Shared.Hubs;
 
 namespace Solo.Roadmap.Client;
 
@@ -20,6 +21,9 @@ public sealed partial class RoadmapPage
 
     /// <summary>How wide a bar has to be before its assignees' avatars fit beside the name.</summary>
     private const int AvatarBarWidth = 200;
+
+    /// <summary>Avatars of others on the page before the rest fold into a count, as in the task drawer.</summary>
+    private const int MaxPresent = 4;
 
     private ElementReference _scroller;
     private DotNetObjectReference<RoadmapPage>? _self;
@@ -46,6 +50,23 @@ public sealed partial class RoadmapPage
     private MenuState? _menu;
     private string? _error;
 
+    private IAsyncDisposable? _live;
+    private IReadOnlyList<TopicPresenceEntry> _present = [];
+    private PresenceMode _reported;
+    private bool _gesturing;
+    private bool _inDialog;
+
+    /// <summary>This person's saves in flight, from the optimistic redraw to the server's answer.</summary>
+    private int _saving;
+
+    /// <summary>Counts this person's changes, so a read that started before one can tell it's behind.</summary>
+    private int _edits;
+
+    /// <summary>Someone else changed the roadmap and this page hasn't caught up yet.</summary>
+    private bool _stale;
+
+    private bool _catchingUp;
+
     [Inject] private ISoloClientApi Client { get; set; } = null!;
 
     [Inject] private ISoloTaskDrawer Drawer { get; set; } = null!;
@@ -57,6 +78,8 @@ public sealed partial class RoadmapPage
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
 
     [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    [Inject] private ISoloLiveTopics Live { get; set; } = null!;
 
     [Parameter]
     public string ProjectAlias { get; set; } = "";
@@ -86,10 +109,13 @@ public sealed partial class RoadmapPage
         }
 
         _loadedFor = (ProjectAlias, RoadmapId);
+        await StopLiveAsync();
         await DetachTimelineAsync();
         _timeline = null;
         _error = null;
         _menu = null;
+        _gesturing = false;
+        _stale = false;
 
         // In parallel with the reads, so the grid's first frame is already styled.
         var styles = RoadmapAssets.EnsureStylesAsync(JS, Api);
@@ -109,22 +135,28 @@ public sealed partial class RoadmapPage
                 return;
             }
 
+            // Listening before the read, so a change made while it's on its way isn't missed.
+            await StartLiveAsync();
             Show(await Api.TimelineAsync(_project.Id, RoadmapId));
         }
         catch (SoloApiException e) when (e.StatusCode == HttpStatusCode.NotFound)
         {
             _error = "That roadmap doesn't exist — it may have been deleted.";
+            await StopLiveAsync();
             return;
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
             _error = "Couldn't load this roadmap.";
+            await StopLiveAsync();
             return;
         }
 
         await LoadPeopleAndLabelsAsync();
+        await CatchUpAsync();
     }
 
+    /// <summary>Opens the roadmap: its rows, and a view around the day it starts on.</summary>
     private void Show(RoadmapTimelineDto timeline)
     {
         _timeline = timeline;
@@ -136,6 +168,20 @@ public sealed partial class RoadmapPage
         // view is about to open.
         var start = _window.IndexOf(_window.Clamp(StartingDay()));
         _rendered = Viewport.Rendered((start, start + 40), _window.Days);
+    }
+
+    /// <summary>
+    /// Takes the server's copy of an open roadmap without moving the view: the
+    /// window, the scroll position and the columns drawn all stay put.
+    /// </summary>
+    private void Apply(RoadmapTimelineDto timeline)
+    {
+        _timeline = timeline;
+        _entries = timeline.Entries.ToList();
+        if (_menu is { } menu && _entries.All(e => e.Id != menu.Entry.Id))
+        {
+            _menu = null;
+        }
     }
 
     /// <summary>Who's who and which colour each label is — fetched once, and never allowed to block the grid.</summary>
@@ -155,9 +201,13 @@ public sealed partial class RoadmapPage
         await LoadLabelsAsync();
     }
 
-    /// <summary>Labels are per board; fetch any board's whose tasks are on the roadmap and not yet known.</summary>
-    private async Task LoadLabelsAsync()
+    /// <summary>
+    /// Labels are per board; fetch any board's whose tasks are on the roadmap and
+    /// not yet known. True when that learned any.
+    /// </summary>
+    private async Task<bool> LoadLabelsAsync()
     {
+        var learned = false;
         foreach (var boardId in _entries.Select(e => e.Task.BoardId).Distinct().Where(_labelBoards.Add).ToList())
         {
             try
@@ -165,6 +215,7 @@ public sealed partial class RoadmapPage
                 foreach (var label in await Client.GetAsync<List<LabelDto>>($"api/boards/{boardId}/labels"))
                 {
                     _labels[label.Id] = label;
+                    learned = true;
                 }
             }
             catch (Exception e) when (e is SoloApiException or HttpRequestException)
@@ -172,6 +223,8 @@ public sealed partial class RoadmapPage
                 _labelBoards.Remove(boardId);
             }
         }
+
+        return learned;
     }
 
     private async Task ReloadAsync()
@@ -183,7 +236,7 @@ public sealed partial class RoadmapPage
 
         try
         {
-            Show(await Api.TimelineAsync(_project.Id, RoadmapId));
+            Apply(await Api.TimelineAsync(_project.Id, RoadmapId));
             await LoadLabelsAsync();
             await RefreshTimelineAsync();
         }
@@ -300,6 +353,15 @@ public sealed partial class RoadmapPage
         }
     });
 
+    /// <summary>A bar picked up (or put down) to drag or resize.</summary>
+    [JSInvokable]
+    public Task OnGesture(bool active) => InvokeAsync(async () =>
+    {
+        _gesturing = active;
+        await ReportPresenceAsync();
+        await CatchUpAsync();
+    });
+
     [JSInvokable]
     public Task OnBarClick(string entryId) =>
         Find(entryId) is { } entry ? InvokeAsync(() => OpenTaskAsync(entry)) : Task.CompletedTask;
@@ -338,6 +400,7 @@ public sealed partial class RoadmapPage
             return;
         }
 
+        await using var saving = Saving();
         var preceding = at > 0 ? _entries[at - 1].Id : (Guid?)null;
         var following = at < _entries.Count - 1 ? _entries[at + 1].Id : (Guid?)null;
         StateHasChanged();
@@ -359,8 +422,14 @@ public sealed partial class RoadmapPage
     /// with dates is rescheduled through core like any resize; a no-deadline pill
     /// has no dates to move, so the roadmap moves the day it's drawn on.
     /// </summary>
+    /// <remarks>
+    /// Returns once the bar is redrawn in its new place and leaves the save to
+    /// finish on its own, so the bar settles the moment it's dropped rather than
+    /// staying lifted until the server answers. Both saves handle their own
+    /// failures, putting the bar back.
+    /// </remarks>
     [JSInvokable]
-    public Task OnMove(string entryId, int days) => InvokeAsync(async () =>
+    public Task OnMove(string entryId, int days) => InvokeAsync(() =>
     {
         if (!CanWrite || Find(entryId) is not { } entry)
         {
@@ -376,12 +445,12 @@ public sealed partial class RoadmapPage
 
         if (entry.Task.DeadlineAt is null)
         {
-            await MoveAnchorAsync(entry, entry.AnchorDay.AddDays(shift));
+            _ = MoveAnchorAsync(entry, entry.AnchorDay.AddDays(shift));
             return;
         }
 
         var moved = Timeline.Move(span, shift);
-        await RescheduleAsync(entry, (moved.Start, moved.End));
+        _ = RescheduleAsync(entry, (moved.Start, moved.End));
     });
 
     /// <summary>A bar's edge dropped on column <paramref name="index"/>.</summary>
@@ -410,6 +479,7 @@ public sealed partial class RoadmapPage
             return;
         }
 
+        await using var saving = Saving();
         Replace(entry.Id, before with { StartAt = dates.Start, DeadlineAt = dates.Deadline });
         StateHasChanged();
         try
@@ -433,6 +503,7 @@ public sealed partial class RoadmapPage
     /// <summary>Moves a pill at once; a failed save puts it back.</summary>
     private async Task MoveAnchorAsync(RoadmapEntryDto entry, DateOnly day)
     {
+        await using var saving = Saving();
         var index = _entries.FindIndex(e => e.Id == entry.Id);
         _entries[index] = entry with { AnchorDay = day };
         StateHasChanged();
@@ -497,7 +568,7 @@ public sealed partial class RoadmapPage
             return;
         }
 
-        var dialog = await Dialogs.ShowAsync<TaskPickerDialog>(
+        var result = await AskAsync<TaskPickerDialog>(
             $"Add a task on {Dates.Day(day)}",
             new DialogParameters<TaskPickerDialog>
             {
@@ -507,7 +578,7 @@ public sealed partial class RoadmapPage
             },
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
 
-        if (await dialog.Result is { Canceled: false, Data: RoadmapCandidateDto picked })
+        if (result is { Canceled: false, Data: RoadmapCandidateDto picked })
         {
             await AddAsync(picked, day);
         }
@@ -521,6 +592,7 @@ public sealed partial class RoadmapPage
     /// </summary>
     private async Task AddAsync(RoadmapCandidateDto picked, DateOnly day)
     {
+        await using var saving = Saving();
         RoadmapEntryDto entry;
         try
         {
@@ -601,6 +673,7 @@ public sealed partial class RoadmapPage
 
     private async Task RemoveAsync(RoadmapEntryDto entry)
     {
+        await using var saving = Saving();
         try
         {
             await Api.RemoveEntryAsync(_project!.Id, RoadmapId, entry.Id);
@@ -635,6 +708,8 @@ public sealed partial class RoadmapPage
         {
             return;
         }
+
+        _edits++;
 
         switch (change.Kind)
         {
@@ -691,17 +766,18 @@ public sealed partial class RoadmapPage
             return;
         }
 
-        var dialog = await Dialogs.ShowAsync<RoadmapTitleDialog>("Rename roadmap",
+        var result = await AskAsync<RoadmapTitleDialog>("Rename roadmap",
             new DialogParameters<RoadmapTitleDialog>
             {
                 { d => d.InitialTitle, _timeline.Title },
                 { d => d.SaveText, "Rename" },
             });
-        if (await dialog.Result is not { Canceled: false, Data: string title } || title == _timeline.Title)
+        if (result is not { Canceled: false, Data: string title } || title == _timeline.Title)
         {
             return;
         }
 
+        await using var saving = Saving();
         try
         {
             var renamed = await Api.RenameAsync(_project.Id, RoadmapId, title, _timeline.Version);
@@ -726,12 +802,12 @@ public sealed partial class RoadmapPage
             return;
         }
 
-        var dialog = await Dialogs.ShowAsync<RoadmapConfirmDialog>("Delete roadmap",
+        var result = await AskAsync<RoadmapConfirmDialog>("Delete roadmap",
             new DialogParameters<RoadmapConfirmDialog>
             {
                 { d => d.Message, $"Delete the roadmap \"{_timeline.Title}\"? Its tasks stay where they are." },
             });
-        if (await dialog.Result is not { Canceled: false })
+        if (result is not { Canceled: false })
         {
             return;
         }
@@ -746,6 +822,179 @@ public sealed partial class RoadmapPage
         {
             Snackbar.Add(e.Message, Severity.Error);
         }
+    }
+
+    /// <summary>Shows a dialog, with this person reported as editing for as long as it's open.</summary>
+    private async Task<DialogResult?> AskAsync<TDialog>(
+        string title, DialogParameters<TDialog> parameters, DialogOptions? options = null)
+        where TDialog : IComponent
+    {
+        _inDialog = true;
+        await ReportPresenceAsync();
+        try
+        {
+            var dialog = await Dialogs.ShowAsync<TDialog>(title, parameters, options ?? new DialogOptions());
+            return await dialog.Result;
+        }
+        finally
+        {
+            _inDialog = false;
+            await ReportPresenceAsync();
+        }
+    }
+
+    // -- Everyone else on the roadmap ---------------------------------------------------
+
+    private async Task StartLiveAsync()
+    {
+        _live = await Live.SubscribeAsync(_project!.Id, RoadmapTopics.Roadmap(RoadmapId), OnLiveAsync, OnPresenceAsync);
+        await ReportPresenceAsync();
+    }
+
+    /// <remarks>Leaving the topic takes this person's avatar off everyone else's page with it.</remarks>
+    private async Task StopLiveAsync()
+    {
+        var live = _live;
+        _live = null;
+        _present = [];
+        _reported = PresenceMode.None;
+        if (live is not null)
+        {
+            await live.DisposeAsync();
+        }
+    }
+
+    /// <summary>Tells the others here whether this person is looking, or in the middle of changing something.</summary>
+    private async Task ReportPresenceAsync()
+    {
+        if (_live is null || _project is null)
+        {
+            return;
+        }
+
+        var mode = _gesturing || _inDialog ? PresenceMode.Editing : PresenceMode.Viewing;
+        if (mode != _reported)
+        {
+            _reported = mode;
+            await Live.SetPresenceAsync(_project.Id, RoadmapTopics.Roadmap(RoadmapId), mode);
+        }
+    }
+
+    private Task OnPresenceAsync(IReadOnlyList<TopicPresenceEntry> present) => InvokeAsync(() =>
+    {
+        _present = present
+            .OrderByDescending(p => p.Mode)
+            .ThenBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        StateHasChanged();
+    });
+
+    /// <summary>Someone else changed the roadmap, or a task on it.</summary>
+    private Task OnLiveAsync(TopicMessage message) => InvokeAsync(async () =>
+    {
+        if (message.Kind == RoadmapTopics.Deleted)
+        {
+            await GoneAsync();
+            return;
+        }
+
+        _stale = true;
+        await CatchUpAsync();
+    });
+
+    /// <summary>
+    /// Takes the server's copy once nothing of this person's is in flight.
+    /// Mid-gesture the rows are the browser's to move; with a save on its way the
+    /// server's copy doesn't have it yet, and would snap the row back until it
+    /// lands. Whatever's heard meanwhile folds into one read once both settle.
+    /// </summary>
+    private async Task CatchUpAsync()
+    {
+        if (!_stale || _catchingUp || _gesturing || _saving > 0 ||
+            _project is null || _timeline is null || _error is not null)
+        {
+            return;
+        }
+
+        _stale = false;
+        _catchingUp = true;
+        var edits = _edits;
+        try
+        {
+            var timeline = await Api.TimelineAsync(_project.Id, RoadmapId);
+            if (edits != _edits || _gesturing || _saving > 0)
+            {
+                // This person changed something while the read was on its way.
+                _stale = true;
+            }
+            else
+            {
+                Apply(timeline);
+                StateHasChanged();
+                if (await LoadLabelsAsync())
+                {
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (SoloApiException e) when (e.StatusCode == HttpStatusCode.NotFound)
+        {
+            await GoneAsync();
+            return;
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            // Behind until the next change or a reload: a warning for every missed
+            // nudge would be noise about something the page can't fix.
+        }
+        finally
+        {
+            _catchingUp = false;
+        }
+
+        await CatchUpAsync();
+    }
+
+    /// <summary>Deleted by someone else while it was open.</summary>
+    private async Task GoneAsync()
+    {
+        await StopLiveAsync();
+        await DetachTimelineAsync();
+        _menu = null;
+        _error = "Someone deleted this roadmap while you had it open. Its tasks are still on their boards.";
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Marks one of this person's saves as in flight, so a live change waits for
+    /// it (see <see cref="CatchUpAsync"/>). Taken before the first await, so no
+    /// read can start between the redraw and the save.
+    /// </summary>
+    private SaveInFlight Saving()
+    {
+        _saving++;
+        _edits++;
+        return new SaveInFlight(this);
+    }
+
+    private sealed class SaveInFlight(RoadmapPage page) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            page._saving--;
+            await page.CatchUpAsync();
+        }
+    }
+
+    private ProjectMemberDto PresentMember(TopicPresenceEntry person) =>
+        _members.GetValueOrDefault(person.UserId)
+        ?? new ProjectMemberDto(person.UserId, person.UserId, "", person.DisplayName, null, ProjectRole.Read, false, false);
+
+    private string DescribePresence(TopicPresenceEntry person)
+    {
+        var member = PresentMember(person);
+        var name = member.DisplayName ?? (member.Email is { Length: > 0 } email ? email : "Someone");
+        return $"{name} is {(person.Mode == PresenceMode.Editing ? "editing" : "viewing")} this roadmap";
     }
 
     // -- Rendering helpers -------------------------------------------------------------
@@ -837,6 +1086,7 @@ public sealed partial class RoadmapPage
     public async ValueTask DisposeAsync()
     {
         Drawer.Changed -= OnDrawerChanged;
+        await StopLiveAsync();
         await DetachTimelineAsync();
         _self?.Dispose();
     }

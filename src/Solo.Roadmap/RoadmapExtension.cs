@@ -29,7 +29,7 @@ public sealed class RoadmapExtension : ISoloExtension
         }
 
         services.AddExtensionDbContext<RoadmapDbContext>(context);
-        services.AddEventHandler<TaskDeletedHandler>();
+        services.AddEventHandler<TaskEventsHandler>();
         services.AddScoped<RoadmapSettingsStore>();
     }
 }

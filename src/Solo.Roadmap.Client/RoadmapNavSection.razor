@@ -1,10 +1,5 @@
 @attribute [ProjectNavSection("Roadmaps", Order = 10)]
-@implements IDisposable
-@inject ISoloClientApi Client
-@inject IDialogService Dialogs
-@inject ISnackbar Snackbar
-@inject NavigationManager Navigation
-@inject IJSRuntime JS
+@inherits RoadmapListComponent
 
 @*
     A project's roadmaps, under the Roadmaps header core draws in the sidebar.
@@ -12,27 +7,26 @@
     boards load — so the list is fetched then, not at sign-in.
 *@
 
-@if (_roadmaps is null && _error is null)
+@if (Roadmaps is null && Error is null)
 {
     <div class="px-4 py-2">
         <MudProgressCircular Size="Size.Small" Indeterminate="true" />
     </div>
 }
-else if (_error is not null)
+else if (Error is not null)
 {
-    <MudText Typo="Typo.caption" Color="Color.Error" Class="px-4 py-1 d-block">@_error</MudText>
+    <MudText Typo="Typo.caption" Color="Color.Error" Class="px-4 py-1 d-block">@Error</MudText>
 }
 else
 {
-    @foreach (var roadmap in _roadmaps!)
+    @foreach (var roadmap in Roadmaps!)
     {
-        <MudNavLink Href="@($"projects/{Project.Alias}/roadmaps/{roadmap.Id}")" Match="NavLinkMatch.All"
-                    Icon="@Icons.Material.Filled.Timeline">
+        <MudNavLink Href="@Href(roadmap)" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Timeline">
             @roadmap.Title
         </MudNavLink>
     }
 
-    @if (_roadmaps!.Count == 0)
+    @if (Roadmaps!.Count == 0)
     {
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1 d-block">
             No roadmaps.
@@ -42,76 +36,7 @@ else
 
 @if (CanWrite)
 {
-    <MudNavLink Icon="@Icons.Material.Filled.Add" Class="roadmap-nav__add" OnClick="@AddAsync">
+    <MudNavLink Icon="@Icons.Material.Filled.Add" Class="roadmap-nav__add" OnClick="@CreateAsync">
         Add roadmap
     </MudNavLink>
-}
-
-@code {
-    private List<RoadmapSummaryDto>? _roadmaps;
-    private string? _error;
-
-    [Parameter, EditorRequired]
-    public ProjectSummaryDto Project { get; set; } = null!;
-
-    [Parameter]
-    public bool CanWrite { get; set; }
-
-    private RoadmapApi Api => new(Client);
-
-    protected override async Task OnInitializedAsync()
-    {
-        RoadmapNavEvents.Changed += OnRoadmapsChanged;
-        _ = RoadmapAssets.EnsureStylesAsync(JS, Api);
-        await LoadAsync();
-    }
-
-    private async Task LoadAsync()
-    {
-        try
-        {
-            _roadmaps = await Api.ListAsync(Project.Id);
-            _error = null;
-        }
-        catch (Exception e) when (e is SoloApiException or HttpRequestException)
-        {
-            // A caption rather than a throw: this section's boundary would catch
-            // it, but "couldn't load" says more than "failed" does.
-            _error = "Couldn't load roadmaps.";
-        }
-    }
-
-    private void OnRoadmapsChanged(Guid projectId)
-    {
-        if (projectId == Project.Id)
-        {
-            _ = InvokeAsync(async () =>
-            {
-                await LoadAsync();
-                StateHasChanged();
-            });
-        }
-    }
-
-    private async Task AddAsync()
-    {
-        var dialog = await Dialogs.ShowAsync<RoadmapTitleDialog>($"New roadmap in {Project.Name}");
-        if (await dialog.Result is not { Canceled: false, Data: string title })
-        {
-            return;
-        }
-
-        try
-        {
-            var created = await Api.CreateAsync(Project.Id, title);
-            RoadmapNavEvents.Raise(Project.Id);
-            Navigation.NavigateTo($"projects/{Project.Alias}/roadmaps/{created.Id}");
-        }
-        catch (Exception e) when (e is SoloApiException or HttpRequestException)
-        {
-            Snackbar.Add(e.Message, Severity.Error);
-        }
-    }
-
-    public void Dispose() => RoadmapNavEvents.Changed -= OnRoadmapsChanged;
 }

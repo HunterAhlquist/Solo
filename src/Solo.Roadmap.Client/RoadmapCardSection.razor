@@ -1,0 +1,30 @@
+@attribute [ProjectCardSection("Roadmaps")]
+@inherits RoadmapListComponent
+
+@*
+    A project's roadmaps on its card on All projects, in the surface core draws
+    below the card's boards: one link each, like the boards above.
+*@
+
+@if (Roadmaps is null && Error is null)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Text" Width="50%" />
+}
+else if (Error is not null)
+{
+    <MudText Typo="Typo.caption" Color="Color.Error" Class="px-1">@Error</MudText>
+}
+else if (Roadmaps!.Count == 0)
+{
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-1">No roadmaps.</MudText>
+}
+else
+{
+    @foreach (var roadmap in Roadmaps!)
+    {
+        <a class="roadmap-card-link" href="@Href(roadmap)">
+            <MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" Color="Color.Primary" />
+            <span class="text-truncate">@roadmap.Title</span>
+        </a>
+    }
+}

@@ -49,6 +49,33 @@ public static class RoadmapSprints
     }
 }
 
+/// <summary>
+/// The live topics this extension publishes on (see <c>ISoloLiveUpdates</c>),
+/// and what each message means. Messages say what changed, not what it became:
+/// a page that hears one refetches through the API.
+/// </summary>
+public static class RoadmapTopics
+{
+    /// <summary>A project's roadmaps were created, renamed or deleted — for lists of them.</summary>
+    public const string List = "roadmap:list";
+
+    /// <summary>One roadmap: its title, its entries, and the tasks on it.</summary>
+    public static string Roadmap(Guid roadmapId) => $"roadmap:{roadmapId:N}";
+
+    /// <summary>On <see cref="List"/>: the project's roadmaps changed.</summary>
+    public const string ListChanged = "changed";
+
+    /// <summary>Entries were added, removed, reordered or moved.</summary>
+    public const string EntriesChanged = "entries";
+
+    /// <summary>A task on the roadmap changed; the data is its id.</summary>
+    public const string TaskChanged = "task";
+
+    public const string Renamed = "renamed";
+
+    public const string Deleted = "deleted";
+}
+
 /// <summary>A sidebar row.</summary>
 public sealed record RoadmapSummaryDto(Guid Id, string Title, uint Version);
 
@@ -74,8 +101,13 @@ public sealed record RoadmapEntryDto(
     string BoardName,
     TaskDto Task);
 
-/// <summary>A task the picker offers: one not on this roadmap yet, with the board it lives on.</summary>
-public sealed record RoadmapCandidateDto(TaskDto Task, Guid BoardId, string BoardName, string BoardAlias);
+/// <summary>
+/// A task the picker offers: one not on this roadmap yet, with the board it lives
+/// on — and whether that board is still open, since the picker hides closed ones
+/// unless asked.
+/// </summary>
+public sealed record RoadmapCandidateDto(
+    TaskDto Task, Guid BoardId, string BoardName, string BoardAlias, bool BoardIsOpen = true);
 
 /// <summary>A roadmap a task appears on, for the chips in its task view.</summary>
 public sealed record TaskRoadmapDto(Guid Id, string Title, string ProjectAlias);
