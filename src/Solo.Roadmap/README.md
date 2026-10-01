@@ -33,9 +33,10 @@ and the instance loses roadmaps and nothing else:
     column highlighted. It always shows at least nine rows, and two empty ones
     below the last task.
   - It opens scrolled to the oldest start among the tasks running through today.
-  - Writers add a task by clicking a day in the empty rows below the last one,
-    or with **Add task**, and pick it from a search grouped by board. Finished
-    tasks and tasks on closed boards are hidden until switched on.
+  - Writers add a task by clicking any day no bar covers, or with **Add task**,
+    and pick it from a search grouped by board. Finished tasks and tasks on
+    closed boards are hidden until switched on. The task gets a row of its own
+    at the end, which the view scrolls to.
   - Dragging a bar up or down reranks it; dragging it sideways moves its start
     and deadline together. The way the pointer first goes decides which, so a
     reorder never shifts dates by accident.

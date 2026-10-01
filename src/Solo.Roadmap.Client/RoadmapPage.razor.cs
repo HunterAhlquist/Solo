@@ -273,7 +273,6 @@ public sealed partial class RoadmapPage
                 dayWidth = DayWidth,
                 rowHeight = RowHeight,
                 days = _window.Days,
-                entries = _entries.Count,
                 canWrite = CanWrite,
                 firstDay = _window.First.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             });
@@ -296,7 +295,7 @@ public sealed partial class RoadmapPage
         try
         {
             await _timelineHandle.InvokeVoidAsync("configure",
-                new { days = _window.Days, entries = _entries.Count, canWrite = CanWrite });
+                new { days = _window.Days, canWrite = CanWrite });
             await _timelineHandle.InvokeVoidAsync("refresh");
         }
         catch (JSDisconnectedException)
@@ -662,13 +661,22 @@ public sealed partial class RoadmapPage
         }
     }
 
+    /// <summary>
+    /// Brings a row into view both ways: a task added from a gap beside another
+    /// bar lands at the end, which on a long roadmap is below the fold.
+    /// </summary>
     private async Task ScrollToAsync(Guid entryId)
     {
-        if (_entries.FirstOrDefault(e => e.Id == entryId) is { } entry)
+        var index = _entries.FindIndex(e => e.Id == entryId);
+        if (index < 0 || _timelineHandle is null)
         {
-            var span = Timeline.Span(entry.Task, entry.AnchorDay);
-            await ScrollToDayAsync(_window.IndexOf(span.Start) - 2);
+            return;
         }
+
+        var entry = _entries[index];
+        var span = Timeline.Span(entry.Task, entry.AnchorDay);
+        await ScrollToDayAsync(_window.IndexOf(span.Start) - 2);
+        await _timelineHandle.InvokeVoidAsync("revealRow", index);
     }
 
     private async Task RemoveAsync(RoadmapEntryDto entry)

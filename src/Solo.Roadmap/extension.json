@@ -1,7 +1,7 @@
 {
   "id": "roadmap",
   "name": "Roadmaps",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "soloApiVersion": ">=1.4 <2.0",
   "soloClientVersion": ">=1.4 <2.0",
   "server": "server/Solo.Roadmap.dll",
