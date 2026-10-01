@@ -34,6 +34,17 @@ public class RoadmapComponentTests : ComponentTestBase
             bugs ? BugsBoard : TestData.BoardId, bugs ? "Bugs" : "Features", bugs ? "BUGS" : "FEAT",
             BoardIsOpen: !closedBoard);
 
+    [Fact]
+    public void The_script_and_stylesheet_urls_carry_the_package_version()
+    {
+        var version = typeof(RoadmapApi).Assembly.GetName().Version!.ToString(3);
+        var api = new RoadmapApi(_http.CreateClient());
+
+        Assert.Equal($"https://solo.test/api/extensions/roadmap/content/roadmap.js?v={version}",
+            api.Content("roadmap.js").ToString());
+        Assert.EndsWith($"roadmap.css?v={version}", api.Content("roadmap.css").ToString());
+    }
+
     // -- The task picker ------------------------------------------------------------
 
     private async Task<IRenderedComponent<MudDialogProvider>> OpenPickerAsync(params RoadmapCandidateDto[] candidates)
