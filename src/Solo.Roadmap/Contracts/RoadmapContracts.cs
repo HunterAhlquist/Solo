@@ -17,12 +17,36 @@ public static class RoadmapLimits
     public const int MinBoundDays = 1;
     public const int MaxBoundDays = 3650;
 
-    public const int MinStripeIntervalDays = 1;
-    public const int MaxStripeIntervalDays = 365;
+    public const int MinSprintWeeks = 1;
+    public const int MaxSprintWeeks = 52;
 
     public const int DefaultPastDays = 365;
     public const int DefaultFutureDays = 730;
-    public const int DefaultStripeIntervalDays = 14;
+    public const DayOfWeek DefaultSprintStartDay = DayOfWeek.Monday;
+    public const int DefaultSprintWeeks = 2;
+}
+
+/// <summary>
+/// Where the sprint stripes fall, worked out from the settings alone: the bands
+/// count from a fixed reference, the first sprint start day on or after
+/// 1 January of year 1, so the pattern is the same on every instance and runs
+/// back into the past unchanged — nothing about when the settings were saved
+/// moves it.
+/// </summary>
+public static class RoadmapSprints
+{
+    /// <summary>A day that starts a sprint; every sprint starts a whole number of sprint lengths from it.</summary>
+    public static DateOnly Anchor(DayOfWeek startDay) =>
+        DateOnly.MinValue.AddDays(((int)startDay - (int)DateOnly.MinValue.DayOfWeek + 7) % 7);
+
+    /// <summary>The first day of the sprint <paramref name="day"/> falls in.</summary>
+    public static DateOnly SprintStart(DateOnly day, DayOfWeek startDay, int weeks)
+    {
+        var length = weeks * 7;
+        var anchor = Anchor(startDay);
+        var offset = day.DayNumber - anchor.DayNumber;
+        return anchor.AddDays(offset - (((offset % length) + length) % length));
+    }
 }
 
 /// <summary>A sidebar row.</summary>
@@ -57,16 +81,15 @@ public sealed record RoadmapCandidateDto(TaskDto Task, Guid BoardId, string Boar
 public sealed record TaskRoadmapDto(Guid Id, string Title, string ProjectAlias);
 
 /// <summary>
-/// The timeline's instance-wide settings. <see cref="StripeAnchor"/> is the
-/// resolved date the stripes count from; <see cref="StripeStartDayOfYear"/> is
-/// that date's day of year, which is what the admin edits.
+/// The timeline's instance-wide settings: how far it scrolls each way, and the
+/// sprint indication — the day of the week sprints start on and how many weeks
+/// each lasts. <see cref="RoadmapSprints"/> turns the last two into stripes.
 /// </summary>
 public sealed record RoadmapSettingsDto(
     int PastDays,
     int FutureDays,
-    int StripeStartDayOfYear,
-    DateOnly StripeAnchor,
-    int StripeIntervalDays,
+    DayOfWeek SprintStartDay,
+    int SprintLengthWeeks,
     uint Version);
 
 public sealed class CreateRoadmapRequest
@@ -91,6 +114,12 @@ public sealed class AddRoadmapEntryRequest
     public DateOnly AnchorDay { get; init; }
 }
 
+/// <summary>The day a task with no deadline is drawn on, when its pill is dragged along the timeline.</summary>
+public sealed class SetRoadmapEntryAnchorRequest
+{
+    public DateOnly AnchorDay { get; init; }
+}
+
 /// <summary>Neighbors in roadmap order, like core's rerank. Both null moves to the top.</summary>
 public sealed class RerankRoadmapEntryRequest
 {
@@ -107,12 +136,11 @@ public sealed class UpdateRoadmapSettingsRequest
     [Range(RoadmapLimits.MinBoundDays, RoadmapLimits.MaxBoundDays)]
     public int FutureDays { get; init; }
 
-    /// <summary>366 only in a leap year: the day resolves to a date in the year it's saved.</summary>
-    [Range(1, 366)]
-    public int StripeStartDayOfYear { get; init; }
+    [EnumDataType(typeof(DayOfWeek))]
+    public DayOfWeek SprintStartDay { get; init; }
 
-    [Range(RoadmapLimits.MinStripeIntervalDays, RoadmapLimits.MaxStripeIntervalDays)]
-    public int StripeIntervalDays { get; init; }
+    [Range(RoadmapLimits.MinSprintWeeks, RoadmapLimits.MaxSprintWeeks)]
+    public int SprintLengthWeeks { get; init; }
 
     public uint Version { get; init; }
 }

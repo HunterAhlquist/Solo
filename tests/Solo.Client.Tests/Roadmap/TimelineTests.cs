@@ -5,7 +5,7 @@ using Solo.Shared.Dtos;
 
 namespace Solo.Client.Tests.Roadmap;
 
-/// <summary>The timeline's rules as plain functions: stripes, where the view opens, bars, resizing.</summary>
+/// <summary>The timeline's rules as plain functions: stripes, where the view opens, bars, resizing, moving.</summary>
 public class TimelineTests
 {
     private static readonly DateOnly Anchor = new(2026, 1, 5);
@@ -185,6 +185,57 @@ public class TimelineTests
         Assert.Equal((Today.AddDays(-1), anchor), Timeline.Resize(Task(), anchor, Edge.Start, Today.AddDays(-1)));
     }
 
+    // -- Adding and moving ----------------------------------------------------------------
+
+    [Fact]
+    public void A_dateless_task_added_today_or_later_gets_that_one_day()
+    {
+        Assert.Equal(new DaySpan(Today, Today), Timeline.ScheduleOnAdd(Today, Today));
+        Assert.Equal(new DaySpan(Today.AddDays(4), Today.AddDays(4)), Timeline.ScheduleOnAdd(Today.AddDays(4), Today));
+    }
+
+    [Fact]
+    public void A_dateless_task_added_on_a_past_day_runs_through_today()
+    {
+        Assert.Equal(new DaySpan(Today.AddDays(-5), Today), Timeline.ScheduleOnAdd(Today.AddDays(-5), Today));
+    }
+
+    [Fact]
+    public void Moving_a_row_shifts_both_ends_and_keeps_its_length()
+    {
+        var span = new DaySpan(Today, Today.AddDays(4));
+
+        Assert.Equal(new DaySpan(Today.AddDays(3), Today.AddDays(7)), Timeline.Move(span, 3));
+        Assert.Equal(new DaySpan(Today.AddDays(-2), Today.AddDays(2)), Timeline.Move(span, -2));
+    }
+
+    [Fact]
+    public void A_move_stops_at_the_window_edge_and_never_goes_backwards()
+    {
+        var window = new TimelineWindow(Today.AddDays(-10), Today.AddDays(10));
+        var span = new DaySpan(Today, Today.AddDays(4));
+
+        Assert.Equal(6, window.ClampMove(span, 9));     // the end reaches the last day
+        Assert.Equal(-10, window.ClampMove(span, -30)); // the start reaches the first day
+        Assert.Equal(2, window.ClampMove(span, 2));
+
+        // Already past an edge (a clipped bar): it can't be pushed further out,
+        // and the clamp doesn't turn a push into a pull.
+        var clipped = new DaySpan(Today.AddDays(-20), Today);
+        Assert.Equal(0, window.ClampMove(clipped, -3));
+        Assert.Equal(5, window.ClampMove(clipped, 5));
+    }
+
+    // -- Height -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(0, 9)]
+    [InlineData(7, 9)]
+    [InlineData(8, 10)]  // past the minimum, two empty rows stay below the last task
+    [InlineData(30, 32)]
+    public void The_grid_keeps_nine_rows_at_least_and_two_spare(int entries, int rows) =>
+        Assert.Equal(rows, Timeline.Rows(entries));
+
     // -- Virtualization -----------------------------------------------------------------
 
     [Fact]
@@ -205,7 +256,7 @@ public class TimelineTests
     [Fact]
     public void The_window_spans_the_configured_days_either_side_of_today()
     {
-        var window = TimelineWindow.Around(Today, new RoadmapSettingsDto(365, 730, 1, new DateOnly(2026, 1, 1), 14, 1));
+        var window = TimelineWindow.Around(Today, new RoadmapSettingsDto(365, 730, DayOfWeek.Monday, 2, 1));
 
         Assert.Equal(1096, window.Days);
         Assert.Equal(365, window.IndexOf(Today));

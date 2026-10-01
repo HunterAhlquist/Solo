@@ -139,9 +139,8 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
 
         Assert.Equal(365, settings["pastDays"]!.GetValue<int>());
         Assert.Equal(730, settings["futureDays"]!.GetValue<int>());
-        Assert.Equal(14, settings["stripeIntervalDays"]!.GetValue<int>());
-        Assert.Equal(1, settings["stripeStartDayOfYear"]!.GetValue<int>());
-        Assert.Equal($"{DateTime.UtcNow.Year}-01-01", settings["stripeAnchor"]!.GetValue<string>());
+        Assert.Equal("Monday", settings["sprintStartDay"]!.GetValue<string>());
+        Assert.Equal(2, settings["sprintLengthWeeks"]!.GetValue<int>());
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
@@ -196,6 +195,8 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             new { taskId = task.Id, anchorDay = "2026-10-01" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await reader.PutAsJsonAsync($"{url}/{roadmap}/entries/{entry}/rank",
             new { }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PutAsJsonAsync($"{url}/{roadmap}/entries/{entry}/anchor",
+            new { anchorDay = "2026-10-09" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,
             (await reader.DeleteAsync($"{url}/{roadmap}/entries/{entry}")).StatusCode);
     }
@@ -220,6 +221,8 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             new { taskId = task.Id, anchorDay = "2026-10-01" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
             (await _admin.PutAsJsonAsync($"{wrong}/entries/{entry}/rank", new { }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.PutAsJsonAsync($"{wrong}/entries/{entry}/anchor",
+            new { anchorDay = "2026-10-09" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync($"{wrong}/entries/{entry}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync(wrong)).StatusCode);
 
@@ -280,6 +283,33 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         Assert.Equal("PAYLOAD", entry["boardAlias"]!.GetValue<string>());
         Assert.Equal(task.Id, entry["task"]!["id"]!.GetValue<Guid>());
         Assert.Equal(task.Number, entry["task"]!["number"]!.GetValue<int>());
+    }
+
+    /// <summary>A pill dragged along the timeline moves its own day; the task still has no dates.</summary>
+    [SkippableFact]
+    public async Task Moving_a_pill_moves_its_anchor_day_and_leaves_the_task_alone()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await ProjectAsync("Pill", "PILL");
+        var task = await TaskAsync(board, "Undated");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var entry = await AddAsync(project, roadmap, task, "2026-10-07");
+        var url = $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries/{entry}/anchor";
+
+        var moved = await _admin.PutAsJsonAsync(url, new { anchorDay = "2026-10-12" }, TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.NoContent, moved.StatusCode);
+        var drawn = Assert.Single(await EntriesAsync(project, roadmap));
+        Assert.Equal("2026-10-12", drawn["anchorDay"]!.GetValue<string>());
+        var untouched = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
+        Assert.Null(untouched.DeadlineAt);
+        Assert.Null(untouched.StartAt);
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _admin.PutAsJsonAsync(url, new { }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.PutAsJsonAsync(
+            $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries/{Guid.NewGuid()}/anchor",
+            new { anchorDay = "2026-10-12" }, TestClients.Json)).StatusCode);
     }
 
     [SkippableFact]
@@ -437,15 +467,15 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
     }
 
     [SkippableTheory]
-    [InlineData(0, 730, 1, 14)]
-    [InlineData(3651, 730, 1, 14)]
-    [InlineData(365, 0, 1, 14)]
-    [InlineData(365, 3651, 1, 14)]
-    [InlineData(365, 730, 0, 14)]
-    [InlineData(365, 730, 367, 14)]
-    [InlineData(365, 730, 1, 0)]
-    [InlineData(365, 730, 1, 366)]
-    public async Task Out_of_range_settings_are_400(int pastDays, int futureDays, int dayOfYear, int interval)
+    [InlineData(0, 730, "Monday", 2)]
+    [InlineData(3651, 730, "Monday", 2)]
+    [InlineData(365, 0, "Monday", 2)]
+    [InlineData(365, 3651, "Monday", 2)]
+    [InlineData(365, 730, "Monday", 0)]
+    [InlineData(365, 730, "Monday", 53)]
+    [InlineData(365, 730, 7, 2)]          // no eighth day of the week
+    [InlineData(365, 730, "Someday", 2)]
+    public async Task Out_of_range_settings_are_400(int pastDays, int futureDays, object startDay, int weeks)
     {
         postgres.SkipUnlessDockerAvailable();
         var current = await _admin.GetJson<JsonObject>($"{Base}/settings");
@@ -454,52 +484,33 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         {
             pastDays,
             futureDays,
-            stripeStartDayOfYear = dayOfYear,
-            stripeIntervalDays = interval,
+            sprintStartDay = startDay,
+            sprintLengthWeeks = weeks,
             version = current["version"]!.GetValue<uint>(),
         }, TestClients.Json);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    /// <summary>
-    /// Day 366 names a date only in a leap year, and resolves in the year it's
-    /// saved — so what's right depends on the server's calendar. RoadmapSettingsStoreTests
-    /// pins both years; this checks the endpoint follows whichever this is.
-    /// </summary>
     [SkippableFact]
-    public async Task Day_366_is_accepted_only_in_a_leap_year()
+    public async Task Saved_sprint_settings_are_read_back_and_reach_the_timeline()
     {
         postgres.SkipUnlessDockerAvailable();
         var current = await _admin.GetJson<JsonObject>($"{Base}/settings");
 
-        var response = await _admin.PutAsJsonAsync($"{Base}/settings",
-            Settings(current, dayOfYear: 366), TestClients.Json);
+        await _admin.PutJson<JsonObject>($"{Base}/settings",
+            Settings(current, pastDays: 30, futureDays: 90, startDay: "Wednesday", weeks: 3));
 
-        Assert.Equal(DateTime.IsLeapYear(DateTime.UtcNow.Year) ? HttpStatusCode.OK : HttpStatusCode.BadRequest,
-            response.StatusCode);
-    }
-
-    [SkippableFact]
-    public async Task The_day_of_year_is_stored_as_a_date_in_the_year_it_was_saved()
-    {
-        postgres.SkipUnlessDockerAvailable();
-        var current = await _admin.GetJson<JsonObject>($"{Base}/settings");
-
-        var saved = await _admin.PutJson<JsonObject>($"{Base}/settings",
-            Settings(current, pastDays: 30, futureDays: 90, dayOfYear: 5, interval: 7));
-
-        Assert.Equal($"{DateTime.UtcNow.Year}-01-05", saved["stripeAnchor"]!.GetValue<string>());
         var reread = await _admin.GetJson<JsonObject>($"{Base}/settings");
-        Assert.Equal(5, reread["stripeStartDayOfYear"]!.GetValue<int>());
-        Assert.Equal(7, reread["stripeIntervalDays"]!.GetValue<int>());
+        Assert.Equal("Wednesday", reread["sprintStartDay"]!.GetValue<string>());
+        Assert.Equal(3, reread["sprintLengthWeeks"]!.GetValue<int>());
         Assert.Equal((30, 90), (reread["pastDays"]!.GetValue<int>(), reread["futureDays"]!.GetValue<int>()));
 
-        // And the timeline carries the same values.
         var (project, _) = await ProjectAsync("Carried", "CARRIED");
         var roadmap = await RoadmapAsync(project, "Plan");
         var timeline = await _admin.GetJson<JsonObject>($"{Base}/projects/{project.Id}/roadmaps/{roadmap}");
-        Assert.Equal($"{DateTime.UtcNow.Year}-01-05", timeline["settings"]!["stripeAnchor"]!.GetValue<string>());
+        Assert.Equal("Wednesday", timeline["settings"]!["sprintStartDay"]!.GetValue<string>());
+        Assert.Equal(3, timeline["settings"]!["sprintLengthWeeks"]!.GetValue<int>());
     }
 
     [SkippableFact]
@@ -517,12 +528,12 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
     // -----------------------------------------------------------------------
 
     private static object Settings(JsonObject current, int? pastDays = null, int? futureDays = null,
-        int? dayOfYear = null, int? interval = null) => new
+        string? startDay = null, int? weeks = null) => new
     {
         pastDays = pastDays ?? current["pastDays"]!.GetValue<int>(),
         futureDays = futureDays ?? current["futureDays"]!.GetValue<int>(),
-        stripeStartDayOfYear = dayOfYear ?? current["stripeStartDayOfYear"]!.GetValue<int>(),
-        stripeIntervalDays = interval ?? current["stripeIntervalDays"]!.GetValue<int>(),
+        sprintStartDay = startDay ?? current["sprintStartDay"]!.GetValue<string>(),
+        sprintLengthWeeks = weeks ?? current["sprintLengthWeeks"]!.GetValue<int>(),
         version = current["version"]!.GetValue<uint>(),
     };
 

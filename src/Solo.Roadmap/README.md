@@ -20,12 +20,19 @@ until someone purges `ext_roadmap`.
 - **A Roadmaps section in each project's sidebar**, under its own header,
   listing the project's roadmaps with **Add roadmap** for writers.
 - **The timeline page** at `projects/{alias}/roadmaps/{id}`:
-  - The day grid is virtualized and bounded, with striped bands on a
-    configurable cadence and today's column highlighted.
+  - The day grid is virtualized and bounded, with sprint stripes and today's
+    column highlighted. It always shows at least nine rows, and two empty ones
+    below the last task.
   - It opens scrolled to the oldest start among the tasks running through today.
-  - Writers can add a task from the picker, drag rows to rerank, and drag
-    either edge of a bar (or use Shift/Alt+Shift + arrows) to move its start or
-    deadline.
+  - Writers add a task by clicking a day in the empty rows below the last one,
+    or with **Add task**, and pick it from a search grouped by board.
+  - Dragging a bar up or down reranks it; dragging it sideways moves its start
+    and deadline together. The way the pointer first goes decides which, so a
+    reorder never shifts dates by accident.
+  - Dragging either edge of a bar (or Shift/Alt+Shift + arrows) moves its start
+    or deadline.
+  - Hovering a bar whose label is cut off scrolls the label past like a ticker,
+    except under reduced motion.
   - Clicking a bar opens the same task drawer the board uses.
 - **A Roadmaps line in every task drawer** with a chip per roadmap the task is
   on. It shows nothing when the task is on none.
@@ -35,13 +42,16 @@ until someone purges `ext_roadmap`.
 |---|---|---|
 | Days before today | 365 | 1–3650 |
 | Days after today | 730 | 1–3650 |
-| Stripes begin on day of year | 1 | 1–366 (366 only in a leap year) |
-| Stripe interval (days) | 14 | 1–365 |
+| Sprints start on | Monday | any day of the week |
+| Sprint length (weeks) | 2 | 1–52 |
 
-The day of year is resolved to a date in the year it is saved, and that
-**date** is stored. Storing only the number would shift the pattern every New
-Year; the stored date lets the bands run continuously, like a sprint cadence.
-Changes apply the next time a roadmap page loads.
+The last two are **Sprint Indication**: the grid's stripes alternate one sprint
+light, one dark. Where they fall is worked out from the two settings alone,
+counted from a fixed reference (the first chosen weekday of year 1), so the
+pattern is the same on every instance and runs unchanged back into the past.
+For sprints longer than a week, that rule decides which weeks start one; it
+doesn't follow when the settings were saved. Changes apply the next time a
+roadmap page loads.
 
 ## Layout
 
@@ -74,10 +84,11 @@ route; any other project answers 404.
 | GET | `projects/{projectId}/roadmaps/{id}/candidates` | read | Tasks in the project not yet on this roadmap, for the picker. |
 | POST | `projects/{projectId}/roadmaps/{id}/entries` | write | `{ taskId, anchorDay }`. 400 for a task outside the project, 409 if it's already on. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`. Roadmap order only. |
+| PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/anchor` | write | `{ anchorDay }`: moves a no-deadline pill. A task with dates moves through core's schedule endpoint instead. |
 | DELETE | `projects/{projectId}/roadmaps/{id}/entries/{entryId}` | write | Takes the task off this roadmap; the task is untouched. |
 | GET | `tasks/{taskId}/roadmaps` | read | The roadmaps a task is on. |
-| GET | `settings` | signed in | The bounds, the interval, the day of year and the resolved anchor date. |
-| PUT | `settings` | super admin | `{ pastDays, futureDays, stripeStartDayOfYear, stripeIntervalDays, version }`. 400 out of range, 409 stale. |
+| GET | `settings` | signed in | The bounds, the sprint start day and the sprint length. |
+| PUT | `settings` | super admin | `{ pastDays, futureDays, sprintStartDay, sprintLengthWeeks, version }`, the day as a name (`"Monday"`). 400 out of range, 409 stale. |
 
 ## Decisions worth knowing before changing anything
 
@@ -95,7 +106,8 @@ never writes to it.
 
 **Adding a task never moves someone's deadline behind their back.**
 - A task with no deadline is scheduled for the day it was added on, and becomes
-  a one-day bar.
+  a one-day bar. Added on a day already past, it runs from that day through
+  today instead, so it doesn't arrive already missed.
 - A task that already has dates keeps them, and the page says so.
 
 **An entry outlives a board move but not a deletion.** Moving a task between
@@ -148,3 +160,11 @@ dotnet ef migrations add <Name> --project src/Solo.Roadmap --startup-project src
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.0
+
+1.1's `SprintIndication` migration replaces 1.0's stripe settings, a start date
+and an interval in days, with a weekday and a length in weeks:
+- The weekday is the old start date's, except a start on 1 January, the old
+  default, which becomes Monday.
+- The interval becomes whole weeks, rounded, from 1 to 52.

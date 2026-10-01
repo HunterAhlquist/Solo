@@ -4,10 +4,10 @@
 @*
     A roadmap: its tasks as bars on a day grid that scrolls sideways between the
     instance's bounds, one task per row in the roadmap's own order. Writers add
-    tasks from the header's day cells or empty grid, drag rows to reorder them
-    and drag a bar's edges to reschedule it; everyone can open a task in the
-    board's drawer by clicking its bar. Missed deadlines flash, and are listed
-    under the grid.
+    tasks from the empty rows below the last one, drag a bar up or down to
+    reorder it or sideways to move its dates, and drag its edges to reschedule
+    it; everyone can open a task in the board's drawer by clicking its bar.
+    Missed deadlines flash, and are listed under the grid.
 *@
 
 <PageTitle>@(_timeline?.Title ?? "Roadmap") · Solo</PageTitle>
@@ -64,14 +64,9 @@ else
                             var day = _window.DayAt(index);
                             <div class="@DayClass(day)" @key="index"
                                  style="left:@(index * DayWidth)px;width:@(DayWidth)px"
-                                 title="@day.ToString("dddd d MMMM yyyy")"
-                                 @onclick="@(() => OnHeaderClick(day))">
+                                 title="@day.ToString("dddd d MMMM yyyy")">
                                 <span>@day.Day</span>
                                 <span class="roadmap-day__weekday">@Weekday(day)</span>
-                                @if (CanWrite)
-                                {
-                                    <span class="roadmap-day__add" aria-hidden="true">+</span>
-                                }
                             </div>
                         }
                     </div>
@@ -89,7 +84,7 @@ else
                     {
                         <div class="roadmap-empty">
                             @(CanWrite
-                                ? "No tasks on this roadmap yet. Click a day, or Add task, to put one on it."
+                                ? "No tasks on this roadmap yet. Click a day in the grid, or Add task, to put one on it."
                                 : "No tasks on this roadmap yet.")
                         </div>
                     }
@@ -121,9 +116,20 @@ else
                                     {
                                         <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Class="roadmap-bar__clip" />
                                     }
+                                    @* The text twice: the copy shows only while a name too long
+                                       for its bar scrolls past (roadmap.js), and is what lets
+                                       that loop run on without a jump. *@
                                     <span class="roadmap-bar__label">
-                                        <span class="roadmap-bar__serial">@Serial(entry)</span>
-                                        <span class="roadmap-bar__name">@entry.Task.Name</span>
+                                        <span class="roadmap-bar__track">
+                                            <span class="roadmap-bar__text">
+                                                <span class="roadmap-bar__serial">@Serial(entry)</span>
+                                                <span class="roadmap-bar__name">@entry.Task.Name</span>
+                                            </span>
+                                            <span class="roadmap-bar__text roadmap-bar__text--copy" aria-hidden="true">
+                                                <span class="roadmap-bar__serial">@Serial(entry)</span>
+                                                <span class="roadmap-bar__name">@entry.Task.Name</span>
+                                            </span>
+                                        </span>
                                     </span>
                                     <span class="roadmap-bar__spacer"></span>
                                     @if (place.Length * DayWidth >= AvatarBarWidth && Assignees(entry.Task) is { Count: > 0 } assignees)

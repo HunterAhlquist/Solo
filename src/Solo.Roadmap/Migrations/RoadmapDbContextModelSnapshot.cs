@@ -105,10 +105,10 @@ namespace Solo.Roadmap.Migrations
                     b.Property<int>("PastDays")
                         .HasColumnType("integer");
 
-                    b.Property<DateOnly>("StripeAnchor")
-                        .HasColumnType("date");
+                    b.Property<int>("SprintLengthWeeks")
+                        .HasColumnType("integer");
 
-                    b.Property<int>("StripeIntervalDays")
+                    b.Property<int>("SprintStartDay")
                         .HasColumnType("integer");
 
                     b.Property<uint>("Version")

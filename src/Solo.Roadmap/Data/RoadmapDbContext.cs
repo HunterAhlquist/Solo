@@ -105,7 +105,7 @@ public sealed class RoadmapEntry
     public uint Version { get; set; }
 }
 
-/// <summary>The timeline's instance-wide settings: one row, created on first read.</summary>
+/// <summary>The timeline's instance-wide settings: one row, created on first read with the defaults.</summary>
 public sealed class RoadmapSettings
 {
     public const int SingletonId = 1;
@@ -116,16 +116,11 @@ public sealed class RoadmapSettings
 
     public int FutureDays { get; set; } = RoadmapLimits.DefaultFutureDays;
 
-    /// <summary>
-    /// The date the stripe cadence counts from. Stored as a date rather than a
-    /// day number, so the pattern doesn't shift every New Year.
-    /// </summary>
-    public DateOnly StripeAnchor { get; set; }
+    public DayOfWeek SprintStartDay { get; set; } = RoadmapLimits.DefaultSprintStartDay;
 
-    public int StripeIntervalDays { get; set; } = RoadmapLimits.DefaultStripeIntervalDays;
+    public int SprintLengthWeeks { get; set; } = RoadmapLimits.DefaultSprintWeeks;
 
     public uint Version { get; set; }
 
-    public RoadmapSettingsDto ToDto() =>
-        new(PastDays, FutureDays, StripeAnchor.DayOfYear, StripeAnchor, StripeIntervalDays, Version);
+    public RoadmapSettingsDto ToDto() => new(PastDays, FutureDays, SprintStartDay, SprintLengthWeeks, Version);
 }

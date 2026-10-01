@@ -10,7 +10,7 @@ namespace Solo.Roadmap.Controllers;
 
 /// <summary>
 /// The timeline's instance-wide settings: how far it scrolls each way, and the
-/// stripe cadence. Everyone signed in reads them; only a super admin changes them.
+/// sprint indication. Everyone signed in reads them; only a super admin changes them.
 /// </summary>
 /// <remarks>
 /// No project in the route, so the project policies can't apply: the read is a
@@ -31,22 +31,11 @@ public sealed class RoadmapSettingsController(RoadmapDbContext db, RoadmapSettin
     public async Task<ActionResult<RoadmapSettingsDto>> Update(
         UpdateRoadmapSettingsRequest request, CancellationToken ct)
     {
-        // The day of year becomes a date in the year it's saved, and it's the date
-        // that's stored — so the stripes keep their cadence across New Year.
-        var year = store.CurrentYear;
-        if (RoadmapSettingsStore.ResolveAnchor(request.StripeStartDayOfYear, year) is not { } anchor)
-        {
-            return Problem(
-                statusCode: StatusCodes.Status400BadRequest,
-                title: "No such day this year",
-                detail: $"{year} has {(DateTime.IsLeapYear(year) ? 366 : 365)} days.");
-        }
-
         var settings = await store.GetAsync(ct);
         settings.PastDays = request.PastDays;
         settings.FutureDays = request.FutureDays;
-        settings.StripeAnchor = anchor;
-        settings.StripeIntervalDays = request.StripeIntervalDays;
+        settings.SprintStartDay = request.SprintStartDay;
+        settings.SprintLengthWeeks = request.SprintLengthWeeks;
         db.Entry(settings).Property(s => s.Version).OriginalValue = request.Version;
         try
         {

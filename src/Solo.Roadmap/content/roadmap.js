@@ -1,7 +1,8 @@
 // The Roadmaps timeline's browser half: scroll reporting for virtualization,
-// and the pointer gestures a Blazor event can't express — dragging rows to
-// reorder them, dragging a bar's edges to resize it, and the hover marker over
-// empty grid. Self-contained on purpose: core's js/drag.js and DragBridge
+// and the pointer gestures a Blazor event can't express — dragging a bar up or
+// down to reorder it or sideways to move its dates, dragging its edges to
+// resize it, the hover marker over the empty rows, and the ticker that scrolls
+// a label too long for its bar. Self-contained on purpose: core's js/drag.js and DragBridge
 // belong to Solo.Client, and an extension can't count on either. Loaded as a
 // module from the package's content/ folder (same-origin, so script-src 'self'
 // covers it on the web and through the desktop shell's proxy alike).
@@ -12,8 +13,13 @@
 const MOVE_SLOP_PX = 5;      // a mouse or pen press becomes a drag past this
 const HOLD_MS = 320;         // a finger has to hold still this long first...
 const HOLD_SLOP_PX = 10;     // ...moving less than this, or it was a scroll
-const EDGE_PX = 40;          // auto-scroll zone at the top and bottom
+const EDGE_PX = 40;          // auto-scroll zone at each edge of the timeline
 const EDGE_SPEED_PX = 12;
+const TICKER_GAP_PX = 32;    // between the end of a name and its copy
+const TICKER_SPEED_PX = 45;  // per second
+
+/** The live wiring per grid, so attaching one again replaces it rather than doubling it. */
+const attached = new WeakMap();
 
 /** Adds the package's stylesheet once per page load. */
 export function ensureStyles(href) {
@@ -35,15 +41,17 @@ export function scrollIntoView(target) {
 }
 
 /**
- * Wires a timeline. `options`: dayWidth, rowHeight, days, canWrite, firstDay
- * (ISO date of column 0). Returns a handle .NET keeps: scrollToDay, refresh,
- * configure, dispose.
+ * Wires a timeline. `options`: dayWidth, rowHeight, days, entries (how many
+ * rows hold a task), canWrite, firstDay (ISO date of column 0). Returns a
+ * handle .NET keeps: scrollToDay, refresh, configure, dispose.
  */
 export function attach(scroller, dotnet, options) {
+    attached.get(scroller)?.dispose();
     const state = { ...options };
     let frame = 0;
     let press = null;
     let autoScroll = 0;
+    let label = null;   // the floating date beside a bar being moved or resized
     let disposed = false;
 
     // The page can go away between a gesture and its callback — navigating off
@@ -115,7 +123,17 @@ export function attach(scroller, dotnet, options) {
             .toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
     };
 
-    // -- Hover marker: where a click on empty grid adds a task -------------------
+    const formatShort = index => {
+        const [y, m, d] = state.firstDay.split('-').map(Number);
+        return new Date(y, m - 1, d + index).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    };
+
+    // -- Hover marker: where a click adds a task ---------------------------------
+
+    // Only the empty rows below the last task: a new task takes a row of its own
+    // at the end, so a plus beside an existing bar would promise a place it
+    // can't have.
+    const isSpareRow = clientY => rowAtClientY(clientY) >= state.entries;
 
     const marker = () => scroller.querySelector('[data-roadmap-marker]');
 
@@ -124,15 +142,59 @@ export function attach(scroller, dotnet, options) {
     const onHover = e => {
         const target = marker();
         if (!target || !state.canWrite || press || e.pointerType !== 'mouse' ||
-            e.target.closest('[data-roadmap-bar], [data-roadmap-hint]') || !e.target.closest('[data-roadmap-body]')) {
+            !e.target.closest('[data-roadmap-body]') || !isSpareRow(e.clientY)) {
             hideMarker();
             return;
         }
 
-        const row = rowAtClientY(e.clientY);
         target.style.left = `${dayAtClientX(e.clientX) * state.dayWidth}px`;
-        target.style.top = `${Math.max(row, 0) * state.rowHeight}px`;
+        target.style.top = `${rowAtClientY(e.clientY) * state.rowHeight}px`;
         target.classList.add('is-visible');
+    };
+
+    // -- Ticker: a hovered label too long for its bar scrolls past -----------------
+
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    let ticking = null;
+
+    const stopTicker = () => {
+        if (ticking) {
+            delete ticking.dataset.ticker;
+            ticking = null;
+        }
+    };
+
+    const onOver = e => {
+        const label = press || e.pointerType === 'touch'
+            ? null
+            : e.target.closest('[data-roadmap-bar]')?.querySelector('.roadmap-bar__label');
+        if (label === ticking) {
+            return;
+        }
+
+        stopTicker();
+        if (!label || reducedMotion?.matches) {
+            return;
+        }
+
+        // Ticking lays the text out at its full width, which is the measure
+        // wanted: if it fits the room the bar gives the label, nothing was cut.
+        label.style.setProperty('--roadmap-ticker-gap', `${TICKER_GAP_PX}px`);
+        label.dataset.ticker = '';
+        const distance = label.querySelector('.roadmap-bar__text').getBoundingClientRect().width;
+        if (distance - TICKER_GAP_PX <= label.clientWidth + 0.5) {
+            delete label.dataset.ticker;
+            return;
+        }
+
+        label.style.setProperty('--roadmap-ticker-distance', `${distance}px`);
+        label.style.setProperty('--roadmap-ticker-duration', `${distance / TICKER_SPEED_PX}s`);
+        ticking = label;
+    };
+
+    const onLeave = () => {
+        hideMarker();
+        stopTicker();
     };
 
     // -- Presses -----------------------------------------------------------------
@@ -174,7 +236,7 @@ export function attach(scroller, dotnet, options) {
             return;
         }
 
-        if (target.closest('[data-roadmap-body]') && state.canWrite) {
+        if (target.closest('[data-roadmap-body]') && state.canWrite && isSpareRow(e.clientY)) {
             press = {
                 mode: 'empty',
                 pointerId: e.pointerId,
@@ -200,14 +262,17 @@ export function attach(scroller, dotnet, options) {
                     if (!press.lifted && travelled > HOLD_SLOP_PX) {
                         abandon(); // a scroll all along
                     } else if (press.lifted && travelled > HOLD_SLOP_PX) {
-                        startDrag();
+                        startGesture();
                     }
                 } else if (travelled > MOVE_SLOP_PX && state.canWrite) {
-                    startDrag();
+                    startGesture();
                 }
                 break;
             case 'drag':
                 moveDrag();
+                break;
+            case 'move':
+                moveShift();
                 break;
             case 'resize':
                 moveResize();
@@ -244,6 +309,9 @@ export function attach(scroller, dotnet, options) {
             case 'drag':
                 await endDrag(ended);
                 break;
+            case 'move':
+                await endMove(ended);
+                break;
             case 'resize':
                 await endResize(ended);
                 break;
@@ -267,6 +335,8 @@ export function attach(scroller, dotnet, options) {
         clearTimeout(press.hold);
         if (press.mode === 'drag') {
             clearDrag(press);
+        } else if (press.mode === 'move') {
+            clearMove(press);
         } else if (press.mode === 'resize') {
             clearResize(press);
         } else if (press.lifted) {
@@ -290,7 +360,7 @@ export function attach(scroller, dotnet, options) {
      * scroll on the page off the fast path.
      */
     const refuseScroll = e => {
-        if (press && (press.mode === 'drag' || press.mode === 'resize' || press.lifted)) {
+        if (press && (press.mode === 'drag' || press.mode === 'move' || press.mode === 'resize' || press.lifted)) {
             e.preventDefault();
         }
     };
@@ -311,7 +381,27 @@ export function attach(scroller, dotnet, options) {
         autoScroll = 0;
     };
 
-    // -- Reordering rows ---------------------------------------------------------
+    // -- Dragging a bar: up and down reorders, sideways moves its dates -------------
+
+    // The way the pointer first goes decides which, for the whole gesture: a
+    // reorder that drifted half a column sideways would otherwise move someone's
+    // deadline as a side effect.
+    const startGesture = () => {
+        stopTicker();
+        if (Math.abs(press.x - press.x0) > Math.abs(press.y - press.y0)) {
+            startMove();
+        } else {
+            startDrag();
+        }
+    };
+
+    const capture = () => {
+        try {
+            press.bar.setPointerCapture(press.pointerId);
+        } catch {
+            // Released already, or the element was replaced; window listeners cover it.
+        }
+    };
 
     const indicator = () => scroller.querySelector('[data-roadmap-drop]');
 
@@ -321,11 +411,7 @@ export function attach(scroller, dotnet, options) {
         press.from = press.list.indexOf(press.row);
         press.gap = press.from;
         press.scrollTop0 = scroller.scrollTop;
-        try {
-            press.bar.setPointerCapture(press.pointerId);
-        } catch {
-            // Released already, or the element was replaced; window listeners cover it.
-        }
+        capture();
 
         press.row.classList.add('is-dragging');
         hideMarker();
@@ -365,6 +451,73 @@ export function attach(scroller, dotnet, options) {
         autoScroll = requestAnimationFrame(scrollNearEdges);
     };
 
+    const startMove = () => {
+        press.mode = 'move';
+        press.start = Number(press.row.dataset.start);
+        press.end = Number(press.row.dataset.end);
+        press.scrollLeft0 = scroller.scrollLeft;
+        press.shift = 0;
+        capture();
+
+        press.row.classList.add('is-dragging');
+        label = document.createElement('div');
+        label.className = 'roadmap-resize-label';
+        document.body.appendChild(label);
+        hideMarker();
+        moveShift();
+        autoScroll = requestAnimationFrame(scrollNearSides);
+    };
+
+    /** Snaps to whole days, and stops at the window's edges. */
+    const moveShift = () => {
+        const dx = press.x - press.x0 + (scroller.scrollLeft - press.scrollLeft0);
+        press.shift = Math.min(Math.max(Math.round(dx / state.dayWidth), -press.start), state.days - 1 - press.end);
+        press.row.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
+
+        const from = press.start + press.shift;
+        const to = press.end + press.shift;
+        const barRect = press.bar.getBoundingClientRect();
+        label.textContent = from === to ? formatShort(from) : `${formatShort(from)} – ${formatShort(to)}`;
+        label.style.left = `${barRect.left}px`;
+        label.style.top = `${barRect.top}px`;
+    };
+
+    const scrollNearSides = () => {
+        if (!press || press.mode !== 'move') {
+            return;
+        }
+
+        const rect = scroller.getBoundingClientRect();
+        if (press.x < rect.left + EDGE_PX) {
+            scroller.scrollLeft -= EDGE_SPEED_PX;
+            moveShift();
+        } else if (press.x > rect.right - EDGE_PX) {
+            scroller.scrollLeft += EDGE_SPEED_PX;
+            moveShift();
+        }
+
+        autoScroll = requestAnimationFrame(scrollNearSides);
+    };
+
+    const clearMove = ended => {
+        ended.row.style.removeProperty('transform');
+        ended.row.classList.remove('is-dragging');
+        label?.remove();
+        label = null;
+    };
+
+    const endMove = async ended => {
+        try {
+            if (ended.shift !== 0) {
+                // As with a resize, .NET redraws the bar in its new place before
+                // this returns, so dropping the preview doesn't flash the old one.
+                await call('OnMove', ended.entryId, ended.shift);
+            }
+        } finally {
+            clearMove(ended);
+        }
+    };
+
     const clearDrag = ended => {
         ended.row.style.removeProperty('transform');
         ended.row.classList.remove('is-dragging');
@@ -385,8 +538,6 @@ export function attach(scroller, dotnet, options) {
     };
 
     // -- Resizing bars -------------------------------------------------------------
-
-    let label = null;
 
     const startResize = (e, handle, bar, row) => {
         e.preventDefault();
@@ -410,6 +561,7 @@ export function attach(scroller, dotnet, options) {
         }
 
         bar.classList.add('is-resizing');
+        stopTicker();
         label = document.createElement('div');
         label.className = 'roadmap-resize-label';
         document.body.appendChild(label);
@@ -493,14 +645,15 @@ export function attach(scroller, dotnet, options) {
 
     scroller.addEventListener('pointerdown', onDown);
     scroller.addEventListener('pointermove', onHover);
-    scroller.addEventListener('pointerleave', hideMarker);
+    scroller.addEventListener('pointerover', onOver);
+    scroller.addEventListener('pointerleave', onLeave);
     scroller.addEventListener('contextmenu', onContextMenu);
     scroller.addEventListener('click', onClick);
     scroller.addEventListener('dragstart', onDragStart);
 
     report();
 
-    return {
+    const handle = {
         scrollToDay: index => {
             scroller.scrollLeft = Math.max(index, 0) * state.dayWidth;
             report();
@@ -513,12 +666,19 @@ export function attach(scroller, dotnet, options) {
             cancelAnimationFrame(frame);
             resizeObserver.disconnect();
             scroller.removeEventListener('scroll', onScroll);
+            stopTicker();
             scroller.removeEventListener('pointerdown', onDown);
             scroller.removeEventListener('pointermove', onHover);
-            scroller.removeEventListener('pointerleave', hideMarker);
+            scroller.removeEventListener('pointerover', onOver);
+            scroller.removeEventListener('pointerleave', onLeave);
             scroller.removeEventListener('contextmenu', onContextMenu);
             scroller.removeEventListener('click', onClick);
             scroller.removeEventListener('dragstart', onDragStart);
+            if (attached.get(scroller) === handle) {
+                attached.delete(scroller);
+            }
         },
     };
+    attached.set(scroller, handle);
+    return handle;
 }

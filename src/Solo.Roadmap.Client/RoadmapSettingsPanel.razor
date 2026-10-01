@@ -28,16 +28,20 @@ else
                          Margin="Margin.Dense" Min="RoadmapLimits.MinBoundDays" Max="RoadmapLimits.MaxBoundDays" />
     </div>
 
-    <MudText Typo="Typo.subtitle2" Class="mb-1">Stripes</MudText>
+    <MudText Typo="Typo.subtitle2" Class="mb-1">Sprint Indication</MudText>
     <div class="roadmap-settings__group">
-        <MudNumericField T="int" @bind-Value="_dayOfYear" Label="Stripes begin on day of year"
-                         Variant="Variant.Outlined" Margin="Margin.Dense" Min="1" Max="366" />
-        <MudNumericField T="int" @bind-Value="_interval" Label="Stripe interval (days)" Variant="Variant.Outlined"
-                         Margin="Margin.Dense" Min="RoadmapLimits.MinStripeIntervalDays"
-                         Max="RoadmapLimits.MaxStripeIntervalDays" />
+        <MudSelect T="DayOfWeek" @bind-Value="_startDay" Label="Sprints start on" Variant="Variant.Outlined"
+                   Margin="Margin.Dense">
+            @foreach (var day in Week)
+            {
+                <MudSelectItem Value="@day">@day</MudSelectItem>
+            }
+        </MudSelect>
+        <MudNumericField T="int" @bind-Value="_weeks" Label="Sprint length (weeks)" Variant="Variant.Outlined"
+                         Margin="Margin.Dense" Min="RoadmapLimits.MinSprintWeeks" Max="RoadmapLimits.MaxSprintWeeks" />
     </div>
     <MudText Typo="Typo.caption" Color="@(ReadBack is null ? Color.Error : Color.Secondary)" Class="d-block mb-3">
-        @(ReadBack ?? $"{Year} has no day {_dayOfYear}.")
+        @(ReadBack ?? $"A sprint lasts {RoadmapLimits.MinSprintWeeks}–{RoadmapLimits.MaxSprintWeeks} weeks.")
     </MudText>
 
     <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
@@ -50,8 +54,8 @@ else
     private RoadmapSettingsDto? _settings;
     private int _pastDays;
     private int _futureDays;
-    private int _dayOfYear;
-    private int _interval;
+    private DayOfWeek _startDay;
+    private int _weeks;
     private bool _saving;
     private string? _error;
 
@@ -60,19 +64,35 @@ else
 
     private RoadmapApi Api => new(Client);
 
-    /// <summary>The day of year is saved as a date in the current year — the one the server will use.</summary>
-    private static int Year => DateTime.UtcNow.Year;
+    /// <summary>Monday first, the way a sprint calendar is usually read.</summary>
+    private static readonly DayOfWeek[] Week =
+    [
+        DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+        DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
+    ];
 
-    /// <summary>What the stripe fields mean, in words: "Stripes start 5 Jan 2026 and alternate every 14 days."</summary>
-    private string? ReadBack =>
-        _dayOfYear < 1 || _dayOfYear > (DateTime.IsLeapYear(Year) ? 366 : 365) || _interval < 1
-            ? null
-            : $"Stripes start {new DateOnly(Year, 1, 1).AddDays(_dayOfYear - 1):d MMM yyyy} and alternate " +
-              $"every {_interval} day{(_interval == 1 ? "" : "s")}.";
+    /// <summary>
+    /// What the fields mean, in words, with the sprint running now as the check:
+    /// "Sprints start on Mondays and last 2 weeks. This one runs 28 Sep – 11 Oct."
+    /// </summary>
+    private string? ReadBack
+    {
+        get
+        {
+            if (_weeks < RoadmapLimits.MinSprintWeeks || _weeks > RoadmapLimits.MaxSprintWeeks)
+            {
+                return null;
+            }
+
+            var start = RoadmapSprints.SprintStart(DateOnly.FromDateTime(DateTime.Now), _startDay, _weeks);
+            return $"Sprints start on {_startDay}s and last {_weeks} week{(_weeks == 1 ? "" : "s")}. " +
+                   $"This one runs {Dates.Range(start, start.AddDays(_weeks * 7 - 1))}.";
+        }
+    }
 
     private bool Changed => _settings is not null &&
-        (_pastDays, _futureDays, _dayOfYear, _interval) !=
-        (_settings.PastDays, _settings.FutureDays, _settings.StripeStartDayOfYear, _settings.StripeIntervalDays);
+        (_pastDays, _futureDays, _startDay, _weeks) !=
+        (_settings.PastDays, _settings.FutureDays, _settings.SprintStartDay, _settings.SprintLengthWeeks);
 
     protected override async Task OnInitializedAsync()
     {
@@ -96,8 +116,8 @@ else
     private void Apply(RoadmapSettingsDto settings)
     {
         _settings = settings;
-        (_pastDays, _futureDays, _dayOfYear, _interval) =
-            (settings.PastDays, settings.FutureDays, settings.StripeStartDayOfYear, settings.StripeIntervalDays);
+        (_pastDays, _futureDays, _startDay, _weeks) =
+            (settings.PastDays, settings.FutureDays, settings.SprintStartDay, settings.SprintLengthWeeks);
     }
 
     private async Task SaveAsync()
@@ -114,8 +134,8 @@ else
             {
                 PastDays = _pastDays,
                 FutureDays = _futureDays,
-                StripeStartDayOfYear = _dayOfYear,
-                StripeIntervalDays = _interval,
+                SprintStartDay = _startDay,
+                SprintLengthWeeks = _weeks,
                 Version = _settings.Version,
             }));
             Snackbar.Add("Saved. Roadmaps pick this up the next time they load.", Severity.Success);

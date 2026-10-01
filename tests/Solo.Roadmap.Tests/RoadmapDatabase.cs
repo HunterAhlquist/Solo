@@ -68,8 +68,3 @@ public sealed class PostgresFixture : IAsyncLifetime
 [CollectionDefinition("postgres")]
 public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>;
 
-/// <summary>A clock stopped at one instant, so "the year the row appears" is a fact of the test.</summary>
-public sealed class FixedClock(DateTimeOffset now) : TimeProvider
-{
-    public override DateTimeOffset GetUtcNow() => now;
-}

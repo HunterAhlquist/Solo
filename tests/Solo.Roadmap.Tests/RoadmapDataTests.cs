@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using Solo.Extensibility;
 using Solo.Roadmap.Data;
@@ -129,21 +131,39 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
         await _db.Database.MigrateAsync();
-        var store = new RoadmapSettingsStore(_db, new FixedClock(new DateTimeOffset(2027, 6, 15, 12, 0, 0, TimeSpan.Zero)));
 
-        var first = await store.GetAsync();
+        var first = await new RoadmapSettingsStore(_db).GetAsync();
 
-        Assert.Equal((365, 730, 14), (first.PastDays, first.FutureDays, first.StripeIntervalDays));
-        Assert.Equal(new DateOnly(2027, 1, 1), first.StripeAnchor);
+        Assert.Equal((365, 730, DayOfWeek.Monday, 2),
+            (first.PastDays, first.FutureDays, first.SprintStartDay, first.SprintLengthWeeks));
 
-        // Read again from a fresh context — no second row, and the stored anchor
-        // doesn't follow the clock into a later year.
+        // Read again from a fresh context — no second row.
         await using var later = PostgresFixture.Context(_connectionString);
-        var reread = await new RoadmapSettingsStore(
-            later, new FixedClock(new DateTimeOffset(2029, 2, 1, 0, 0, 0, TimeSpan.Zero))).GetAsync();
-        Assert.Equal(new DateOnly(2027, 1, 1), reread.StripeAnchor);
+        var reread = await new RoadmapSettingsStore(later).GetAsync();
         Assert.Equal(first.Version, reread.Version);
         Assert.Equal(1, await later.Settings.CountAsync());
+    }
+
+    /// <summary>1.0 stored a stripe anchor date and an interval in days; 1.1 keeps what they meant.</summary>
+    [SkippableTheory]
+    [InlineData("2026-03-04", 10, DayOfWeek.Wednesday, 1)] // a chosen day keeps its weekday
+    [InlineData("2026-01-01", 14, DayOfWeek.Monday, 2)]    // the untouched default becomes Monday
+    [InlineData("2026-06-07", 400, DayOfWeek.Sunday, 52)]  // a long interval is held to a year
+    public async Task Upgrading_from_1_0_keeps_the_chosen_weekday_and_converts_days_to_weeks(
+        string anchor, int intervalDays, DayOfWeek startDay, int weeks)
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await _db.GetService<IMigrator>().MigrateAsync("20260930210405_InitialRoadmap");
+        await _db.Database.ExecuteSqlRawAsync(
+            """INSERT INTO ext_roadmap."Settings" ("Id", "PastDays", "FutureDays", "StripeAnchor", "StripeIntervalDays") VALUES (1, 100, 200, {0}, {1})""",
+            DateOnly.Parse(anchor), intervalDays);
+
+        await _db.Database.MigrateAsync();
+
+        await using var upgraded = PostgresFixture.Context(_connectionString);
+        var settings = await upgraded.Settings.SingleAsync();
+        Assert.Equal((100, 200, startDay, weeks),
+            (settings.PastDays, settings.FutureDays, settings.SprintStartDay, settings.SprintLengthWeeks));
     }
 
     private async Task<Data.Roadmap> RoadmapAsync()
