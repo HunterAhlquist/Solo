@@ -23,6 +23,15 @@ public abstract class SoloBunitContext : BunitContext, IAsyncLifetime
 {
     protected SoloBunitContext() => JSInterop.Mode = JSRuntimeMode.Loose;
 
+    /// <summary>
+    /// <see cref="BunitContext.DisposeComponentsAsync"/>, called from the
+    /// renderer's dispatcher. bUnit clears its list of roots straight away but
+    /// detaches them in a dispatcher callback; when a component still has async
+    /// work running there, that callback queues, finds the list already empty,
+    /// and nothing is disposed. From the dispatcher it runs inline instead.
+    /// </summary>
+    protected Task DisposeComponentsOnDispatcherAsync() => Renderer.Dispatcher.InvokeAsync(DisposeComponentsAsync);
+
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
 
     async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();

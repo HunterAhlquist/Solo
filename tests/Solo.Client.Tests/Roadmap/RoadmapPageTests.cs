@@ -150,7 +150,7 @@ public class RoadmapPageTests : ComponentTestBase
     {
         RenderPage();
 
-        await DisposeComponentsAsync();
+        await DisposeComponentsOnDispatcherAsync();
 
         Assert.Empty(_live.Held);
     }
