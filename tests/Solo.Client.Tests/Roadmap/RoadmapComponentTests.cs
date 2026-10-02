@@ -304,7 +304,7 @@ public class RoadmapComponentTests : ComponentTestBase
         await _live.SendAsync(ProjectId, RoadmapTopics.List, RoadmapTopics.ListChanged);
         section.WaitForAssertion(() => Assert.Contains("After", section.Markup));
 
-        await DisposeComponentsAsync();
+        await DisposeComponentsOnDispatcherAsync();
         Assert.Empty(_live.Held);
     }
 
