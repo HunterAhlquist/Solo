@@ -232,9 +232,11 @@ jobs:
           echo "CSC_KEYCHAIN=${KEYCHAIN}" >> "$GITHUB_ENV"
 
       # Without the signing/notarization secrets, electron-builder logs a
-      # warning and ships unsigned builds (mac users must right-click → Open
-      # on first launch). Add the secrets and the same workflow signs and
-      # notarizes with no other changes.
+      # warning and ships unsigned builds. Gatekeeper then blocks the first
+      # launch on macOS, and since macOS 15 right-click → Open no longer gets
+      # past it: users have to find Open Anyway in System Settings → Privacy &
+      # Security. Add the secrets and the same workflow signs and notarizes
+      # with no other changes.
       - name: Package
         run: npx electron-builder --publish never ${{ matrix.args }}
 
