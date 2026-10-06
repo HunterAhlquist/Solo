@@ -1,4 +1,9 @@
-# Solo
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme-header-dark.png">
+  <img alt="Solo — project management for small game-dev teams" src="docs/images/readme-header-light.png">
+</picture>
+
+[![Desktop Release](https://github.com/HunterAhlquist/Solo/actions/workflows/release-desktop.yml/badge.svg)](https://github.com/HunterAhlquist/Solo/actions/workflows/release-desktop.yml) [![Server Release](https://github.com/HunterAhlquist/Solo/actions/workflows/ci.yml/badge.svg)](https://github.com/HunterAhlquist/Solo/actions/workflows/ci.yml)
 
 A simple project management tool for small teams: Kanban boards with epics/tasks/sub-tasks as swim-lanes, single-provider OIDC SSO, live editing over SignalR, full audit logging, themes, and extension support.
 
@@ -279,9 +284,9 @@ The server image, MCP extension, and desktop client version independently — se
 ### Packaging
 
 ```sh
-npm run dist   # electron-builder → dist/ (universal dmg, nsis, AppImage)
+npm run dist   # electron-builder → dist/ (arm64 dmg, nsis, AppImage)
 ```
 
-CI does this automatically: pushing a **`desktop-v*`** tag runs [release-desktop.yml](.github/workflows/release-desktop.yml), which stamps `package.json` with the version from the tag, packages a universal macOS `.dmg` plus Windows and Linux installers, and attaches them to the GitHub release for the tag. Builds are unsigned unless the Apple signing/notarization secrets are configured; a manual `workflow_dispatch` run uploads the installers as workflow artifacts without creating a release.
+CI does this automatically: pushing a **`desktop-v*`** tag runs [release-desktop.yml](.github/workflows/release-desktop.yml), which stamps `package.json` with the version from the tag, packages an Apple silicon macOS `.dmg` plus Windows and Linux installers, and attaches them to the GitHub release for the tag. Builds are unsigned unless the Apple signing/notarization secrets are configured; a manual `workflow_dispatch` run uploads the installers as workflow artifacts without creating a release.
 
 The desktop client versions independently of the container image, which has its own `server-v*` series. A tag whose commit changes nothing the installers are built from (`src/Solo.Desktop`, `src/Solo.{Client,Shared}`, `Icons/`, this workflow) is skipped rather than repackaged, measured against the previous `desktop-v*` tag it descends from — so an API- or docs-only release costs nothing here.

@@ -34,6 +34,7 @@
     "appId": "com.solo.desktop",
     "productName": "Solo",
     "beforePack": "scripts/before-pack.mjs",
+    "afterAllArtifactBuild": "scripts/after-all-artifact-build.mjs",
     "directories": {
       "output": "dist"
     },
@@ -43,7 +44,8 @@
       "preload/**",
       "settings/**",
       "wwwroot/**",
-      "package.json"
+      "package.json",
+      "!node_modules/electron-liquid-glass/prebuilds/darwin-x64/**"
     ],
     "asarUnpack": [
       "node_modules/electron-liquid-glass/prebuilds/**/*.node"
@@ -54,15 +56,21 @@
       "target": [
         {
           "target": "dmg",
-          "arch": "universal"
+          "arch": "arm64"
         }
       ],
-      "x64ArchFiles": "**/electron-liquid-glass/prebuilds/**",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "signIgnore": [
+        "\\.(pak|dat|bin|nib|asar|car|icns)$",
+        "\\.framework/(?!Versions/A/)"
+      ],
       "notarize": true
+    },
+    "dmg": {
+      "writeUpdateInfo": false
     },
     "win": {
       "target": [

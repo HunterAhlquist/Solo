@@ -11,8 +11,13 @@ const clientProject = path.join(desktopDir, '..', 'Solo.Client', 'Solo.Client.cs
 const publishDir = path.join(desktopDir, 'publish');
 const targetDir = path.join(desktopDir, 'wwwroot');
 
+// No precompressed .br/.gz siblings. The hosted build serves those to
+// browsers that ask; main/server.js never negotiates Content-Encoding and
+// streams the plain file, so in the app they were dead weight — and since
+// compressed bytes don't recompress, they took more of the .dmg than the
+// client they duplicate.
 console.log('Publishing Solo.Client…');
-execSync(`dotnet publish "${clientProject}" -c Release -o "${publishDir}"`, {
+execSync(`dotnet publish "${clientProject}" -c Release -o "${publishDir}" -p:CompressionEnabled=false`, {
     stdio: 'inherit',
 });
 

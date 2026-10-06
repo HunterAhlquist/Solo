@@ -132,16 +132,38 @@ root README.
 ## Packaging
 
 ```sh
-npm run dist   # electron-builder → dist/ (universal dmg, nsis, AppImage)
+npm run dist   # electron-builder → dist/ (arm64 dmg, nsis, AppImage)
 ```
 
-macOS ships as a single universal `.dmg` rather than a dmg/zip per architecture.
-That merge is stricter than it looks: `electron-liquid-glass` ships both darwin
-prebuilds in every install, so the x64 and arm64 halves carry byte-identical
-`.node` files, and `@electron/universal` treats an identical Mach-O in both
-halves as a packaging mistake unless it is listed in `mac.x64ArchFiles`. Both
-prebuilds belong in the bundle — the loader picks one by `process.arch` at
-runtime — so the glob there is an exemption, not a workaround.
+macOS ships for Apple silicon only. A universal build carries a second copy of
+Chromium, which nearly doubled the download (178 MB against 96 MB) only to
+serve Intel Macs. `electron-liquid-glass` installs both darwin prebuilds,
+so `files` drops the x64 one rather than ship and sign a binary that can never
+load.
+
+`mac.signIgnore` is what keeps signing to seconds. `@electron/osx-sign` runs
+`codesign --timestamp` once per file that merely *looks* binary, one at a time,
+and it follows the framework symlinks, so it reaches every file inside a
+framework up to three times. Chromium's ~220 `locale.pak` files alone came to
+660 of 730 calls and about 90 s. The two patterns skip non-code resources
+(`.pak`, `.dat`, `.bin`, `.nib`, `.asar`, `.car`, `.icns`) and the symlinked
+paths into each framework. That leaves about 26 calls, one per real Mach-O and
+bundle, which is exactly what notarization requires. The resources stay sealed
+by their bundle's signature, the same way Xcode signs an app. If a dependency
+ever ships a Mach-O under one of those extensions, it goes unsigned and
+notarization rejects the build. It fails loudly, not silently.
+
+Two things keep the `.dmg` small:
+
+- `build:client` publishes without the precompressed `.br`/`.gz` siblings.
+  The local server only ever streams the plain file. Compressed bytes don't
+  recompress, so the siblings took more of the image than the client they
+  duplicate.
+- `scripts/after-all-artifact-build.mjs` re-encodes the image as ULMO (lzma),
+  which electron-builder's `dmg.format` doesn't offer. It is about a fifth
+  smaller than the default zlib. `dmg.writeUpdateInfo` is off because there is
+  no auto-updater to read a blockmap, and converting would invalidate it
+  anyway.
 
 electron-builder's `latest` dist-tag on npm sits at 26.15.3 while the newest
 published 26.x is 26.15.7 (tagged `v26`), so `npm outdated` reports the pinned
@@ -149,9 +171,9 @@ version as *ahead* of latest and a bare `npm install electron-builder@latest`
 would quietly downgrade it. The floor here is `^26.15.7` so the range itself
 refuses the older build; `npm ci` follows the lockfile either way.
 
-CI does this automatically: pushing a `v*` tag runs
+CI does this automatically: pushing a `desktop-v*` tag runs
 [release-desktop.yml](../../.github/workflows/release-desktop.yml), which
-packages macOS (x64 + arm64), Windows, and Linux installers and attaches them
+packages macOS (Apple silicon), Windows, and Linux installers and attaches them
 to the GitHub release for the tag. Builds are unsigned unless the Apple
 signing/notarization secrets are configured; a manual `workflow_dispatch` run
 uploads the installers as workflow artifacts without creating a release.

@@ -100,10 +100,9 @@ jobs:
           # Xcode is a beta build that also signs and notarizes the release.
           # Move back to macos-latest once macOS 27 is the GA image.
           - os: xcode-27
-            # Architecture comes from package.json's mac target, which asks for
-            # a single universal .dmg — one download instead of a per-arch
-            # dmg/zip grid. Don't pass --x64/--arm64 here; an arch flag
-            # overrides the config and splits the build back apart.
+            # Architecture comes from package.json's mac target: Apple silicon
+            # only. Don't pass --x64/--arm64 here; an arch flag overrides the
+            # config and adds an Intel build back.
             args: ""
           - os: windows-latest
             args: ""
