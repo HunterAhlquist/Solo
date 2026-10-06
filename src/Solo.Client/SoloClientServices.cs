@@ -65,6 +65,8 @@ public static class SoloClientServices
         // inject the interface; they can't register services of their own.
         services.AddScoped<TaskDrawerService>();
         services.AddScoped<ISoloTaskDrawer>(sp => sp.GetRequiredService<TaskDrawerService>());
+        // The task picker, for the same reason: its dialog is core's to draw.
+        services.AddScoped<ISoloTaskPicker, TaskPickerService>();
 
         // The site theme arrives with the bootstrap config; the colour scheme is
         // read from localStorage on first render (see SoloThemeProvider).

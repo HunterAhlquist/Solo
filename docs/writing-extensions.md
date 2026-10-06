@@ -594,3 +594,50 @@ public async ValueTask DisposeAsync()
   hears nothing.
 - **Callbacks arrive off the render cycle**, so wrap them in `InvokeAsync`. A
   handler that throws is logged and doesn't stop other subscribers.
+
+## Contract 1.5
+
+Declare `"soloClientVersion": ">=1.5 <2.0"` to use this section. It adds nothing
+on the server, so `soloApiVersion` can stay where it was. Roadmaps 1.3 uses it.
+
+### Choosing a task: `ISoloTaskPicker`
+
+To let someone choose one of a project's tasks, inject `ISoloTaskPicker` (from
+`Solo.Shared.Extensibility`) into a client page and call `PickAsync`. Don't
+build your own picker. The host's picker searches by name, serial or epic, and
+groups by board and then by epic in the order the board draws them, epic groups
+included. Finished tasks and closed boards' tasks are hidden until the person
+switches them on.
+
+```csharp
+[Inject] private ISoloTaskPicker Picker { get; set; } = null!;
+
+private async Task LinkAsync()
+{
+    var task = await Picker.PickAsync(Project.Id, new TaskPickerOptions
+    {
+        Title = "Link a task",
+        Exclude = _linked.Select(l => l.TaskId).ToHashSet(),
+        AllExcludedText = "Every task in this project is already linked.",
+    });
+    if (task is null)
+    {
+        return; // Cancelled.
+    }
+
+    await Client.SendAsync(HttpMethod.Post, $"api/ext/links/projects/{Project.Id}/links",
+        new { taskId = task.Id });
+}
+```
+
+- **It returns a `TaskDto`, or null** when the person cancels or your
+  `CancellationToken` fires, which also closes the dialog. Navigating away
+  closes it too.
+- **`Exclude` is yours to fill.** Use it for what your feature already has,
+  such as the tasks on this roadmap. The picker reads core's API as the
+  signed-in user, so it can't know your data, and it only offers tasks that
+  user can already see.
+- **Picking isn't permission.** Your own endpoint still checks that the task
+  belongs to the project and that the caller can write.
+- **Presence is yours.** If your page reports `Editing` while one of its own
+  dialogs is open, do the same around `PickAsync`.

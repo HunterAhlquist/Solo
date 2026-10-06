@@ -32,10 +32,12 @@ namespace Solo.Shared.Extensibility;
 /// <see cref="ProjectCardSectionAttribute"/>), and live topics with presence:
 /// <c>ISoloLiveUpdates</c> to publish on the server, <see cref="ISoloLiveTopics"/>
 /// to subscribe in the browser.</para>
+/// <para>1.5.0 adds the host task picker (<see cref="ISoloTaskPicker"/>). It is
+/// client-only, so a package needs 1.5 only in <c>soloClientVersion</c>.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.4.0";
+    public const string Current = "1.5.0";
 
-    public static readonly Version Parsed = new(1, 4, 0);
+    public static readonly Version Parsed = new(1, 5, 0);
 }

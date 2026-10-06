@@ -149,33 +149,6 @@ public sealed class RoadmapsController(
                 .ToList());
     }
 
-    /// <summary>The task picker's list: every task in the project not already on this roadmap.</summary>
-    [HttpGet("{roadmapId:guid}/candidates")]
-    [Authorize(Policy = SoloPolicies.ProjectRead)]
-    public async Task<ActionResult<IReadOnlyList<RoadmapCandidateDto>>> Candidates(
-        Guid projectId, Guid roadmapId, CancellationToken ct)
-    {
-        if (!await db.Roadmaps.AnyAsync(r => r.Id == roadmapId && r.ProjectId == projectId, ct))
-        {
-            return NotFound();
-        }
-
-        var onRoadmap = (await db.Entries.AsNoTracking()
-            .Where(e => e.RoadmapId == roadmapId)
-            .Select(e => e.TaskId)
-            .ToListAsync(ct)).ToHashSet();
-
-        var candidates = new List<RoadmapCandidateDto>();
-        foreach (var board in await query.BoardsAsync(projectId, ct))
-        {
-            candidates.AddRange((await query.TasksAsync(board.Id, ct))
-                .Where(t => !onRoadmap.Contains(t.Id))
-                .Select(t => new RoadmapCandidateDto(t, board.Id, board.Name, board.Alias, board.IsOpen)));
-        }
-
-        return candidates;
-    }
-
     /// <summary>Puts a task on the roadmap, at the end.</summary>
     [HttpPost("{roadmapId:guid}/entries")]
     [Authorize(Policy = SoloPolicies.ProjectWrite)]

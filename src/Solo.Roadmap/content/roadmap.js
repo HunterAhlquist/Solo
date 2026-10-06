@@ -35,12 +35,6 @@ export function ensureStyles(href) {
     document.head.appendChild(link);
 }
 
-/** Keeps a keyboard-highlighted row in view; takes an element or a selector. */
-export function scrollIntoView(target) {
-    const element = typeof target === 'string' ? document.querySelector(target) : target;
-    element?.scrollIntoView({ block: 'nearest' });
-}
-
 /**
  * Wires a timeline. `options`: dayWidth, rowHeight, days, canWrite, firstDay
  * (ISO date of column 0). Returns a handle .NET keeps: scrollToDay, revealRow,

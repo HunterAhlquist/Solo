@@ -71,6 +71,8 @@ public sealed partial class RoadmapPage
 
     [Inject] private ISoloTaskDrawer Drawer { get; set; } = null!;
 
+    [Inject] private ISoloTaskPicker Picker { get; set; } = null!;
+
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
     [Inject] private IDialogService Dialogs { get; set; } = null!;
@@ -567,17 +569,15 @@ public sealed partial class RoadmapPage
             return;
         }
 
-        var result = await AskAsync<TaskPickerDialog>(
-            $"Add a task on {Dates.Day(day)}",
-            new DialogParameters<TaskPickerDialog>
-            {
-                { d => d.ProjectId, _project.Id },
-                { d => d.ProjectAlias, _project.Alias },
-                { d => d.RoadmapId, RoadmapId },
-            },
-            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var project = _project.Id;
+        var picked = await WhileEditingAsync(() => Picker.PickAsync(project, new TaskPickerOptions
+        {
+            Title = $"Add a task on {Dates.Day(day)}",
+            Exclude = _entries.Select(e => e.Task.Id).ToHashSet(),
+            AllExcludedText = "Every task in this project is already on this roadmap.",
+        }));
 
-        if (result is { Canceled: false, Data: RoadmapCandidateDto picked })
+        if (picked is not null)
         {
             await AddAsync(picked, day);
         }
@@ -589,13 +589,13 @@ public sealed partial class RoadmapPage
     /// them — nobody's deadline moves without them seeing it — and the view goes
     /// to where its bar is.
     /// </summary>
-    private async Task AddAsync(RoadmapCandidateDto picked, DateOnly day)
+    private async Task AddAsync(TaskDto picked, DateOnly day)
     {
         await using var saving = Saving();
         RoadmapEntryDto entry;
         try
         {
-            entry = await Api.AddEntryAsync(_project!.Id, RoadmapId, picked.Task.Id, day);
+            entry = await Api.AddEntryAsync(_project!.Id, RoadmapId, picked.Id, day);
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
@@ -833,16 +833,26 @@ public sealed partial class RoadmapPage
     }
 
     /// <summary>Shows a dialog, with this person reported as editing for as long as it's open.</summary>
-    private async Task<DialogResult?> AskAsync<TDialog>(
+    private Task<DialogResult?> AskAsync<TDialog>(
         string title, DialogParameters<TDialog> parameters, DialogOptions? options = null)
-        where TDialog : IComponent
+        where TDialog : IComponent =>
+        WhileEditingAsync(async () =>
+        {
+            var dialog = await Dialogs.ShowAsync<TDialog>(title, parameters, options ?? new DialogOptions());
+            return await dialog.Result;
+        });
+
+    /// <summary>
+    /// Reports this person as editing while <paramref name="ask"/> has a dialog
+    /// open, the host's task picker included.
+    /// </summary>
+    private async Task<T> WhileEditingAsync<T>(Func<Task<T>> ask)
     {
         _inDialog = true;
         await ReportPresenceAsync();
         try
         {
-            var dialog = await Dialogs.ShowAsync<TDialog>(title, parameters, options ?? new DialogOptions());
-            return await dialog.Result;
+            return await ask();
         }
         finally
         {

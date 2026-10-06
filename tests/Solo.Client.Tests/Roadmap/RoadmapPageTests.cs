@@ -23,6 +23,7 @@ public class RoadmapPageTests : ComponentTestBase
 
     private readonly StubHttp _http = new();
     private readonly FakeLiveTopics _live = new();
+    private readonly FakePicker _picker = new();
     private List<RoadmapEntryDto> _entries = [Entry("Save system", 1)];
 
     public RoadmapPageTests()
@@ -31,6 +32,7 @@ public class RoadmapPageTests : ComponentTestBase
         Services.AddSingleton<ISoloClientApi>(client);
         Services.AddSingleton<ISoloLiveTopics>(_live);
         Services.AddSingleton<ISoloTaskDrawer>(new IdleDrawer());
+        Services.AddSingleton<ISoloTaskPicker>(_picker);
         JSInterop.SetupModule(new RoadmapApi(client).Content("roadmap.js").ToString());
 
         _http.RouteJson("/members", new[]
@@ -39,7 +41,7 @@ public class RoadmapPageTests : ComponentTestBase
                 ProjectRole.ReadWrite, false, false),
         });
         _http.RouteJson("/labels", Array.Empty<LabelDto>());
-        _http.Route($"roadmaps/{RoadmapId}", HttpStatusCode.OK, () => Timeline(_entries));
+        _http.Route($"roadmaps/{RoadmapId}", HttpStatusCode.OK, () => Timeline(_entries), HttpMethod.Get);
         _http.RouteJson("/api/projects", new[]
         {
             new ProjectSummaryDto(ProjectId, "Solo", "SOLO", null, null, ProjectRole.ReadWrite, false),
@@ -153,6 +155,62 @@ public class RoadmapPageTests : ComponentTestBase
         await DisposeComponentsOnDispatcherAsync();
 
         Assert.Empty(_live.Held);
+    }
+
+    [Fact]
+    public async Task Add_task_offers_the_host_picker_without_whats_on_the_roadmap_and_adds_the_pick()
+    {
+        var added = Entry("Photo mode", 2);
+        _http.Route($"roadmaps/{RoadmapId}/entries", HttpStatusCode.OK, added, HttpMethod.Post);
+        _picker.Next = added.Task;
+        var page = RenderPage();
+        PresenceMode? whilePicking = null;
+        _picker.During = () => whilePicking = _live.Reported[^1].Mode;
+
+        AddTaskButton(page).Click();
+
+        page.WaitForAssertion(() => Assert.Equal(["Save system", "Photo mode"], Names(page)));
+        var (project, options) = Assert.Single(_picker.Calls);
+        Assert.Equal(ProjectId, project);
+        Assert.Equal([_entries[0].Task.Id], options!.Exclude);
+        Assert.StartsWith("Add a task on ", options.Title);
+        Assert.Equal(PresenceMode.Editing, whilePicking);
+        Assert.Equal((Topic, PresenceMode.Viewing), _live.Reported[^1]);
+        Assert.Contains(added.Task.Id.ToString(), _http.Bodies[_http.Paths.IndexOf(
+            $"POST /api/ext/roadmap/projects/{ProjectId}/roadmaps/{RoadmapId}/entries")]);
+    }
+
+    [Fact]
+    public void Cancelling_the_picker_adds_nothing()
+    {
+        var page = RenderPage();
+
+        AddTaskButton(page).Click();
+
+        page.WaitForAssertion(() => Assert.Equal((Topic, PresenceMode.Viewing), _live.Reported[^1]));
+        Assert.Single(_picker.Calls);
+        Assert.DoesNotContain(_http.Paths, p => p.StartsWith("POST "));
+        Assert.Equal(["Save system"], Names(page));
+    }
+
+    private static AngleSharp.Dom.IElement AddTaskButton(IRenderedComponent<RoadmapPage> page) =>
+        page.FindAll("button").Single(b => b.TextContent.Contains("Add task"));
+
+    /// <summary>Stands in for the host's picker: records what it was asked and hands back <see cref="Next"/>.</summary>
+    private sealed class FakePicker : ISoloTaskPicker
+    {
+        public TaskDto? Next { get; set; }
+
+        public Action? During { get; set; }
+
+        public List<(Guid ProjectId, TaskPickerOptions? Options)> Calls { get; } = [];
+
+        public Task<TaskDto?> PickAsync(Guid projectId, TaskPickerOptions? options = null, CancellationToken ct = default)
+        {
+            Calls.Add((projectId, options));
+            During?.Invoke();
+            return Task.FromResult(Next);
+        }
     }
 
     private sealed class IdleDrawer : ISoloTaskDrawer

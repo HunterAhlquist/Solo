@@ -33,16 +33,16 @@ else
 
             @* Each contributed section under its own boundary, as in the sidebar:
                one that throws costs a line of error text, not the page. *@
-            @foreach (var section in HomeSections)
+            @foreach (var contributed in HomeSections)
             {
-                <PageSectionHeader Title="@section.Title" />
-                <ErrorBoundary @key="(_project.Id, section.Component)">
+                <PageSectionHeader Title="@contributed.Title" />
+                <ErrorBoundary @key="(_project.Id, contributed.Component)">
                     <ChildContent>
-                        <DynamicComponent Type="@section.Component" Parameters="@SectionParameters(_project)" />
+                        <DynamicComponent Type="@contributed.Component" Parameters="@SectionParameters(_project)" />
                     </ChildContent>
                     <ErrorContent>
                         <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
-                            @section.Title couldn't load.
+                            @contributed.Title couldn't load.
                         </MudText>
                     </ErrorContent>
                 </ErrorBoundary>

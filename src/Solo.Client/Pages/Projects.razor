@@ -106,18 +106,18 @@ else
 
                         @* Each extension's own surface, styled like the boards above it;
                            the component fills it, core titles and bounds it. *@
-                        @foreach (var section in CardSections)
+                        @foreach (var contributed in CardSections)
                         {
                             <div class="project-card__boards">
-                                <div class="project-card__surface-title">@section.Title</div>
-                                <ErrorBoundary @key="(project.Id, section.Component)">
+                                <div class="project-card__surface-title">@contributed.Title</div>
+                                <ErrorBoundary @key="(project.Id, contributed.Component)">
                                     <ChildContent>
-                                        <DynamicComponent Type="@section.Component"
+                                        <DynamicComponent Type="@contributed.Component"
                                                           Parameters="@SectionParameters(project)" />
                                     </ChildContent>
                                     <ErrorContent>
                                         <MudText Typo="Typo.caption" Color="Color.Error" Class="px-1">
-                                            @section.Title couldn't load.
+                                            @contributed.Title couldn't load.
                                         </MudText>
                                     </ErrorContent>
                                 </ErrorBoundary>

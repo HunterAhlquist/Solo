@@ -101,14 +101,6 @@ public sealed record RoadmapEntryDto(
     string BoardName,
     TaskDto Task);
 
-/// <summary>
-/// A task the picker offers: one not on this roadmap yet, with the board it lives
-/// on — and whether that board is still open, since the picker hides closed ones
-/// unless asked.
-/// </summary>
-public sealed record RoadmapCandidateDto(
-    TaskDto Task, Guid BoardId, string BoardName, string BoardAlias, bool BoardIsOpen = true);
-
 /// <summary>A roadmap a task appears on, for the chips in its task view.</summary>
 public sealed record TaskRoadmapDto(Guid Id, string Title, string ProjectAlias);
 

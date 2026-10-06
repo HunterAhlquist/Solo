@@ -205,39 +205,3 @@ public static class Viewport
         (visible.First - Margin < rendered.First && rendered.First > 0) ||
         (visible.Last + Margin > rendered.Last && rendered.Last < days - 1);
 }
-
-/// <summary>
-/// The task picker's search: name or serial, grouped by board in board order.
-/// Finished tasks and closed boards' tasks stay out unless asked for — they're
-/// rarely what a plan is being built from.
-/// </summary>
-public static class CandidateSearch
-{
-    public static IReadOnlyList<CandidateGroup> Filter(
-        IEnumerable<RoadmapCandidateDto> candidates, string projectAlias, string? query,
-        CandidateFilter? filter = null)
-    {
-        var text = query?.Trim() ?? string.Empty;
-        var show = filter ?? CandidateFilter.Default;
-        return candidates
-            .Where(c => show.Finished || c.Task.Status != TaskState.Finished)
-            .Where(c => show.ClosedBoards || c.BoardIsOpen)
-            .Where(c => text.Length == 0 ||
-                        c.Task.Name.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                        Serial(c, projectAlias).Contains(text, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(c => (c.BoardId, c.BoardName, c.BoardIsOpen))
-            .Select(g => new CandidateGroup(g.Key.BoardName, g.ToList(), g.Key.BoardIsOpen))
-            .ToList();
-    }
-
-    public static string Serial(RoadmapCandidateDto candidate, string projectAlias) =>
-        Aliases.Serial(projectAlias, candidate.BoardAlias, candidate.Task.Number);
-}
-
-public sealed record CandidateGroup(string BoardName, IReadOnlyList<RoadmapCandidateDto> Candidates, bool BoardIsOpen = true);
-
-/// <summary>What the picker shows beyond open boards' unfinished tasks.</summary>
-public sealed record CandidateFilter(bool Finished = false, bool ClosedBoards = false)
-{
-    public static CandidateFilter Default { get; } = new();
-}

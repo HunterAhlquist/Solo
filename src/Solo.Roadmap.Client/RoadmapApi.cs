@@ -57,10 +57,6 @@ public sealed class RoadmapApi(ISoloClientApi api)
     public Task<RoadmapTimelineDto> TimelineAsync(Guid projectId, Guid roadmapId, CancellationToken ct = default) =>
         api.GetAsync<RoadmapTimelineDto>($"{Base}/projects/{projectId}/roadmaps/{roadmapId}", ct);
 
-    public Task<List<RoadmapCandidateDto>> CandidatesAsync(
-        Guid projectId, Guid roadmapId, CancellationToken ct = default) =>
-        api.GetAsync<List<RoadmapCandidateDto>>($"{Base}/projects/{projectId}/roadmaps/{roadmapId}/candidates", ct);
-
     public Task<RoadmapEntryDto> AddEntryAsync(
         Guid projectId, Guid roadmapId, Guid taskId, DateOnly anchorDay, CancellationToken ct = default) =>
         api.SendAsync<RoadmapEntryDto>(HttpMethod.Post, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries",

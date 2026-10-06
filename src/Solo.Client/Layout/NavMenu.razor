@@ -105,17 +105,17 @@
                                 @* Sections contributed by loaded extensions. Each is its own
                                    component under its own boundary, so one that throws costs
                                    a line of error text rather than the rest of the sidebar. *@
-                                @foreach (var section in ProjectSections)
+                                @foreach (var contributed in ProjectSections)
                                 {
-                                    <NavSectionHeader Title="@section.Title" />
-                                    <ErrorBoundary @key="(project.Id, section.Component)">
+                                    <NavSectionHeader Title="@contributed.Title" />
+                                    <ErrorBoundary @key="(project.Id, contributed.Component)">
                                         <ChildContent>
-                                            <DynamicComponent Type="@section.Component"
+                                            <DynamicComponent Type="@contributed.Component"
                                                               Parameters="@SectionParameters(project)" />
                                         </ChildContent>
                                         <ErrorContent>
                                             <MudText Typo="Typo.caption" Color="Color.Error" Class="px-4 py-1 d-block">
-                                                @section.Title couldn't load.
+                                                @contributed.Title couldn't load.
                                             </MudText>
                                         </ErrorContent>
                                     </ErrorBoundary>

@@ -217,7 +217,6 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         // The caller may write to both projects; the pairing is still wrong.
         var wrong = $"{Base}/projects/{away.Id}/roadmaps/{roadmap}";
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.GetAsync(wrong)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await _admin.GetAsync($"{wrong}/candidates")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound,
             (await _admin.PutAsJsonAsync(wrong, new { title = "Hijacked", version = 0 }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.PostAsJsonAsync($"{wrong}/entries",
@@ -405,37 +404,6 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
 
         Assert.Equal(0, await EntryCountAsync(task.Id));
         Assert.Equal(HttpStatusCode.OK, (await _admin.GetAsync($"/api/tasks/{task.Id}")).StatusCode);
-    }
-
-    [SkippableFact]
-    public async Task Candidates_span_every_board_and_skip_what_is_already_on_the_roadmap()
-    {
-        postgres.SkipUnlessDockerAvailable();
-        var (project, board) = await ProjectAsync("Picker", "PICKER");
-        var bugs = await _admin.PostJson<BoardDto>($"/api/projects/{project.Id}/boards",
-            new { name = "Bugs", alias = "BUGS" });
-        var planned = await TaskAsync(board, "Planned");
-        await TaskAsync(board, "Unplanned");
-        await TaskAsync(bugs, "Crash");
-        var roadmap = await RoadmapAsync(project, "Plan");
-        await AddAsync(project, roadmap, planned);
-
-        var candidates = await _admin.GetJson<List<JsonObject>>(
-            $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/candidates");
-
-        Assert.Equal(["Crash", "Unplanned"],
-            candidates.Select(c => c["task"]!["name"]!.GetValue<string>()).Order());
-        var crash = candidates.Single(c => c["task"]!["name"]!.GetValue<string>() == "Crash");
-        Assert.Equal("BUGS", crash["boardAlias"]!.GetValue<string>());
-        Assert.Equal("Bugs", crash["boardName"]!.GetValue<string>());
-        Assert.True(crash["boardIsOpen"]!.GetValue<bool>());
-
-        // A closed board's tasks still come back, flagged, for the picker to hide.
-        await _admin.PutJson<BoardDto>($"/api/boards/{bugs.Id}/open", new { isOpen = false });
-        var afterClosing = await _admin.GetJson<List<JsonObject>>(
-            $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/candidates");
-        Assert.False(afterClosing.Single(c => c["task"]!["name"]!.GetValue<string>() == "Crash")
-            ["boardIsOpen"]!.GetValue<bool>());
     }
 
     [SkippableFact]

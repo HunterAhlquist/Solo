@@ -1,0 +1,246 @@
+@using System.Globalization
+@using Solo.Shared.Extensibility
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+@*
+    The dialog behind ISoloTaskPicker: any task in the project, searchable by
+    name, serial or epic, grouped by board and then by epic in the board's own
+    order. Finished tasks and closed boards' tasks are hidden until switched on.
+    Arrow keys move through the results and Enter takes the highlighted one.
+*@
+
+<MudDialog DefaultFocus="DefaultFocus.None">
+    <DialogContent>
+        <MudTextField @ref="_search" T="string" Value="@_query" ValueChanged="@OnQueryChanged" Immediate="true"
+                      Placeholder="Search by name, serial or epic" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      AutoFocus="true" OnKeyDown="@OnKeyDown" aria-label="Search tasks" />
+
+        <div class="task-picker__filters">
+            <MudSwitch T="bool" Value="@_filter.Finished" ValueChanged="@(on => Refilter(_filter with { Finished = on }))"
+                       Label="Finished tasks" Color="Color.Primary" Size="Size.Small" />
+            <MudSwitch T="bool" Value="@_filter.ClosedBoards"
+                       ValueChanged="@(on => Refilter(_filter with { ClosedBoards = on }))"
+                       Label="Closed boards" Color="Color.Primary" Size="Size.Small" />
+        </div>
+
+        <div class="task-picker__results" role="listbox" aria-label="Tasks">
+            @if (_error is not null)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Error" Class="pa-2">@_error</MudText>
+            }
+            else if (_boards is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="my-2" />
+            }
+            else if (_results.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-2">@EmptyText</MudText>
+            }
+            else
+            {
+                var index = 0;
+                @foreach (var result in _results)
+                {
+                    var board = result.Board;
+                    <div class="task-picker__board" role="presentation">
+                        @board.Name@(board.IsOpen ? "" : " · closed")
+                    </div>
+                    @foreach (var lane in result.Epics)
+                    {
+                        // A board without epics has nothing to tell its tasks apart
+                        // by, so a "No epic" heading over all of them would be noise.
+                        var headed = board.Epics.Count > 0;
+                        <div class="@(headed ? "task-picker__lane" : null)" role="group"
+                             aria-label="@(headed ? $"{board.Name}, {lane.Epic?.Name ?? "no epic"}" : board.Name)">
+                            @if (headed)
+                            {
+                                <div class="@($"task-picker__epic{(lane.Epic is null ? " task-picker__epic--none" : "")}")"
+                                     role="presentation">
+                                    @(lane.Epic?.Name ?? "No epic")
+                                </div>
+                            }
+                            @foreach (var task in lane.Tasks)
+                            {
+                                var position = index++;
+                                <div class="@($"task-picker__option{(position == _active ? " is-active" : "")}")"
+                                     role="option" aria-selected="@(position == _active ? "true" : "false")"
+                                     data-picker-option="@position" @key="task.Id"
+                                     @onclick="@(() => Pick(task))">
+                                    <span class="task-picker__serial">@TaskPickerSearch.Serial(board, task)</span>
+                                    <span class="task-picker__name">@task.Name</span>
+                                    @if (DatesOf(task) is { } dates)
+                                    {
+                                        <span class="task-picker__dates">@dates</span>
+                                    }
+                                    @* Wrapped so the grid places this span: MudChip adds a container of its own. *@
+                                    <span class="task-picker__status">
+                                        <MudChip T="string" Size="Size.Small" Color="@StatusColor(task.Status)"
+                                                 Variant="Variant.Text" Class="ma-0">@StatusText(task.Status)</MudChip>
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private MudTextField<string>? _search;
+    private IReadOnlyList<BoardDetailDto>? _boards;
+    private IReadOnlyList<TaskPickerBoard> _results = [];
+    private List<TaskDto> _flat = [];
+    private string _query = string.Empty;
+    private TaskPickerFilter _filter = TaskPickerFilter.Default;
+    private int _active;
+    private string? _error;
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public TaskPickerOptions Options { get; set; } = new();
+
+    /// <summary>
+    /// The board payload rather than its tasks and epics separately: one read
+    /// per board instead of three, and it carries the epic groups and project
+    /// alias the ordering and serials need.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var boards = await Api.GetBoardsAsync(ProjectId);
+            _boards = await Task.WhenAll(boards.Select(b => Api.GetBoardAsync(b.Id)));
+            Filter();
+        }
+        catch (Exception e) when (e is ApiException or HttpRequestException)
+        {
+            _error = "Couldn't load this project's tasks.";
+        }
+    }
+
+    /// <summary>
+    /// Focused explicitly: the dialog's own focus handling runs after the field's
+    /// autofocus and takes it, and a picker you can't type into straight away
+    /// isn't much of a search.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _search is not null)
+        {
+            await _search.FocusAsync();
+        }
+    }
+
+    private string EmptyText
+    {
+        get
+        {
+            var tasks = _boards!.SelectMany(b => b.Tasks).ToList();
+            if (tasks.Count == 0)
+            {
+                return "This project has no tasks yet.";
+            }
+
+            if (tasks.All(t => Options.Exclude.Contains(t.Id)))
+            {
+                return Options.AllExcludedText ?? "There are no other tasks in this project to pick.";
+            }
+
+            return string.IsNullOrWhiteSpace(_query)
+                ? "No open tasks left to pick. Finished tasks and closed boards are hidden unless switched on above."
+                : "No tasks match.";
+        }
+    }
+
+    private void OnQueryChanged(string query)
+    {
+        _query = query;
+        Filter();
+    }
+
+    private void Refilter(TaskPickerFilter filter)
+    {
+        _filter = filter;
+        Filter();
+    }
+
+    private void Filter()
+    {
+        _results = TaskPickerSearch.Filter(_boards ?? [], Options.Exclude, _query, _filter);
+        _flat = _results.SelectMany(b => b.Epics).SelectMany(e => e.Tasks).ToList();
+        _active = 0;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown" when _flat.Count > 0:
+                _active = Math.Min(_active + 1, _flat.Count - 1);
+                await RevealActiveAsync();
+                break;
+            case "ArrowUp" when _flat.Count > 0:
+                _active = Math.Max(_active - 1, 0);
+                await RevealActiveAsync();
+                break;
+            case "Enter" when _flat.Count > 0:
+                Pick(_flat[_active]);
+                break;
+        }
+    }
+
+    private async Task RevealActiveAsync()
+    {
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("solo.scrollIntoView", $"[data-picker-option=\"{_active}\"]");
+        }
+        catch (JSException)
+        {
+            // The list still moves; it just won't scroll to follow.
+        }
+    }
+
+    private void Pick(TaskDto task) => Dialog.Close(DialogResult.Ok(task));
+
+    private static string StatusText(TaskState status) => status switch
+    {
+        TaskState.InProgress => "In progress",
+        TaskState.Finished => "Finished",
+        _ => "Unstarted",
+    };
+
+    private static Color StatusColor(TaskState status) => status switch
+    {
+        TaskState.InProgress => Color.Info,
+        TaskState.Finished => Color.Success,
+        _ => Color.Default,
+    };
+
+    private static string? DatesOf(TaskDto task) => task.DeadlineAt is { } deadline
+        ? task.StartAt is { } start ? Range(start, deadline) : $"due {Day(deadline)}"
+        : null;
+
+    private static string Day(DateOnly day) => day.ToString("d MMM", CultureInfo.CurrentCulture);
+
+    /// <summary>"3–10 Oct", "28 Sep – 4 Oct", and the years only when they differ.</summary>
+    private static string Range(DateOnly start, DateOnly end) =>
+        start == end ? Day(start)
+        : start.Year != end.Year
+            ? $"{start.ToString("d MMM yyyy", CultureInfo.CurrentCulture)} – {end.ToString("d MMM yyyy", CultureInfo.CurrentCulture)}"
+        : start.Month == end.Month ? $"{start.Day}–{Day(end)}"
+        : $"{Day(start)} – {Day(end)}";
+}

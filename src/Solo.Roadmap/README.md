@@ -34,9 +34,11 @@ and the instance loses roadmaps and nothing else:
     below the last task.
   - It opens scrolled to the oldest start among the tasks running through today.
   - Writers add a task by clicking any day no bar covers, or with **Add task**,
-    and pick it from a search grouped by board. Finished tasks and tasks on
-    closed boards are hidden until switched on. The task gets a row of its own
-    at the end, which the view scrolls to.
+    and pick it in the host's task picker, which searches by name, serial or
+    epic and groups by board and then epic. Tasks already on the roadmap aren't
+    offered. Finished tasks and tasks on closed boards are hidden until
+    switched on. The task gets a row of its own at the end, which the view
+    scrolls to.
   - Dragging a bar up or down reranks it; dragging it sideways moves its start
     and deadline together. The way the pointer first goes decides which, so a
     reorder never shifts dates by accident.
@@ -97,7 +99,6 @@ route; any other project answers 404.
 | PUT | `projects/{projectId}/roadmaps/{id}` | write | Rename: `{ title, version }`. 409 on a stale version. |
 | DELETE | `projects/{projectId}/roadmaps/{id}` | write | The roadmap and its entries; the tasks are untouched. |
 | GET | `projects/{projectId}/roadmaps/{id}` | read | The timeline: entries in roadmap order, each with its `TaskDto` and board, plus the settings. |
-| GET | `projects/{projectId}/roadmaps/{id}/candidates` | read | Tasks in the project not yet on this roadmap, for the picker. |
 | POST | `projects/{projectId}/roadmaps/{id}/entries` | write | `{ taskId, anchorDay }`. 400 for a task outside the project, 409 if it's already on. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`. Roadmap order only. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/anchor` | write | `{ anchorDay }`: moves a no-deadline pill. A task with dates moves through core's schedule endpoint instead. |
@@ -144,14 +145,15 @@ the bar back. Messages heard meanwhile fold into one read once both settle.
 appended when the page first loads it. `HeadContent` shows one owner's markup at
 a time, and a second use would push out the theme's stylesheet.
 
-**Both content URLs carry the package version** (`roadmap.js?v=1.2.2`). The
+**Both content URLs carry the package version** (`roadmap.js?v=1.3.0`). The
 page and its script change together, and a cache between the app and the
 server, such as a proxy that adds its own headers or the desktop app's disk
 cache, could otherwise pair a new page with an old script.
 
 ## Its dependency on core
 
-Contract **1.4**. From 1.3, two things on the server:
+Contract **1.4** on the server and **1.5** in the browser. From 1.3, two
+things on the server:
 - the task's optional `StartAt`, which turns a deadline into a range;
 - the hookable `task.setSchedule` endpoint that sets a task's start and
   deadline together.
@@ -167,8 +169,10 @@ From 1.4:
 - `ISoloLiveUpdates` on the server and `ISoloLiveTopics` on the client, for live
   changes and presence.
 
-Hence `>=1.4 <2.0` on both sides of the manifest. See
-[writing-extensions.md](../../docs/writing-extensions.md#contract-14).
+From 1.5, `ISoloTaskPicker` for choosing the task to add. It is client-only,
+hence `>=1.4 <2.0` for `soloApiVersion` and `>=1.5 <2.0` for
+`soloClientVersion`. See
+[writing-extensions.md](../../docs/writing-extensions.md#contract-15).
 
 ## Building the package
 
@@ -196,6 +200,14 @@ dotnet ef migrations add <Name> --project src/Solo.Roadmap --startup-project src
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.2
+
+1.3 adds no migration. Its client half needs contract 1.5, for the host's task
+picker, and its server half no longer has the `candidates` endpoint the old
+picker read. On the desktop app, update the app as well as the server. Until a
+client is on 1.5, it skips the package and shows no roadmaps, while the server
+keeps them.
 
 ## Upgrading from 1.1
 

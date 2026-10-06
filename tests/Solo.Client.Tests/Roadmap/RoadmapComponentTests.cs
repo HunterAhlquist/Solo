@@ -16,7 +16,6 @@ public class RoadmapComponentTests : ComponentTestBase
 {
     private static readonly Guid ProjectId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid RoadmapId = Guid.Parse("77777777-7777-7777-7777-777777777777");
-    private static readonly Guid BugsBoard = Guid.Parse("88888888-8888-8888-8888-888888888888");
 
     private readonly StubHttp _http = new();
     private readonly FakeLiveTopics _live = new();
@@ -27,13 +26,6 @@ public class RoadmapComponentTests : ComponentTestBase
         Services.AddSingleton<ISoloLiveTopics>(_live);
     }
 
-    private static RoadmapCandidateDto Candidate(string name, int number, bool bugs = false,
-        TaskState status = TaskState.Unstarted, DateOnly? start = null, DateOnly? deadline = null,
-        bool closedBoard = false) =>
-        new(TestData.Task(number: number, status: status, start: start, deadline: deadline) with { Name = name },
-            bugs ? BugsBoard : TestData.BoardId, bugs ? "Bugs" : "Features", bugs ? "BUGS" : "FEAT",
-            BoardIsOpen: !closedBoard);
-
     [Fact]
     public void The_script_and_stylesheet_urls_carry_the_package_version()
     {
@@ -43,142 +35,6 @@ public class RoadmapComponentTests : ComponentTestBase
         Assert.Equal($"https://solo.test/api/extensions/roadmap/content/roadmap.js?v={version}",
             api.Content("roadmap.js").ToString());
         Assert.EndsWith($"roadmap.css?v={version}", api.Content("roadmap.css").ToString());
-    }
-
-    // -- The task picker ------------------------------------------------------------
-
-    private async Task<IRenderedComponent<MudDialogProvider>> OpenPickerAsync(params RoadmapCandidateDto[] candidates)
-    {
-        _http.RouteJson($"roadmaps/{RoadmapId}/candidates", candidates);
-        var provider = Render<MudDialogProvider>();
-        var dialogs = Services.GetRequiredService<IDialogService>();
-        await provider.InvokeAsync(() => dialogs.ShowAsync<TaskPickerDialog>("Add a task",
-            new DialogParameters<TaskPickerDialog>
-            {
-                { d => d.ProjectId, ProjectId },
-                { d => d.ProjectAlias, "SOLO" },
-                { d => d.RoadmapId, RoadmapId },
-            }));
-        // Loaded once the progress bar has given way to results or a caption.
-        provider.WaitForAssertion(() =>
-        {
-            Assert.NotEmpty(provider.FindAll(".roadmap-picker__results"));
-            Assert.Empty(provider.FindAll(".roadmap-picker__results .mud-progress-linear"));
-        });
-        return provider;
-    }
-
-    private static List<string> Boards(IRenderedComponent<MudDialogProvider> picker) =>
-        picker.FindAll(".roadmap-picker__board").Select(b => b.TextContent.Trim()).ToList();
-
-    private static List<string> Options(IRenderedComponent<MudDialogProvider> picker) =>
-        picker.FindAll(".roadmap-picker__name").Select(o => o.TextContent.Trim()).ToList();
-
-    [Fact]
-    public async Task The_picker_groups_candidates_by_board_in_board_order()
-    {
-        var picker = await OpenPickerAsync(
-            Candidate("Crash on resume", 3, bugs: true),
-            Candidate("Leak in menus", 4, bugs: true),
-            Candidate("Photo mode", 7),
-            Candidate("Save system", 8));
-
-        Assert.Equal(["Bugs", "Features"], Boards(picker));
-        Assert.Equal(["Crash on resume", "Leak in menus", "Photo mode", "Save system"], Options(picker));
-    }
-
-    [Fact]
-    public async Task The_picker_searches_names_and_serials_and_drops_empty_boards()
-    {
-        var picker = await OpenPickerAsync(
-            Candidate("Crash on resume", 3, bugs: true),
-            Candidate("Photo mode", 7),
-            Candidate("Crashing save", 8));
-
-        picker.Find("input").Input("crash");
-        Assert.Equal(["Crash on resume", "Crashing save"], Options(picker));
-        Assert.Equal(["Bugs", "Features"], Boards(picker));
-
-        picker.Find("input").Input("SOLO-FEAT-7");
-        Assert.Equal(["Photo mode"], Options(picker));
-        Assert.Equal(["Features"], Boards(picker));
-
-        picker.Find("input").Input("nothing like this");
-        Assert.Empty(Options(picker));
-        Assert.Contains("No tasks match.", picker.Markup);
-    }
-
-    [Fact]
-    public async Task Each_option_shows_its_serial_status_and_dates()
-    {
-        var picker = await OpenPickerAsync(
-            Candidate("Ranged", 5, status: TaskState.InProgress,
-                start: new DateOnly(2026, 10, 3), deadline: new DateOnly(2026, 10, 10)),
-            Candidate("Undated", 6));
-
-        var ranged = picker.FindAll(".roadmap-picker__option")[0];
-        Assert.Contains("SOLO-FEAT-5", ranged.TextContent);
-        Assert.Contains("In progress", ranged.TextContent);
-        Assert.Contains("3–10 Oct", ranged.TextContent);
-        Assert.Empty(picker.FindAll(".roadmap-picker__option")[1].QuerySelectorAll(".roadmap-picker__dates"));
-
-        // Dates sit before the status, which ends every row, so the chips line up.
-        var classes = ranged.Children.Select(c => c.ClassName ?? "").ToList();
-        Assert.True(classes.FindIndex(c => c.Contains("roadmap-picker__dates")) <
-                    classes.FindIndex(c => c.Contains("roadmap-picker__status")));
-        Assert.Contains("roadmap-picker__status", classes[^1]);
-    }
-
-    [Fact]
-    public async Task Finished_tasks_are_hidden_until_switched_on()
-    {
-        var picker = await OpenPickerAsync(
-            Candidate("Open work", 1),
-            Candidate("Done already", 2, status: TaskState.Finished));
-
-        Assert.Equal(["Open work"], Options(picker));
-
-        picker.FindAll(".roadmap-picker__filters input")[0].Change(true);
-
-        Assert.Equal(["Open work", "Done already"], Options(picker));
-    }
-
-    [Fact]
-    public async Task A_closed_boards_tasks_are_hidden_until_switched_on_and_marked_when_shown()
-    {
-        var picker = await OpenPickerAsync(
-            Candidate("Live bug", 3, bugs: true),
-            Candidate("Shelved feature", 4, closedBoard: true));
-
-        Assert.Equal(["Live bug"], Options(picker));
-        Assert.Equal(["Bugs"], Boards(picker));
-
-        picker.FindAll(".roadmap-picker__filters input")[1].Change(true);
-
-        Assert.Equal(["Live bug", "Shelved feature"], Options(picker));
-        Assert.Equal(["Bugs", "Features · closed"], Boards(picker));
-    }
-
-    [Fact]
-    public async Task With_everything_hidden_the_picker_says_what_to_switch_on()
-    {
-        var picker = await OpenPickerAsync(Candidate("Done", 1, status: TaskState.Finished));
-
-        Assert.Empty(Options(picker));
-        Assert.Contains("Finished tasks and closed boards are hidden", picker.Markup);
-    }
-
-    [Fact]
-    public async Task Arrow_keys_move_the_highlight()
-    {
-        var picker = await OpenPickerAsync(Candidate("First", 1), Candidate("Second", 2), Candidate("Third", 3));
-
-        var input = picker.Find("input");
-        input.KeyDown("ArrowDown");
-        input.KeyDown("ArrowDown");
-        input.KeyDown("ArrowUp");
-
-        Assert.Equal("Second", picker.Find(".roadmap-picker__option.is-active .roadmap-picker__name").TextContent);
     }
 
     // -- A task's roadmaps in its task view -------------------------------------------

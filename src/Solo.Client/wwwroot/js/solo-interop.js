@@ -11,6 +11,10 @@ window.solo = {
         removeSession: key => sessionStorage.removeItem(key),
     },
 
+    // Keeps a keyboard-highlighted row in view, as the task picker's arrow keys
+    // move it. MudBlazor's helper centres the row, which jumps the list each press.
+    scrollIntoView: selector => document.querySelector(selector)?.scrollIntoView({ block: 'nearest' }),
+
     // Read synchronously at startup so a "match system" user never sees one
     // frame of the wrong scheme. solo.theme watches for later changes.
     systemPrefersDark: () => window.matchMedia('(prefers-color-scheme: dark)').matches,

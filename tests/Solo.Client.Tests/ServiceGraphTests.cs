@@ -34,6 +34,7 @@ public class ServiceGraphTests
         services.AddSingleton<IJSRuntime, StubJsRuntime>();
         services.AddSingleton<NavigationManager, StubNavigationManager>();
         services.AddSingleton<ISnackbar, StubSnackbar>();
+        services.AddScoped<IDialogService, DialogService>();
         return services;
     }
 
@@ -105,6 +106,8 @@ public class ServiceGraphTests
         Assert.Same(
             scope.ServiceProvider.GetRequiredService<TaskDrawerService>(),
             scope.ServiceProvider.GetRequiredService<Solo.Shared.Extensibility.ISoloTaskDrawer>());
+        Assert.IsType<TaskPickerService>(
+            scope.ServiceProvider.GetRequiredService<Solo.Shared.Extensibility.ISoloTaskPicker>());
     }
 
     [Theory]
