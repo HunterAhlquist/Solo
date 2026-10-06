@@ -88,6 +88,11 @@ jobs:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
+    # A backstop, not a budget: macOS minutes bill at 10x on a private repo,
+    # and before notarization had its own time limit a slow Apple queue held
+    # the runner for as long as Apple took. A healthy mac run is ~8 minutes
+    # plus however long notarization takes, which is capped below.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -102,8 +107,10 @@ jobs:
           - os: xcode-27
             # Architecture comes from package.json's mac target: Apple silicon
             # only. Don't pass --x64/--arm64 here; an arch flag overrides the
-            # config and adds an Intel build back.
-            args: ""
+            # config and adds an Intel build back. --dir stops at the signed
+            # .app: it is notarized and stapled in its own step, and only then
+            # wrapped in the .dmg (see "Build disk image").
+            args: "--dir"
           - os: windows-latest
             args: ""
           - os: ubuntu-latest
@@ -112,10 +119,12 @@ jobs:
       run:
         working-directory: src/Solo.Desktop
     # Lifted to the job because a step's `if:` can read the `env` context but
-    # not `secrets` — the signing step skips itself when the cert is absent.
+    # not `secrets` — the signing and notarizing steps skip themselves when
+    # their secrets are absent.
     env:
       MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
       MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
     steps:
       - uses: actions/checkout@v7
 
@@ -228,10 +237,60 @@ jobs:
       # notarizes with no other changes.
       - name: Package
         run: npx electron-builder --publish never ${{ matrix.args }}
+
+      # Not electron-builder's `mac.notarize`: that waits on Apple inside the
+      # Package step with no time limit and no output, so a slow notary queue
+      # looked like a hung codesign and held the runner as long as Apple took.
+      # Here the log carries the submission id and Apple's status as it goes,
+      # and the wait is capped. The verdict is read back from Apple rather than
+      # inferred from notarytool's exit status, which a timeout also produces.
+      - name: Notarize
+        if: runner.os == 'macOS' && env.MAC_CSC_LINK != '' && env.APPLE_ID != ''
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          APP=dist/mac-arm64/Solo.app
+          ZIP="${RUNNER_TEMP}/Solo.zip"
+          LOG="${RUNNER_TEMP}/notarytool.log"
+          AUTH=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+          echo "Submitting $(du -h "$ZIP" | cut -f1) to the notary service."
+
+          # Apple carries on processing after --timeout; this only stops
+          # paying a runner to watch.
+          xcrun notarytool submit "$ZIP" "${AUTH[@]}" --wait --timeout 40m 2>&1 | tee "$LOG" || true
+
+          ID=$(awk '$1 == "id:" { print $2; exit }' "$LOG")
+          if [ -z "$ID" ]; then
+            echo "::error::The notary service returned no submission id; see notarytool's output above."
+            exit 1
+          fi
+          STATUS=$(xcrun notarytool info "$ID" "${AUTH[@]}" --output-format json | plutil -extract status raw -)
+          case "$STATUS" in
+            Accepted) ;;
+            "In Progress")
+              echo "::error::Apple was still processing submission $ID after 40 minutes. It was not abandoned, but this build can't wait for it; re-run the job to submit again."
+              exit 1 ;;
+            *)
+              xcrun notarytool log "$ID" "${AUTH[@]}" || true
+              echo "::error::Notarization of submission $ID ended as '$STATUS'; Apple's log is above."
+              exit 1 ;;
+          esac
+
+          xcrun stapler staple "$APP"
+          # Gatekeeper's own verdict, from the stapled ticket alone.
+          spctl -a -t exec -vv "$APP" 2>&1 | tee "${RUNNER_TEMP}/spctl.log"
+          grep -q "source=Notarized Developer ID" "${RUNNER_TEMP}/spctl.log"
+
+      # Wraps the finished, stapled app. --prepackaged skips packing and
+      # signing entirely, so nothing touches the app after its ticket is
+      # stapled; the afterAllArtifactBuild hook still re-encodes the image.
+      - name: Build disk image
+        if: runner.os == 'macOS'
+        run: npx electron-builder --mac --prepackaged dist/mac-arm64/Solo.app --publish never
 
       # The runner is ephemeral, but the keychain outlives the job on a
       # self-hosted one and leaving it on the search list breaks later builds.

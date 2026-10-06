@@ -67,7 +67,7 @@
         "\\.(pak|dat|bin|nib|asar|car|icns)$",
         "\\.framework/(?!Versions/A/)"
       ],
-      "notarize": true
+      "notarize": false
     },
     "dmg": {
       "writeUpdateInfo": false

@@ -177,3 +177,23 @@ packages macOS (Apple silicon), Windows, and Linux installers and attaches them
 to the GitHub release for the tag. Builds are unsigned unless the Apple
 signing/notarization secrets are configured; a manual `workflow_dispatch` run
 uploads the installers as workflow artifacts without creating a release.
+
+Notarization is a step of its own in that workflow, not electron-builder's
+(`mac.notarize` is `false`), so a local `npm run dist` signs but doesn't
+notarize. On macOS, CI runs three steps:
+
+1. **Package** builds and signs the `.app` (`--dir`).
+2. **Notarize** submits the app with `notarytool`, staples the ticket, and
+   checks that Gatekeeper accepts it.
+3. **Build disk image** wraps the stapled app (`--prepackaged`).
+
+electron-builder's built-in notarization ran inside the packaging step and
+printed nothing while it waited. A slow Apple queue (15–25 minutes on some
+days) therefore looked like a hung codesign, and the runner kept waiting for as
+long as Apple took. The Notarize step logs the submission id and Apple's status
+as it goes, and stops waiting after 40 minutes. Apple keeps processing the
+submission after a timeout or a cancelled run. To check one:
+
+```sh
+xcrun notarytool info <submission-id> --keychain-profile <profile>
+```
