@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld('soloDesktop', {
     // renderer supplies the user's three-state Solo preference so an explicit
     // app theme does not accidentally inherit the opposite macOS appearance.
     setThemeSource: source => ipcRenderer.send('window:theme-source', source),
+
+    // A right-click menu the page draws itself on the web, shown as a native
+    // menu instead: items are { id, label, enabled, separatorBefore }, and the
+    // promise settles with the chosen id, or null once it closes without one.
+    showContextMenu: items => ipcRenderer.invoke('context-menu:show', items),
 });
 
 // ---------------------------------------------------------------------------

@@ -108,6 +108,9 @@ public class ServiceGraphTests
             scope.ServiceProvider.GetRequiredService<Solo.Shared.Extensibility.ISoloTaskDrawer>());
         Assert.IsType<TaskPickerService>(
             scope.ServiceProvider.GetRequiredService<Solo.Shared.Extensibility.ISoloTaskPicker>());
+        Assert.Same(
+            scope.ServiceProvider.GetRequiredService<ContextMenuService>(),
+            scope.ServiceProvider.GetRequiredService<Solo.Shared.Extensibility.ISoloContextMenu>());
     }
 
     [Theory]

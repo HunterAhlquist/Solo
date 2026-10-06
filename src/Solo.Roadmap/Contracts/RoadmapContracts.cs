@@ -20,6 +20,9 @@ public static class RoadmapLimits
     public const int MinSprintWeeks = 1;
     public const int MaxSprintWeeks = 52;
 
+    /// <summary>Entries one remove request takes off; the page splits a larger selection.</summary>
+    public const int MaxRemoveAtOnce = 500;
+
     public const int DefaultPastDays = 365;
     public const int DefaultFutureDays = 730;
     public const DayOfWeek DefaultSprintStartDay = DayOfWeek.Monday;
@@ -142,6 +145,13 @@ public sealed class AddRoadmapEntryRequest
 public sealed class SetRoadmapEntryAnchorRequest
 {
     public DateOnly AnchorDay { get; init; }
+}
+
+/// <summary>Entries to take off a roadmap together, such as everything selected on the page.</summary>
+public sealed class RemoveRoadmapEntriesRequest
+{
+    [Required, MinLength(1), MaxLength(RoadmapLimits.MaxRemoveAtOnce)]
+    public required IReadOnlyList<Guid> EntryIds { get; init; }
 }
 
 /// <summary>Neighbors in roadmap order, like core's rerank. Both null moves to the top.</summary>

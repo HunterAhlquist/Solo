@@ -295,6 +295,34 @@ public sealed class RoadmapsController(
         return NoContent();
     }
 
+    /// <summary>
+    /// Takes several tasks off the roadmap in one go, for a selection's Remove:
+    /// one request and one change announced, however many there are. Entries
+    /// already gone, taken off by someone else meanwhile, are skipped rather
+    /// than failing the rest. The tasks themselves are untouched.
+    /// </summary>
+    [HttpPost("{roadmapId:guid}/entries/remove")]
+    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    public async Task<IActionResult> RemoveEntries(
+        Guid projectId, Guid roadmapId, RemoveRoadmapEntriesRequest request, CancellationToken ct)
+    {
+        if (!await db.Roadmaps.AnyAsync(r => r.Id == roadmapId && r.ProjectId == projectId, ct))
+        {
+            return NotFound();
+        }
+
+        var ids = request.EntryIds.Distinct().ToList();
+        var deleted = await db.Entries
+            .Where(e => e.RoadmapId == roadmapId && ids.Contains(e.Id))
+            .ExecuteDeleteAsync(ct);
+        if (deleted > 0)
+        {
+            await EntriesChangedAsync(projectId, roadmapId, ct);
+        }
+
+        return NoContent();
+    }
+
     private Task EntriesChangedAsync(Guid projectId, Guid roadmapId, CancellationToken ct) =>
         live.PublishAsync(projectId, RoadmapTopics.Roadmap(roadmapId), RoadmapTopics.EntriesChanged, ct: ct);
 

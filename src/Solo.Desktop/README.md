@@ -63,6 +63,24 @@ regions, transparency, and room for the buttons off them (see the *Desktop
 shell chrome* block there). The classes exist only inside the shell, so the
 hosted web build keeps an ordinary app bar.
 
+## Context menus
+
+Electron has no right-click menu of its own, so `main/context-menu.js` supplies
+two kinds:
+
+- **The editing menu**: spelling suggestions, then Undo, Cut, Copy, Paste and
+  Select All as the click target allows. It's built from Chromium's
+  `context-menu` event, which fires only when the page leaves the right-click
+  alone.
+- **The page's own menus**: when the client handles a right-click itself (a
+  roadmap's bar or day menu, say), it prevents the browser's menu and asks for
+  one through `soloDesktop.showContextMenu(items)`. Main draws a native menu
+  from the labels and ids and answers with the one chosen, or null. Items are
+  checked rather than trusted: extension code runs in the page, so it gets plain
+  labels and nothing that names a role, an accelerator or a shell action. The
+  client asks for this through `ISoloContextMenu` and draws its own menu when
+  the bridge is missing, which is how the hosted web build works.
+
 ## Sign-in
 
 Google refuses to run its sign-in pages inside Electron ("this browser or app

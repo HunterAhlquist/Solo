@@ -34,10 +34,12 @@ namespace Solo.Shared.Extensibility;
 /// to subscribe in the browser.</para>
 /// <para>1.5.0 adds the host task picker (<see cref="ISoloTaskPicker"/>). It is
 /// client-only, so a package needs 1.5 only in <c>soloClientVersion</c>.</para>
+/// <para>1.6.0 adds the host context menu (<see cref="ISoloContextMenu"/>),
+/// native in the desktop app. It is client-only too.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.5.0";
+    public const string Current = "1.6.0";
 
-    public static readonly Version Parsed = new(1, 5, 0);
+    public static readonly Version Parsed = new(1, 6, 0);
 }

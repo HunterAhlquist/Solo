@@ -1,8 +1,9 @@
 // The Roadmaps timeline's browser half: scroll reporting for virtualization,
 // and the pointer gestures a Blazor event can't express — dragging a bar up or
 // down to reorder it or sideways to move its dates, dragging its edges to
-// resize it, the hover marker on days no bar covers, and the ticker that
-// scrolls a label too long for its bar. Self-contained on purpose: core's
+// resize it, selecting bars with a box or a modifier-click, the right-clicks
+// that open the bar and day menus, and the ticker that scrolls a label too
+// long for its bar. Self-contained on purpose: core's
 // js/drag.js and DragBridge belong to Solo.Client, and an extension can't count
 // on either. Loaded as a
 // module from the package's content/ folder (same-origin, so script-src 'self'
@@ -18,6 +19,11 @@ const EDGE_PX = 40;          // auto-scroll zone at each edge of the timeline
 const EDGE_SPEED_PX = 12;
 const TICKER_GAP_PX = 32;    // between the end of a name and its copy
 const TICKER_SPEED_PX = 45;  // per second
+
+// A Mac's Control-click is its right-click, so selection there is Command's;
+// everywhere else it's Control's, as in a file manager.
+const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+const toggles = e => IS_MAC ? e.metaKey : e.ctrlKey;
 
 /** The live wiring per grid, so attaching one again replaces it rather than doubling it. */
 const attached = new WeakMap();
@@ -102,6 +108,10 @@ export function attach(scroller, dotnet, options) {
     };
 
     const onScroll = () => {
+        if (press?.mode === 'marquee') {
+            moveMarquee();
+        }
+
         if (!frame) {
             frame = requestAnimationFrame(report);
         }
@@ -118,9 +128,17 @@ export function attach(scroller, dotnet, options) {
         return Math.min(Math.max(Math.floor((clientX - rect.left) / state.dayWidth), 0), state.days - 1);
     };
 
-    const rowAtClientY = clientY => {
+    /**
+     * A point in the body's own coordinates, kept inside it. The body scrolls
+     * with the grid, so a point taken here stays on the same day and row
+     * however far the view scrolls afterwards.
+     */
+    const toBody = (clientX, clientY) => {
         const rect = body().getBoundingClientRect();
-        return Math.floor((clientY - rect.top) / state.rowHeight);
+        return [
+            Math.min(Math.max(clientX - rect.left, 0), rect.width),
+            Math.min(Math.max(clientY - rect.top, 0), rect.height),
+        ];
     };
 
     const formatDay = index => {
@@ -132,41 +150,6 @@ export function attach(scroller, dotnet, options) {
     const formatShort = index => {
         const [y, m, d] = state.firstDay.split('-').map(Number);
         return new Date(y, m - 1, d + index).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-    };
-
-    // -- Hover marker: where a click adds a task ---------------------------------
-
-    // Any day no bar covers, in a task's row or below the last one. Either way
-    // the new task takes a row of its own at the end, since a row holds one
-    // task; the click picks the day, and .NET brings the new row into view.
-    const isOpenDay = (clientX, clientY) => {
-        const index = rowAtClientY(clientY);
-        const list = rows();
-        if (index >= list.length) {
-            return true;
-        }
-
-        const row = list[index];
-        const day = dayAtClientX(clientX);
-        return !!row && (day < Number(row.dataset.start) || day > Number(row.dataset.end));
-    };
-
-    const marker = () => scroller.querySelector('[data-roadmap-marker]');
-
-    const hideMarker = () => marker()?.classList.remove('is-visible');
-
-    const onHover = e => {
-        const target = marker();
-        if (!target || !state.canWrite || press || e.pointerType !== 'mouse' ||
-            !e.target.closest('[data-roadmap-body]') ||
-            e.target.closest('[data-roadmap-bar], [data-roadmap-hint]') || !isOpenDay(e.clientX, e.clientY)) {
-            hideMarker();
-            return;
-        }
-
-        target.style.left = `${dayAtClientX(e.clientX) * state.dayWidth}px`;
-        target.style.top = `${rowAtClientY(e.clientY) * state.rowHeight}px`;
-        target.classList.add('is-visible');
     };
 
     // -- Ticker: a hovered label too long for its bar scrolls past -----------------
@@ -209,15 +192,13 @@ export function attach(scroller, dotnet, options) {
         ticking = label;
     };
 
-    const onLeave = () => {
-        hideMarker();
-        stopTicker();
-    };
+    const onLeave = () => stopTicker();
 
     // -- Presses -----------------------------------------------------------------
 
     const onDown = e => {
-        if (e.pointerType === 'mouse' && e.button !== 0) {
+        if (e.pointerType === 'mouse' && (e.button !== 0 || (IS_MAC && e.ctrlKey))) {
+            // A right-click, which the contextmenu event that follows handles.
             return;
         }
 
@@ -245,6 +226,8 @@ export function attach(scroller, dotnet, options) {
                 entryId: row.dataset.roadmapEntry,
                 hold: null,
                 lifted: false,
+                toggle: toggles(e),
+                range: e.shiftKey,
             };
             if (e.pointerType === 'touch' && state.canWrite) {
                 press.hold = setTimeout(() => press && lift(), HOLD_MS);
@@ -253,13 +236,29 @@ export function attach(scroller, dotnet, options) {
             return;
         }
 
-        if (target.closest('[data-roadmap-body]') && state.canWrite && isOpenDay(e.clientX, e.clientY)) {
+        // Anywhere else on the grid: a click there clears the selection, a drag
+        // draws a box to select with, and on a touchscreen a long press is the
+        // right-click that opens the day's menu.
+        if (target.closest('[data-roadmap-body]') && state.canWrite) {
+            const [bx, by] = toBody(e.clientX, e.clientY);
             press = {
                 mode: 'empty',
                 pointerId: e.pointerId,
                 type: e.pointerType,
                 x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+                bx, by,
+                additive: toggles(e) || e.shiftKey,
+                hold: null,
+                held: false,
             };
+            if (e.pointerType === 'touch') {
+                press.hold = setTimeout(() => {
+                    if (press) {
+                        press.held = true;
+                        navigator.vibrate?.(10);
+                    }
+                }, HOLD_MS);
+            }
             listen();
         }
     };
@@ -295,9 +294,16 @@ export function attach(scroller, dotnet, options) {
                 moveResize();
                 break;
             case 'empty':
-                if (travelled > HOLD_SLOP_PX) {
-                    abandon();
+                if (press.type === 'touch') {
+                    if (travelled > HOLD_SLOP_PX) {
+                        abandon(); // a scroll all along
+                    }
+                } else if (travelled > MOVE_SLOP_PX) {
+                    startMarquee();
                 }
+                break;
+            case 'marquee':
+                moveMarquee();
                 break;
         }
     };
@@ -319,6 +325,8 @@ export function attach(scroller, dotnet, options) {
                     // the context menu.
                     ended.row.classList.remove('is-dragging');
                     await call('OnBarMenu', ended.entryId, ended.x, ended.y);
+                } else if (state.canWrite && (ended.toggle || ended.range)) {
+                    await call('OnBarSelect', ended.entryId, !ended.toggle);
                 } else {
                     await call('OnBarClick', ended.entryId);
                 }
@@ -336,7 +344,15 @@ export function attach(scroller, dotnet, options) {
                 setGesturing(false);
                 break;
             case 'empty':
-                await call('OnDayClick', dayAtClientX(ended.x));
+                // The menu opens on release rather than when the hold is up: open
+                // under a finger still down, it would take that finger's lift as
+                // a tap outside it and close again.
+                await (ended.held
+                    ? call('OnDayMenu', dayAtClientX(ended.x), ended.x, ended.y)
+                    : call('OnClearSelection'));
+                break;
+            case 'marquee':
+                await endMarquee(ended);
                 break;
         }
     };
@@ -359,6 +375,8 @@ export function attach(scroller, dotnet, options) {
             clearMove(press);
         } else if (press.mode === 'resize') {
             clearResize(press);
+        } else if (press.mode === 'marquee') {
+            clearMarquee();
         } else if (press.lifted) {
             press.row.classList.remove('is-dragging');
         }
@@ -436,7 +454,6 @@ export function attach(scroller, dotnet, options) {
         capture();
 
         press.row.classList.add('is-dragging');
-        hideMarker();
         moveDrag();
         autoScroll = requestAnimationFrame(scrollNearEdges);
     };
@@ -485,7 +502,6 @@ export function attach(scroller, dotnet, options) {
         label = document.createElement('div');
         label.className = 'roadmap-resize-label';
         document.body.appendChild(label);
-        hideMarker();
         moveShift();
         autoScroll = requestAnimationFrame(scrollNearSides);
     };
@@ -593,7 +609,6 @@ export function attach(scroller, dotnet, options) {
         label = document.createElement('div');
         label.className = 'roadmap-resize-label';
         document.body.appendChild(label);
-        hideMarker();
         listen();
         moveResize();
     };
@@ -638,18 +653,141 @@ export function attach(scroller, dotnet, options) {
         }
     };
 
+    // -- Selecting with a box -------------------------------------------------------
+
+    const marquee = () => scroller.querySelector('[data-roadmap-marquee]');
+
+    const startMarquee = () => {
+        press.mode = 'marquee';
+        stopTicker();
+        try {
+            scroller.setPointerCapture(press.pointerId);
+        } catch {
+            // Window listeners cover it.
+        }
+
+        moveMarquee();
+        autoScroll = requestAnimationFrame(scrollMarquee);
+    };
+
+    /**
+     * Draws the box from where the press started to the pointer, and marks the
+     * rows whose bars it touches. Hits are worked out from each row's columns
+     * rather than its bar, so a bar scrolled out of view, and so not drawn, is
+     * still caught. The marks are the browser's until the box is let go; .NET
+     * owns the selection itself.
+     */
+    const moveMarquee = () => {
+        const [x, y] = toBody(press.x, press.y);
+        const left = Math.min(press.bx, x);
+        const right = Math.max(press.bx, x);
+        const top = Math.min(press.by, y);
+        const bottom = Math.max(press.by, y);
+
+        const box = marquee();
+        if (box) {
+            box.style.left = `${left}px`;
+            box.style.top = `${top}px`;
+            box.style.width = `${right - left}px`;
+            box.style.height = `${bottom - top}px`;
+            box.classList.add('is-visible');
+        }
+
+        press.hits = [];
+        rows().forEach((row, index) => {
+            const rowTop = index * state.rowHeight;
+            const barLeft = Number(row.dataset.start) * state.dayWidth;
+            const barRight = (Number(row.dataset.end) + 1) * state.dayWidth;
+            const hit = left < barRight && right > barLeft && top < rowTop + state.rowHeight && bottom > rowTop;
+            row.classList.toggle('is-marked', hit);
+            if (hit) {
+                press.hits.push(row.dataset.roadmapEntry);
+            }
+        });
+    };
+
+    const scrollMarquee = () => {
+        if (!press || press.mode !== 'marquee') {
+            return;
+        }
+
+        const rect = scroller.getBoundingClientRect();
+        const headHeight = scroller.querySelector('[data-roadmap-head]')?.offsetHeight ?? 0;
+        const dx = press.x < rect.left + EDGE_PX ? -EDGE_SPEED_PX : press.x > rect.right - EDGE_PX ? EDGE_SPEED_PX : 0;
+        const dy = press.y < rect.top + headHeight + EDGE_PX ? -EDGE_SPEED_PX
+            : press.y > rect.bottom - EDGE_PX ? EDGE_SPEED_PX : 0;
+        if (dx || dy) {
+            // The scroll event this raises redraws the box.
+            scroller.scrollLeft += dx;
+            scroller.scrollTop += dy;
+        }
+
+        autoScroll = requestAnimationFrame(scrollMarquee);
+    };
+
+    const clearMarquee = () => {
+        marquee()?.classList.remove('is-visible');
+        for (const row of rows()) {
+            row.classList.remove('is-marked');
+        }
+    };
+
+    const endMarquee = async ended => {
+        try {
+            // As with a move, .NET draws the selection before this returns, so
+            // the marks come off without a frame of neither.
+            await call('OnMarquee', ended.hits ?? [], ended.additive);
+        } finally {
+            clearMarquee();
+        }
+    };
+
     // -- Menus and hints ---------------------------------------------------------
 
+    // A bar's menu, or the menu for the day under the pointer anywhere else on
+    // the grid. Both are drawn by the host, natively in the desktop app.
     const onContextMenu = e => {
-        const row = e.target.closest('[data-roadmap-entry]');
-        if (!row || !e.target.closest('[data-roadmap-bar]')) {
+        const target = e.target;
+        if (!(target instanceof Element) || target.closest('[data-roadmap-hint], [data-roadmap-menu]')) {
+            return;
+        }
+
+        const row = target.closest('[data-roadmap-entry]');
+        const onBar = !!row && !!target.closest('[data-roadmap-bar]');
+        if (!onBar && !(state.canWrite && target.closest('[data-roadmap-body]'))) {
             return;
         }
 
         e.preventDefault();
         // On a touchscreen the long press already did this.
-        if (e.pointerType !== 'touch' && !(press && press.type === 'touch')) {
+        if (e.pointerType === 'touch' || (press && press.type === 'touch')) {
+            return;
+        }
+
+        abandon();
+        if (onBar) {
             call('OnBarMenu', row.dataset.roadmapEntry, e.clientX, e.clientY);
+        } else {
+            call('OnDayMenu', dayAtClientX(e.clientX), e.clientX, e.clientY);
+        }
+    };
+
+    // Escape lets go of the selection, or of a gesture under way. Only when
+    // it's the grid's to take: with focus in a menu or a field it's theirs, and
+    // with anything open over the page (the task drawer, a dialog) it closes
+    // that. Those often leave focus on the bar that opened them, so the overlay
+    // they draw is what tells.
+    const onKeyDown = e => {
+        if (e.key !== 'Escape' || e.defaultPrevented ||
+            (e.target !== document.body && !(e.target instanceof Node && scroller.contains(e.target))) ||
+            document.querySelector('.mud-overlay')) {
+            return;
+        }
+
+        if (press) {
+            abandon();
+        } else {
+            call('OnClearSelection');
         }
     };
 
@@ -672,12 +810,12 @@ export function attach(scroller, dotnet, options) {
     };
 
     scroller.addEventListener('pointerdown', onDown);
-    scroller.addEventListener('pointermove', onHover);
     scroller.addEventListener('pointerover', onOver);
     scroller.addEventListener('pointerleave', onLeave);
     scroller.addEventListener('contextmenu', onContextMenu);
     scroller.addEventListener('click', onClick);
     scroller.addEventListener('dragstart', onDragStart);
+    document.addEventListener('keydown', onKeyDown);
 
     report();
 
@@ -706,12 +844,12 @@ export function attach(scroller, dotnet, options) {
             scroller.removeEventListener('scroll', onScroll);
             stopTicker();
             scroller.removeEventListener('pointerdown', onDown);
-            scroller.removeEventListener('pointermove', onHover);
             scroller.removeEventListener('pointerover', onOver);
             scroller.removeEventListener('pointerleave', onLeave);
             scroller.removeEventListener('contextmenu', onContextMenu);
             scroller.removeEventListener('click', onClick);
             scroller.removeEventListener('dragstart', onDragStart);
+            document.removeEventListener('keydown', onKeyDown);
             if (attached.get(scroller) === handle) {
                 attached.delete(scroller);
             }

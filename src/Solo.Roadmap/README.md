@@ -33,8 +33,10 @@ and the instance loses roadmaps and nothing else:
     column highlighted. It always shows at least nine rows, and two empty ones
     below the last task.
   - It opens scrolled to the oldest start among the tasks running through today.
-  - Writers add a task by clicking any day no bar covers, or with **Add task**,
-    and pick it in the host's task picker, which searches by name, serial or
+  - Writers add a task by right-clicking any day no bar covers (or pressing
+    and holding one on a touchscreen) and choosing **Add a task on …**, or with
+    **Add task** in the header, which adds it on today. Either way they pick it
+    in the host's task picker, which searches by name, serial or
     epic and groups by board and then epic. Tasks already on the roadmap aren't
     offered. Finished tasks and tasks on closed boards are hidden until
     switched on. The task gets a row of its own at the end, which the view
@@ -47,6 +49,19 @@ and the instance loses roadmaps and nothing else:
   - Hovering a bar whose label is cut off scrolls the label past like a ticker,
     except under reduced motion.
   - Clicking a bar opens the same task drawer the board uses.
+  - Writers select several bars at once: drag a box around them from an empty
+    part of the grid, Cmd-click (Ctrl-click off a Mac) to add or drop one, or
+    Shift-click to select every row from the last one clicked. Holding Cmd,
+    Ctrl or Shift while dragging a box adds to the selection instead of
+    replacing it. Clicking the grid or a bar, or pressing Escape, clears it.
+  - Right-clicking a bar (or a long press, or its **⋯** button) opens its menu:
+    **Open task**, and for writers **Remove from roadmap**. On a selected bar
+    the menu acts on the whole selection, as **Remove N tasks from roadmap**,
+    in one request. On any other bar it selects that bar alone first. Removing
+    takes tasks off this roadmap only; the tasks themselves stay on their
+    boards.
+  - The menus are the host's (`ISoloContextMenu`), so the desktop app shows
+    native ones.
   - Changes anyone else makes to the roadmap or its tasks redraw it in place,
     without moving the view.
   - Whoever else has the roadmap open shows in the header. An outlined,
@@ -82,7 +97,7 @@ Data/               RoadmapDbContext, the settings row, ranking, and the
                     handler that drops a deleted task's entries and tells
                     open roadmaps when one of their tasks changes
 Migrations/         in schema ext_roadmap
-content/            roadmap.js (scroll, drag, resize) and roadmap.css, served
+content/            roadmap.js (scroll, drag, resize, select) and roadmap.css, served
                     at /api/extensions/roadmap/content/
 ```
 
@@ -103,6 +118,7 @@ route; any other project answers 404.
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`. Roadmap order only. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/anchor` | write | `{ anchorDay }`: moves a no-deadline pill. A task with dates moves through core's schedule endpoint instead. |
 | DELETE | `projects/{projectId}/roadmaps/{id}/entries/{entryId}` | write | Takes the task off this roadmap; the task is untouched. |
+| POST | `projects/{projectId}/roadmaps/{id}/entries/remove` | write | `{ entryIds }`, 1 to 500: takes them all off in one change. Ids not on this roadmap are skipped. |
 | GET | `tasks/{taskId}/roadmaps` | read | The roadmaps a task is on. |
 | GET | `settings` | signed in | The bounds, the sprint start day and the sprint length. |
 | PUT | `settings` | super admin | `{ pastDays, futureDays, sprintStartDay, sprintLengthWeeks, version }`, the day as a name (`"Monday"`). 400 out of range, 409 stale. |
@@ -145,14 +161,21 @@ the bar back. Messages heard meanwhile fold into one read once both settle.
 appended when the page first loads it. `HeadContent` shows one owner's markup at
 a time, and a second use would push out the theme's stylesheet.
 
-**Both content URLs carry the package version** (`roadmap.js?v=1.3.0`). The
+**Selection lives in .NET, and a box in progress lives in the browser.** The
+page holds which entries are selected and draws them, so a bar scrolled out of
+view and redrawn comes back still selected. While a box is being dragged,
+`roadmap.js` marks the rows it touches itself, working from each row's columns
+rather than its bar, so bars outside the drawn range are caught too. It hands
+the result to .NET when the box is let go.
+
+**Both content URLs carry the package version** (`roadmap.js?v=1.4.0`). The
 page and its script change together, and a cache between the app and the
 server, such as a proxy that adds its own headers or the desktop app's disk
 cache, could otherwise pair a new page with an old script.
 
 ## Its dependency on core
 
-Contract **1.4** on the server and **1.5** in the browser. From 1.3, two
+Contract **1.4** on the server and **1.6** in the browser. From 1.3, two
 things on the server:
 - the task's optional `StartAt`, which turns a deadline into a range;
 - the hookable `task.setSchedule` endpoint that sets a task's start and
@@ -169,10 +192,10 @@ From 1.4:
 - `ISoloLiveUpdates` on the server and `ISoloLiveTopics` on the client, for live
   changes and presence.
 
-From 1.5, `ISoloTaskPicker` for choosing the task to add. It is client-only,
-hence `>=1.4 <2.0` for `soloApiVersion` and `>=1.5 <2.0` for
-`soloClientVersion`. See
-[writing-extensions.md](../../docs/writing-extensions.md#contract-15).
+From 1.5, `ISoloTaskPicker` for choosing the task to add. From 1.6,
+`ISoloContextMenu` for the bar and day menus. Both are client-only, hence
+`>=1.4 <2.0` for `soloApiVersion` and `>=1.6 <2.0` for `soloClientVersion`.
+See [writing-extensions.md](../../docs/writing-extensions.md#contract-16).
 
 ## Building the package
 
@@ -200,6 +223,13 @@ dotnet ef migrations add <Name> --project src/Solo.Roadmap --startup-project src
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.3
+
+1.4 adds no migration. Its client half needs contract 1.6, for the host's
+context menu. On the desktop app, update the app as well as the server. Until
+a client is on 1.6, it skips the package and shows no roadmaps, while the
+server keeps them.
 
 ## Upgrading from 1.2
 

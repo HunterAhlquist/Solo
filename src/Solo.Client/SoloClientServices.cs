@@ -67,6 +67,10 @@ public static class SoloClientServices
         services.AddScoped<ISoloTaskDrawer>(sp => sp.GetRequiredService<TaskDrawerService>());
         // The task picker, for the same reason: its dialog is core's to draw.
         services.AddScoped<ISoloTaskPicker, TaskPickerService>();
+        // The context menu: core's to draw, and only core can ask the desktop
+        // shell for a native one. ContextMenuHost renders what this holds.
+        services.AddScoped<ContextMenuService>();
+        services.AddScoped<ISoloContextMenu>(sp => sp.GetRequiredService<ContextMenuService>());
 
         // The site theme arrives with the bootstrap config; the colour scheme is
         // read from localStorage on first render (see SoloThemeProvider).

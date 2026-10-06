@@ -24,7 +24,9 @@ public class RoadmapPageTests : ComponentTestBase
     private readonly StubHttp _http = new();
     private readonly FakeLiveTopics _live = new();
     private readonly FakePicker _picker = new();
+    private readonly FakeMenu _menu = new();
     private List<RoadmapEntryDto> _entries = [Entry("Save system", 1)];
+    private ProjectRole _role = ProjectRole.ReadWrite;
 
     public RoadmapPageTests()
     {
@@ -33,6 +35,7 @@ public class RoadmapPageTests : ComponentTestBase
         Services.AddSingleton<ISoloLiveTopics>(_live);
         Services.AddSingleton<ISoloTaskDrawer>(new IdleDrawer());
         Services.AddSingleton<ISoloTaskPicker>(_picker);
+        Services.AddSingleton<ISoloContextMenu>(_menu);
         JSInterop.SetupModule(new RoadmapApi(client).Content("roadmap.js").ToString());
 
         _http.RouteJson("/members", new[]
@@ -42,9 +45,9 @@ public class RoadmapPageTests : ComponentTestBase
         });
         _http.RouteJson("/labels", Array.Empty<LabelDto>());
         _http.Route($"roadmaps/{RoadmapId}", HttpStatusCode.OK, () => Timeline(_entries), HttpMethod.Get);
-        _http.RouteJson("/api/projects", new[]
+        _http.Route("/api/projects", HttpStatusCode.OK, () => new[]
         {
-            new ProjectSummaryDto(ProjectId, "Solo", "SOLO", null, null, ProjectRole.ReadWrite, false),
+            new ProjectSummaryDto(ProjectId, "Solo", "SOLO", null, null, _role, false),
         });
     }
 
@@ -193,8 +196,206 @@ public class RoadmapPageTests : ComponentTestBase
         Assert.Equal(["Save system"], Names(page));
     }
 
+    [Fact]
+    public async Task Right_clicking_a_day_offers_to_add_a_task_on_that_day()
+    {
+        var day = DateOnly.FromDateTime(DateTime.Today).AddDays(2);
+        var added = Entry("Photo mode", 2);
+        _http.Route($"roadmaps/{RoadmapId}/entries", HttpStatusCode.OK, added, HttpMethod.Post);
+        _picker.Next = added.Task;
+        _menu.Next = "add";
+        var page = RenderPage();
+
+        // The window opens 30 days back (PastDays), so column 32 is two days on.
+        await page.Instance.OnDayMenu(32, 100, 200);
+
+        Assert.Equal([$"Add a task on {Dates.Day(day)}"], _menu.Labels());
+        page.WaitForAssertion(() => Assert.Equal(["Save system", "Photo mode"], Names(page)));
+        Assert.Equal($"Add a task on {Dates.Day(day)}", Assert.Single(_picker.Calls).Options!.Title);
+        Assert.Contains($"\"{day:yyyy-MM-dd}\"", Body("POST", "/entries"));
+    }
+
+    [Fact]
+    public async Task Dismissing_the_day_menu_adds_nothing()
+    {
+        var page = RenderPage();
+
+        await page.Instance.OnDayMenu(32, 100, 200);
+
+        Assert.Single(_menu.Shown);
+        Assert.Empty(_picker.Calls);
+    }
+
+    [Fact]
+    public async Task A_bars_menu_opens_it_or_takes_it_off_the_roadmap()
+    {
+        _http.Route($"roadmaps/{RoadmapId}/entries/remove", HttpStatusCode.NoContent, (object?)null, HttpMethod.Post);
+        _menu.Next = "remove";
+        var page = RenderPage();
+        var id = _entries[0].Id;
+
+        await page.Instance.OnBarMenu(id.ToString(), 10, 10);
+
+        Assert.Equal(["Open task", "Remove from roadmap"], _menu.Labels());
+        Assert.True(_menu.Shown[0][1].Danger);
+        page.WaitForAssertion(() => Assert.Empty(Names(page)));
+        Assert.Contains(id.ToString(), Body("POST", "/entries/remove"));
+    }
+
+    [Fact]
+    public async Task Selected_bars_come_off_the_roadmap_together_in_one_request()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3)];
+        _http.Route($"roadmaps/{RoadmapId}/entries/remove", HttpStatusCode.NoContent, (object?)null, HttpMethod.Post);
+        var page = RenderPage();
+        var (first, middle, last) = (_entries[0].Id, _entries[1].Id, _entries[2].Id);
+
+        await page.Instance.OnBarSelect(first.ToString(), range: false);
+        await page.Instance.OnBarSelect(last.ToString(), range: false);
+        Assert.Equal(["Save system", "Boss fight"], Selected(page));
+
+        _menu.Next = "remove";
+        await page.Instance.OnBarMenu(last.ToString(), 10, 10);
+
+        // Nothing to open when there's more than one.
+        Assert.Equal(["Remove 2 tasks from roadmap"], _menu.Labels());
+        page.WaitForAssertion(() => Assert.Equal(["Photo mode"], Names(page)));
+        Assert.Single(_http.Paths, p => p.EndsWith("/entries/remove"));
+        var body = Body("POST", "/entries/remove");
+        Assert.Contains(first.ToString(), body);
+        Assert.Contains(last.ToString(), body);
+        Assert.DoesNotContain(middle.ToString(), body);
+    }
+
+    [Fact]
+    public async Task A_failed_remove_leaves_the_bars_where_they_are()
+    {
+        _http.Route($"roadmaps/{RoadmapId}/entries/remove", HttpStatusCode.InternalServerError, (object?)null, HttpMethod.Post);
+        _menu.Next = "remove";
+        var page = RenderPage();
+
+        await page.Instance.OnBarMenu(_entries[0].Id.ToString(), 10, 10);
+
+        Assert.Equal(["Save system"], Names(page));
+        Assert.Equal(["Save system"], Selected(page));
+    }
+
+    [Fact]
+    public async Task Right_clicking_a_bar_outside_the_selection_selects_that_bar_alone()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3)];
+        var page = RenderPage();
+        await page.Instance.OnMarquee([_entries[0].Id.ToString(), _entries[1].Id.ToString()], additive: false);
+        Assert.Equal(["Save system", "Photo mode"], Selected(page));
+
+        await page.Instance.OnBarMenu(_entries[2].Id.ToString(), 10, 10);
+
+        Assert.Equal(["Boss fight"], Selected(page));
+        Assert.Equal(["Open task", "Remove from roadmap"], _menu.Labels());
+    }
+
+    [Fact]
+    public async Task Shift_click_selects_every_row_from_the_last_one_clicked()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3)];
+        var page = RenderPage();
+
+        await page.Instance.OnBarSelect(_entries[2].Id.ToString(), range: false);
+        await page.Instance.OnBarSelect(_entries[0].Id.ToString(), range: true);
+
+        Assert.Equal(["Save system", "Photo mode", "Boss fight"], Selected(page));
+    }
+
+    [Fact]
+    public async Task A_box_replaces_the_selection_unless_a_modifier_was_held()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3)];
+        var page = RenderPage();
+        await page.Instance.OnBarSelect(_entries[0].Id.ToString(), range: false);
+
+        await page.Instance.OnMarquee([_entries[2].Id.ToString()], additive: false);
+        Assert.Equal(["Boss fight"], Selected(page));
+
+        await page.Instance.OnMarquee([_entries[1].Id.ToString()], additive: true);
+        Assert.Equal(["Photo mode", "Boss fight"], Selected(page));
+    }
+
+    [Fact]
+    public async Task Clicking_the_grid_or_a_bar_clears_the_selection()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2)];
+        var page = RenderPage();
+        var both = _entries.Select(e => e.Id.ToString()).ToArray();
+
+        await page.Instance.OnMarquee(both, additive: false);
+        await page.Instance.OnClearSelection();
+        Assert.Empty(Selected(page));
+
+        await page.Instance.OnMarquee(both, additive: false);
+        await page.Instance.OnBarClick(both[1]);
+        Assert.Empty(Selected(page));
+    }
+
+    [Fact]
+    public async Task Someone_else_removing_a_selected_bar_takes_it_out_of_the_selection()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2)];
+        var page = RenderPage();
+        await page.Instance.OnMarquee(_entries.Select(e => e.Id.ToString()).ToArray(), additive: false);
+
+        _entries = [_entries[1]];
+        await _live.SendAsync(ProjectId, Topic, RoadmapTopics.EntriesChanged);
+        page.WaitForAssertion(() => Assert.Equal(["Photo mode"], Names(page)));
+
+        _menu.Next = null;
+        await page.Instance.OnBarMenu(_entries[0].Id.ToString(), 10, 10);
+        Assert.Equal(["Open task", "Remove from roadmap"], _menu.Labels());
+    }
+
+    [Fact]
+    public async Task A_read_only_member_can_open_a_task_from_its_menu_but_select_and_remove_nothing()
+    {
+        _role = ProjectRole.Read;
+        var page = RenderPage();
+        var id = _entries[0].Id.ToString();
+
+        await page.Instance.OnBarSelect(id, range: false);
+        await page.Instance.OnMarquee([id], additive: false);
+        await page.Instance.OnBarMenu(id, 10, 10);
+        await page.Instance.OnDayMenu(32, 10, 10);
+
+        Assert.Empty(Selected(page));
+        Assert.Equal(["Open task"], _menu.Labels());
+        Assert.Single(_menu.Shown);
+    }
+
     private static AngleSharp.Dom.IElement AddTaskButton(IRenderedComponent<RoadmapPage> page) =>
         page.FindAll("button").Single(b => b.TextContent.Contains("Add task"));
+
+    private static List<string> Selected(IRenderedComponent<RoadmapPage> page) =>
+        page.FindAll(".roadmap-bar--selected .roadmap-bar__text:not(.roadmap-bar__text--copy) .roadmap-bar__name")
+            .Select(n => n.TextContent.Trim())
+            .ToList();
+
+    private string Body(string method, string pathEnd) =>
+        _http.Bodies[_http.Paths.FindIndex(p => p.StartsWith($"{method} ") && p.EndsWith(pathEnd))];
+
+    /// <summary>Stands in for the host's context menu: records each one shown and answers <see cref="Next"/>.</summary>
+    private sealed class FakeMenu : ISoloContextMenu
+    {
+        public string? Next { get; set; }
+
+        public List<IReadOnlyList<ContextMenuItem>> Shown { get; } = [];
+
+        public List<string> Labels() => Shown[^1].Select(i => i.Label).ToList();
+
+        public Task<string?> ShowAsync(
+            double clientX, double clientY, IReadOnlyList<ContextMenuItem> items, CancellationToken ct = default)
+        {
+            Shown.Add(items);
+            return Task.FromResult(Next);
+        }
+    }
 
     /// <summary>Stands in for the host's picker: records what it was asked and hands back <see cref="Next"/>.</summary>
     private sealed class FakePicker : ISoloTaskPicker

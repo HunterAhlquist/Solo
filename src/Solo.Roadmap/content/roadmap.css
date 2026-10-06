@@ -202,6 +202,11 @@ html[data-color-scheme="dark"] {
             var(--roadmap-stripe) var(--roadmap-stripe-period));
     background-size: auto, var(--roadmap-stripe-period) 100%;
     background-position: 0 0, var(--roadmap-stripe-offset) 0;
+    /* A drag across the grid draws a selection box, not a text selection, and a
+       long press on it is the day's menu, not the system's callout. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
 /* Above the stripes, below the bars. */
@@ -222,28 +227,6 @@ html[data-color-scheme="dark"] {
     color: var(--mud-palette-text-secondary);
 }
 
-/* Follows the pointer over any day no bar covers (roadmap.js), marking where a
-   click adds a task. */
-.roadmap-add-marker {
-    position: absolute;
-    display: none;
-    width: 1.5rem;
-    height: 1.5rem;
-    margin: calc((var(--roadmap-row-height) - 1.5rem) / 2) calc((var(--roadmap-day-width) - 1.5rem) / 2);
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: var(--mud-palette-primary);
-    color: var(--mud-palette-primary-text);
-    font-weight: 700;
-    pointer-events: none;
-    z-index: 1;
-}
-
-.roadmap-add-marker.is-visible {
-    display: flex;
-}
-
 .roadmap-drop-indicator {
     position: absolute;
     left: 0;
@@ -258,6 +241,21 @@ html[data-color-scheme="dark"] {
 }
 
 .roadmap-drop-indicator.is-visible {
+    display: block;
+}
+
+/* The box dragged across the grid to select bars (roadmap.js sizes it). */
+.roadmap-marquee {
+    position: absolute;
+    display: none;
+    border: 1px solid var(--mud-palette-primary);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
+    pointer-events: none;
+    z-index: 3;
+}
+
+.roadmap-marquee.is-visible {
     display: block;
 }
 
@@ -370,7 +368,9 @@ html[data-color-scheme="dark"] {
     transition: opacity 120ms ease-in-out;
 }
 
-.roadmap-bar--finished:hover {
+.roadmap-bar--finished:hover,
+.roadmap-bar--finished.roadmap-bar--selected,
+.roadmap-row.is-marked .roadmap-bar--finished {
     opacity: 1;
 }
 
@@ -389,6 +389,20 @@ html[data-color-scheme="dark"] {
 
 @media (prefers-reduced-motion: reduce) {
     .roadmap-bar--missed { animation: none; }
+}
+
+/* Selected, or inside a selection box still being dragged: a deeper fill and
+   a ring, which keyboard focus (the outline alone) doesn't have. A missed bar
+   deepens its red rather than turning blue. */
+.roadmap-bar.roadmap-bar--selected,
+.roadmap-row.is-marked .roadmap-bar {
+    background: color-mix(in srgb, var(--mud-palette-primary) 34%, var(--mud-palette-surface));
+    box-shadow: 0 0 0 2px var(--mud-palette-primary);
+}
+
+.roadmap-bar--missed.roadmap-bar--selected,
+.roadmap-row.is-marked .roadmap-bar--missed {
+    background: color-mix(in srgb, var(--roadmap-missed) 36%, var(--mud-palette-surface));
 }
 
 /* A bar that starts off to the left keeps its serial and name in view. It
@@ -567,45 +581,6 @@ html[data-color-scheme="dark"] {
     pointer-events: none;
     transform: translate(-50%, -130%);
     white-space: nowrap;
-}
-
-/* -- Bar menu --------------------------------------------------------------- */
-
-.roadmap-menu-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1400;
-}
-
-.roadmap-menu {
-    position: fixed;
-    z-index: 1401;
-    min-width: 12rem;
-    padding: 0.25rem 0;
-}
-
-.roadmap-menu__item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    width: 100%;
-    padding: 0.5rem 1rem;
-    border: 0;
-    background: transparent;
-    color: var(--mud-palette-text-primary);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-}
-
-.roadmap-menu__item:hover,
-.roadmap-menu__item:focus-visible {
-    background: color-mix(in srgb, var(--mud-palette-primary) 10%, transparent);
-    outline: none;
-}
-
-.roadmap-menu__item--danger {
-    color: var(--mud-palette-error);
 }
 
 /* -- Missed deadlines ------------------------------------------------------- */

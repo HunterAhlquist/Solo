@@ -641,3 +641,58 @@ private async Task LinkAsync()
   belongs to the project and that the caller can write.
 - **Presence is yours.** If your page reports `Editing` while one of its own
   dialogs is open, do the same around `PickAsync`.
+
+## Contract 1.6
+
+Declare `"soloClientVersion": ">=1.6 <2.0"` to use this section. Like 1.5 it
+adds nothing on the server. Roadmaps 1.4 uses it.
+
+### Right-click menus: `ISoloContextMenu`
+
+To show a menu where someone right-clicked, inject `ISoloContextMenu` (from
+`Solo.Shared.Extensibility`) and call `ShowAsync` with the pointer event's
+viewport position and the items. Don't draw your own. In the desktop app the
+host shows the operating system's own menu, which a page can't reach any other
+way; in a browser it draws one that matches the app.
+
+```csharp
+[Inject] private ISoloContextMenu Menu { get; set; } = null!;
+
+private async Task OnRowMenuAsync(MouseEventArgs e, Milestone milestone)
+{
+    var choice = await Menu.ShowAsync(e.ClientX, e.ClientY,
+    [
+        new ContextMenuItem("open", "Open milestone") { Icon = Icons.Material.Filled.OpenInNew },
+        new ContextMenuItem("delete", "Delete milestone")
+        {
+            Icon = Icons.Material.Filled.Delete,
+            Danger = true,
+            SeparatorBefore = true,
+        },
+    ]);
+
+    switch (choice)
+    {
+        case "open":
+            await OpenAsync(milestone);
+            break;
+        case "delete":
+            await DeleteAsync(milestone);
+            break;
+    }
+}
+```
+
+- **It returns the chosen item's `Id`, or null** when the person dismisses the
+  menu, when your `CancellationToken` fires, or when another menu opens over
+  it. Navigating away dismisses it too.
+- **Suppress the browser's own menu.** Handle `contextmenu` with
+  `@oncontextmenu:preventDefault="true"`, or call `preventDefault()` in your
+  own script before calling into .NET. Otherwise the browser's menu opens as
+  well.
+- **The label is all a native menu shows.** `Icon` and `Danger` only change the
+  drawn menu, so a destructive item has to say so in its words.
+- **Leave out what the person can't do.** The menu doesn't check permissions;
+  your endpoint does. An item that would only fail is worse than no item.
+- **Touchscreens have no right-click.** Open the same menu from a long press, or
+  from a visible button, such as a `⋯` on the row.

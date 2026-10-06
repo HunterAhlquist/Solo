@@ -72,9 +72,10 @@ public sealed class RoadmapApi(ISoloClientApi api)
         api.SendAsync(HttpMethod.Put, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/{entryId}/anchor",
             new SetRoadmapEntryAnchorRequest { AnchorDay = anchorDay }, ct);
 
-    public Task RemoveEntryAsync(Guid projectId, Guid roadmapId, Guid entryId, CancellationToken ct = default) =>
-        api.SendAsync(HttpMethod.Delete,
-            $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/{entryId}", null, ct);
+    public Task RemoveEntriesAsync(
+        Guid projectId, Guid roadmapId, IReadOnlyList<Guid> entryIds, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Post, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/remove",
+            new RemoveRoadmapEntriesRequest { EntryIds = entryIds }, ct);
 
     public Task<List<TaskRoadmapDto>> RoadmapsOfTaskAsync(Guid taskId, CancellationToken ct = default) =>
         api.GetAsync<List<TaskRoadmapDto>>($"{Base}/tasks/{taskId}/roadmaps", ct);

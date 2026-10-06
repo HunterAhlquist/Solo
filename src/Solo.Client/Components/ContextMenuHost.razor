@@ -1,0 +1,89 @@
+@implements IDisposable
+@inject ContextMenuService Menu
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@*
+    The context menu an extension page opens through ISoloContextMenu, when
+    there's no desktop shell to show a native one. Rendered once, in the layout.
+    It opens at the point it was asked for, and solo.contextMenu.place moves it
+    inside the viewport in the same turn, before the browser paints.
+*@
+@if (Menu.Current is { } menu)
+{
+    <div class="solo-context-menu-backdrop" @onclick="@Menu.Dismiss" @onwheel="@Menu.Dismiss"
+         @oncontextmenu="@Menu.Dismiss" @oncontextmenu:preventDefault="true"></div>
+    <div @ref="_element" class="solo-context-menu mud-paper mud-elevation-8" role="menu" tabindex="-1"
+         style="@FormattableString.Invariant($"left:{menu.ClientX}px;top:{menu.ClientY}px")"
+         @onkeydown="@OnKeyDown" @oncontextmenu:preventDefault="true">
+        @for (var i = 0; i < menu.Items.Count; i++)
+        {
+            var item = menu.Items[i];
+            if (item.SeparatorBefore && i > 0)
+            {
+                <div class="solo-context-menu__divider" role="separator"></div>
+            }
+
+            <button type="button" role="menuitem" tabindex="-1" disabled="@item.Disabled"
+                    class="@(item.Danger ? "solo-context-menu__item solo-context-menu__item--danger" : "solo-context-menu__item")"
+                    @onclick="@(() => Menu.Choose(item.Id))">
+                @if (item.Icon is { } icon)
+                {
+                    <MudIcon Icon="@icon" Size="Size.Small" />
+                }
+                <span>@item.Label</span>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    private ElementReference _element;
+    private OpenContextMenu? _placed;
+
+    protected override void OnInitialized()
+    {
+        Menu.StateChanged += OnStateChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Menu.Current is not { } menu || ReferenceEquals(menu, _placed))
+        {
+            return;
+        }
+
+        _placed = menu;
+        try
+        {
+            await JS.InvokeVoidAsync("solo.contextMenu.place", _element, menu.ClientX, menu.ClientY);
+        }
+        catch (JSException)
+        {
+            // Left where it opened, which is at worst partly off screen.
+        }
+    }
+
+    /// <remarks>
+    /// Tab leaves as Escape does: the menu is a moment's choice, not somewhere
+    /// focus lives. The arrow keys are solo.contextMenu.place's.
+    /// </remarks>
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Escape" or "Tab")
+        {
+            Menu.Dismiss();
+        }
+    }
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => InvokeAsync(Menu.Dismiss);
+
+    public void Dispose()
+    {
+        Menu.StateChanged -= OnStateChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

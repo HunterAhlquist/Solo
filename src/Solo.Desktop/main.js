@@ -8,7 +8,7 @@ const path = require('path');
 const settingsStore = require('./main/settings');
 const { createSoloServer } = require('./main/server');
 const { buildMenu } = require('./main/menu');
-const { attachContextMenu } = require('./main/context-menu');
+const { attachContextMenu, popupClientMenu } = require('./main/context-menu');
 const { DesktopAuth } = require('./main/desktop-auth');
 
 const desktopAuth = new DesktopAuth();
@@ -631,4 +631,9 @@ function registerIpc() {
     // Asked for once per page load: the window may already be fullscreen when
     // the renderer boots, and the change events above only cover transitions.
     ipcMain.handle('window:full-screen', () => mainWindow?.isFullScreen() ?? false);
+
+    // A page's own right-click menu, drawn natively (see popupClientMenu).
+    // Only the app window's: the settings page has no menus of its own.
+    ipcMain.handle('context-menu:show', (event, items) =>
+        event.sender === mainWindow?.webContents ? popupClientMenu(event.sender, items) : null);
 }

@@ -202,6 +202,9 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             new { anchorDay = "2026-10-09" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,
             (await reader.DeleteAsync($"{url}/{roadmap}/entries/{entry}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PostAsJsonAsync($"{url}/{roadmap}/entries/remove",
+            new { entryIds = new[] { entry } }, TestClients.Json)).StatusCode);
+        Assert.Single(await EntriesAsync(project, roadmap, reader));
     }
 
     [SkippableFact]
@@ -226,6 +229,8 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.PutAsJsonAsync($"{wrong}/entries/{entry}/anchor",
             new { anchorDay = "2026-10-09" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync($"{wrong}/entries/{entry}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.PostAsJsonAsync($"{wrong}/entries/remove",
+            new { entryIds = new[] { entry } }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync(wrong)).StatusCode);
 
         Assert.Empty(await _admin.GetJson<List<JsonObject>>($"{Base}/projects/{away.Id}/roadmaps"));
@@ -285,6 +290,59 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         Assert.Equal("PAYLOAD", entry["boardAlias"]!.GetValue<string>());
         Assert.Equal(task.Id, entry["task"]!["id"]!.GetValue<Guid>());
         Assert.Equal(task.Number, entry["task"]!["number"]!.GetValue<int>());
+    }
+
+    /// <summary>
+    /// A selection's Remove: the entries named go in one request, and one
+    /// already gone, or on another roadmap, is passed over rather than failing
+    /// the rest.
+    /// </summary>
+    [SkippableFact]
+    public async Task Removing_several_entries_takes_them_off_together_and_nothing_else()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await ProjectAsync("Bulk", "BULK");
+        var first = await TaskAsync(board, "First");
+        var second = await TaskAsync(board, "Second");
+        var third = await TaskAsync(board, "Third");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var other = await RoadmapAsync(project, "Other");
+        var firstEntry = await AddAsync(project, roadmap, first);
+        await AddAsync(project, roadmap, second);
+        var thirdEntry = await AddAsync(project, roadmap, third);
+        var elsewhere = await AddAsync(project, other, first);
+        var url = $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries/remove";
+
+        var removed = await _admin.PostAsJsonAsync(url,
+            new { entryIds = new[] { firstEntry, thirdEntry, Guid.NewGuid(), elsewhere } }, TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        Assert.Equal(["Second"], await OrderAsync(project, roadmap));
+        Assert.Single(await EntriesAsync(project, other));
+        Assert.Equal(3, (await _admin.GetJson<List<JsonObject>>($"/api/boards/{board.Id}/tasks")).Count);
+
+        // Already gone: nothing left to do is still done.
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await _admin.PostAsJsonAsync(url, new { entryIds = new[] { firstEntry } }, TestClients.Json)).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task A_remove_naming_no_entries_or_too_many_is_400()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, _) = await ProjectAsync("Bounds", "BOUNDS");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var url = $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries/remove";
+        // One over RoadmapLimits.MaxRemoveAtOnce: the package is laid out for
+        // the host to load, not referenced, so its constants aren't in reach.
+        var tooMany = Enumerable.Range(0, 501).Select(_ => Guid.NewGuid()).ToArray();
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _admin.PostAsJsonAsync(url, new { entryIds = Array.Empty<Guid>() }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _admin.PostAsJsonAsync(url, new { entryIds = tooMany }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _admin.PostAsJsonAsync(url, new { }, TestClients.Json)).StatusCode);
     }
 
     /// <summary>A pill dragged along the timeline moves its own day; the task still has no dates.</summary>
@@ -550,6 +608,13 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         var renamed = new[] { await NextAsync(), await NextAsync() }.Select(m => (m.Topic, m.Kind)).ToList();
         Assert.Contains(("roadmap:list", "changed"), renamed);
         Assert.Contains((topic, "renamed"), renamed);
+
+        // Several taken off at once are one change, not one per entry.
+        var entry = (await EntriesAsync(project, roadmap)).Single()["id"]!.GetValue<Guid>();
+        await _admin.PostAsJsonAsync($"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries/remove",
+            new { entryIds = new[] { entry } }, TestClients.Json);
+        var removed = await NextAsync();
+        Assert.Equal((topic, "entries"), (removed.Topic, removed.Kind));
 
         // The page's own change, sent with its connection id, isn't echoed back to it.
         var other = await TaskAsync(board, "Mine");

@@ -72,9 +72,11 @@ public class AppExtensionLoadTests : SoloBunitContext
         Services.AddSingleton<IBoardHubClient>(new FakeBoardHub());
         Services.AddScoped<SaveGuard>();
         Services.AddScoped(sp => new ThemeState(sp.GetRequiredService<IJSRuntime>()));
-        // The layout hosts the extension task drawer, closed unless something opens it.
+        // The layout hosts the extension task drawer and context menu, closed
+        // unless something opens them.
         Services.AddScoped<BoardStore>();
         Services.AddScoped<TaskDrawerService>();
+        Services.AddScoped<ContextMenuService>();
 
         _http.RouteBytes($"{Inventory}/mcp/client/{AssemblyName}.dll", AssemblyBytes)
              .RouteJson(Inventory, new[]

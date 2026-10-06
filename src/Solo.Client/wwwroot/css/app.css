@@ -1726,3 +1726,58 @@ html.solo-desktop .solo-titlebar {
         justify-self: start;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   Context menu (ISoloContextMenu), as drawn outside the desktop app. It sits
+   above dialogs' layer, as a native menu would, and the backdrop takes the
+   click that dismisses it so that click doesn't land on the page as well.
+   --------------------------------------------------------------------------- */
+.solo-context-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1600;
+}
+
+.solo-context-menu {
+    position: fixed;
+    z-index: 1601;
+    min-width: 12rem;
+    max-width: min(22rem, calc(100vw - 1rem));
+    padding: 0.25rem 0;
+    outline: none;
+}
+
+.solo-context-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    border: 0;
+    background: transparent;
+    color: var(--mud-palette-text-primary);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.solo-context-menu__item:hover:not(:disabled),
+.solo-context-menu__item:focus-visible {
+    background: color-mix(in srgb, var(--mud-palette-primary) 10%, transparent);
+    outline: none;
+}
+
+.solo-context-menu__item:disabled {
+    color: var(--mud-palette-text-disabled);
+    cursor: default;
+}
+
+.solo-context-menu__item--danger:not(:disabled) {
+    color: var(--mud-palette-error);
+}
+
+.solo-context-menu__divider {
+    margin: 0.25rem 0;
+    border-top: 1px solid var(--mud-palette-divider);
+}

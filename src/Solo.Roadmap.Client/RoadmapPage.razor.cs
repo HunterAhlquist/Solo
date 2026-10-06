@@ -47,8 +47,13 @@ public sealed partial class RoadmapPage
     private Dictionary<Guid, ProjectMemberDto> _members = [];
     private readonly Dictionary<Guid, LabelDto> _labels = [];
     private readonly HashSet<Guid> _labelBoards = [];
-    private MenuState? _menu;
     private string? _error;
+
+    /// <summary>The entries selected for the bar menu to act on together.</summary>
+    private readonly HashSet<Guid> _selected = [];
+
+    /// <summary>Where a Shift-click's run of rows starts: the bar last clicked or Cmd/Ctrl-clicked.</summary>
+    private Guid? _anchor;
 
     private IAsyncDisposable? _live;
     private IReadOnlyList<TopicPresenceEntry> _present = [];
@@ -72,6 +77,8 @@ public sealed partial class RoadmapPage
     [Inject] private ISoloTaskDrawer Drawer { get; set; } = null!;
 
     [Inject] private ISoloTaskPicker Picker { get; set; } = null!;
+
+    [Inject] private ISoloContextMenu Menu { get; set; } = null!;
 
     [Inject] private IJSRuntime JS { get; set; } = null!;
 
@@ -115,7 +122,8 @@ public sealed partial class RoadmapPage
         await DetachTimelineAsync();
         _timeline = null;
         _error = null;
-        _menu = null;
+        _selected.Clear();
+        _anchor = null;
         _gesturing = false;
         _stale = false;
 
@@ -180,10 +188,7 @@ public sealed partial class RoadmapPage
     {
         _timeline = timeline;
         _entries = timeline.Entries.ToList();
-        if (_menu is { } menu && _entries.All(e => e.Id != menu.Entry.Id))
-        {
-            _menu = null;
-        }
+        _selected.IntersectWith(_entries.Select(e => e.Id));
     }
 
     /// <summary>Who's who and which colour each label is — fetched once, and never allowed to block the grid.</summary>
@@ -363,22 +368,104 @@ public sealed partial class RoadmapPage
         await CatchUpAsync();
     });
 
+    /// <summary>A plain click on a bar: the selection gives way to the task it opens.</summary>
     [JSInvokable]
-    public Task OnBarClick(string entryId) =>
-        Find(entryId) is { } entry ? InvokeAsync(() => OpenTaskAsync(entry)) : Task.CompletedTask;
-
-    [JSInvokable]
-    public Task OnBarMenu(string entryId, double clientX, double clientY) => InvokeAsync(() =>
+    public Task OnBarClick(string entryId) => InvokeAsync(async () =>
     {
-        if (Find(entryId) is { } entry)
+        if (Find(entryId) is not { } entry)
         {
-            OpenMenu(entry, clientX, clientY);
+            return;
+        }
+
+        _anchor = entry.Id;
+        if (_selected.Count > 0)
+        {
+            _selected.Clear();
+            StateHasChanged();
+        }
+
+        await OpenTaskAsync(entry);
+    });
+
+    /// <summary>
+    /// Cmd-click (Ctrl-click off a Mac) adds a bar to the selection or takes it
+    /// out; Shift-click selects the run of rows from the last one clicked.
+    /// </summary>
+    [JSInvokable]
+    public Task OnBarSelect(string entryId, bool range) => InvokeAsync(() =>
+    {
+        if (CanWrite && Find(entryId) is { } entry)
+        {
+            Select(entry, range);
+            StateHasChanged();
+        }
+    });
+
+    /// <summary>
+    /// The bars a box dragged across the grid touched, scrolled out of view or
+    /// not. <paramref name="additive"/> (Cmd/Ctrl or Shift held) keeps what was
+    /// already selected.
+    /// </summary>
+    [JSInvokable]
+    public Task OnMarquee(string[] entryIds, bool additive) => InvokeAsync(() =>
+    {
+        if (!CanWrite)
+        {
+            return;
+        }
+
+        if (!additive)
+        {
+            _selected.Clear();
+            _anchor = null;
+        }
+
+        _selected.UnionWith(entryIds.Select(Find).OfType<RoadmapEntryDto>().Select(e => e.Id));
+        StateHasChanged();
+    });
+
+    /// <summary>A click on the grid away from the bars, or Escape.</summary>
+    [JSInvokable]
+    public Task OnClearSelection() => InvokeAsync(() =>
+    {
+        if (_selected.Count > 0)
+        {
+            _selected.Clear();
             StateHasChanged();
         }
     });
 
     [JSInvokable]
-    public Task OnDayClick(int index) => InvokeAsync(() => PickAsync(_window.DayAt(index)));
+    public Task OnBarMenu(string entryId, double clientX, double clientY) =>
+        Find(entryId) is { } entry
+            ? InvokeAsync(() => ShowBarMenuAsync(entry, clientX, clientY))
+            : Task.CompletedTask;
+
+    /// <summary>A right-click (or a long press) on a day no bar covers.</summary>
+    [JSInvokable]
+    public Task OnDayMenu(int index, double clientX, double clientY) => InvokeAsync(async () =>
+    {
+        if (_selected.Count > 0)
+        {
+            _selected.Clear();
+            StateHasChanged();
+        }
+
+        if (!CanWrite)
+        {
+            return;
+        }
+
+        var day = _window.DayAt(Math.Clamp(index, 0, _window.Days - 1));
+        var choice = await Menu.ShowAsync(clientX, clientY,
+        [
+            new ContextMenuItem(AddItem, $"Add a task on {Dates.Day(day)}") { Icon = Icons.Material.Filled.Add },
+        ]);
+        if (choice == AddItem)
+        {
+            await PickAsync(day);
+        }
+    });
 
     /// <summary>
     /// A row dropped at <paramref name="index"/> among the others. Reordered here
@@ -679,19 +766,43 @@ public sealed partial class RoadmapPage
         await _timelineHandle.InvokeVoidAsync("revealRow", index);
     }
 
-    private async Task RemoveAsync(RoadmapEntryDto entry)
+    /// <summary>
+    /// Takes the tasks off the roadmap, in one request unless there are more
+    /// than one request takes. They go from the page once the server has them
+    /// gone; if a request fails part way, the page re-reads to show what's left.
+    /// </summary>
+    private async Task RemoveAsync(IReadOnlyList<RoadmapEntryDto> targets)
     {
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
         await using var saving = Saving();
+        var ids = targets.Select(t => t.Id).ToHashSet();
         try
         {
-            await Api.RemoveEntryAsync(_project!.Id, RoadmapId, entry.Id);
-            _entries.RemoveAll(e => e.Id == entry.Id);
-            Snackbar.Add($"Removed {Serial(entry)} from the roadmap.", Severity.Info);
+            foreach (var chunk in ids.Chunk(RoadmapLimits.MaxRemoveAtOnce))
+            {
+                await Api.RemoveEntriesAsync(_project!.Id, RoadmapId, chunk);
+            }
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
+            if (targets.Count > RoadmapLimits.MaxRemoveAtOnce)
+            {
+                _stale = true;
+            }
+
             Snackbar.Add(e.Message, Severity.Error);
+            return;
         }
+
+        _entries.RemoveAll(e => ids.Contains(e.Id));
+        _selected.ExceptWith(ids);
+        Snackbar.Add(targets.Count == 1
+            ? $"Removed {Serial(targets[0])} from the roadmap."
+            : $"Removed {targets.Count} tasks from the roadmap.", Severity.Info);
     }
 
     // -- The task drawer --------------------------------------------------------------
@@ -726,6 +837,7 @@ public sealed partial class RoadmapPage
                 break;
             case TaskDrawerChangeKind.Deleted:
                 _entries.Remove(entry);
+                _selected.Remove(entry.Id);
                 break;
             case TaskDrawerChangeKind.Moved:
                 // Still in the project, on another board: the board alias in the
@@ -737,33 +849,84 @@ public sealed partial class RoadmapPage
         StateHasChanged();
     });
 
-    // -- The bar menu -----------------------------------------------------------------
+    // -- Selection and the menus ---------------------------------------------------------
 
-    private sealed record MenuState(RoadmapEntryDto Entry, double X, double Y);
+    private const string AddItem = "add";
+    private const string OpenItem = "open";
+    private const string RemoveItem = "remove";
 
-    private void OpenMenu(RoadmapEntryDto entry, double clientX, double clientY) =>
-        _menu = new MenuState(entry, clientX, clientY);
-
-    private Task CloseMenu()
+    private void Select(RoadmapEntryDto entry, bool range)
     {
-        _menu = null;
-        return Task.CompletedTask;
+        var to = _entries.IndexOf(entry);
+        if (range && _anchor is { } anchor && _entries.FindIndex(e => e.Id == anchor) is var from and >= 0)
+        {
+            _selected.Clear();
+            _selected.UnionWith(_entries
+                .Skip(Math.Min(from, to))
+                .Take(Math.Abs(to - from) + 1)
+                .Select(e => e.Id));
+            return;
+        }
+
+        if (!_selected.Add(entry.Id))
+        {
+            _selected.Remove(entry.Id);
+        }
+
+        _anchor = entry.Id;
     }
 
-    private async Task MenuOpenAsync(RoadmapEntryDto entry)
+    /// <summary>
+    /// The menu for a bar, from a right-click, a long press or its ⋯ button.
+    /// On a selected bar it acts on the whole selection; on any other it
+    /// selects that bar alone first, so what the menu acts on is always what's
+    /// highlighted.
+    /// </summary>
+    private async Task ShowBarMenuAsync(RoadmapEntryDto entry, double clientX, double clientY)
     {
-        _menu = null;
-        await OpenTaskAsync(entry);
-    }
+        if (CanWrite && !_selected.Contains(entry.Id))
+        {
+            _selected.Clear();
+            _selected.Add(entry.Id);
+            _anchor = entry.Id;
+            StateHasChanged();
+        }
 
-    private async Task MenuRemoveAsync(RoadmapEntryDto entry)
-    {
-        _menu = null;
-        await RemoveAsync(entry);
-    }
+        var targets = CanWrite ? _entries.Where(e => _selected.Contains(e.Id)).ToList() : [entry];
+        if (targets.Count == 0)
+        {
+            return;
+        }
 
-    private static string MenuStyle(MenuState menu) =>
-        FormattableString.Invariant($"left:min({menu.X}px, calc(100vw - 13rem));top:min({menu.Y}px, calc(100vh - 7rem))");
+        var items = new List<ContextMenuItem>();
+        if (targets.Count == 1)
+        {
+            items.Add(new ContextMenuItem(OpenItem, "Open task") { Icon = Icons.Material.Filled.OpenInNew });
+        }
+
+        if (CanWrite)
+        {
+            items.Add(new ContextMenuItem(RemoveItem, targets.Count == 1
+                ? "Remove from roadmap"
+                : $"Remove {targets.Count} tasks from roadmap")
+            {
+                Icon = Icons.Material.Filled.RemoveCircleOutline,
+                Danger = true,
+                SeparatorBefore = true,
+            });
+        }
+
+        switch (await Menu.ShowAsync(clientX, clientY, items))
+        {
+            case OpenItem:
+                await OpenTaskAsync(targets[0]);
+                break;
+            case RemoveItem:
+                await RemoveAsync(targets);
+                StateHasChanged();
+                break;
+        }
+    }
 
     // -- The roadmap itself -------------------------------------------------------------
 
@@ -978,7 +1141,7 @@ public sealed partial class RoadmapPage
     {
         await StopLiveAsync();
         await DetachTimelineAsync();
-        _menu = null;
+        _selected.Clear();
         _error = "Someone deleted this roadmap while you had it open. Its tasks are still on their boards.";
         StateHasChanged();
     }
@@ -1056,6 +1219,7 @@ public sealed partial class RoadmapPage
 
     private string BarClass(RoadmapEntryDto entry) =>
         "roadmap-bar" +
+        (_selected.Contains(entry.Id) ? " roadmap-bar--selected" : "") +
         (entry.Task.DeadlineAt is null ? " roadmap-bar--pill" : "") +
         (entry.Task.Status == TaskState.Finished ? " roadmap-bar--finished" : "") +
         (Timeline.IsMissed(entry.Task, _today) ? " roadmap-bar--missed" : "");

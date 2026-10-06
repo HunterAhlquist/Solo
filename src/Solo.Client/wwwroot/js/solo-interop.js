@@ -144,6 +144,65 @@ window.solo = {
     },
 
     // -----------------------------------------------------------------------
+    // The host context menu (ISoloContextMenu). Inside the desktop shell it is
+    // the operating system's own, through the preload's bridge. Anywhere else
+    // ContextMenuHost draws it, and these place it and walk it by keyboard.
+    // -----------------------------------------------------------------------
+    contextMenu: {
+        // { id } once the native menu closes, id null if nothing was chosen; or
+        // null when there's no native menu to show, which leaves it to .NET.
+        // Checked per call rather than via desktop.available(): a shell built
+        // before the bridge had this still has the rest of it.
+        native: async items => {
+            if (!window.soloDesktop?.showContextMenu) {
+                return null;
+            }
+
+            return { id: (await window.soloDesktop.showContextMenu(items)) ?? null };
+        },
+
+        // Opens at the point, flipped to the other side of it on either axis
+        // where it would run off the viewport, as a native menu does, then
+        // focuses the first item so the keyboard can take it from there.
+        place(menu, x, y) {
+            const margin = 8;
+            const fit = (at, size, room) => at + size + margin <= room
+                ? at
+                : Math.max(margin, Math.min(at - size, room - size - margin));
+            menu.style.left = `${fit(x, menu.offsetWidth, window.innerWidth)}px`;
+            menu.style.top = `${fit(y, menu.offsetHeight, window.innerHeight)}px`;
+
+            if (!menu._soloKeys) {
+                menu._soloKeys = true;
+                menu.addEventListener('keydown', e => {
+                    const step = { ArrowDown: 1, ArrowUp: -1, Home: -Infinity, End: Infinity }[e.key];
+                    if (step !== undefined) {
+                        e.preventDefault();
+                        window.solo.contextMenu._move(menu, step);
+                    }
+                });
+            }
+
+            window.solo.contextMenu._move(menu, -Infinity);
+        },
+
+        _move(menu, step) {
+            const items = Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])'));
+            if (items.length === 0) {
+                menu.focus();
+                return;
+            }
+
+            const at = items.indexOf(document.activeElement);
+            const next = step === -Infinity ? 0
+                : step === Infinity ? items.length - 1
+                : at < 0 ? 0
+                : (at + step + items.length) % items.length;
+            items[next].focus();
+        },
+    },
+
+    // -----------------------------------------------------------------------
     // Solo API sessions (desktop only). The browser sign-in buys a long-lived
     // `solo_` token from the instance; that token is what goes on the wire,
     // and the server slides its expiry on use. The profile delivered with it

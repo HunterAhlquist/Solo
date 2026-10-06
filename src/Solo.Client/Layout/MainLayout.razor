@@ -13,6 +13,9 @@
 <MudPopoverProvider />
 <MudDialogProvider CloseButton="true" CloseOnEscapeKey="true" MaxWidth="MaxWidth.Small" FullWidth="true" />
 <MudSnackbarProvider />
+@* Outside AuthorizeView, unlike the task drawer: a menu asked for and never
+   drawn would leave its caller waiting for a choice that can't come. *@
+<ContextMenuHost />
 
 <MudLayout>
     @* Height comes from the theme's AppbarHeight (5em), so no Dense here. *@

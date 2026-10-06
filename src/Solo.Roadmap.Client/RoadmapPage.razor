@@ -4,11 +4,14 @@
 @*
     A roadmap: its tasks as bars on a day grid that scrolls sideways between the
     instance's bounds, one task per row in the roadmap's own order. Writers add
-    a task from any day no bar covers, drag a bar up or down to reorder it or
-    sideways to move its dates, and drag its edges to reschedule it; everyone
-    can open a task in the board's drawer by clicking its bar. Missed deadlines
-    flash, and are listed under the grid. Everyone else's changes arrive live,
-    and whoever else has it open shows in the header.
+    a task by right-clicking any day no bar covers, drag a bar up or down to
+    reorder it or sideways to move its dates, drag its edges to reschedule it,
+    and select several bars (a box dragged around them, or Cmd/Ctrl-click) to
+    take them off together from the bar menu; everyone can open a task in the
+    board's drawer by clicking its bar. The menus are the host's, so the
+    desktop app shows native ones. Missed deadlines flash, and are listed under
+    the grid. Everyone else's changes arrive live, and whoever else has it open
+    shows in the header.
 *@
 
 <PageTitle>@(_timeline?.Title ?? "Roadmap") · Solo</PageTitle>
@@ -90,17 +93,17 @@ else
 
                 <div class="roadmap-body" data-roadmap-body style="@BodyStyle">
                     <div class="roadmap-today" style="left:@(_window.IndexOf(_today) * DayWidth)px"></div>
+                    <div class="roadmap-drop-indicator" data-roadmap-drop></div>
                     @if (CanWrite)
                     {
-                        <div class="roadmap-add-marker" data-roadmap-marker aria-hidden="true">+</div>
+                        <div class="roadmap-marquee" data-roadmap-marquee aria-hidden="true"></div>
                     }
-                    <div class="roadmap-drop-indicator" data-roadmap-drop></div>
 
                     @if (_entries.Count == 0)
                     {
                         <div class="roadmap-empty">
                             @(CanWrite
-                                ? "No tasks on this roadmap yet. Click a day in the grid, or Add task, to put one on it."
+                                ? "No tasks on this roadmap yet. Right-click a day in the grid (or press and hold one), or use Add task, to put one on it."
                                 : "No tasks on this roadmap yet.")
                         </div>
                     }
@@ -165,7 +168,7 @@ else
                                     {
                                         <button type="button" class="roadmap-bar__more" data-roadmap-menu
                                                 aria-label="@($"More for {Serial(entry)}")"
-                                                @onclick="@(e => OpenMenu(entry, e.ClientX, e.ClientY))">⋯</button>
+                                                @onclick="@(e => ShowBarMenuAsync(entry, e.ClientX, e.ClientY))">⋯</button>
                                         @if (!place.ClippedEnd)
                                         {
                                             <span class="roadmap-bar__handle roadmap-bar__handle--end"
@@ -233,24 +236,4 @@ else
             }
         </section>
     </div>
-
-    @if (_menu is { } menu)
-    {
-        <div class="roadmap-menu-backdrop" @onclick="@CloseMenu"
-             @oncontextmenu="@CloseMenu" @oncontextmenu:preventDefault="true"></div>
-        <MudPaper Class="roadmap-menu" Elevation="8" Style="@MenuStyle(menu)" role="menu"
-                  @onkeydown="@(e => e.Key == "Escape" ? CloseMenu() : Task.CompletedTask)">
-            <button type="button" class="roadmap-menu__item" role="menuitem"
-                    @onclick="@(() => MenuOpenAsync(menu.Entry))">
-                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" /> Open task
-            </button>
-            @if (CanWrite)
-            {
-                <button type="button" class="roadmap-menu__item roadmap-menu__item--danger" role="menuitem"
-                        @onclick="@(() => MenuRemoveAsync(menu.Entry))">
-                    <MudIcon Icon="@Icons.Material.Filled.RemoveCircleOutline" Size="Size.Small" /> Remove from roadmap
-                </button>
-            }
-        </MudPaper>
-    }
 }

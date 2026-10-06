@@ -57,5 +57,9 @@ public abstract class ComponentTestBase : SoloBunitContext
         // Every component that saves injects it, so it belongs here rather than
         // in each test class that happens to render one.
         Services.AddScoped<SaveGuard>();
+
+        // MainLayout hosts the context menu, closed unless something opens it,
+        // so every test that renders the layout needs it.
+        Services.AddScoped<ContextMenuService>();
     }
 }
