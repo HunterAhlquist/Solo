@@ -1,0 +1,111 @@
+@using MudBlazor.Utilities
+@*
+    Adds or edits a milestone: its name, its day and its colour. Editing also
+    offers Delete, which closes with MilestoneEdit.Deleted rather than asking
+    again — a milestone is one line on one roadmap, and nothing else follows it.
+*@
+
+<MudDialog DefaultFocus="DefaultFocus.None">
+    <DialogContent>
+        <MudTextField @ref="_field" @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" AutoFocus="true" MaxLength="@RoadmapLimits.MilestoneName" OnKeyUp="@OnKeyUp"
+                      Class="mb-3" />
+        <MudDatePicker @bind-Date="_day" Label="Due" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Editable="true" Class="mb-3" />
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Colour</MudText>
+        <div class="roadmap-milestone-swatches" role="radiogroup" aria-label="Colour">
+            @foreach (var swatch in MilestoneColors.Swatches)
+            {
+                <button type="button" role="radio" class="roadmap-milestone-swatch" style="--swatch:@swatch"
+                        aria-checked="@(Hex == swatch ? "true" : "false")" aria-label="@swatch"
+                        @onclick="@(() => _color = new MudColor(swatch))"></button>
+            }
+        </div>
+        <MudColorPicker Value="@_color" ValueChanged="@(c => _color = c)" Label="Custom colour"
+                        Variant="Variant.Outlined" Margin="Margin.Dense"
+                        ColorPickerMode="ColorPickerMode.HEX" ShowAlpha="false" />
+    </DialogContent>
+    <DialogActions>
+        @if (CanDelete)
+        {
+            <MudButton Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="@Delete">Delete</MudButton>
+            <MudSpacer />
+        }
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(!CanSave)" OnClick="@Save">
+            @SaveText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private MudTextField<string>? _field;
+    private string _name = string.Empty;
+    private DateTime? _day;
+    private MudColor _color = new(RoadmapLimits.DefaultMilestoneColor);
+
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter]
+    public string InitialName { get; set; } = string.Empty;
+
+    [Parameter]
+    public DateOnly InitialDay { get; set; }
+
+    /// <summary>Named to avoid shadowing MudBlazor's <c>Color</c> enum inside this component.</summary>
+    [Parameter]
+    public string HexColor { get; set; } = RoadmapLimits.DefaultMilestoneColor;
+
+    [Parameter]
+    public string SaveText { get; set; } = "Add";
+
+    [Parameter]
+    public bool CanDelete { get; set; }
+
+    /// <summary>The server takes exactly <c>#rrggbb</c>, so no alpha goes with it.</summary>
+    private string Hex => $"#{_color.R:x2}{_color.G:x2}{_color.B:x2}";
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(_name) && _day is not null;
+
+    protected override void OnInitialized()
+    {
+        _name = InitialName;
+        _day = InitialDay.ToDateTime(TimeOnly.MinValue);
+        _color = new MudColor(HexColor);
+    }
+
+    /// <summary>The dialog's focus handling would otherwise take focus from the field's autofocus.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _field is not null)
+        {
+            await _field.FocusAsync();
+        }
+    }
+
+    /// <summary>On keyup, as in <see cref="RoadmapTitleDialog"/>, so the tail of Enter doesn't reopen it.</summary>
+    private void OnKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Save();
+        }
+    }
+
+    private void Save()
+    {
+        if (CanSave)
+        {
+            Dialog.Close(DialogResult.Ok(new MilestoneEdit(_name.Trim(), DateOnly.FromDateTime(_day!.Value), Hex)));
+        }
+    }
+
+    private void Delete() => Dialog.Close(DialogResult.Ok(MilestoneEdit.Deleted));
+
+    public sealed record MilestoneEdit(string Name, DateOnly Day, string Color)
+    {
+        /// <summary>What the dialog closes with when Delete was chosen.</summary>
+        public static readonly MilestoneEdit Deleted = new("", default, "");
+    }
+}

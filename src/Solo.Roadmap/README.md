@@ -72,6 +72,23 @@ and the instance loses roadmaps and nothing else:
     boards.
   - The menus are the host's (`ISoloContextMenu`), so the desktop app shows
     native ones.
+  - **Milestones** are named deadlines on the roadmap itself, independent of
+    any task. Writers add one with **Add milestone** in the header (on today),
+    or by right-clicking a day and choosing **Add a milestone on …**, and give
+    it a name, a day and a colour (red unless they pick another). Each shows
+    as a 4px dotted line at the end of its day, the height of the grid, with a
+    flag carrying its name in the month band.
+    - Clicking the flag (or the line, or Enter on the focused flag) opens its
+      dialog to rename, recolour, re-date or delete it. Right-clicking it, or a
+      long press, offers **Edit milestone** and **Delete milestone**.
+    - Dragging the flag or the line moves it a day at a time; Shift+←/→ on the
+      focused flag does the same.
+    - A milestone flashes like a missed bar while it's due: from the start of
+      the sprint its day falls in, through the day itself. A day in the first
+      three days of a sprint counts as due from the sprint before, so it
+      doesn't arrive without warning.
+    - Scrolled out of view, a milestone shows as a chip pinned to that side of
+      the month band. Clicking the chip brings its line to the middle of the view.
   - Changes anyone else makes to the roadmap or its tasks redraw it in place,
     without moving the view.
   - Whoever else has the roadmap open shows in the header. An outlined,
@@ -123,13 +140,16 @@ route; any other project answers 404.
 | POST | `projects/{projectId}/roadmaps` | write | `{ title }`. |
 | PUT | `projects/{projectId}/roadmaps/{id}` | write | Rename: `{ title, version }`. 409 on a stale version. |
 | DELETE | `projects/{projectId}/roadmaps/{id}` | write | The roadmap and its entries; the tasks are untouched. |
-| GET | `projects/{projectId}/roadmaps/{id}` | read | The timeline: entries in roadmap order, each with its `TaskDto` and board, plus the settings. |
+| GET | `projects/{projectId}/roadmaps/{id}` | read | The timeline: entries in roadmap order, each with its `TaskDto` and board, its milestones by day, plus the settings. |
 | POST | `projects/{projectId}/roadmaps/{id}/entries` | write | `{ taskId, anchorDay }`. 400 for a task outside the project, 409 if it's already on. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`. Roadmap order only. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/anchor` | write | `{ anchorDay }`: moves a no-deadline pill. A task with dates moves through core's schedule endpoint instead. |
 | DELETE | `projects/{projectId}/roadmaps/{id}/entries/{entryId}` | write | Takes the task off this roadmap; the task is untouched. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/rank` | write | `{ entryIds, precedingId, followingId }`, 1 to 500: moves them together between the neighbors, keeping their order. Ids not on this roadmap are skipped; 400 if a neighbor is one of the rows moving. |
 | POST | `projects/{projectId}/roadmaps/{id}/entries/remove` | write | `{ entryIds }`, 1 to 500: takes them all off in one change. Ids not on this roadmap are skipped. |
+| POST | `projects/{projectId}/roadmaps/{id}/milestones` | write | `{ name, day, color? }`. The colour is `#rrggbb` and defaults to `#e53935`. 400 without a name or day. |
+| PUT | `projects/{projectId}/roadmaps/{id}/milestones/{milestoneId}` | write | `{ name, day, color, version }`. 409 on a stale version. |
+| DELETE | `projects/{projectId}/roadmaps/{id}/milestones/{milestoneId}` | write | Deletes the milestone. |
 | GET | `tasks/{taskId}/roadmaps` | read | The roadmaps a task is on. |
 | GET | `settings` | signed in | The bounds, the sprint start day and the sprint length. |
 | PUT | `settings` | super admin | `{ pastDays, futureDays, sprintStartDay, sprintLengthWeeks, version }`, the day as a name (`"Monday"`). 400 out of range, 409 stale. |
@@ -181,7 +201,13 @@ the result to .NET when the box is let go. The page marks selected rows
 (`data-selected`) so a drag can preview the whole group. On the drop, .NET
 decides again from its own copy which rows go along.
 
-**Both content URLs carry the package version** (`roadmap.js?v=1.5.1`). The
+**A milestone belongs to the roadmap, not to a task.** It's a row of this
+package's own (`Milestones`, cascading with its roadmap), so moving one never
+touches a task's dates, and the same date on two roadmaps is two milestones.
+When it's due is worked out in the browser from the sprint settings
+(`RoadmapSprints.MilestoneDueFrom`), not stored.
+
+**Both content URLs carry the package version** (`roadmap.js?v=1.6.1`). The
 page and its script change together, and a cache between the app and the
 server, such as a proxy that adds its own headers or the desktop app's disk
 cache, could otherwise pair a new page with an old script.
@@ -236,6 +262,12 @@ dotnet ef migrations add <Name> --project src/Solo.Roadmap --startup-project src
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.5
+
+1.6 adds the `Milestones` migration, a new table in `ext_roadmap`, which the
+host applies at startup. It needs nothing new from the host. The timeline read
+now includes `milestones`, so update the server package and the page together.
 
 ## Upgrading from 1.4
 

@@ -26,6 +26,7 @@ public class RoadmapPageTests : ComponentTestBase
     private readonly FakePicker _picker = new();
     private readonly FakeMenu _menu = new();
     private List<RoadmapEntryDto> _entries = [Entry("Save system", 1)];
+    private List<RoadmapMilestoneDto> _milestones = [];
     private ProjectRole _role = ProjectRole.ReadWrite;
 
     public RoadmapPageTests()
@@ -44,7 +45,7 @@ public class RoadmapPageTests : ComponentTestBase
                 ProjectRole.ReadWrite, false, false),
         });
         _http.RouteJson("/labels", Array.Empty<LabelDto>());
-        _http.Route($"roadmaps/{RoadmapId}", HttpStatusCode.OK, () => Timeline(_entries), HttpMethod.Get);
+        _http.Route($"roadmaps/{RoadmapId}", HttpStatusCode.OK, () => Timeline(_entries, _milestones), HttpMethod.Get);
         _http.Route("/api/projects", HttpStatusCode.OK, () => new[]
         {
             new ProjectSummaryDto(ProjectId, "Solo", "SOLO", null, null, _role, false),
@@ -55,9 +56,10 @@ public class RoadmapPageTests : ComponentTestBase
         new(Guid.NewGuid(), number * 1024m, DateOnly.FromDateTime(DateTime.Today), "FEAT", "Features",
             TestData.Task(number: number, deadline: DateOnly.FromDateTime(DateTime.Today).AddDays(3)) with { Name = name });
 
-    private static RoadmapTimelineDto Timeline(IEnumerable<RoadmapEntryDto> entries) =>
+    private static RoadmapTimelineDto Timeline(
+        IEnumerable<RoadmapEntryDto> entries, IEnumerable<RoadmapMilestoneDto> milestones) =>
         new(RoadmapId, ProjectId, "SOLO", "2027 Launch", 1,
-            new RoadmapSettingsDto(30, 60, DayOfWeek.Monday, 2, 1), entries.ToList());
+            new RoadmapSettingsDto(30, 60, DayOfWeek.Monday, 2, 1), entries.ToList(), milestones.ToList());
 
     private IRenderedComponent<RoadmapPage> RenderPage()
     {
@@ -209,7 +211,7 @@ public class RoadmapPageTests : ComponentTestBase
         // The window opens 30 days back (PastDays), so column 32 is two days on.
         await page.Instance.OnDayMenu(32, 100, 200);
 
-        Assert.Equal([$"Add a task on {Dates.Day(day)}"], _menu.Labels());
+        Assert.Equal([$"Add a task on {Dates.Day(day)}", $"Add a milestone on {Dates.Day(day)}"], _menu.Labels());
         page.WaitForAssertion(() => Assert.Equal(["Save system", "Photo mode"], Names(page)));
         Assert.Equal($"Add a task on {Dates.Day(day)}", Assert.Single(_picker.Calls).Options!.Title);
         Assert.Contains($"\"{day:yyyy-MM-dd}\"", Body("POST", "/entries"));
@@ -519,6 +521,165 @@ public class RoadmapPageTests : ComponentTestBase
 
         page.WaitForAssertion(() => Assert.Equal(["Photo mode"], Names(page)));
         Assert.Single(Requests("POST", "/entries/remove"));
+    }
+
+    // -- Milestones -------------------------------------------------------------------
+
+    private static RoadmapMilestoneDto Milestone(string name, int daysFromToday, uint version = 7) =>
+        new(Guid.NewGuid(), name, Today.AddDays(daysFromToday), "#1e88e5", version);
+
+    private static List<string> Flags(IRenderedComponent<RoadmapPage> page) =>
+        page.FindAll(".roadmap-milestone__flag").Select(f => f.TextContent.Trim()).ToList();
+
+    [Fact]
+    public void A_milestone_is_a_flag_in_the_header_and_a_line_through_the_grid_at_the_end_of_its_day()
+    {
+        _milestones = [Milestone("Beta", 3)];
+        var page = RenderPage();
+
+        Assert.Equal(["Beta"], Flags(page));
+        // The window opens 30 days back, so its day is column 33 and its end 34 columns in.
+        var line = page.Find(".roadmap-milestone-line");
+        Assert.Contains("--milestone-x:1360px", line.GetAttribute("style"));
+        Assert.Contains("--milestone:#1e88e5", line.GetAttribute("style"));
+        Assert.Contains("--milestone-ink:#fff", line.GetAttribute("style"));
+        Assert.Equal(_milestones[0].Id.ToString(), line.GetAttribute("data-roadmap-milestone"));
+        Assert.Equal("33", line.GetAttribute("data-day"));
+    }
+
+    [Fact]
+    public void A_milestone_due_this_sprint_flashes_and_one_passed_or_sprints_away_does_not()
+    {
+        // Two-week sprints: one forty days out is at least a sprint away whatever today is.
+        _milestones = [Milestone("Yesterday", -1), Milestone("Today", 0), Milestone("Later", 40)];
+        var page = RenderPage();
+
+        var due = page.FindAll(".roadmap-milestone.roadmap-milestone--due .roadmap-milestone__flag")
+            .Select(f => f.TextContent.Trim());
+        Assert.Equal(["Today"], due);
+        Assert.Single(page.FindAll(".roadmap-milestone-line.roadmap-milestone--due"));
+    }
+
+    [Fact]
+    public void Every_milestone_has_a_chip_for_either_side_to_show_when_its_line_is_out_of_view()
+    {
+        // Beyond the window (60 days ahead) it has no line, but still a chip.
+        _milestones = [Milestone("Beta", 3), Milestone("Launch", 90)];
+        var page = RenderPage();
+
+        Assert.Equal(["Beta"], Flags(page));
+        Assert.Equal(2, page.FindAll(".roadmap-milestone-hints__before [data-roadmap-milestone-hint]").Count);
+        var after = page.FindAll(".roadmap-milestone-hints__after [data-roadmap-milestone-hint]");
+        Assert.Equal(["33", "120"], after.Select(c => c.GetAttribute("data-day")));
+        Assert.Contains("Launch", after[1].TextContent);
+    }
+
+    [Fact]
+    public async Task Right_clicking_a_day_adds_a_milestone_on_it_in_the_default_red()
+    {
+        var day = Today.AddDays(2);
+        _http.Route($"roadmaps/{RoadmapId}/milestones", HttpStatusCode.OK,
+            new RoadmapMilestoneDto(Guid.NewGuid(), "Beta", day, RoadmapLimits.DefaultMilestoneColor, 1), HttpMethod.Post);
+        _menu.Next = "add-milestone";
+        var dialogs = Render<MudBlazor.MudDialogProvider>();
+        var page = RenderPage();
+
+        var menu = page.InvokeAsync(() => page.Instance.OnDayMenu(32, 100, 200));
+        dialogs.WaitForAssertion(() => Assert.NotEmpty(dialogs.FindAll("input")));
+        dialogs.Find("input").Input("Beta");
+        await dialogs.InvokeAsync(() => dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Add").Click());
+        await menu;
+
+        page.WaitForAssertion(() => Assert.Equal(["Beta"], Flags(page)));
+        var body = Body("POST", "/milestones");
+        Assert.Contains("\"name\":\"Beta\"", body);
+        Assert.Contains($"\"day\":\"{day:yyyy-MM-dd}\"", body);
+        Assert.Contains($"\"color\":\"{RoadmapLimits.DefaultMilestoneColor}\"", body);
+    }
+
+    [Fact]
+    public async Task Dropping_a_milestone_on_another_day_saves_it_over_the_version_it_had()
+    {
+        _milestones = [Milestone("Beta", 3)];
+        var moved = _milestones[0] with { Day = Today.AddDays(5), Version = 8 };
+        _http.Route($"milestones/{moved.Id}", HttpStatusCode.OK, moved, HttpMethod.Put);
+        var page = RenderPage();
+
+        await page.Instance.OnMilestoneMove(moved.Id.ToString(), 35);
+
+        page.WaitForAssertion(() => Assert.Contains("--milestone-x:1440px",
+            page.Find(".roadmap-milestone-line").GetAttribute("style")));
+        var body = Assert.Single(Requests("PUT", "/milestones/"));
+        Assert.Contains($"\"day\":\"{Today.AddDays(5):yyyy-MM-dd}\"", body);
+        Assert.Contains("\"name\":\"Beta\"", body);
+        Assert.Contains("\"version\":7", body);
+    }
+
+    [Fact]
+    public async Task A_failed_milestone_move_puts_it_back()
+    {
+        _milestones = [Milestone("Beta", 3)];
+        _http.Route($"milestones/{_milestones[0].Id}", HttpStatusCode.InternalServerError, (object?)null, HttpMethod.Put);
+        var page = RenderPage();
+
+        await page.Instance.OnMilestoneMove(_milestones[0].Id.ToString(), 40);
+
+        page.WaitForAssertion(() => Assert.Contains("--milestone-x:1360px",
+            page.Find(".roadmap-milestone-line").GetAttribute("style")));
+    }
+
+    [Fact]
+    public async Task Clicking_a_flag_opens_its_dialog_where_it_can_be_deleted()
+    {
+        _milestones = [Milestone("Beta", 3)];
+        var id = _milestones[0].Id;
+        _http.Route($"milestones/{id}", HttpStatusCode.NoContent, (object?)null, HttpMethod.Delete);
+        var dialogs = Render<MudBlazor.MudDialogProvider>();
+        var page = RenderPage();
+
+        var click = page.InvokeAsync(() => page.Instance.OnMilestoneClick(id.ToString()));
+        dialogs.WaitForAssertion(() => Assert.NotEmpty(dialogs.FindAll("input")));
+        Assert.Equal("Beta", dialogs.Find("input").GetAttribute("value"));
+        await dialogs.InvokeAsync(() => dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Delete").Click());
+        await click;
+
+        page.WaitForAssertion(() => Assert.Empty(Flags(page)));
+        Assert.Contains($"DELETE /api/ext/roadmap/projects/{ProjectId}/roadmaps/{RoadmapId}/milestones/{id}", _http.Paths);
+    }
+
+    [Fact]
+    public async Task A_milestones_menu_edits_or_deletes_it()
+    {
+        _milestones = [Milestone("Beta", 3)];
+        _http.Route($"milestones/{_milestones[0].Id}", HttpStatusCode.NoContent, (object?)null, HttpMethod.Delete);
+        _menu.Next = "remove";
+        var page = RenderPage();
+
+        await page.Instance.OnMilestoneMenu(_milestones[0].Id.ToString(), 10, 10);
+
+        Assert.Equal(["Edit milestone", "Delete milestone"], _menu.Labels());
+        Assert.True(_menu.Shown[0][1].Danger);
+        page.WaitForAssertion(() => Assert.Empty(Flags(page)));
+    }
+
+    [Fact]
+    public async Task A_read_only_member_sees_milestones_but_cannot_change_them()
+    {
+        _role = ProjectRole.Read;
+        _milestones = [Milestone("Beta", 3)];
+        var dialogs = Render<MudBlazor.MudDialogProvider>();
+        var page = RenderPage();
+
+        await page.Instance.OnMilestoneClick(_milestones[0].Id.ToString());
+        await page.Instance.OnMilestoneMenu(_milestones[0].Id.ToString(), 10, 10);
+        await page.Instance.OnMilestoneMove(_milestones[0].Id.ToString(), 40);
+
+        Assert.Equal(["Beta"], Flags(page));
+        Assert.Empty(dialogs.FindAll("input"));
+        Assert.Empty(_menu.Shown);
+        Assert.DoesNotContain(_http.Paths, p => p.StartsWith("PUT "));
+        Assert.DoesNotContain(page.FindAll("button"), b => b.TextContent.Contains("Add milestone"));
+        Assert.DoesNotContain("roadmap-milestone--movable", page.Markup);
     }
 
     private static AngleSharp.Dom.IElement AddTaskButton(IRenderedComponent<RoadmapPage> page) =>

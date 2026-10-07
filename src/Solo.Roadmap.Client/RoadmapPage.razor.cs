@@ -41,6 +41,9 @@ public sealed partial class RoadmapPage
     private ProjectSummaryDto? _project;
     private RoadmapTimelineDto? _timeline;
     private List<RoadmapEntryDto> _entries = [];
+
+    /// <summary>The roadmap's milestones, earliest first.</summary>
+    private List<RoadmapMilestoneDto> _milestones = [];
     private TimelineWindow _window = new(default, default);
     private DateOnly _today;
     private (int First, int Last) _rendered;
@@ -171,6 +174,7 @@ public sealed partial class RoadmapPage
     {
         _timeline = timeline;
         _entries = timeline.Entries.ToList();
+        _milestones = timeline.Milestones.OrderBy(m => m.Day).ToList();
         _today = DateOnly.FromDateTime(DateTime.Now);
         _window = TimelineWindow.Around(_today, timeline.Settings);
 
@@ -188,6 +192,7 @@ public sealed partial class RoadmapPage
     {
         _timeline = timeline;
         _entries = timeline.Entries.ToList();
+        _milestones = timeline.Milestones.OrderBy(m => m.Day).ToList();
         _selected.IntersectWith(_entries.Select(e => e.Id));
     }
 
@@ -457,13 +462,69 @@ public sealed partial class RoadmapPage
         }
 
         var day = _window.DayAt(Math.Clamp(index, 0, _window.Days - 1));
-        var choice = await Menu.ShowAsync(clientX, clientY,
-        [
-            new ContextMenuItem(AddItem, $"Add a task on {Dates.Day(day)}") { Icon = Icons.Material.Filled.Add },
-        ]);
-        if (choice == AddItem)
+        switch (await Menu.ShowAsync(clientX, clientY,
+                [
+                    new ContextMenuItem(AddItem, $"Add a task on {Dates.Day(day)}") { Icon = Icons.Material.Filled.Add },
+                    new ContextMenuItem(AddMilestoneItem, $"Add a milestone on {Dates.Day(day)}")
+                    {
+                        Icon = Icons.Material.Filled.Flag,
+                    },
+                ]))
         {
-            await PickAsync(day);
+            case AddItem:
+                await PickAsync(day);
+                break;
+            case AddMilestoneItem:
+                await AddMilestoneAsync(day);
+                break;
+        }
+    });
+
+    /// <summary>A click on a milestone's flag or line, without dragging it: writers get its dialog.</summary>
+    [JSInvokable]
+    public Task OnMilestoneClick(string milestoneId) =>
+        CanWrite && FindMilestone(milestoneId) is { } milestone
+            ? InvokeAsync(() => EditMilestoneAsync(milestone))
+            : Task.CompletedTask;
+
+    /// <summary>A right-click (or a long press) on a milestone's flag or line.</summary>
+    [JSInvokable]
+    public Task OnMilestoneMenu(string milestoneId, double clientX, double clientY) => InvokeAsync(async () =>
+    {
+        if (!CanWrite || FindMilestone(milestoneId) is not { } milestone)
+        {
+            return;
+        }
+
+        switch (await Menu.ShowAsync(clientX, clientY,
+                [
+                    new ContextMenuItem(EditItem, "Edit milestone") { Icon = Icons.Material.Filled.Edit },
+                    new ContextMenuItem(RemoveItem, "Delete milestone")
+                    {
+                        Icon = Icons.Material.Filled.Delete,
+                        Danger = true,
+                        SeparatorBefore = true,
+                    },
+                ]))
+        {
+            case EditItem:
+                await EditMilestoneAsync(milestone);
+                break;
+            case RemoveItem:
+                await DeleteMilestoneAsync(milestone);
+                break;
+        }
+    });
+
+    /// <summary>A milestone's flag or line dropped on column <paramref name="index"/>.</summary>
+    [JSInvokable]
+    public Task OnMilestoneMove(string milestoneId, int index) => InvokeAsync(() =>
+    {
+        if (CanWrite && FindMilestone(milestoneId) is { } milestone)
+        {
+            // As with a bar, the line settles where it was dropped and the save finishes on its own.
+            _ = SaveMilestoneAsync(milestone,
+                milestone with { Day = _window.DayAt(Math.Clamp(index, 0, _window.Days - 1)) });
         }
     });
 
@@ -721,6 +782,166 @@ public sealed partial class RoadmapPage
         await RescheduleAsync(entry, Timeline.Resize(entry.Task, entry.AnchorDay, edge, day));
     }
 
+    // -- Milestones -------------------------------------------------------------------
+
+    /// <summary>Shift+←/→ moves a milestone a day, as it does a bar's deadline. Enter opens its dialog.</summary>
+    private async Task OnMilestoneKeyDownAsync(RoadmapMilestoneDto milestone, KeyboardEventArgs e)
+    {
+        if (!CanWrite)
+        {
+            return;
+        }
+
+        if (e.Key is "Enter" or " ")
+        {
+            await EditMilestoneAsync(milestone);
+        }
+        else if (e.ShiftKey && e.Key is "ArrowLeft" or "ArrowRight")
+        {
+            var day = _window.Clamp(milestone.Day.AddDays(e.Key == "ArrowLeft" ? -1 : 1));
+            await SaveMilestoneAsync(milestone, milestone with { Day = day });
+        }
+    }
+
+    private async Task AddMilestoneAsync(DateOnly day)
+    {
+        if (!CanWrite || _project is null)
+        {
+            return;
+        }
+
+        var result = await AskAsync<RoadmapMilestoneDialog>("Add a milestone",
+            new DialogParameters<RoadmapMilestoneDialog> { { d => d.InitialDay, day } });
+        if (result is not { Canceled: false, Data: RoadmapMilestoneDialog.MilestoneEdit edit })
+        {
+            return;
+        }
+
+        await using var saving = Saving();
+        try
+        {
+            var added = await Api.AddMilestoneAsync(_project.Id, RoadmapId,
+                new CreateRoadmapMilestoneRequest { Name = edit.Name, Day = edit.Day, Color = edit.Color });
+            PutMilestone(added);
+            if (added.Day < _window.First || added.Day > _window.Last)
+            {
+                Snackbar.Add($"Added. {Dates.Day(added.Day)} is outside this roadmap's range, so its line doesn't show.",
+                    Severity.Info);
+            }
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            Snackbar.Add($"Couldn't add the milestone: {e.Message}", Severity.Error);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task EditMilestoneAsync(RoadmapMilestoneDto milestone)
+    {
+        var result = await AskAsync<RoadmapMilestoneDialog>("Edit milestone",
+            new DialogParameters<RoadmapMilestoneDialog>
+            {
+                { d => d.InitialName, milestone.Name },
+                { d => d.InitialDay, milestone.Day },
+                { d => d.HexColor, milestone.Color },
+                { d => d.SaveText, "Save" },
+                { d => d.CanDelete, true },
+            });
+        if (result is not { Canceled: false, Data: RoadmapMilestoneDialog.MilestoneEdit edit })
+        {
+            return;
+        }
+
+        if (ReferenceEquals(edit, RoadmapMilestoneDialog.MilestoneEdit.Deleted))
+        {
+            await DeleteMilestoneAsync(milestone);
+        }
+        else
+        {
+            // Saved with the version the dialog opened on, so someone else's
+            // change made meanwhile is a conflict rather than overwritten.
+            await SaveMilestoneAsync(milestone, milestone with { Name = edit.Name, Day = edit.Day, Color = edit.Color });
+        }
+    }
+
+    /// <summary>
+    /// Saves a milestone's new name, day or colour. It's redrawn at once, before
+    /// the first await; a conflict re-reads the roadmap, and any other failure
+    /// puts it back.
+    /// </summary>
+    private async Task SaveMilestoneAsync(RoadmapMilestoneDto before, RoadmapMilestoneDto after)
+    {
+        if (before == after || _project is null)
+        {
+            return;
+        }
+
+        await using var saving = Saving();
+        PutMilestone(after);
+        StateHasChanged();
+        try
+        {
+            PutMilestone(await Api.UpdateMilestoneAsync(_project.Id, RoadmapId, before.Id,
+                new UpdateRoadmapMilestoneRequest
+                {
+                    Name = after.Name,
+                    Day = after.Day,
+                    Color = after.Color,
+                    Version = before.Version,
+                }));
+        }
+        catch (SoloApiException e) when (e.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.NotFound)
+        {
+            _stale = true;
+            Snackbar.Add(e.StatusCode == HttpStatusCode.NotFound
+                ? "Someone else deleted that milestone."
+                : "Someone else changed that milestone first. Try again.", Severity.Warning);
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            PutMilestone(before);
+            Snackbar.Add($"Couldn't save {before.Name}: {e.Message}", Severity.Error);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task DeleteMilestoneAsync(RoadmapMilestoneDto milestone)
+    {
+        if (_project is null)
+        {
+            return;
+        }
+
+        await using var saving = Saving();
+        try
+        {
+            await Api.DeleteMilestoneAsync(_project.Id, RoadmapId, milestone.Id);
+        }
+        catch (SoloApiException e) when (e.StatusCode == HttpStatusCode.NotFound)
+        {
+            // Gone already, which is what was wanted.
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            Snackbar.Add($"Couldn't delete {milestone.Name}: {e.Message}", Severity.Error);
+            return;
+        }
+
+        _milestones.RemoveAll(m => m.Id == milestone.Id);
+        Snackbar.Add($"Deleted the milestone {milestone.Name}.", Severity.Info);
+        StateHasChanged();
+    }
+
+    /// <summary>Adds or replaces a milestone, keeping the list in day order.</summary>
+    private void PutMilestone(RoadmapMilestoneDto milestone)
+    {
+        _milestones.RemoveAll(m => m.Id == milestone.Id);
+        _milestones.Add(milestone);
+        _milestones.Sort((a, b) => a.Day.CompareTo(b.Day));
+    }
+
     // -- Adding and removing ----------------------------------------------------------
 
     private async Task PickAsync(DateOnly day)
@@ -926,6 +1147,8 @@ public sealed partial class RoadmapPage
     // -- Selection and the menus ---------------------------------------------------------
 
     private const string AddItem = "add";
+    private const string AddMilestoneItem = "add-milestone";
+    private const string EditItem = "edit";
     private const string OpenItem = "open";
     private const string RemoveItem = "remove";
 
@@ -1257,6 +1480,9 @@ public sealed partial class RoadmapPage
     private RoadmapEntryDto? Find(string entryId) =>
         Guid.TryParse(entryId, out var id) ? _entries.FirstOrDefault(e => e.Id == id) : null;
 
+    private RoadmapMilestoneDto? FindMilestone(string milestoneId) =>
+        Guid.TryParse(milestoneId, out var id) ? _milestones.FirstOrDefault(m => m.Id == id) : null;
+
     private void Replace(Guid entryId, TaskDto task)
     {
         var index = _entries.FindIndex(e => e.Id == entryId);
@@ -1313,6 +1539,22 @@ public sealed partial class RoadmapPage
             : Dates.Range(span.Start, span.End);
         return $"{Serial(entry)} {entry.Task.Name} ({when})";
     }
+
+    /// <summary>The milestones whose day is inside the window, and so have a line to draw.</summary>
+    private IEnumerable<RoadmapMilestoneDto> Placed() =>
+        _milestones.Where(m => m.Day >= _window.First && m.Day <= _window.Last);
+
+    private string MilestoneClass(RoadmapMilestoneDto milestone, string element) =>
+        element +
+        (CanWrite ? " roadmap-milestone--movable" : "") +
+        (Timeline.IsMilestoneDue(milestone.Day, _today, _timeline!.Settings) ? " roadmap-milestone--due" : "");
+
+    /// <summary>Where the line sits — flush with the end of its day — and its colours.</summary>
+    private string MilestoneStyle(RoadmapMilestoneDto milestone) => FormattableString.Invariant(
+        $"--milestone-x:{(_window.IndexOf(milestone.Day) + 1) * DayWidth}px;--milestone:{milestone.Color};--milestone-ink:{MilestoneColors.Ink(milestone.Color)}");
+
+    private static string MilestoneTitle(RoadmapMilestoneDto milestone) =>
+        $"{milestone.Name} (milestone, due {Dates.Day(milestone.Day)})";
 
     private string DayClass(DateOnly day) =>
         "roadmap-day" +

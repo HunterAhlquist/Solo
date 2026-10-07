@@ -54,4 +54,21 @@ public class SprintTests
 
         Assert.Equal(0, (late.DayNumber - early.DayNumber) % 14);
     }
+
+    [Theory]
+    [InlineData("2026-10-01", "2026-09-28")] // a Thursday, three days in: due from its own sprint
+    [InlineData("2026-10-04", "2026-09-28")] // the sprint's last day
+    [InlineData("2026-09-30", "2026-09-21")] // a Wednesday, two days in: due from the sprint before
+    [InlineData("2026-09-28", "2026-09-21")] // the first day of a sprint
+    public void A_milestone_early_in_its_sprint_is_due_from_the_sprint_before(string day, string expected) =>
+        Assert.Equal(DateOnly.Parse(expected), RoadmapSprints.MilestoneDueFrom(DateOnly.Parse(day), DayOfWeek.Monday, 1));
+
+    [Fact]
+    public void The_sprint_before_is_a_whole_sprint_length_back()
+    {
+        var day = new DateOnly(2026, 9, 29);
+        var start = RoadmapSprints.SprintStart(day, DayOfWeek.Monday, 3);
+
+        Assert.Equal(start.AddDays(-21), RoadmapSprints.MilestoneDueFrom(start.AddDays(1), DayOfWeek.Monday, 3));
+    }
 }

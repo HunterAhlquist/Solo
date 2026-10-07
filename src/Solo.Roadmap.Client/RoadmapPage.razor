@@ -4,14 +4,16 @@
 @*
     A roadmap: its tasks as bars on a day grid that scrolls sideways between the
     instance's bounds, one task per row in the roadmap's own order. Writers add
-    a task by right-clicking any day no bar covers, drag a bar up or down to
+    a task or a milestone by right-clicking any day no bar covers, drag a bar up or down to
     reorder it or sideways to move its dates, drag its edges to reschedule it,
     and select several bars (a box dragged around them, or Cmd/Ctrl-click) to
     take them off together from the bar menu; everyone can open a task in the
     board's drawer by clicking its bar. The menus are the host's, so the
     desktop app shows native ones. Missed deadlines flash, and are listed under
-    the grid. Everyone else's changes arrive live, and whoever else has it open
-    shows in the header.
+    the grid. Milestones are dotted lines with a flag in the month band, which
+    writers drag to move and click to edit; one due this sprint flashes.
+    Everyone else's changes arrive live, and whoever else has it open shows in
+    the header.
 *@
 
 <PageTitle>@(_timeline?.Title ?? "Roadmap") · Solo</PageTitle>
@@ -54,6 +56,10 @@ else
                            StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => PickAsync(_today))">
                     Add task
                 </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Flag" OnClick="@(() => AddMilestoneAsync(_today))">
+                    Add milestone
+                </MudButton>
                 <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" aria-label="Roadmap actions"
                          AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                     <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@RenameAsync">Rename</MudMenuItem>
@@ -89,11 +95,51 @@ else
                             </div>
                         }
                     </div>
+
+                    @* Where to look for a milestone scrolled out of view, pinned to the
+                       side it went (roadmap.js sets data-offscreen on each chip). Every
+                       milestone has a chip on both sides; only the one that applies shows. *@
+                    @if (_milestones.Count > 0)
+                    {
+                        <div class="roadmap-milestone-hints">
+                            @foreach (var side in new[] { "before", "after" })
+                            {
+                                <span class="roadmap-milestone-hints__@side">
+                                    @foreach (var milestone in _milestones)
+                                    {
+                                        <span class="@MilestoneClass(milestone, "roadmap-milestone-hint")" @key="milestone.Id"
+                                              data-roadmap-milestone-hint data-day="@_window.IndexOf(milestone.Day)"
+                                              style="@MilestoneStyle(milestone)" title="@MilestoneTitle(milestone)">
+                                            @(side == "before" ? "‹ " : "")<span class="roadmap-milestone-hint__dot"></span>@milestone.Name@(side == "after" ? " ›" : "")
+                                        </span>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    }
+
+                    @foreach (var milestone in Placed())
+                    {
+                        <div class="@MilestoneClass(milestone, "roadmap-milestone")" @key="milestone.Id"
+                             data-roadmap-milestone="@milestone.Id" data-day="@_window.IndexOf(milestone.Day)"
+                             style="@MilestoneStyle(milestone)">
+                            <span class="roadmap-milestone__pole"></span>
+                            <span class="roadmap-milestone__flag" tabindex="0" role="button"
+                                  title="@MilestoneTitle(milestone)" aria-label="@MilestoneTitle(milestone)"
+                                  @onkeydown="@(e => OnMilestoneKeyDownAsync(milestone, e))">@milestone.Name</span>
+                        </div>
+                    }
                 </div>
 
                 <div class="roadmap-body" data-roadmap-body style="@BodyStyle">
                     <div class="roadmap-today" style="left:@(_window.IndexOf(_today) * DayWidth)px"></div>
                     <div class="roadmap-drop-indicator" data-roadmap-drop></div>
+                    @foreach (var milestone in Placed())
+                    {
+                        <div class="@MilestoneClass(milestone, "roadmap-milestone-line")" @key="milestone.Id"
+                             data-roadmap-milestone="@milestone.Id" data-day="@_window.IndexOf(milestone.Day)"
+                             style="@MilestoneStyle(milestone)" title="@MilestoneTitle(milestone)"></div>
+                    }
                     @if (CanWrite)
                     {
                         <div class="roadmap-marquee" data-roadmap-marquee aria-hidden="true"></div>
