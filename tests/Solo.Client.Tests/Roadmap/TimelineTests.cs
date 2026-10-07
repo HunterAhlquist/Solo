@@ -261,4 +261,28 @@ public class TimelineTests
         Assert.Equal(1096, window.Days);
         Assert.Equal(365, window.IndexOf(Today));
     }
+
+    // -- Milestones ------------------------------------------------------------
+
+    private static readonly RoadmapSettingsDto WeeklyFromMonday = new(365, 730, DayOfWeek.Monday, 1, 1);
+
+    [Theory]
+    [InlineData("2026-10-01", "2026-09-28", true)]  // the sprint's first day, for a milestone on its fourth
+    [InlineData("2026-10-01", "2026-10-01", true)]  // its own day
+    [InlineData("2026-10-01", "2026-09-27", false)] // the sprint before, for a milestone that isn't early
+    [InlineData("2026-10-01", "2026-10-02", false)] // its day has ended
+    [InlineData("2026-09-29", "2026-09-21", true)]  // two days in: the sprint before counts
+    [InlineData("2026-09-29", "2026-09-20", false)] // but not the one before that
+    public void A_milestone_is_due_from_its_sprints_start_through_its_day(string day, string today, bool due) =>
+        Assert.Equal(due, Timeline.IsMilestoneDue(DateOnly.Parse(day), DateOnly.Parse(today), WeeklyFromMonday));
+
+    [Theory]
+    [InlineData("#e53935", "#fff")]
+    [InlineData("#1e88e5", "#fff")]
+    [InlineData("#fdd835", "#000")]
+    [InlineData("#ffffff", "#000")]
+    [InlineData("#000000", "#fff")]
+    [InlineData("not a colour", "#fff")]
+    public void A_flag_gets_the_ink_that_reads_on_it(string color, string ink) =>
+        Assert.Equal(ink, MilestoneColors.Ink(color));
 }

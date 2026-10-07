@@ -77,6 +77,14 @@ public static class Timeline
     public static bool IsMissed(TaskDto task, DateOnly today) =>
         task.DeadlineAt is { } deadline && deadline < today && task.Status != TaskState.Finished;
 
+    /// <summary>
+    /// A milestone flashes while it's due: from the start of the sprint it falls
+    /// in (or the one before, see <see cref="RoadmapSprints.MilestoneDueFrom"/>)
+    /// through its own day. Once that day has ended it's history, and stops.
+    /// </summary>
+    public static bool IsMilestoneDue(DateOnly day, DateOnly today, RoadmapSettingsDto settings) =>
+        today <= day && today >= RoadmapSprints.MilestoneDueFrom(day, settings.SprintStartDay, settings.SprintLengthWeeks);
+
     public static int DaysOverdue(TaskDto task, DateOnly today) =>
         today.DayNumber - task.DeadlineAt!.Value.DayNumber;
 

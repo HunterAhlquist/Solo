@@ -14,6 +14,14 @@ public static class RoadmapLimits
 {
     public const int Title = 300;
 
+    public const int MilestoneName = 100;
+
+    /// <summary>A milestone's colour when nobody picks one: a red that stands out from the grid in either scheme.</summary>
+    public const string DefaultMilestoneColor = "#e53935";
+
+    /// <summary>The only colour form accepted — what a CSS custom property can take as it is.</summary>
+    public const string ColorPattern = "^#[0-9a-fA-F]{6}$";
+
     public const int MinBoundDays = 1;
     public const int MaxBoundDays = 3650;
 
@@ -50,6 +58,24 @@ public static class RoadmapSprints
         var offset = day.DayNumber - anchor.DayNumber;
         return anchor.AddDays(offset - (((offset % length) + length) % length));
     }
+
+    /// <summary>
+    /// A milestone on one of its sprint's first this-many days counts as due in
+    /// the sprint before: a deadline on a sprint's second day is work for the
+    /// sprint ending just ahead of it, not for the one it barely starts.
+    /// </summary>
+    public const int MilestoneLeadDays = 3;
+
+    /// <summary>
+    /// The first day a milestone on <paramref name="day"/> is due from: the start
+    /// of its sprint, or of the sprint before when it falls on one of its
+    /// sprint's first <see cref="MilestoneLeadDays"/> days.
+    /// </summary>
+    public static DateOnly MilestoneDueFrom(DateOnly day, DayOfWeek startDay, int weeks)
+    {
+        var start = SprintStart(day, startDay, weeks);
+        return day.DayNumber - start.DayNumber < MilestoneLeadDays ? start.AddDays(-weeks * 7) : start;
+    }
 }
 
 /// <summary>
@@ -71,6 +97,9 @@ public static class RoadmapTopics
     /// <summary>Entries were added, removed, reordered or moved.</summary>
     public const string EntriesChanged = "entries";
 
+    /// <summary>A milestone was added, edited, moved or deleted.</summary>
+    public const string MilestonesChanged = "milestones";
+
     /// <summary>A task on the roadmap changed; the data is its id.</summary>
     public const string TaskChanged = "task";
 
@@ -90,7 +119,14 @@ public sealed record RoadmapTimelineDto(
     string Title,
     uint Version,
     RoadmapSettingsDto Settings,
-    IReadOnlyList<RoadmapEntryDto> Entries);
+    IReadOnlyList<RoadmapEntryDto> Entries,
+    IReadOnlyList<RoadmapMilestoneDto> Milestones);
+
+/// <summary>
+/// A named deadline on a roadmap, drawn as a line at the end of its
+/// <see cref="Day"/>. It belongs to the roadmap alone; no task's dates follow it.
+/// </summary>
+public sealed record RoadmapMilestoneDto(Guid Id, string Name, DateOnly Day, string Color, uint Version);
 
 /// <summary>
 /// One task on a roadmap, in roadmap rank order. <see cref="AnchorDay"/> is the
@@ -145,6 +181,31 @@ public sealed class AddRoadmapEntryRequest
 public sealed class SetRoadmapEntryAnchorRequest
 {
     public DateOnly AnchorDay { get; init; }
+}
+
+public sealed class CreateRoadmapMilestoneRequest
+{
+    [Required, MaxLength(RoadmapLimits.MilestoneName)]
+    public required string Name { get; init; }
+
+    public DateOnly Day { get; init; }
+
+    [Required, RegularExpression(RoadmapLimits.ColorPattern)]
+    public string Color { get; init; } = RoadmapLimits.DefaultMilestoneColor;
+}
+
+/// <summary>Everything about a milestone at once, from its dialog or a drag of its line.</summary>
+public sealed class UpdateRoadmapMilestoneRequest
+{
+    [Required, MaxLength(RoadmapLimits.MilestoneName)]
+    public required string Name { get; init; }
+
+    public DateOnly Day { get; init; }
+
+    [Required, RegularExpression(RoadmapLimits.ColorPattern)]
+    public required string Color { get; init; }
+
+    public uint Version { get; init; }
 }
 
 /// <summary>Entries to take off a roadmap together, such as everything selected on the page.</summary>

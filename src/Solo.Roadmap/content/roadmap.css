@@ -144,10 +144,12 @@ html[data-color-scheme="dark"] {
     white-space: nowrap;
 }
 
-/* The label stays on screen while its month is, however far into it the view is. */
+/* The label stays on screen while its month is, however far into it the view
+   is — beside any milestone chips pinned to the left edge, not under them
+   (roadmap.js measures them into --roadmap-hints-before). */
 .roadmap-month__label {
     position: sticky;
-    left: 0;
+    left: var(--roadmap-hints-before, 0px);
     padding: 0 0.375rem;
 }
 
@@ -257,6 +259,200 @@ html[data-color-scheme="dark"] {
 
 .roadmap-marquee.is-visible {
     display: block;
+}
+
+/* -- Milestones -------------------------------------------------------------- */
+
+/* A milestone is drawn in two parts: in the sticky header, a flag in the month
+   band on a pole down through the day numbers; in the body, a dotted line the
+   height of the grid. Both sit flush with the end of the milestone's day
+   (--milestone-x is that day's right edge) and move together when dragged. */
+.roadmap-milestone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--milestone-x);
+    width: 0;
+    z-index: 3;
+}
+
+.roadmap-milestone__pole,
+.roadmap-milestone-line {
+    position: absolute;
+    width: 0;
+    border-left: 4px dotted var(--milestone);
+}
+
+.roadmap-milestone__pole {
+    top: 0.125rem;
+    bottom: 0;
+    right: 0;
+}
+
+/* A pennant flying to the right of its pole, its notch cut by clip-path. */
+.roadmap-milestone__flag {
+    position: absolute;
+    top: 0.125rem;
+    left: 0;
+    max-width: 10rem;
+    height: 1.125rem;
+    padding: 0 0.75rem 0 0.375rem;
+    background: var(--milestone);
+    color: var(--milestone-ink);
+    clip-path: polygon(0 0, 100% 0, calc(100% - 0.375rem) 50%, 100% 100%, 0 100%);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+    touch-action: pan-x pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.roadmap-milestone--movable .roadmap-milestone__flag {
+    cursor: pointer;
+}
+
+.roadmap-milestone__flag:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 1px;
+    clip-path: none;
+}
+
+/* Over the bars, so it reads across them, but under their resize handles
+   (z-index 1, later in the page), which keep the strip they share. */
+.roadmap-milestone-line {
+    top: 0;
+    bottom: 0;
+    left: calc(var(--milestone-x) - 4px);
+    z-index: 1;
+    touch-action: pan-x pan-y;
+}
+
+/* A little wider to grab than to see. */
+.roadmap-milestone-line::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -6px;
+    width: 8px;
+}
+
+.roadmap-milestone-line.roadmap-milestone--movable {
+    cursor: ew-resize;
+}
+
+.roadmap-milestone.is-dragging,
+.roadmap-milestone-line.is-dragging {
+    z-index: 5;
+}
+
+/* Due this sprint (or, early in a sprint, the one before): blinks like a
+   missed bar until its day has ended. */
+.roadmap-milestone--due .roadmap-milestone__pole,
+.roadmap-milestone--due .roadmap-milestone__flag,
+.roadmap-milestone-line.roadmap-milestone--due,
+.roadmap-milestone-hint.roadmap-milestone--due {
+    animation: roadmap-missed-blink 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .roadmap-milestone--due .roadmap-milestone__pole,
+    .roadmap-milestone--due .roadmap-milestone__flag,
+    .roadmap-milestone-line.roadmap-milestone--due,
+    .roadmap-milestone-hint.roadmap-milestone--due {
+        animation: none;
+    }
+}
+
+/* Chips in the month band for milestones scrolled out of view, pinned to the
+   side each went, as a row's hint is (roadmap.js sets data-offscreen). Under
+   the flags: a milestone in view near an edge matters more than one that isn't. */
+.roadmap-milestone-hints {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1.375rem;
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.roadmap-milestone-hints__before,
+.roadmap-milestone-hints__after {
+    position: sticky;
+    display: flex;
+    gap: 0.25rem;
+}
+
+.roadmap-milestone-hints__before {
+    left: 0.25rem;
+}
+
+.roadmap-milestone-hints__after {
+    right: 0.25rem;
+    margin-left: auto;
+}
+
+.roadmap-milestone-hint {
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 10rem;
+    height: 1.125rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--milestone);
+    border-radius: 0.5625rem;
+    background: color-mix(in srgb, var(--mud-palette-surface) 90%, transparent);
+    font-size: 0.6875rem;
+    color: var(--mud-palette-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.roadmap-milestone-hints__before .roadmap-milestone-hint[data-offscreen="before"],
+.roadmap-milestone-hints__after .roadmap-milestone-hint[data-offscreen="after"] {
+    display: inline-flex;
+}
+
+.roadmap-milestone-hint__dot {
+    flex: 0 0 auto;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--milestone);
+}
+
+/* The milestone dialog's colour choices. */
+.roadmap-milestone-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.75rem;
+}
+
+.roadmap-milestone-swatch {
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 2px solid var(--mud-palette-surface);
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px var(--mud-palette-divider);
+    cursor: pointer;
+}
+
+.roadmap-milestone-swatch[aria-checked="true"] {
+    box-shadow: 0 0 0 2px var(--mud-palette-text-primary);
 }
 
 /* -- Rows and bars ---------------------------------------------------------- */

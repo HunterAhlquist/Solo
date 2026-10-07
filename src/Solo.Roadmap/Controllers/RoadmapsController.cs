@@ -11,7 +11,7 @@ using Solo.Shared.Dtos;
 namespace Solo.Roadmap.Controllers;
 
 /// <summary>
-/// Roadmaps and their entries, at <c>/api/ext/roadmap/projects/{projectId}/roadmaps</c>.
+/// Roadmaps, their entries and their milestones, at <c>/api/ext/roadmap/projects/{projectId}/roadmaps</c>.
 /// </summary>
 /// <remarks>
 /// <para>Every route carries the project, so core's project policies decide
@@ -136,6 +136,11 @@ public sealed class RoadmapsController(
             await db.Entries.Where(e => gone.Contains(e.Id)).ExecuteDeleteAsync(ct);
         }
 
+        var milestones = await db.Milestones.AsNoTracking()
+            .Where(m => m.RoadmapId == roadmapId)
+            .OrderBy(m => m.Day)
+            .ToListAsync(ct);
+
         var project = (await query.ProjectsAsync(ct)).FirstOrDefault(p => p.Id == projectId);
         return new RoadmapTimelineDto(
             roadmap.Id,
@@ -146,7 +151,8 @@ public sealed class RoadmapsController(
             (await settings.GetAsync(ct)).ToDto(),
             entries.Where(e => tasks.ContainsKey(e.TaskId))
                 .Select(e => ToDto(e, tasks[e.TaskId]))
-                .ToList());
+                .ToList(),
+            milestones.Select(m => m.ToDto()).ToList());
     }
 
     /// <summary>Puts a task on the roadmap, at the end.</summary>
@@ -370,6 +376,102 @@ public sealed class RoadmapsController(
 
         return NoContent();
     }
+
+    // -- Milestones ------------------------------------------------------------
+
+    [HttpPost("{roadmapId:guid}/milestones")]
+    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    public async Task<ActionResult<RoadmapMilestoneDto>> AddMilestone(
+        Guid projectId, Guid roadmapId, CreateRoadmapMilestoneRequest request, CancellationToken ct)
+    {
+        if (!await db.Roadmaps.AnyAsync(r => r.Id == roadmapId && r.ProjectId == projectId, ct))
+        {
+            return NotFound();
+        }
+
+        if (MilestoneProblem(request.Name, request.Day) is { } problem)
+        {
+            return problem;
+        }
+
+        var milestone = new RoadmapMilestone
+        {
+            RoadmapId = roadmapId,
+            Name = request.Name.Trim(),
+            Day = request.Day,
+            Color = request.Color.ToLowerInvariant(),
+        };
+        db.Milestones.Add(milestone);
+        await db.SaveChangesAsync(ct);
+
+        await MilestonesChangedAsync(projectId, roadmapId, ct);
+        return Created((string?)null, milestone.ToDto());
+    }
+
+    /// <summary>Renames, recolours or moves a milestone; a drag of its line sends the rest unchanged.</summary>
+    [HttpPut("{roadmapId:guid}/milestones/{milestoneId:guid}")]
+    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    public async Task<ActionResult<RoadmapMilestoneDto>> UpdateMilestone(
+        Guid projectId, Guid roadmapId, Guid milestoneId, UpdateRoadmapMilestoneRequest request, CancellationToken ct)
+    {
+        var milestone = await db.Milestones.FirstOrDefaultAsync(
+            m => m.Id == milestoneId && m.RoadmapId == roadmapId && m.Roadmap.ProjectId == projectId, ct);
+        if (milestone is null)
+        {
+            return NotFound();
+        }
+
+        if (MilestoneProblem(request.Name, request.Day) is { } problem)
+        {
+            return problem;
+        }
+
+        milestone.Name = request.Name.Trim();
+        milestone.Day = request.Day;
+        milestone.Color = request.Color.ToLowerInvariant();
+        db.Entry(milestone).Property(m => m.Version).OriginalValue = request.Version;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ChangedElsewhere();
+        }
+
+        await MilestonesChangedAsync(projectId, roadmapId, ct);
+        return milestone.ToDto();
+    }
+
+    [HttpDelete("{roadmapId:guid}/milestones/{milestoneId:guid}")]
+    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    public async Task<IActionResult> DeleteMilestone(
+        Guid projectId, Guid roadmapId, Guid milestoneId, CancellationToken ct)
+    {
+        var deleted = await db.Milestones
+            .Where(m => m.Id == milestoneId && m.RoadmapId == roadmapId && m.Roadmap.ProjectId == projectId)
+            .ExecuteDeleteAsync(ct);
+        if (deleted == 0)
+        {
+            return NotFound();
+        }
+
+        await MilestonesChangedAsync(projectId, roadmapId, ct);
+        return NoContent();
+    }
+
+    /// <summary>What the attributes can't say: a name of more than spaces, and a day at all.</summary>
+    private ObjectResult? MilestoneProblem(string name, DateOnly day) =>
+        string.IsNullOrWhiteSpace(name)
+            ? Problem(statusCode: StatusCodes.Status400BadRequest, title: "No name given",
+                detail: "Give the milestone a name.")
+            : day == default
+                ? Problem(statusCode: StatusCodes.Status400BadRequest, title: "No day given",
+                    detail: "Say which day the milestone is due.")
+                : null;
+
+    private Task MilestonesChangedAsync(Guid projectId, Guid roadmapId, CancellationToken ct) =>
+        live.PublishAsync(projectId, RoadmapTopics.Roadmap(roadmapId), RoadmapTopics.MilestonesChanged, ct: ct);
 
     private Task EntriesChangedAsync(Guid projectId, Guid roadmapId, CancellationToken ct) =>
         live.PublishAsync(projectId, RoadmapTopics.Roadmap(roadmapId), RoadmapTopics.EntriesChanged, ct: ct);
