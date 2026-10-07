@@ -242,10 +242,15 @@ else
                     {
                         var count = HourlyTotals[hour];
                         var at = _audit.WindowStart.AddHours(hour).ToLocalTime().ToString("t");
-                        <MudTooltip Text="@($"{at} · {count} request{(count == 1 ? "" : "s")}")">
-                            <div class="mcp-usage__slot">
-                                <div class="mcp-usage__bar" style="@BarHeight(count, PeakHour)"></div>
-                            </div>
+                        @* The tooltip's own root is the slot. MudTooltip wraps its
+                           content in an element of its own, and that wrapper — not
+                           anything inside it — is the flex item: a slot nested inside
+                           it never stretches, and every bar shrinks to a 4px stub.
+                           Not Inline, because the inline root is inline-block, which
+                           outranks the slot's display:flex and hangs bars from the top. *@
+                        <MudTooltip Text="@($"{at} · {count} request{(count == 1 ? "" : "s")}")"
+                                    Inline="false" RootClass="mcp-usage__slot">
+                            <div class="mcp-usage__bar" style="@BarHeight(count, PeakHour)"></div>
                         </MudTooltip>
                     }
                 </div>
