@@ -7,6 +7,11 @@
 
 A simple project management tool for small teams: Kanban boards with epics/tasks/sub-tasks as swim-lanes, single-provider OIDC SSO, live editing over SignalR, full audit logging, themes, and extension support.
 
+
+First-party extensions, included in the server release downloads:
+- MCP
+- Roadmaps
+
 **Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host — one container + Postgres is the whole deployment.
 
 No issue reporting, or public pull requesting. I tailored this to my own needs and just wanted to share it with the world if someone else can get use out of it. 
