@@ -7,6 +7,10 @@
 
 A simple project management tool for small teams: Kanban boards with epics/tasks/sub-tasks as swim-lanes, single-provider OIDC SSO, live editing over SignalR, full audit logging, themes, and extension support.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshots/board-dark.png">
+  <img alt="A Solo board for the fictional game Regulatory Capture Quest: epic groups and epics as swim lanes across Unstarted, In Progress and Finished columns, with labels, deadline rings, sub-task progress and assignee avatars" src="docs/images/screenshots/board-light.png">
+</picture>
 
 First-party extensions, included in the server release downloads:
 - MCP
@@ -136,6 +140,59 @@ drop in [extensions](#extensions) such as the bundled MCP server.
 >[!IMPORTANT]
 >Everything after this is written by an LLM, sorry for the slop.
 
+## Tour
+
+The screenshots show a demo instance tracking *Regulatory Capture Quest*, a
+turn-based RPG in which a scrappy open-weights lab fights its way to the capital
+to stop OmniMind from passing the safety rules it wrote for everyone except
+itself. The studio, its eight-person team and OmniMind's CEO, Chadwick
+Moatsworth III, are all fictional. The ladder he pulls up behind him is a
+metaphor.
+
+### Tasks
+
+Clicking a card opens the task in a drawer: a markdown description, labelled
+sub-tasks, start and deadline dates, the comment thread, and the roadmaps the
+task is on. Presence is live over SignalR. Here Hana has the task open while
+Dmitri edits its description, so Priya gets a warning before saving over
+Dmitri's work.
+The **Work for an LLM** flag comes from the [MCP extension](#mcp-server-bundled-extension).
+
+![The task drawer for RCQ-VS-6, "Phase 2: boss climbs a ladder and pulls it up behind him". Left: presence avatars, a warning that Dmitri Volkov is editing, the label, status, assignees, dates, a Roadmaps chip, the Work for an LLM checkbox and the markdown description. Right: five labelled sub-tasks, three done, and the team's comment thread](docs/images/screenshots/task-drawer.png)
+
+### Audit log
+
+Every changed column is recorded with who changed it, when, and the value it
+replaced, and each project's log can be filtered by table, person and date. It
+is how you find out who renamed Phase 3 to "boss simply becomes the regulator",
+and who renamed it back.
+
+![A project's audit log, newest first: Sasha marked the opt-out toggle task finished and renamed it, and Priya reverted Dmitri's rename of the Phase 3 task](docs/images/screenshots/audit.png)
+
+### Themes
+
+Three themes ship in the image: Ahlquist Interactive (the default, above),
+Arcade and Blueprint. The super admin picks one for the whole instance, and
+each person picks light or dark for themselves. To add your own, see
+[docs/themes.md](docs/themes.md).
+
+<table>
+  <tr>
+    <td width="50%"><img alt="The same board in the Arcade theme, dark: neon magenta and cyan on deep purple" src="docs/images/screenshots/theme-arcade.png"></td>
+    <td width="50%"><img alt="The same board in the Blueprint theme, light: navy ink on a drafting grid" src="docs/images/screenshots/theme-blueprint.png"></td>
+  </tr>
+</table>
+
+### On a phone
+
+The same client, at phone width.
+
+<p>
+  <img width="260" alt="The Vertical Slice board on a phone, one epic lane at a time" src="docs/images/screenshots/mobile-board.png">
+  &nbsp;
+  <img width="260" alt="The task drawer full screen on a phone, with the editing warning and presence avatars" src="docs/images/screenshots/mobile-drawer.png">
+</p>
+
 ## Extensions
 
 Solo can be extended with packages that add API endpoints, database tables of
@@ -193,7 +250,7 @@ the extension is still loaded.
 
 ### MCP server (bundled extension)
 
-The one extension this repo ships is **`solo-mcp`** ([src/Solo.Mcp](src/Solo.Mcp)),
+One of the two extensions this repo ships is **`solo-mcp`** ([src/Solo.Mcp](src/Solo.Mcp)),
 which lets an LLM client read and edit Solo's boards. It is a package like any
 other, not part of the image: download `solo-mcp-<version>.zip` from the
 [releases](../../releases), copy it into the extensions directory, and restart.
@@ -209,6 +266,8 @@ launches local processes only and drops an entry carrying a URL, so the page
 hands it an `mcp-remote` bridge instead of the HTTP shape. The endpoint is `POST /api/ext/mcp` — streamable HTTP, stateless, no
 event stream — authenticated by `Authorization: Bearer solomcp_…`.
 
+![The MCP access page: the signed-in person's token with its creation and last-used times and label, Regenerate and Revoke buttons, and a Connect a client card with a tab per client and the claude mcp add command for Claude Code](docs/images/screenshots/mcp.png)
+
 A token **acts as the person who generated it**: every tool call re-enters
 Solo's own REST API carrying that token, so it gets the same authorization,
 auditing and live-board broadcasts as the same action performed in a browser,
@@ -223,6 +282,23 @@ revoked row stays in the audit. A super admin
 sees a second section on the same page: every token's owner, creation and
 revocation times and a 24-hour usage graph, a per-row **Revoke** for cutting off
 one person, and an emergency **Revoke all** for cutting off the instance.
+
+### Roadmaps (bundled extension)
+
+The other is **`solo-roadmap`** ([src/Solo.Roadmap](src/Solo.Roadmap)), which
+adds timelines. A roadmap gathers tasks from any of a project's boards into one
+row each, drawn as a bar from start date to deadline over a day grid with
+sprint stripes. Dragging a bar reschedules the task itself, so the board and
+the roadmap never disagree about a date. Milestones mark dates that belong to
+the roadmap rather than to a task. Missed deadlines flash red and are listed
+under the grid, which is how the eleven-minute battle theme got caught.
+Whoever else has the roadmap open shows in the header.
+
+Install it like the MCP package: `solo-roadmap-<version>.zip` from the
+[releases](../../releases), or `build/pack-roadmap-extension.sh` locally. The
+full feature list is in [its README](src/Solo.Roadmap/README.md).
+
+![The Road to Next Fest roadmap: bars for tasks across the Vertical Slice, Art & Audio and Bugs boards, today's column highlighted, dotted milestone lines for the vertical slice playtest and the publisher pitch, the overdue battle-theme bar in red, and the Missed deadlines table below](docs/images/screenshots/roadmap.png)
 
 ## Desktop app
 
