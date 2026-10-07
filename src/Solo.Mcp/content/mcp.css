@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
    Styles for the MCP extension's pages, served from the package's content/
    folder at /api/extensions/mcp/content/mcp.css and pulled in by the page
-   itself (see McpAccess.razor's HeadContent).
+   itself (see the <link> in McpAccess.razor).
 
    In the package rather than in the host's app.css because they belong to this
    extension: remove the package and they leave with it. Everything here is

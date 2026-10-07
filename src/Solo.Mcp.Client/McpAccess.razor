@@ -18,10 +18,14 @@
 <PageTitle>MCP access · Solo</PageTitle>
 
 @* Styles ship in the package's content/ folder, so they arrive and leave with
-   the extension rather than living in the host's stylesheet. *@
-<HeadContent>
-    <link rel="stylesheet" href="@_mcp.Content("mcp.css")" />
-</HeadContent>
+   the extension rather than living in the host's stylesheet.
+
+   A plain <link> in the page rather than <HeadContent>: only one HeadContent
+   renders at a time, and the theme provider's is the one carrying the theme's
+   stylesheet — a page's own HeadContent replaces it, unstyling the whole app
+   while this page is open. A stylesheet link is valid in the body, and still
+   comes and goes with the page. *@
+<link rel="stylesheet" href="@_mcp.Content("mcp.css")" />
 
 <MudContainer MaxWidth="MaxWidth.Medium" Gutters="false">
 <MudText Typo="Typo.h1" Class="mb-4">MCP access</MudText>

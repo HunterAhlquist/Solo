@@ -37,8 +37,9 @@ What it brings itself:
 - **Its dialogs.** The host's live in `Solo.Client`, which an extension cannot
   reference.
 - **Its stylesheet**, from the package's `content/` folder, linked by the page
-  through `HeadContent`. In the package rather than the host's `app.css` so it
-  arrives and leaves with the extension.
+  with a plain `<link>` in its markup — not `HeadContent`, which would replace
+  the theme provider's and drop the instance theme. In the package rather than
+  the host's `app.css` so it arrives and leaves with the extension.
 
 It deliberately does **not** call any `window.solo.*` interop: that is the
 host's private JS surface, and depending on it is how a package breaks on an app

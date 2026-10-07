@@ -133,10 +133,24 @@ public class McpAccessTests : ComponentTestBase
 
         var page = RenderPage();
 
-        // (The package's own stylesheet goes out through HeadContent, which
-        // renders into the host's HeadOutlet rather than into this markup; the
-        // integration suite asserts the content endpoint serves it.)
         Assert.Contains("https://solo.test/api/ext/mcp", page.Markup);
+    }
+
+    /// <summary>
+    /// The stylesheet is linked from the page itself, not through HeadContent:
+    /// only one HeadContent renders at a time, and the theme provider's carries
+    /// the instance theme's stylesheet — a page's own would replace it.
+    /// </summary>
+    [Fact]
+    public void The_stylesheet_is_linked_in_the_page_rather_than_through_head_content()
+    {
+        Installed();
+        _http.Route(TokensPath, HttpStatusCode.OK, NoToken(), HttpMethod.Get);
+
+        var page = RenderPage();
+
+        var link = page.Find("link[rel=stylesheet]");
+        Assert.Equal("https://solo.test/api/extensions/mcp/content/mcp.css", link.GetAttribute("href"));
     }
 
     /// <summary>

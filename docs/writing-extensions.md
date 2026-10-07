@@ -284,6 +284,8 @@ A Razor Class Library. Its `@page` routes join the app's router automatically, a
 
 **Version your `content/` URLs** (`?v=` plus your package version) when the files change with your client code, as a script your pages call into does. The host sends them without cache headers, but a proxy in front of it may add its own, and the desktop app's cache survives a restart. An unversioned URL can then pair a new page with an old script. `Solo.Roadmap.Client`'s `RoadmapApi.Content` does this.
 
+**Don't put a stylesheet in `<HeadContent>`.** Only one `HeadContent` renders at a time, and the host's theme provider already uses it for the theme's font and stylesheet links — a page's own replaces them, and the instance theme vanishes from the whole app while that page is open. Render the `<link rel="stylesheet">` directly in the page markup instead (`Solo.Mcp.Client`'s `McpAccess.razor`), or append it once from a JS module (`ensureStyles` in `Solo.Roadmap`'s `content/roadmap.js`). `<PageTitle>` is fine; it is a separate outlet.
+
 **`content/` is served anonymously; the assembly is not.** A `<link>` or `<img>` carries no `Authorization` header, so the host has no way to authenticate a subresource fetch — put nothing in `content/` you would not hand to a stranger, since it is a static file in a package anyone holding the package already has. The inventory and the client assembly are authenticated, so neither is reachable without a signed-in user.
 
 **There is no pre-authentication extension page.** The client half is fetched after sign-in, so its routes do not exist before then — and `requires` can only name a level of *project* access anyway. A page that needs to render on the sign-in screen is a theme, not an extension.
@@ -361,6 +363,7 @@ curl -H "Authorization: Bearer $SOLO_TOKEN" \
 | No way to call the API from a client page | Inject `ISoloClientApi` — the host registers `HttpClient` only for its own typed clients. |
 | A copied URL sends people to `localhost:41321` | `Resolve` was used where `ResolveExternal` was needed. |
 | Nav entry renders once instead of per project | Its route has no `{projectAlias}`, which makes it instance-level by design. |
+| The theme's styling disappears while one page is open | That page uses `<HeadContent>`, which replaces the theme provider's. Put the `<link>` in the page body instead. |
 
 ## Task-detail contributions and audit sources (contract 1.2)
 

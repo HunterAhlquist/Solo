@@ -97,14 +97,13 @@ public static class ExtensionStartup
     /// of the ordering trap — the extension's routes and hooks were registered
     /// before Build(), so without disabling it here it would serve requests
     /// against tables that do not exist.</para>
+    ///
+    /// <para>Runs even with no packages installed: reconcile is what marks a
+    /// removed package <c>Absent</c>, so skipping it when the last package goes
+    /// would leave that registration claiming <c>Loaded</c> indefinitely.</para>
     /// </remarks>
     public static async Task MigrateExtensionsAsync(this WebApplication app, ExtensionState state)
     {
-        if (state.Packages.Count == 0)
-        {
-            return;
-        }
-
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(ExtensionStartup));
         await using var scope = app.Services.CreateAsyncScope();
         var registry = scope.ServiceProvider.GetRequiredService<ExtensionRegistry>();

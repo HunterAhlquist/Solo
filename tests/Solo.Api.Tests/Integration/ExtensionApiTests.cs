@@ -184,6 +184,23 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task Registry_MarksTheLastPackageAbsent_AfterItIsRemoved()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        // Restart with no packages at all — the case that used to skip
+        // reconcile and leave the row reading Loaded.
+        _factory.Dispose();
+        _factory = new SoloApiFactory(_connectionString, TestExtensions.None);
+        _admin = _factory.As("admin", "admin@example.com", "Admin");
+
+        var admin = await _admin.GetJson<ExtensionAdminDto>("/api/extensions/admin");
+        var fixture = Assert.Single(admin.Extensions, e => e.ExtensionId == "fixture");
+        Assert.Equal("Absent", fixture.State);
+        Assert.True(fixture.CanPurge);
+    }
+
+    [SkippableFact]
     public async Task Purge_IsRefused_WhileTheExtensionIsStillLoaded()
     {
         postgres.SkipUnlessDockerAvailable();
