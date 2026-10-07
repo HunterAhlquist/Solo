@@ -81,6 +81,13 @@ public static class Timeline
         today.DayNumber - task.DeadlineAt!.Value.DayNumber;
 
     /// <summary>
+    /// Finished, and its last day already behind today: history, which the edge
+    /// hints don't point back to once its bar is scrolled out of view.
+    /// </summary>
+    public static bool IsDone(TaskDto task, DaySpan span, DateOnly today) =>
+        task.Status == TaskState.Finished && span.End < today;
+
+    /// <summary>
     /// The dates to save after an edge of a row is dragged to <paramref name="day"/>.
     /// The start can't pass the deadline, so a bar is always at least a day long.
     /// </summary>

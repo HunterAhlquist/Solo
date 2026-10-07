@@ -369,6 +369,30 @@ public class RoadmapPageTests : ComponentTestBase
         Assert.Single(_menu.Shown);
     }
 
+    // -- Edge hints --------------------------------------------------------------------
+
+    [Fact]
+    public void A_finished_task_that_ended_before_today_gets_no_edge_hints()
+    {
+        var done = Entry("Title screen", 2);
+        done = done with
+        {
+            Task = done.Task with { Status = TaskState.Finished, StartAt = Today.AddDays(-9), DeadlineAt = Today.AddDays(-2) },
+        };
+        // Finished, but its last day is today: still in flight as far as the view goes.
+        var endsToday = Entry("Credits", 3);
+        endsToday = endsToday with { Task = endsToday.Task with { Status = TaskState.Finished, DeadlineAt = Today } };
+        _entries = [Entry("Save system", 1), done, endsToday];
+
+        var page = RenderPage();
+
+        int Hints(RoadmapEntryDto entry) =>
+            page.Find($"[data-roadmap-entry='{entry.Id}']").QuerySelectorAll("[data-roadmap-hint]").Length;
+        Assert.Equal(2, Hints(_entries[0]));
+        Assert.Equal(0, Hints(done));
+        Assert.Equal(2, Hints(endsToday));
+    }
+
     // -- Moving a selection together --------------------------------------------------
 
     private static readonly DateOnly Today = DateOnly.FromDateTime(DateTime.Today);

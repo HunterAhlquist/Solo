@@ -48,6 +48,8 @@ and the instance loses roadmaps and nothing else:
     or deadline.
   - Hovering a bar whose label is cut off scrolls the label past like a ticker,
     except under reduced motion.
+  - A row whose bar is scrolled out of view shows a hint pinned to that edge,
+    naming the task. Finished tasks whose last day was before today don't.
   - Clicking a bar opens the same task drawer the board uses.
   - Writers select several bars at once: drag a box around them from an empty
     part of the grid, Cmd-click (Ctrl-click off a Mac) to add or drop one, or
@@ -179,7 +181,7 @@ the result to .NET when the box is let go. The page marks selected rows
 (`data-selected`) so a drag can preview the whole group. On the drop, .NET
 decides again from its own copy which rows go along.
 
-**Both content URLs carry the package version** (`roadmap.js?v=1.5.0`). The
+**Both content URLs carry the package version** (`roadmap.js?v=1.5.1`). The
 page and its script change together, and a cache between the app and the
 server, such as a proxy that adds its own headers or the desktop app's disk
 cache, could otherwise pair a new page with an old script.

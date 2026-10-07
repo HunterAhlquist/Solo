@@ -155,6 +155,16 @@ public class TimelineTests
         Assert.Equal(3, Timeline.DaysOverdue(Task(deadline: Today.AddDays(-3)), Today));
     }
 
+    [Fact]
+    public void A_task_is_done_once_it_is_finished_and_its_last_day_has_ended()
+    {
+        var past = new DaySpan(Today.AddDays(-5), Today.AddDays(-1));
+
+        Assert.True(Timeline.IsDone(Task(status: TaskState.Finished), past, Today));
+        Assert.False(Timeline.IsDone(Task(status: TaskState.Finished), past with { End = Today }, Today));
+        Assert.False(Timeline.IsDone(Task(status: TaskState.InProgress), past, Today));
+    }
+
     // -- Resizing ----------------------------------------------------------------------
 
     [Fact]
