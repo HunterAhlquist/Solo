@@ -52,6 +52,7 @@ Nerd emoji lookin ahh
 
 ## Support
 I dogfood this app by project managing my game: [The Dreamer Must Die](https://store.steampowered.com/app/2116590/The_Dreamer_Must_Die/?beta=0)
+I don't vibe-code it unlike this project.
 
 If you want to support me, give me a wishlist and buy the game (when it's out.)
 
@@ -146,8 +147,7 @@ The screenshots show a demo instance tracking *Regulatory Capture Quest*, a
 turn-based RPG in which a scrappy open-weights lab fights its way to the capital
 to stop OmniMind from passing the safety rules it wrote for everyone except
 itself. The studio, its eight-person team and OmniMind's CEO, Chadwick
-Moatsworth III, are all fictional. The ladder he pulls up behind him is a
-metaphor.
+Moatsworth III, are all fictional.
 
 ### Tasks
 
