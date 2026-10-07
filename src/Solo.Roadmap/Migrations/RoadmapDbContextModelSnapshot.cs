@@ -94,6 +94,41 @@ namespace Solo.Roadmap.Migrations
                     b.ToTable("Entries", "ext_roadmap");
                 });
 
+            modelBuilder.Entity("Solo.Roadmap.Data.RoadmapMilestone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("RoadmapId")
+                        .HasColumnType("uuid");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoadmapId");
+
+                    b.ToTable("Milestones", "ext_roadmap");
+                });
+
             modelBuilder.Entity("Solo.Roadmap.Data.RoadmapSettings", b =>
                 {
                     b.Property<int>("Id")
@@ -133,9 +168,22 @@ namespace Solo.Roadmap.Migrations
                     b.Navigation("Roadmap");
                 });
 
+            modelBuilder.Entity("Solo.Roadmap.Data.RoadmapMilestone", b =>
+                {
+                    b.HasOne("Solo.Roadmap.Data.Roadmap", "Roadmap")
+                        .WithMany("Milestones")
+                        .HasForeignKey("RoadmapId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Roadmap");
+                });
+
             modelBuilder.Entity("Solo.Roadmap.Data.Roadmap", b =>
                 {
                     b.Navigation("Entries");
+
+                    b.Navigation("Milestones");
                 });
 #pragma warning restore 612, 618
         }

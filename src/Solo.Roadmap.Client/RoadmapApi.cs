@@ -83,6 +83,20 @@ public sealed class RoadmapApi(ISoloClientApi api)
         api.SendAsync(HttpMethod.Post, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/remove",
             new RemoveRoadmapEntriesRequest { EntryIds = entryIds }, ct);
 
+    public Task<RoadmapMilestoneDto> AddMilestoneAsync(Guid projectId, Guid roadmapId,
+        CreateRoadmapMilestoneRequest request, CancellationToken ct = default) =>
+        api.SendAsync<RoadmapMilestoneDto>(HttpMethod.Post, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/milestones",
+            request, ct);
+
+    public Task<RoadmapMilestoneDto> UpdateMilestoneAsync(Guid projectId, Guid roadmapId, Guid milestoneId,
+        UpdateRoadmapMilestoneRequest request, CancellationToken ct = default) =>
+        api.SendAsync<RoadmapMilestoneDto>(HttpMethod.Put,
+            $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/milestones/{milestoneId}", request, ct);
+
+    public Task DeleteMilestoneAsync(Guid projectId, Guid roadmapId, Guid milestoneId, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Delete, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/milestones/{milestoneId}",
+            null, ct);
+
     public Task<List<TaskRoadmapDto>> RoadmapsOfTaskAsync(Guid taskId, CancellationToken ct = default) =>
         api.GetAsync<List<TaskRoadmapDto>>($"{Base}/tasks/{taskId}/roadmaps", ct);
 

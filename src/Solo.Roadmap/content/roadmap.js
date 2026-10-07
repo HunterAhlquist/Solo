@@ -1,9 +1,10 @@
 // The Roadmaps timeline's browser half: scroll reporting for virtualization,
 // and the pointer gestures a Blazor event can't express — dragging a bar up or
 // down to reorder it or sideways to move its dates, dragging its edges to
-// resize it, selecting bars with a box or a modifier-click, the right-clicks
-// that open the bar and day menus, and the ticker that scrolls a label too
-// long for its bar. Self-contained on purpose: core's
+// resize it, dragging a milestone's flag or line to another day, selecting
+// bars with a box or a modifier-click, the right-clicks that open the bar,
+// milestone and day menus, and the ticker that scrolls a label too long for
+// its bar. Self-contained on purpose: core's
 // js/drag.js and DragBridge belong to Solo.Client, and an extension can't count
 // on either. Loaded as a
 // module from the package's content/ folder (same-origin, so script-src 'self'
@@ -88,16 +89,37 @@ export function attach(scroller, dotnet, options) {
         Math.ceil((scroller.scrollLeft + scroller.clientWidth) / state.dayWidth) - 1,
     ];
 
-    /** Which rows' bars are wholly off to one side, for the edge hints. */
+    /**
+     * Which rows' bars are wholly off to one side, for the edge hints, and which
+     * milestones are, for the chips in the month band. A milestone's line is at
+     * the end of its day, so it's in view while that day is.
+     */
     const updateOffscreen = () => {
         const [first, last] = visibleDays();
-        for (const row of rows()) {
-            const start = Number(row.dataset.start);
-            const end = Number(row.dataset.end);
+        const mark = (element, start, end) => {
             const side = end < first ? 'before' : start > last ? 'after' : '';
-            if (row.dataset.offscreen !== side) {
-                row.dataset.offscreen = side;
+            if (element.dataset.offscreen !== side) {
+                element.dataset.offscreen = side;
             }
+        };
+
+        for (const row of rows()) {
+            mark(row, Number(row.dataset.start), Number(row.dataset.end));
+        }
+        for (const hint of scroller.querySelectorAll('[data-roadmap-milestone-hint]')) {
+            const day = Number(hint.dataset.day);
+            mark(hint, day, day);
+        }
+
+        // The month label moves over to make room for the chips on the left: as
+        // far as they reach into the view, which is what its sticky offset counts from.
+        const head = scroller.querySelector('[data-roadmap-head]');
+        const before = scroller.querySelector('.roadmap-milestone-hints__before');
+        const room = head && before?.offsetWidth
+            ? `${Math.ceil(before.getBoundingClientRect().right - scroller.getBoundingClientRect().left - scroller.clientLeft)}px`
+            : '';
+        if (head && head.style.getPropertyValue('--roadmap-hints-before') !== room) {
+            head.style.setProperty('--roadmap-hints-before', room);
         }
     };
 
@@ -203,7 +225,34 @@ export function attach(scroller, dotnet, options) {
         }
 
         const target = e.target;
-        if (target.closest('[data-roadmap-menu], [data-roadmap-hint]')) {
+        if (target.closest('[data-roadmap-menu], [data-roadmap-hint], [data-roadmap-milestone-hint]')) {
+            return;
+        }
+
+        // Before the bars: a line drawn over a bar's end is the milestone's to
+        // take. Anyone can click one; only a writer's press can become a drag.
+        const milestone = target.closest('[data-roadmap-milestone]');
+        if (milestone) {
+            press = {
+                mode: 'milestone-pending',
+                pointerId: e.pointerId,
+                type: e.pointerType,
+                x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
+                element: milestone,
+                milestoneId: milestone.dataset.roadmapMilestone,
+                day: Number(milestone.dataset.day),
+                hold: null,
+                lifted: false,
+            };
+            if (e.pointerType === 'touch' && state.canWrite) {
+                press.hold = setTimeout(() => {
+                    if (press) {
+                        press.lifted = true;
+                        navigator.vibrate?.(10);
+                    }
+                }, HOLD_MS);
+            }
+            listen();
             return;
         }
 
@@ -293,6 +342,20 @@ export function attach(scroller, dotnet, options) {
             case 'resize':
                 moveResize();
                 break;
+            case 'milestone-pending':
+                if (press.type === 'touch') {
+                    if (!press.lifted && travelled > HOLD_SLOP_PX) {
+                        abandon(); // a scroll all along
+                    } else if (press.lifted && travelled > HOLD_SLOP_PX) {
+                        startMilestone();
+                    }
+                } else if (travelled > MOVE_SLOP_PX && state.canWrite) {
+                    startMilestone();
+                }
+                break;
+            case 'milestone':
+                moveMilestone();
+                break;
             case 'empty':
                 if (press.type === 'touch') {
                     if (travelled > HOLD_SLOP_PX) {
@@ -343,6 +406,16 @@ export function attach(scroller, dotnet, options) {
                 await endResize(ended);
                 setGesturing(false);
                 break;
+            case 'milestone-pending':
+                // Held without moving is a touchscreen's right-click, as on a bar.
+                await (ended.lifted
+                    ? call('OnMilestoneMenu', ended.milestoneId, ended.x, ended.y)
+                    : call('OnMilestoneClick', ended.milestoneId));
+                break;
+            case 'milestone':
+                await endMilestone(ended);
+                setGesturing(false);
+                break;
             case 'empty':
                 // The menu opens on release rather than when the hold is up: open
                 // under a finger still down, it would take that finger's lift as
@@ -375,9 +448,11 @@ export function attach(scroller, dotnet, options) {
             clearMove(press);
         } else if (press.mode === 'resize') {
             clearResize(press);
+        } else if (press.mode === 'milestone') {
+            clearMilestone(press);
         } else if (press.mode === 'marquee') {
             clearMarquee();
-        } else if (press.lifted) {
+        } else if (press.lifted && press.row) {
             press.row.classList.remove('is-dragging');
         }
 
@@ -399,7 +474,8 @@ export function attach(scroller, dotnet, options) {
      * scroll on the page off the fast path.
      */
     const refuseScroll = e => {
-        if (press && (press.mode === 'drag' || press.mode === 'move' || press.mode === 'resize' || press.lifted)) {
+        if (press && (press.mode === 'drag' || press.mode === 'move' || press.mode === 'resize' ||
+                      press.mode === 'milestone' || press.lifted)) {
             e.preventDefault();
         }
     };
@@ -555,18 +631,20 @@ export function attach(scroller, dotnet, options) {
         label.style.top = `${barRect.top}px`;
     };
 
+    /** Scrolls sideways while a bar or a milestone is held near either side. */
     const scrollNearSides = () => {
-        if (!press || press.mode !== 'move') {
+        const mover = press?.mode === 'move' ? moveShift : press?.mode === 'milestone' ? moveMilestone : null;
+        if (!mover) {
             return;
         }
 
         const rect = scroller.getBoundingClientRect();
         if (press.x < rect.left + EDGE_PX) {
             scroller.scrollLeft -= EDGE_SPEED_PX;
-            moveShift();
+            mover();
         } else if (press.x > rect.right - EDGE_PX) {
             scroller.scrollLeft += EDGE_SPEED_PX;
-            moveShift();
+            mover();
         }
 
         autoScroll = requestAnimationFrame(scrollNearSides);
@@ -611,6 +689,71 @@ export function attach(scroller, dotnet, options) {
             }
         } finally {
             clearDrag(ended);
+        }
+    };
+
+    // -- Moving a milestone ---------------------------------------------------------
+
+    // Its flag and head line are in the sticky header and its line is in the
+    // body, so all three move together, found afresh by id.
+    const milestoneParts = id => scroller.querySelectorAll(`[data-roadmap-milestone="${id}"]`);
+
+    const startMilestone = () => {
+        press.mode = 'milestone';
+        press.scrollLeft0 = scroller.scrollLeft;
+        press.shift = 0;
+        stopTicker();
+        setGesturing(true);
+        try {
+            press.element.setPointerCapture(press.pointerId);
+        } catch {
+            // Window listeners cover it.
+        }
+
+        for (const part of milestoneParts(press.milestoneId)) {
+            part.classList.add('is-dragging');
+        }
+        label = document.createElement('div');
+        label.className = 'roadmap-resize-label';
+        document.body.appendChild(label);
+        moveMilestone();
+        autoScroll = requestAnimationFrame(scrollNearSides);
+    };
+
+    /**
+     * Whole days, within the window. As with a bar, the preview is a transform
+     * that .NET's redraw of the new place replaces with its own style.
+     */
+    const moveMilestone = () => {
+        const dx = press.x - press.x0 + (scroller.scrollLeft - press.scrollLeft0);
+        press.shift = Math.min(Math.max(Math.round(dx / state.dayWidth), -press.day), state.days - 1 - press.day);
+        for (const part of milestoneParts(press.milestoneId)) {
+            part.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
+        }
+
+        const flag = scroller.querySelector(`[data-roadmap-milestone="${press.milestoneId}"] .roadmap-milestone__flag`);
+        const rect = (flag ?? press.element).getBoundingClientRect();
+        label.textContent = formatDay(press.day + press.shift);
+        label.style.left = `${rect.left}px`;
+        label.style.top = `${rect.top}px`;
+    };
+
+    const clearMilestone = ended => {
+        for (const part of milestoneParts(ended.milestoneId)) {
+            part.style.removeProperty('transform');
+            part.classList.remove('is-dragging');
+        }
+        label?.remove();
+        label = null;
+    };
+
+    const endMilestone = async ended => {
+        try {
+            if (ended.shift !== 0) {
+                await call('OnMilestoneMove', ended.milestoneId, ended.day + ended.shift);
+            }
+        } finally {
+            clearMilestone(ended);
         }
     };
 
@@ -782,7 +925,22 @@ export function attach(scroller, dotnet, options) {
     // the grid. Both are drawn by the host, natively in the desktop app.
     const onContextMenu = e => {
         const target = e.target;
-        if (!(target instanceof Element) || target.closest('[data-roadmap-hint], [data-roadmap-menu]')) {
+        if (!(target instanceof Element) ||
+            target.closest('[data-roadmap-hint], [data-roadmap-menu], [data-roadmap-milestone-hint]')) {
+            return;
+        }
+
+        const milestone = target.closest('[data-roadmap-milestone]');
+        if (milestone) {
+            if (!state.canWrite) {
+                return;
+            }
+
+            e.preventDefault();
+            if (e.pointerType !== 'touch' && !(press && press.type === 'touch')) {
+                abandon();
+                call('OnMilestoneMenu', milestone.dataset.roadmapMilestone, e.clientX, e.clientY);
+            }
             return;
         }
 
@@ -837,6 +995,14 @@ export function attach(scroller, dotnet, options) {
     };
 
     const onClick = e => {
+        // A milestone's chip brings its line to the middle of the view.
+        const chip = e.target.closest('[data-roadmap-milestone-hint]');
+        if (chip) {
+            const x = (Number(chip.dataset.day) + 1) * state.dayWidth;
+            scroller.scrollTo({ left: Math.max(x - scroller.clientWidth / 2, 0), behavior: 'smooth' });
+            return;
+        }
+
         const hint = e.target.closest('[data-roadmap-hint]');
         if (!hint) {
             return;
@@ -849,7 +1015,7 @@ export function attach(scroller, dotnet, options) {
 
     // WebKit runs a long-press drag of its own on anything it thinks is draggable.
     const onDragStart = e => {
-        if (e.target instanceof Element && e.target.closest('[data-roadmap-bar]')) {
+        if (e.target instanceof Element && e.target.closest('[data-roadmap-bar], [data-roadmap-milestone]')) {
             e.preventDefault();
         }
     };

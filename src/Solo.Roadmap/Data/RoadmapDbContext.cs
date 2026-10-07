@@ -23,6 +23,8 @@ public sealed class RoadmapDbContext(DbContextOptions<RoadmapDbContext> options)
 
     public DbSet<RoadmapEntry> Entries => Set<RoadmapEntry>();
 
+    public DbSet<RoadmapMilestone> Milestones => Set<RoadmapMilestone>();
+
     public DbSet<RoadmapSettings> Settings => Set<RoadmapSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -49,6 +51,17 @@ public sealed class RoadmapDbContext(DbContextOptions<RoadmapDbContext> options)
             e.HasOne(x => x.Roadmap).WithMany(r => r.Entries)
                 .HasForeignKey(x => x.RoadmapId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Version).IsRowVersion();
+        });
+
+        modelBuilder.Entity<RoadmapMilestone>(e =>
+        {
+            e.ToTable("Milestones");
+            e.Property(m => m.Name).HasMaxLength(RoadmapLimits.MilestoneName);
+            e.Property(m => m.Color).HasMaxLength(7);
+            e.HasIndex(m => m.RoadmapId);
+            e.HasOne(m => m.Roadmap).WithMany(r => r.Milestones)
+                .HasForeignKey(m => m.RoadmapId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(m => m.Version).IsRowVersion();
         });
 
         modelBuilder.Entity<RoadmapSettings>(e =>
@@ -78,6 +91,8 @@ public sealed class Roadmap
     public uint Version { get; set; }
 
     public List<RoadmapEntry> Entries { get; set; } = [];
+
+    public List<RoadmapMilestone> Milestones { get; set; } = [];
 }
 
 /// <summary>
@@ -103,6 +118,28 @@ public sealed class RoadmapEntry
     public DateTimeOffset AddedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public uint Version { get; set; }
+}
+
+/// <summary>A named deadline on one roadmap, independent of any task on it.</summary>
+public sealed class RoadmapMilestone
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+
+    public Guid RoadmapId { get; set; }
+
+    public Roadmap Roadmap { get; set; } = null!;
+
+    public required string Name { get; set; }
+
+    /// <summary>The deadline day; the line is drawn at its end.</summary>
+    public DateOnly Day { get; set; }
+
+    /// <summary><c>#rrggbb</c>, as <see cref="RoadmapLimits.ColorPattern"/> allows.</summary>
+    public string Color { get; set; } = RoadmapLimits.DefaultMilestoneColor;
+
+    public uint Version { get; set; }
+
+    public RoadmapMilestoneDto ToDto() => new(Id, Name, Day, Color, Version);
 }
 
 /// <summary>The timeline's instance-wide settings: one row, created on first read with the defaults.</summary>

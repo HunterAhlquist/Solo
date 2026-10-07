@@ -72,7 +72,7 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         await connection.OpenAsync();
         var tables = await StringsAsync(connection,
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'ext_roadmap' ORDER BY 1");
-        Assert.Equal(["Entries", "Roadmaps", "Settings", "__EFMigrationsHistory"], tables);
+        Assert.Equal(["Entries", "Milestones", "Roadmaps", "Settings", "__EFMigrationsHistory"], tables);
     }
 
     /// <summary>The page's stylesheet and module load as ordinary same-origin subresources.</summary>
@@ -488,6 +488,94 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         var stale = await _admin.PutAsJsonAsync(url, new { title = "Q1", version }, TestClients.Json);
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         Assert.Equal("Q4", (await _admin.GetJson<JsonObject>(url))["title"]!.GetValue<string>());
+    }
+
+    [SkippableFact]
+    public async Task Milestones_are_added_edited_and_deleted_and_come_back_with_the_timeline_by_day()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, _) = await ProjectAsync("Milestones", "MILE");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var url = $"{Base}/projects/{project.Id}/roadmaps/{roadmap}";
+
+        var launch = await _admin.PostJson<JsonObject>($"{url}/milestones", new { name = " Launch ", day = "2026-12-01" });
+        Assert.Equal("Launch", launch["name"]!.GetValue<string>());
+        Assert.Equal("#e53935", launch["color"]!.GetValue<string>());
+        var beta = await _admin.PostJson<JsonObject>($"{url}/milestones",
+            new { name = "Beta", day = "2026-11-02", color = "#1E88E5" });
+        Assert.Equal("#1e88e5", beta["color"]!.GetValue<string>());
+
+        var timeline = await _admin.GetJson<JsonObject>(url);
+        Assert.Equal(["Beta", "Launch"],
+            timeline["milestones"]!.AsArray().Select(m => m!["name"]!.GetValue<string>()));
+
+        var id = launch["id"]!.GetValue<Guid>();
+        var version = launch["version"]!.GetValue<uint>();
+        var moved = await _admin.PutJson<JsonObject>($"{url}/milestones/{id}",
+            new { name = "Gold", day = "2026-10-20", color = "#43a047", version });
+        Assert.Equal("2026-10-20", moved["day"]!.GetValue<string>());
+
+        var stale = await _admin.PutAsJsonAsync($"{url}/milestones/{id}",
+            new { name = "Lost", day = "2026-10-21", color = "#43a047", version }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+        timeline = await _admin.GetJson<JsonObject>(url);
+        Assert.Equal(["Gold", "Beta"],
+            timeline["milestones"]!.AsArray().Select(m => m!["name"]!.GetValue<string>()));
+
+        (await _admin.DeleteAsync($"{url}/milestones/{id}")).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync($"{url}/milestones/{id}")).StatusCode);
+        Assert.Single((await _admin.GetJson<JsonObject>(url))["milestones"]!.AsArray());
+    }
+
+    [SkippableTheory]
+    [InlineData("", "2026-12-01", "#e53935")]
+    [InlineData("   ", "2026-12-01", "#e53935")]
+    [InlineData("Launch", "0001-01-01", "#e53935")]
+    [InlineData("Launch", "2026-12-01", "red")]
+    [InlineData("Launch", "2026-12-01", "#e53935ff")]
+    public async Task A_milestone_without_a_name_or_day_or_with_a_colour_that_isnt_hex_is_400(
+        string name, string day, string color)
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, _) = await ProjectAsync("Bad", "BAD");
+        var roadmap = await RoadmapAsync(project, "Plan");
+
+        var response = await _admin.PostAsJsonAsync($"{Base}/projects/{project.Id}/roadmaps/{roadmap}/milestones",
+            new { name, day, color }, TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task Milestones_are_written_only_by_writers_and_only_under_their_own_project()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (home, _) = await ProjectAsync("MileHome", "MHOME");
+        var (away, _) = await ProjectAsync("MileAway", "MAWAY");
+        var roadmap = await RoadmapAsync(home, "Plan");
+        var url = $"{Base}/projects/{home.Id}/roadmaps/{roadmap}/milestones";
+        var milestone = await _admin.PostJson<JsonObject>(url, new { name = "Beta", day = "2026-11-02" });
+        var id = milestone["id"]!.GetValue<Guid>();
+        var edit = new { name = "Hijacked", day = "2026-11-03", color = "#000000", version = milestone["version"]!.GetValue<uint>() };
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{home.Id}/members",
+            new { email = "milestone-reader@example.com", role = "Read" });
+        var reader = _factory.As("milestone-reader", "milestone-reader@example.com");
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await reader.PostAsJsonAsync(url, new { name = "No", day = "2026-11-02" }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PutAsJsonAsync($"{url}/{id}", edit, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.DeleteAsync($"{url}/{id}")).StatusCode);
+
+        var wrong = $"{Base}/projects/{away.Id}/roadmaps/{roadmap}/milestones";
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _admin.PostAsJsonAsync(wrong, new { name = "No", day = "2026-11-02" }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.PutAsJsonAsync($"{wrong}/{id}", edit, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync($"{wrong}/{id}")).StatusCode);
+
+        var kept = Assert.Single((await reader.GetJson<JsonObject>($"{Base}/projects/{home.Id}/roadmaps/{roadmap}"))
+            ["milestones"]!.AsArray());
+        Assert.Equal("Beta", kept!["name"]!.GetValue<string>());
     }
 
     [SkippableFact]
