@@ -54,6 +54,14 @@ and the instance loses roadmaps and nothing else:
     Shift-click to select every row from the last one clicked. Holding Cmd,
     Ctrl or Shift while dragging a box adds to the selection instead of
     replacing it. Clicking the grid or a bar, or pressing Escape, clears it.
+  - Dragging a selected bar takes the rest of the selection with it. Sideways,
+    every bar moves by the same number of days, and they all stop when the
+    first one reaches the edge of the window. Up or down, the rows land
+    together where they're dropped, in the order they had, in one request.
+    Dragging a bar that isn't selected moves that bar alone.
+  - **Delete** (**Cmd-Delete** on a Mac) takes the selection off the roadmap,
+    as the menu's Remove does. Like Escape, it applies only while focus is on
+    the grid and nothing is open over the page.
   - Right-clicking a bar (or a long press, or its **⋯** button) opens its menu:
     **Open task**, and for writers **Remove from roadmap**. On a selected bar
     the menu acts on the whole selection, as **Remove N tasks from roadmap**,
@@ -118,6 +126,7 @@ route; any other project answers 404.
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`. Roadmap order only. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/anchor` | write | `{ anchorDay }`: moves a no-deadline pill. A task with dates moves through core's schedule endpoint instead. |
 | DELETE | `projects/{projectId}/roadmaps/{id}/entries/{entryId}` | write | Takes the task off this roadmap; the task is untouched. |
+| PUT | `projects/{projectId}/roadmaps/{id}/entries/rank` | write | `{ entryIds, precedingId, followingId }`, 1 to 500: moves them together between the neighbors, keeping their order. Ids not on this roadmap are skipped; 400 if a neighbor is one of the rows moving. |
 | POST | `projects/{projectId}/roadmaps/{id}/entries/remove` | write | `{ entryIds }`, 1 to 500: takes them all off in one change. Ids not on this roadmap are skipped. |
 | GET | `tasks/{taskId}/roadmaps` | read | The roadmaps a task is on. |
 | GET | `settings` | signed in | The bounds, the sprint start day and the sprint length. |
@@ -166,9 +175,11 @@ page holds which entries are selected and draws them, so a bar scrolled out of
 view and redrawn comes back still selected. While a box is being dragged,
 `roadmap.js` marks the rows it touches itself, working from each row's columns
 rather than its bar, so bars outside the drawn range are caught too. It hands
-the result to .NET when the box is let go.
+the result to .NET when the box is let go. The page marks selected rows
+(`data-selected`) so a drag can preview the whole group. On the drop, .NET
+decides again from its own copy which rows go along.
 
-**Both content URLs carry the package version** (`roadmap.js?v=1.4.0`). The
+**Both content URLs carry the package version** (`roadmap.js?v=1.5.0`). The
 page and its script change together, and a cache between the app and the
 server, such as a proxy that adds its own headers or the desktop app's disk
 cache, could otherwise pair a new page with an old script.
@@ -223,6 +234,12 @@ dotnet ef migrations add <Name> --project src/Solo.Roadmap --startup-project src
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.4
+
+1.5 adds no migration and needs nothing new from the host. Moving several rows
+up or down uses a new endpoint, so update the server package and the page
+together, as with any release.
 
 ## Upgrading from 1.3
 

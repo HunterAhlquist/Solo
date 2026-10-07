@@ -67,6 +67,12 @@ public sealed class RoadmapApi(ISoloClientApi api)
         api.SendAsync(HttpMethod.Put, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/{entryId}/rank",
             new RerankRoadmapEntryRequest { PrecedingId = precedingId, FollowingId = followingId }, ct);
 
+    public Task RerankManyAsync(Guid projectId, Guid roadmapId, IReadOnlyList<Guid> entryIds,
+        Guid? precedingId, Guid? followingId, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Put, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/rank",
+            new RerankRoadmapEntriesRequest { EntryIds = entryIds, PrecedingId = precedingId, FollowingId = followingId },
+            ct);
+
     public Task SetAnchorAsync(Guid projectId, Guid roadmapId, Guid entryId, DateOnly anchorDay,
         CancellationToken ct = default) =>
         api.SendAsync(HttpMethod.Put, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/{entryId}/anchor",

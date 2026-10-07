@@ -113,8 +113,10 @@ else
                         var entry = _entries[i];
                         var span = Timeline.Span(entry.Task, entry.AnchorDay);
                         var place = _window.Place(span);
+                        @* data-selected tells roadmap.js which rows a drag takes along. *@
                         <div class="roadmap-row" @key="entry.Id" data-roadmap-entry="@entry.Id"
                              data-start="@place.StartIndex" data-end="@place.EndIndex"
+                             data-selected="@(_selected.Contains(entry.Id) ? "" : null)"
                              style="top:@(i * RowHeight)px">
                             <span class="roadmap-hint roadmap-hint--before" data-roadmap-hint>
                                 ‹ @Serial(entry) · @entry.Task.Name

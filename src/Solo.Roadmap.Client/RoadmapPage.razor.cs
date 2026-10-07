@@ -467,54 +467,87 @@ public sealed partial class RoadmapPage
         }
     });
 
-    /// <summary>
-    /// A row dropped at <paramref name="index"/> among the others. Reordered here
-    /// at once, then saved; a failed save puts the rows back.
-    /// </summary>
+    /// <summary>Delete, or Cmd-Delete on a Mac: the selection comes off the roadmap, as from the bar menu.</summary>
     [JSInvokable]
-    public Task OnRowDrop(string entryId, int index) => InvokeAsync(async () =>
+    public Task OnRemoveSelected() => InvokeAsync(async () =>
     {
-        if (!CanWrite || Find(entryId) is not { } moved)
+        if (CanWrite && _selected.Count > 0)
         {
-            return;
-        }
-
-        var before = _entries.ToList();
-        _entries.Remove(moved);
-        var at = Math.Clamp(index, 0, _entries.Count);
-        _entries.Insert(at, moved);
-        if (_entries.SequenceEqual(before))
-        {
-            return;
-        }
-
-        await using var saving = Saving();
-        var preceding = at > 0 ? _entries[at - 1].Id : (Guid?)null;
-        var following = at < _entries.Count - 1 ? _entries[at + 1].Id : (Guid?)null;
-        StateHasChanged();
-        try
-        {
-            await Api.RerankAsync(_project!.Id, RoadmapId, moved.Id, preceding, following);
-        }
-        catch (Exception e) when (e is SoloApiException or HttpRequestException)
-        {
-            _entries = before;
-            Snackbar.Add($"Couldn't move {Serial(moved)}: {e.Message}", Severity.Error);
+            await RemoveAsync(_entries.Where(e => _selected.Contains(e.Id)).ToList());
             StateHasChanged();
         }
     });
 
     /// <summary>
-    /// A row dragged <paramref name="days"/> along the timeline: both ends move
-    /// together, so it keeps its length, and it stops at the window's edge. A task
-    /// with dates is rescheduled through core like any resize; a no-deadline pill
-    /// has no dates to move, so the roadmap moves the day it's drawn on.
+    /// A row dropped at <paramref name="index"/> among the others, taking the
+    /// rest of the selection with it when it's part of one: those land together
+    /// where it was dropped, in the order they had. Reordered here at once, then
+    /// saved; a failed save puts the rows back.
+    /// </summary>
+    [JSInvokable]
+    public Task OnRowDrop(string entryId, int index) => InvokeAsync(async () =>
+    {
+        if (!CanWrite || Find(entryId) is not { } dropped)
+        {
+            return;
+        }
+
+        var before = _entries.ToList();
+        var moving = Dragged(dropped);
+        var movingIds = moving.Select(e => e.Id).ToHashSet();
+
+        // roadmap.js counts the index among every row but the one dragged; the
+        // slot it means in the whole list is the same either way, and the rows
+        // land after however many staying put come before it.
+        var from = before.IndexOf(dropped);
+        var slot = Math.Clamp(index >= from ? index + 1 : index, 0, before.Count);
+        var at = before.Take(slot).Count(e => !movingIds.Contains(e.Id));
+
+        var after = before.Where(e => !movingIds.Contains(e.Id)).ToList();
+        after.InsertRange(at, moving);
+        if (after.SequenceEqual(before))
+        {
+            return;
+        }
+
+        await using var saving = Saving();
+        _entries = after;
+        var preceding = at > 0 ? after[at - 1].Id : (Guid?)null;
+        var following = at + moving.Count < after.Count ? after[at + moving.Count].Id : (Guid?)null;
+        StateHasChanged();
+        try
+        {
+            if (moving.Count == 1)
+            {
+                await Api.RerankAsync(_project!.Id, RoadmapId, dropped.Id, preceding, following);
+            }
+            else
+            {
+                await Api.RerankManyAsync(_project!.Id, RoadmapId, [.. movingIds], preceding, following);
+            }
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _entries = before;
+            var what = moving.Count == 1 ? Serial(dropped) : $"{moving.Count} tasks";
+            Snackbar.Add($"Couldn't move {what}: {e.Message}", Severity.Error);
+            StateHasChanged();
+        }
+    });
+
+    /// <summary>
+    /// A row dragged <paramref name="days"/> along the timeline, with the rest of
+    /// the selection when it's part of one: every bar moves the same number of
+    /// days, keeping its length, and they all stop when the first reaches the
+    /// window's edge. A task with dates is rescheduled through core like any
+    /// resize; a no-deadline pill has no dates to move, so the roadmap moves the
+    /// day it's drawn on.
     /// </summary>
     /// <remarks>
-    /// Returns once the bar is redrawn in its new place and leaves the save to
-    /// finish on its own, so the bar settles the moment it's dropped rather than
-    /// staying lifted until the server answers. Both saves handle their own
-    /// failures, putting the bar back.
+    /// Returns once the bars are redrawn in their new places and leaves the saves
+    /// to finish on their own, so the bars settle the moment they're dropped
+    /// rather than staying lifted until the server answers. Each save puts its
+    /// own bar back if it fails.
     /// </remarks>
     [JSInvokable]
     public Task OnMove(string entryId, int days) => InvokeAsync(() =>
@@ -524,22 +557,46 @@ public sealed partial class RoadmapPage
             return;
         }
 
-        var span = Timeline.Span(entry.Task, entry.AnchorDay);
-        var shift = _window.ClampMove(span, days);
+        var moving = Dragged(entry);
+        var shift = moving.Aggregate(days, (shift, e) => _window.ClampMove(Timeline.Span(e.Task, e.AnchorDay), shift));
         if (shift == 0)
         {
             return;
         }
 
+        _ = moving.Count == 1 ? ReportAsync(ShiftAsync(entry, shift)) : ShiftTogetherAsync(moving, shift);
+    });
+
+    /// <summary>What a drag of this bar takes along: the whole selection when the bar is in it, else the bar alone.</summary>
+    private List<RoadmapEntryDto> Dragged(RoadmapEntryDto entry) =>
+        _selected.Count > 1 && _selected.Contains(entry.Id)
+            ? _entries.Where(e => _selected.Contains(e.Id)).ToList()
+            : [entry];
+
+    /// <summary>
+    /// Saves every bar's move at once, and says once how many didn't stick
+    /// rather than once per bar.
+    /// </summary>
+    private async Task ShiftTogetherAsync(IReadOnlyList<RoadmapEntryDto> moving, int days)
+    {
+        var failures = (await Task.WhenAll(moving.Select(e => ShiftAsync(e, days)))).OfType<SaveFailure>().ToList();
+        if (failures.Count > 0)
+        {
+            Snackbar.Add($"{failures.Count} of {moving.Count} tasks couldn't move: {failures[0].Message}",
+                Severity.Warning);
+        }
+    }
+
+    private Task<SaveFailure?> ShiftAsync(RoadmapEntryDto entry, int days)
+    {
         if (entry.Task.DeadlineAt is null)
         {
-            _ = MoveAnchorAsync(entry, entry.AnchorDay.AddDays(shift));
-            return;
+            return SaveAnchorAsync(entry, entry.AnchorDay.AddDays(days));
         }
 
-        var moved = Timeline.Move(span, shift);
-        _ = RescheduleAsync(entry, (moved.Start, moved.End));
-    });
+        var moved = Timeline.Move(Timeline.Span(entry.Task, entry.AnchorDay), days);
+        return SaveScheduleAsync(entry, (moved.Start, moved.End));
+    }
 
     /// <summary>A bar's edge dropped on column <paramref name="index"/>.</summary>
     [JSInvokable]
@@ -554,22 +611,37 @@ public sealed partial class RoadmapPage
 
     // -- Rescheduling -------------------------------------------------------------
 
+    /// <summary>Why a save didn't stick, for whoever reports it: once per bar, or once for a group.</summary>
+    private sealed record SaveFailure(string Message, Severity Severity);
+
+    private Task RescheduleAsync(RoadmapEntryDto entry, (DateOnly? Start, DateOnly Deadline) dates) =>
+        ReportAsync(SaveScheduleAsync(entry, dates));
+
+    private async Task ReportAsync(Task<SaveFailure?> save)
+    {
+        if (await save is { } failure)
+        {
+            Snackbar.Add(failure.Message, failure.Severity);
+        }
+    }
+
     /// <summary>
-    /// Saves new dates through core's schedule endpoint. The bar moves at once;
-    /// a conflict redraws it from the server's copy and says why, and any other
-    /// failure puts it back where it was.
+    /// Saves new dates through core's schedule endpoint. The bar moves at once,
+    /// before the first await; a conflict redraws it from the server's copy, and
+    /// any other failure puts it back where it was.
     /// </summary>
-    private async Task RescheduleAsync(RoadmapEntryDto entry, (DateOnly? Start, DateOnly Deadline) dates)
+    private async Task<SaveFailure?> SaveScheduleAsync(RoadmapEntryDto entry, (DateOnly? Start, DateOnly Deadline) dates)
     {
         var before = entry.Task;
         if (before.StartAt == dates.Start && before.DeadlineAt == dates.Deadline)
         {
-            return;
+            return null;
         }
 
         await using var saving = Saving();
         Replace(entry.Id, before with { StartAt = dates.Start, DeadlineAt = dates.Deadline });
         StateHasChanged();
+        SaveFailure? failure = null;
         try
         {
             Replace(entry.Id, await Api.SetScheduleAsync(before.Id, dates.Start, dates.Deadline, before.Version));
@@ -577,19 +649,20 @@ public sealed partial class RoadmapPage
         catch (SoloApiException e) when (e.StatusCode == HttpStatusCode.Conflict)
         {
             await RefetchTaskAsync(entry.Id, before);
-            Snackbar.Add("Someone else changed this task. Try again.", Severity.Warning);
+            failure = new SaveFailure("Someone else changed this task. Try again.", Severity.Warning);
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
             Replace(entry.Id, before);
-            Snackbar.Add(e.Message, Severity.Error);
+            failure = new SaveFailure(e.Message, Severity.Error);
         }
 
         StateHasChanged();
+        return failure;
     }
 
-    /// <summary>Moves a pill at once; a failed save puts it back.</summary>
-    private async Task MoveAnchorAsync(RoadmapEntryDto entry, DateOnly day)
+    /// <summary>Moves a pill at once, before the first await; a failed save puts it back.</summary>
+    private async Task<SaveFailure?> SaveAnchorAsync(RoadmapEntryDto entry, DateOnly day)
     {
         await using var saving = Saving();
         var index = _entries.FindIndex(e => e.Id == entry.Id);
@@ -598,6 +671,7 @@ public sealed partial class RoadmapPage
         try
         {
             await Api.SetAnchorAsync(_project!.Id, RoadmapId, entry.Id, day);
+            return null;
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
@@ -606,8 +680,8 @@ public sealed partial class RoadmapPage
                 _entries[at] = _entries[at] with { AnchorDay = entry.AnchorDay };
             }
 
-            Snackbar.Add($"Couldn't move {Serial(entry)}: {e.Message}", Severity.Error);
             StateHasChanged();
+            return new SaveFailure($"Couldn't move {Serial(entry)}: {e.Message}", Severity.Error);
         }
     }
 
@@ -782,14 +856,14 @@ public sealed partial class RoadmapPage
         var ids = targets.Select(t => t.Id).ToHashSet();
         try
         {
-            foreach (var chunk in ids.Chunk(RoadmapLimits.MaxRemoveAtOnce))
+            foreach (var chunk in ids.Chunk(RoadmapLimits.MaxEntriesAtOnce))
             {
                 await Api.RemoveEntriesAsync(_project!.Id, RoadmapId, chunk);
             }
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
-            if (targets.Count > RoadmapLimits.MaxRemoveAtOnce)
+            if (targets.Count > RoadmapLimits.MaxEntriesAtOnce)
             {
                 _stale = true;
             }

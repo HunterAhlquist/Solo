@@ -249,6 +249,54 @@ public sealed class RoadmapsController(
     }
 
     /// <summary>
+    /// Moves several rows to one place on this roadmap, for a selection dragged
+    /// up or down: they land together between the neighbors, in the order they
+    /// already had. Rows already taken off by someone else are passed over, as
+    /// a selection's Remove does.
+    /// </summary>
+    [HttpPut("{roadmapId:guid}/entries/rank")]
+    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    public async Task<IActionResult> RerankMany(
+        Guid projectId, Guid roadmapId, RerankRoadmapEntriesRequest request, CancellationToken ct)
+    {
+        if (!await db.Roadmaps.AnyAsync(r => r.Id == roadmapId && r.ProjectId == projectId, ct))
+        {
+            return NotFound();
+        }
+
+        var entries = await db.Entries
+            .Where(e => e.RoadmapId == roadmapId)
+            .OrderBy(e => e.Rank)
+            .ToListAsync(ct);
+        var moving = entries.Select(e => e.Id).Intersect(request.EntryIds).ToList();
+        if (moving.Count == 0)
+        {
+            return NotFound();
+        }
+
+        if (!RoadmapRanking.TryApplyBlockMove(entries, moving, request.PrecedingId, request.FollowingId,
+                e => e.Id, e => e.Rank, (e, rank) => e.Rank = rank))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid rank target",
+                detail: "The neighbor ids are not entries on this roadmap outside the ones being moved.");
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ChangedElsewhere();
+        }
+
+        await EntriesChangedAsync(projectId, roadmapId, ct);
+        return NoContent();
+    }
+
+    /// <summary>
     /// Moves the day a task with no deadline is drawn on. A task with dates is
     /// moved by rescheduling it through core; this is only for the pill, whose
     /// day is the roadmap's to keep.

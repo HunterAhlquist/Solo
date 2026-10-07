@@ -103,6 +103,57 @@ public class RoadmapRankingTests
         Assert.False(RoadmapRanking.TryApplyMove([a], Guid.NewGuid(), null, null, r => r.Id, r => r.Rank, (_, _) => { }));
     }
 
+    private static bool MoveBlock(List<Row> rows, IEnumerable<Row> moved, Row? preceding, Row? following) =>
+        RoadmapRanking.TryApplyBlockMove(rows, moved.Select(r => r.Id).ToList(), preceding?.Id, following?.Id,
+            r => r.Id, r => r.Rank, (r, rank) => r.Rank = rank);
+
+    private static List<Row> InOrder(params Row[] rows) => rows.OrderBy(r => r.Rank).ToList();
+
+    [Fact]
+    public void A_block_lands_together_between_its_neighbors_in_the_order_it_had()
+    {
+        var (a, b, c, d, e) = (new Row(1024m), new Row(2048m), new Row(3072m), new Row(4096m), new Row(5120m));
+
+        // a and c, apart, go between d and e; only they are rewritten.
+        Assert.True(MoveBlock([a, b, c, d, e], [c, a], d, e));
+
+        Assert.Equal([b, d, a, c, e], InOrder(a, b, c, d, e));
+        Assert.Equal((2048m, 4096m, 5120m), (b.Rank, d.Rank, e.Rank));
+    }
+
+    [Fact]
+    public void A_block_goes_to_the_top_or_the_end()
+    {
+        var (a, b, c, d) = (new Row(1024m), new Row(2048m), new Row(3072m), new Row(4096m));
+
+        Assert.True(MoveBlock([a, b, c, d], [b, d], preceding: null, following: null));
+        Assert.Equal([b, d, a, c], InOrder(a, b, c, d));
+
+        Assert.True(MoveBlock(InOrder(a, b, c, d), [b, d], preceding: c, following: null));
+        Assert.Equal([a, c, b, d], InOrder(a, b, c, d));
+    }
+
+    [Fact]
+    public void A_block_too_big_for_its_gap_rebalances_the_whole_roadmap_in_the_new_order()
+    {
+        var (a, b) = (new Row(1.000001m), new Row(1.000003m));
+        var (c, d) = (new Row(9998m), new Row(9999m));
+
+        Assert.True(MoveBlock([a, b, c, d], [c, d], a, b));
+
+        Assert.Equal((1024m, 2048m, 3072m, 4096m), (a.Rank, c.Rank, d.Rank, b.Rank));
+    }
+
+    [Fact]
+    public void A_block_with_a_neighbor_inside_it_or_a_row_not_on_the_roadmap_is_refused()
+    {
+        var (a, b, c) = (new Row(1024m), new Row(2048m), new Row(3072m));
+
+        Assert.False(MoveBlock([a, b, c], [a, b], b, c));
+        Assert.False(MoveBlock([a, b, c], [a, new Row(0m)], c, null));
+        Assert.Equal((1024m, 2048m, 3072m), (a.Rank, b.Rank, c.Rank));
+    }
+
     [Fact]
     public void An_appended_row_goes_after_the_last()
     {

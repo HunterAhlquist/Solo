@@ -445,22 +445,41 @@ export function attach(scroller, dotnet, options) {
 
     const indicator = () => scroller.querySelector('[data-roadmap-drop]');
 
+    const barOf = row => row.querySelector('[data-roadmap-bar]');
+
+    /**
+     * The rows a drag of this one takes along: every selected row when it's one
+     * of several selected, else itself. .NET marks the selection on the rows
+     * (data-selected) and decides the same way when the drop reaches it.
+     */
+    const groupOf = row => {
+        const selected = rows().filter(r => r.dataset.selected !== undefined);
+        return selected.length > 1 && selected.includes(row) ? selected : [row];
+    };
+
+    // Up or down, the group follows the pointer as it stood, gaps and all; the
+    // line shows where they'll land, together and in order, once dropped.
     const startDrag = () => {
         press.mode = 'drag';
         press.list = rows();
         press.from = press.list.indexOf(press.row);
         press.gap = press.from;
+        press.group = groupOf(press.row);
         press.scrollTop0 = scroller.scrollTop;
         capture();
 
-        press.row.classList.add('is-dragging');
+        for (const row of press.group) {
+            row.classList.add('is-dragging');
+        }
         moveDrag();
         autoScroll = requestAnimationFrame(scrollNearEdges);
     };
 
     const moveDrag = () => {
         const dy = press.y - press.y0 + (scroller.scrollTop - press.scrollTop0);
-        press.row.style.setProperty('transform', `translateY(${dy}px)`);
+        for (const row of press.group) {
+            row.style.setProperty('transform', `translateY(${dy}px)`);
+        }
 
         const rect = body().getBoundingClientRect();
         const gap = Math.min(Math.max(Math.round((press.y - rect.top) / state.rowHeight), 0), press.list.length);
@@ -490,15 +509,22 @@ export function attach(scroller, dotnet, options) {
         autoScroll = requestAnimationFrame(scrollNearEdges);
     };
 
+    // Sideways, the whole group moves by the same number of days, so the
+    // window's edge stops it where its first bar meets the edge.
     const startMove = () => {
         press.mode = 'move';
+        press.group = groupOf(press.row);
         press.start = Number(press.row.dataset.start);
         press.end = Number(press.row.dataset.end);
+        press.first = Math.min(...press.group.map(row => Number(row.dataset.start)));
+        press.last = Math.max(...press.group.map(row => Number(row.dataset.end)));
         press.scrollLeft0 = scroller.scrollLeft;
         press.shift = 0;
         capture();
 
-        press.row.classList.add('is-dragging');
+        for (const row of press.group) {
+            row.classList.add('is-dragging');
+        }
         label = document.createElement('div');
         label.className = 'roadmap-resize-label';
         document.body.appendChild(label);
@@ -511,11 +537,15 @@ export function attach(scroller, dotnet, options) {
      * goes on the bar, not the row: when .NET redraws the bar in its new place
      * it rewrites the bar's style, which drops the offset in the same update — on
      * the row it would outlive the redraw for a frame and add to the new place.
+     * Each bar is looked up afresh, since scrolling sideways can draw one of the
+     * group's bars that wasn't drawn when the drag began.
      */
     const moveShift = () => {
         const dx = press.x - press.x0 + (scroller.scrollLeft - press.scrollLeft0);
-        press.shift = Math.min(Math.max(Math.round(dx / state.dayWidth), -press.start), state.days - 1 - press.end);
-        press.bar.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
+        press.shift = Math.min(Math.max(Math.round(dx / state.dayWidth), -press.first), state.days - 1 - press.last);
+        for (const row of press.group) {
+            barOf(row)?.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
+        }
 
         const from = press.start + press.shift;
         const to = press.end + press.shift;
@@ -543,8 +573,10 @@ export function attach(scroller, dotnet, options) {
     };
 
     const clearMove = ended => {
-        ended.bar.style.removeProperty('transform');
-        ended.row.classList.remove('is-dragging');
+        for (const row of ended.group) {
+            barOf(row)?.style.removeProperty('transform');
+            row.classList.remove('is-dragging');
+        }
         label?.remove();
         label = null;
     };
@@ -562,8 +594,10 @@ export function attach(scroller, dotnet, options) {
     };
 
     const clearDrag = ended => {
-        ended.row.style.removeProperty('transform');
-        ended.row.classList.remove('is-dragging');
+        for (const row of ended.group) {
+            row.style.removeProperty('transform');
+            row.classList.remove('is-dragging');
+        }
         indicator()?.classList.remove('is-visible');
     };
 
@@ -772,15 +806,26 @@ export function attach(scroller, dotnet, options) {
         }
     };
 
-    // Escape lets go of the selection, or of a gesture under way. Only when
-    // it's the grid's to take: with focus in a menu or a field it's theirs, and
-    // with anything open over the page (the task drawer, a dialog) it closes
-    // that. Those often leave focus on the bar that opened them, so the overlay
-    // they draw is what tells.
+    // Escape lets go of the selection, or of a gesture under way; Delete takes
+    // the selection off the roadmap. On a Mac that's Cmd-Delete, as Move to
+    // Trash is in the Finder, so a stray press of the key beside Return doesn't.
+    // Only when the key is the grid's to take: with focus in a menu or a field
+    // it's theirs, and with anything open over the page (the task drawer, a
+    // dialog) it's for that. Those often leave focus on the bar that opened
+    // them, so the overlay they draw is what tells.
     const onKeyDown = e => {
-        if (e.key !== 'Escape' || e.defaultPrevented ||
+        const remove = e.key === 'Delete' || (IS_MAC && e.metaKey && e.key === 'Backspace');
+        if ((e.key !== 'Escape' && !remove) || e.defaultPrevented ||
             (e.target !== document.body && !(e.target instanceof Node && scroller.contains(e.target))) ||
             document.querySelector('.mud-overlay')) {
+            return;
+        }
+
+        if (remove) {
+            if (state.canWrite && !press) {
+                e.preventDefault();
+                call('OnRemoveSelected');
+            }
             return;
         }
 

@@ -37,15 +37,32 @@ public static class RoadmapRanking
         Guid? followingId,
         Func<T, Guid> id,
         Func<T, decimal> getRank,
+        Action<T, decimal> setRank) =>
+        TryApplyBlockMove(rowsByRank, [movedId], precedingId, followingId, id, getRank, setRank);
+
+    /// <summary>
+    /// <see cref="TryApplyMove{T}"/> for several rows at once: they land together
+    /// at the target, one after another in the order they already had, however
+    /// far apart they started. Only the moved rows are rewritten unless the gap
+    /// can't hold them all, when the whole roadmap is re-spaced. False when a
+    /// moved row isn't on the roadmap, or a neighbor isn't one of the rows staying put.
+    /// </summary>
+    public static bool TryApplyBlockMove<T>(
+        IList<T> rowsByRank,
+        IReadOnlyCollection<Guid> movedIds,
+        Guid? precedingId,
+        Guid? followingId,
+        Func<T, Guid> id,
+        Func<T, decimal> getRank,
         Action<T, decimal> setRank)
     {
-        var moved = rowsByRank.FirstOrDefault(r => id(r) == movedId);
-        if (moved is null)
+        var moved = rowsByRank.Where(r => movedIds.Contains(id(r))).ToList();
+        if (moved.Count == 0 || moved.Count != movedIds.Distinct().Count())
         {
             return false;
         }
 
-        var others = rowsByRank.Where(r => id(r) != movedId).ToList();
+        var others = rowsByRank.Where(r => !movedIds.Contains(id(r))).ToList();
         int insertAt;
         if (precedingId is { } preceding)
         {
@@ -72,19 +89,54 @@ public static class RoadmapRanking
 
         decimal? before = insertAt > 0 ? getRank(others[insertAt - 1]) : null;
         decimal? after = insertAt < others.Count ? getRank(others[insertAt]) : null;
-        if (TryBetween(before, after, out var rank))
+        if (TrySpread(before, after, moved.Count, out var ranks))
         {
-            setRank(moved, rank);
+            for (var i = 0; i < moved.Count; i++)
+            {
+                setRank(moved[i], ranks[i]);
+            }
+
             return true;
         }
 
-        others.Insert(insertAt, moved);
+        others.InsertRange(insertAt, moved);
         for (var i = 0; i < others.Count; i++)
         {
             setRank(others[i], (i + 1) * Gap);
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> ranks evenly spaced strictly between two neighbors
+    /// (null = an end); false when precision is spent.
+    /// </summary>
+    private static bool TrySpread(decimal? preceding, decimal? following, int count, out decimal[] ranks)
+    {
+        if (count == 1)
+        {
+            var ok = TryBetween(preceding, following, out var rank);
+            ranks = [rank];
+            return ok;
+        }
+
+        ranks = new decimal[count];
+        for (var i = 0; i < count; i++)
+        {
+            ranks[i] = (preceding, following) switch
+            {
+                (null, null) => (i + 1) * Gap,
+                (null, { } f) => f - (count - i) * Gap,
+                ({ } p, null) => p + (i + 1) * Gap,
+                ({ } p, { } f) => decimal.Round(p + (f - p) * (i + 1) / (count + 1), 6),
+            };
+        }
+
+        // Rounded to the column's six places, a gap too narrow for them all
+        // gives two rows the same rank, or one its neighbor's.
+        var line = ranks.Prepend(preceding ?? decimal.MinValue).Append(following ?? decimal.MaxValue).ToList();
+        return line.Zip(line.Skip(1)).All(pair => pair.First < pair.Second);
     }
 
     /// <summary>A rank strictly between two neighbors (null = an end); false when precision is spent.</summary>

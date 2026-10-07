@@ -369,6 +369,134 @@ public class RoadmapPageTests : ComponentTestBase
         Assert.Single(_menu.Shown);
     }
 
+    // -- Moving a selection together --------------------------------------------------
+
+    private static readonly DateOnly Today = DateOnly.FromDateTime(DateTime.Today);
+
+    private static RoadmapEntryDto Pill(string name, int number) =>
+        Entry(name, number) with { Task = Entry(name, number).Task with { DeadlineAt = null } };
+
+    /// <summary>Answers core's schedule and the roadmap's anchor endpoints, as a save that went through.</summary>
+    private void RouteMoves()
+    {
+        foreach (var entry in _entries)
+        {
+            _http.Route($"api/tasks/{entry.Task.Id}/schedule", HttpStatusCode.OK, entry.Task, HttpMethod.Put);
+        }
+
+        _http.Route("/anchor", HttpStatusCode.NoContent, (object?)null, HttpMethod.Put);
+    }
+
+    private List<string> Requests(string method, string fragment) =>
+        _http.Paths.Select((path, i) => (path, body: _http.Bodies[i]))
+            .Where(r => r.path.StartsWith($"{method} ") && r.path.Contains(fragment))
+            .Select(r => r.path + " " + r.body)
+            .ToList();
+
+    [Fact]
+    public async Task Dragging_a_selected_bar_sideways_moves_every_selected_bar_the_same_days()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Pill("Boss fight", 3)];
+        RouteMoves();
+        var page = RenderPage();
+        var (dated, untouched, pill) = (_entries[0], _entries[1], _entries[2]);
+        await page.Instance.OnMarquee([dated.Id.ToString(), pill.Id.ToString()], additive: false);
+
+        await page.Instance.OnMove(dated.Id.ToString(), 2);
+
+        page.WaitForAssertion(() => Assert.Equal(2, _http.Paths.Count(p => p.StartsWith("PUT "))));
+        var schedule = Assert.Single(Requests("PUT", $"api/tasks/{dated.Task.Id}/schedule"));
+        Assert.Contains($"\"{Today.AddDays(2):yyyy-MM-dd}\"", schedule);
+        Assert.Contains($"\"{Today.AddDays(5):yyyy-MM-dd}\"", schedule);
+        var anchor = Assert.Single(Requests("PUT", $"entries/{pill.Id}/anchor"));
+        Assert.Contains($"\"{Today.AddDays(2):yyyy-MM-dd}\"", anchor);
+        Assert.Empty(Requests("PUT", $"api/tasks/{untouched.Task.Id}"));
+    }
+
+    [Fact]
+    public async Task A_selection_moved_sideways_stops_together_where_its_first_bar_meets_the_edge()
+    {
+        // The window ends 60 days out (FutureDays), so the far bar has two to go.
+        var far = Entry("Photo mode", 2) with { Task = Entry("Photo mode", 2).Task with { DeadlineAt = Today.AddDays(58) } };
+        _entries = [Entry("Save system", 1), far];
+        RouteMoves();
+        var page = RenderPage();
+        await page.Instance.OnMarquee(_entries.Select(e => e.Id.ToString()).ToArray(), additive: false);
+
+        await page.Instance.OnMove(_entries[0].Id.ToString(), 10);
+
+        page.WaitForAssertion(() => Assert.Equal(2, Requests("PUT", "/schedule").Count));
+        Assert.Contains($"\"{Today.AddDays(5):yyyy-MM-dd}\"", Assert.Single(Requests("PUT", $"{_entries[0].Task.Id}/schedule")));
+        Assert.Contains($"\"{Today.AddDays(60):yyyy-MM-dd}\"", Assert.Single(Requests("PUT", $"{far.Task.Id}/schedule")));
+    }
+
+    [Fact]
+    public async Task Dragging_a_bar_outside_the_selection_moves_it_alone()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3)];
+        RouteMoves();
+        var page = RenderPage();
+        await page.Instance.OnMarquee([_entries[0].Id.ToString(), _entries[1].Id.ToString()], additive: false);
+
+        await page.Instance.OnMove(_entries[2].Id.ToString(), 1);
+
+        page.WaitForAssertion(() => Assert.Single(Requests("PUT", "/schedule")));
+        Assert.Single(Requests("PUT", $"{_entries[2].Task.Id}/schedule"));
+    }
+
+    [Fact]
+    public async Task Dropping_a_selected_row_lands_the_whole_selection_there_in_order()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3), Entry("Credits", 4)];
+        _http.Route($"roadmaps/{RoadmapId}/entries/rank", HttpStatusCode.NoContent, (object?)null, HttpMethod.Put);
+        var page = RenderPage();
+        var (first, third, last) = (_entries[0], _entries[2], _entries[3]);
+        await page.Instance.OnMarquee([first.Id.ToString(), third.Id.ToString()], additive: false);
+        // What roadmap.js reads to drag the rows together.
+        Assert.Equal([first.Id.ToString(), third.Id.ToString()],
+            page.FindAll(".roadmap-row[data-selected]").Select(r => r.GetAttribute("data-roadmap-entry")));
+
+        // The first row dragged below the last: index 3 among the other three.
+        await page.Instance.OnRowDrop(first.Id.ToString(), 3);
+
+        Assert.Equal(["Photo mode", "Credits", "Save system", "Boss fight"], Names(page));
+        var body = Assert.Single(Requests("PUT", "/entries/rank"));
+        Assert.Contains(first.Id.ToString(), body);
+        Assert.Contains(third.Id.ToString(), body);
+        Assert.Contains($"\"precedingId\":\"{last.Id}\"", body);
+        Assert.Contains("\"followingId\":null", body);
+    }
+
+    [Fact]
+    public async Task A_failed_group_drop_puts_the_rows_back()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3)];
+        _http.Route($"roadmaps/{RoadmapId}/entries/rank", HttpStatusCode.InternalServerError, (object?)null, HttpMethod.Put);
+        var page = RenderPage();
+        await page.Instance.OnMarquee([_entries[0].Id.ToString(), _entries[1].Id.ToString()], additive: false);
+
+        await page.Instance.OnRowDrop(_entries[0].Id.ToString(), 2);
+
+        Assert.Equal(["Save system", "Photo mode", "Boss fight"], Names(page));
+    }
+
+    [Fact]
+    public async Task The_delete_key_takes_the_selection_off_the_roadmap()
+    {
+        _entries = [Entry("Save system", 1), Entry("Photo mode", 2), Entry("Boss fight", 3)];
+        _http.Route($"roadmaps/{RoadmapId}/entries/remove", HttpStatusCode.NoContent, (object?)null, HttpMethod.Post);
+        var page = RenderPage();
+
+        await page.Instance.OnRemoveSelected();
+        Assert.Empty(Requests("POST", "/entries/remove"));
+
+        await page.Instance.OnMarquee([_entries[0].Id.ToString(), _entries[2].Id.ToString()], additive: false);
+        await page.Instance.OnRemoveSelected();
+
+        page.WaitForAssertion(() => Assert.Equal(["Photo mode"], Names(page)));
+        Assert.Single(Requests("POST", "/entries/remove"));
+    }
+
     private static AngleSharp.Dom.IElement AddTaskButton(IRenderedComponent<RoadmapPage> page) =>
         page.FindAll("button").Single(b => b.TextContent.Contains("Add task"));
 

@@ -204,6 +204,8 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             (await reader.DeleteAsync($"{url}/{roadmap}/entries/{entry}")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await reader.PostAsJsonAsync($"{url}/{roadmap}/entries/remove",
             new { entryIds = new[] { entry } }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await reader.PutAsJsonAsync($"{url}/{roadmap}/entries/rank",
+            new { entryIds = new[] { entry } }, TestClients.Json)).StatusCode);
         Assert.Single(await EntriesAsync(project, roadmap, reader));
     }
 
@@ -230,6 +232,8 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             new { anchorDay = "2026-10-09" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync($"{wrong}/entries/{entry}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.PostAsJsonAsync($"{wrong}/entries/remove",
+            new { entryIds = new[] { entry } }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.PutAsJsonAsync($"{wrong}/entries/rank",
             new { entryIds = new[] { entry } }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _admin.DeleteAsync(wrong)).StatusCode);
 
@@ -326,6 +330,47 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             (await _admin.PostAsJsonAsync(url, new { entryIds = new[] { firstEntry } }, TestClients.Json)).StatusCode);
     }
 
+    /// <summary>
+    /// A selection dragged up or down: the rows land together between the
+    /// neighbors, in the order they had, and rows gone meanwhile are passed over.
+    /// </summary>
+    [SkippableFact]
+    public async Task Reranking_several_entries_moves_them_together_in_their_order()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await ProjectAsync("Block", "BLOCK");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var ids = new Dictionary<string, Guid>();
+        foreach (var name in new[] { "A", "B", "C", "D", "E" })
+        {
+            ids[name] = await AddAsync(project, roadmap, await TaskAsync(board, name));
+        }
+
+        var url = $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries/rank";
+
+        // Named out of order, and with one that isn't there: A and C land after D, A first.
+        var moved = await _admin.PutAsJsonAsync(url,
+            new { entryIds = new[] { ids["C"], Guid.NewGuid(), ids["A"] }, precedingId = ids["D"], followingId = ids["E"] },
+            TestClients.Json);
+
+        Assert.Equal(HttpStatusCode.NoContent, moved.StatusCode);
+        Assert.Equal(["B", "D", "A", "C", "E"], await OrderAsync(project, roadmap));
+
+        // To the top, with no neighbors named.
+        (await _admin.PutAsJsonAsync(url, new { entryIds = new[] { ids["E"], ids["C"] } }, TestClients.Json))
+            .EnsureSuccessStatusCode();
+        Assert.Equal(["C", "E", "B", "D", "A"], await OrderAsync(project, roadmap));
+
+        // A neighbor that's one of the rows being moved can't be the target.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PutAsJsonAsync(url,
+            new { entryIds = new[] { ids["A"], ids["B"] }, precedingId = ids["B"] }, TestClients.Json)).StatusCode);
+        // Nothing named is on the roadmap.
+        Assert.Equal(HttpStatusCode.NotFound, (await _admin.PutAsJsonAsync(url,
+            new { entryIds = new[] { Guid.NewGuid() } }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PutAsJsonAsync(url,
+            new { entryIds = Array.Empty<Guid>() }, TestClients.Json)).StatusCode);
+    }
+
     [SkippableFact]
     public async Task A_remove_naming_no_entries_or_too_many_is_400()
     {
@@ -333,7 +378,7 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         var (project, _) = await ProjectAsync("Bounds", "BOUNDS");
         var roadmap = await RoadmapAsync(project, "Plan");
         var url = $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries/remove";
-        // One over RoadmapLimits.MaxRemoveAtOnce: the package is laid out for
+        // One over RoadmapLimits.MaxEntriesAtOnce: the package is laid out for
         // the host to load, not referenced, so its constants aren't in reach.
         var tooMany = Enumerable.Range(0, 501).Select(_ => Guid.NewGuid()).ToArray();
 

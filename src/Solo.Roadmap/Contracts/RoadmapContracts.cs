@@ -20,8 +20,8 @@ public static class RoadmapLimits
     public const int MinSprintWeeks = 1;
     public const int MaxSprintWeeks = 52;
 
-    /// <summary>Entries one remove request takes off; the page splits a larger selection.</summary>
-    public const int MaxRemoveAtOnce = 500;
+    /// <summary>Entries one request removes or moves together; the page splits a larger selection.</summary>
+    public const int MaxEntriesAtOnce = 500;
 
     public const int DefaultPastDays = 365;
     public const int DefaultFutureDays = 730;
@@ -150,13 +150,27 @@ public sealed class SetRoadmapEntryAnchorRequest
 /// <summary>Entries to take off a roadmap together, such as everything selected on the page.</summary>
 public sealed class RemoveRoadmapEntriesRequest
 {
-    [Required, MinLength(1), MaxLength(RoadmapLimits.MaxRemoveAtOnce)]
+    [Required, MinLength(1), MaxLength(RoadmapLimits.MaxEntriesAtOnce)]
     public required IReadOnlyList<Guid> EntryIds { get; init; }
 }
 
 /// <summary>Neighbors in roadmap order, like core's rerank. Both null moves to the top.</summary>
 public sealed class RerankRoadmapEntryRequest
 {
+    public Guid? PrecedingId { get; init; }
+
+    public Guid? FollowingId { get; init; }
+}
+
+/// <summary>
+/// Several rows moved together, as a block, between neighbors that aren't
+/// among them. The rows keep the order they had relative to one another.
+/// </summary>
+public sealed class RerankRoadmapEntriesRequest
+{
+    [Required, MinLength(1), MaxLength(RoadmapLimits.MaxEntriesAtOnce)]
+    public required IReadOnlyList<Guid> EntryIds { get; init; }
+
     public Guid? PrecedingId { get; init; }
 
     public Guid? FollowingId { get; init; }
