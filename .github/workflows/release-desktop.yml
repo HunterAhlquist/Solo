@@ -244,8 +244,10 @@ jobs:
       # Package step with no time limit and no output, so a slow notary queue
       # looked like a hung codesign and held the runner as long as Apple took.
       # Here the log carries the submission id and Apple's status as it goes,
-      # and the wait is capped. The verdict is read back from Apple rather than
-      # inferred from notarytool's exit status, which a timeout also produces.
+      # and the wait is capped. The verdict is the final `status:` line of
+      # submit's own output, not its exit status, which a timeout also
+      # produces. It isn't asked for again with `notarytool info`: that is one
+      # more authenticated call, able to fail a build Apple already accepted.
       - name: Notarize
         if: runner.os == 'macOS' && env.MAC_CSC_LINK != '' && env.APPLE_ID != ''
         env:
@@ -270,10 +272,12 @@ jobs:
             echo "::error::The notary service returned no submission id; see notarytool's output above."
             exit 1
           fi
-          STATUS=$(xcrun notarytool info "$ID" "${AUTH[@]}" --output-format json | plutil -extract status raw -)
+          # "Processing complete" is followed by `status: <verdict>`; a timeout
+          # leaves no such line, or only "In Progress".
+          STATUS=$(awk '/^ *status: / { sub(/^ *status: /, ""); s = $0 } END { print s }' "$LOG")
           case "$STATUS" in
             Accepted) ;;
-            "In Progress")
+            "" | "In Progress")
               echo "::error::Apple was still processing submission $ID after 40 minutes. It was not abandoned, but this build can't wait for it; re-run the job to submit again."
               exit 1 ;;
             *)

@@ -1505,6 +1505,11 @@ html.solo-desktop .solo-titlebar {
     gap: 0.5rem;
     min-width: 0;
     background: var(--mud-palette-background);
+    /* Rounds the header's top corners while it sits at the top of the group, and
+       only then: pinned further down, it is clear of the corners and stays square
+       to meet the column strip. Clip, not hidden — hidden would make the group a
+       scroll container and the header would stick to it instead of the page. */
+    overflow: clip;
 }
 
 /* Sticky under the column strip, but only for as long as its own group is on
@@ -1526,8 +1531,6 @@ html.solo-desktop .solo-titlebar {
     z-index: 2;
     margin: -0.5rem;
     padding: 0.5rem;
-    /* Follow the group's rounded top corners so the background stays inside. */
-    border-radius: var(--mud-default-borderradius) var(--mud-default-borderradius) 0 0;
     background: var(--mud-palette-background);
 }
 
