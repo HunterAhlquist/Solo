@@ -160,7 +160,7 @@ public class TaskCardTests : ComponentTestBase
     }
 
     [Fact]
-    public void Before_its_start_date_the_ring_is_full()
+    public void Before_its_start_date_the_deadline_is_hidden()
     {
         var today = DateOnly.FromDateTime(DateTime.Now);
         var task = TestData.Task(
@@ -168,7 +168,21 @@ public class TaskCardTests : ComponentTestBase
 
         var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
 
-        Assert.Equal(120, Hue(card));
+        Assert.Empty(card.FindAll(".deadline-ring"));
+        Assert.Empty(card.FindAll(".kanban-card--deadline"));
+        Assert.DoesNotContain("--deadline-color", card.Markup);
+    }
+
+    [Fact]
+    public void On_its_start_date_the_deadline_appears()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var task = TestData.Task(deadline: today.AddDays(10), start: today);
+
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, task));
+
+        Assert.NotEmpty(card.FindAll(".deadline-ring"));
+        Assert.NotEmpty(card.FindAll(".kanban-card--deadline"));
     }
 
     [Fact]
