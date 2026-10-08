@@ -2,11 +2,11 @@
 
 The recipe for building one. For *why* the system is shaped this way — the trust model, the decisions and their alternatives — see [extension-plan.md](extension-plan.md); you do not need it to build an extension.
 
-> **The rule that matters most:** an extension **modifies no core project**. Its server half references `Solo.Extensibility` and nothing else from this solution; its client half references `Solo.Shared` and MudBlazor. If you are editing `Solo.Api`, `Solo.Data`, `Solo.Client`, `Solo.Shared` or `Solo.Extensions`, you are no longer writing an extension.
+> **The rule that matters most:** an extension **modifies no core project**. Its server half references the `Solo.Extensibility` contract and nothing else of core; its client half references `Solo.Shared` and MudBlazor. If you are editing `Solo.Api`, `Solo.Data`, `Solo.Client`, `Solo.Shared` or `Solo.Extensions`, you are no longer writing an extension.
 >
-> The test is removability: uninstall the package and the instance loses that feature and nothing else. Where the folder lives is incidental — `src/Solo.Mcp` sits alongside core and is still a proper extension, because no core project knows it exists.
+> The test is removability: uninstall the package and the instance loses that feature and nothing else. The bundled extensions live under `extensions/`, each its own solution outside `Solo.slnx`, so deleting one's folder leaves core building and its tests passing — no core project knows it exists.
 
-**`src/Solo.Mcp` + `src/Solo.Mcp.Client` is the worked reference.** A complete extension: own schema and migrations, namespaced endpoints, its own authentication scheme, a client page with static content, packaged by `build/pack-mcp-extension.sh` and released by CI. Read it alongside this guide — its csproj comments explain each constraint where it bites.
+**`extensions/Mcp` (`Solo.Mcp` + `Solo.Mcp.Client`) is the worked reference.** A complete extension: own schema and migrations, namespaced endpoints, its own authentication scheme, a client page with static content, packaged by `build/pack-mcp-extension.sh` and released by CI. Read it alongside this guide — its csproj comments explain each constraint where it bites.
 
 An extension can add four things, in any combination:
 
@@ -48,7 +48,7 @@ A folder beside the solution, its own repository, or alongside core under `src/`
 
 The contract ships on nuget.org as two packages: `HunterAhlquist.Solo.Extensibility` for the server half, and `HunterAhlquist.Solo.Shared` for the client half (§9). The package version is the contract version. Compile against the newest one and declare the lowest you actually use in the manifest (§2). [`samples/HelloExtension`](../samples/HelloExtension) is the smallest complete extension built from the packages alone.
 
-Inside this repository, `src/Solo.Mcp` and `src/Solo.Roadmap` take a `ProjectReference` to `src/Solo.Extensibility` instead, so they build against the contract as it changes.
+The bundled extensions under `extensions/` reference the same packages. Until the public launch those exist only as what `build/pack-contract.sh` packs into `artifacts/nuget`, which `extensions/nuget.config` names as their one source — so run the script before building one, and again after changing the contract. Only their test projects reference `src/`, for the host they load the package into.
 
 If you need something the contract doesn't offer, that's a finding about the contract — raise it rather than reaching into `Solo.Data` or `Solo.Api`.
 
@@ -307,7 +307,7 @@ services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, MyHandler>("
 services.AddSingleton<IStartupFilter, MyMiddlewareFilter>();
 ```
 
-`src/Solo.Mcp/Auth/` does exactly this so an MCP credential authenticates early enough for core's `CurrentUserMiddleware` to resolve the user from it. Prefer this over post-configuring core's OIDC forward selector by scheme name, which couples the package to core's setup.
+`extensions/Mcp/Solo.Mcp/Auth/` does exactly this so an MCP credential authenticates early enough for core's `CurrentUserMiddleware` to resolve the user from it. Prefer this over post-configuring core's OIDC forward selector by scheme name, which couples the package to core's setup.
 
 ## 11. Package and install
 
@@ -347,9 +347,9 @@ curl -H "Authorization: Bearer $SOLO_TOKEN" \
 \dt ext_roadmap.*           -- your tables + your own __EFMigrationsHistory
 ```
 
-**Read `src/Solo.Mcp` for a real one.** It is a complete extension — schema, migrations, endpoints, its own auth scheme, a client page, static content, CI packaging — and its csproj comments explain each constraint where it applies.
+**Read `extensions/Mcp` for a real one.** It is a complete extension — schema, migrations, endpoints, its own auth scheme, a client page, static content, CI packaging — and its csproj comments explain each constraint where it applies.
 
-`tests/Solo.Extension.Fixture/` is the other working package, but it is a *test* fixture: server-only, and its hook deliberately misbehaves on an `X-Fixture-Hook` header to exercise reject/throw/timeout paths. Copy its structure if you like; don't copy that behavior.
+`tests/Solo.Extension.Fixture/` is the other working package, but it is a *test* fixture: a server half with a one-page client half beside it (`tests/Solo.Extension.Fixture.Client/`), and its hook deliberately misbehaves on an `X-Fixture-Hook` header to exercise reject/throw/timeout paths. Copy its structure if you like; don't copy that behavior.
 
 ---
 
@@ -408,8 +408,8 @@ core audit history.
 ## Contract 1.3
 
 Declare `"soloApiVersion": ">=1.3 <2.0"` (and the same `soloClientVersion` for a
-client half) to use anything in this section. `src/Solo.Roadmap` and
-`src/Solo.Roadmap.Client` use every addition here (calling `task.setSchedule`
+client half) to use anything in this section. `extensions/Roadmap`'s
+`Solo.Roadmap` and `Solo.Roadmap.Client` use every addition here (calling `task.setSchedule`
 rather than hooking it), if you want a working example.
 
 ### Task start dates and `task.setSchedule`

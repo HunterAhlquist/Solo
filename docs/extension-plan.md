@@ -12,7 +12,7 @@
 >
 > Verified: 509 tests green (`Solo.Data.Tests` 51, `Solo.Client.Tests` 255, `Solo.Api.Tests` 203), including a fixture extension loaded from a real package directory into its own `AssemblyLoadContext` against Testcontainers Postgres.
 
-> **Update (2026-08-18):** the plan's worked example — a hypothetical `roadmap` extension — has been replaced in practice by **`solo-mcp`** ([src/Solo.Mcp](../src/Solo.Mcp) + [src/Solo.Mcp.Client](../src/Solo.Mcp.Client)), which exercises every capability here against a feature people actually want: its own schema and migrations (§6), namespaced endpoints (§5), a client assembly with its own page and static content (§9), and a package built and released by CI.
+> **Update (2026-08-18):** the plan's worked example — a hypothetical `roadmap` extension — has been replaced in practice by **`solo-mcp`** ([extensions/Mcp/Solo.Mcp](../extensions/Mcp/Solo.Mcp) + [extensions/Mcp/Solo.Mcp.Client](../extensions/Mcp/Solo.Mcp.Client)), which exercises every capability here against a feature people actually want: its own schema and migrations (§6), namespaced endpoints (§5), a client assembly with its own page and static content (§9), and a package built and released by CI.
 >
 > Building it closed two gaps this plan left open, both now part of the contract:
 >

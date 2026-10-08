@@ -1,1 +1,1 @@
-../../../src/Solo.Mcp/Skills/solo-summarize-work.md
+../../../extensions/Mcp/Solo.Mcp/Skills/solo-summarize-work.md

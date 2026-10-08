@@ -3,7 +3,9 @@
   "name": "Test Fixture",
   "version": "1.0.0",
   "soloApiVersion": ">=1.7 <2.0",
+  "soloClientVersion": ">=1.0 <2.0",
   "server": "server/Solo.Extension.Fixture.dll",
+  "client": "client/Solo.Extension.Fixture.Client.dll",
   "schema": "ext_fixture",
   "hooks": ["task.update", "task.setStatus", "task.setSchedule"],
   "failOpen": false

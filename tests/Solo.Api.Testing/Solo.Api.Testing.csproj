@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The harness for tests that run the real host: the factory, the shared
+       Postgres container, header-driven sign-in and the JSON helpers. Used by
+       Solo.Api.Tests, and by the extensions' test projects under extensions/,
+       which load their packages into the same host — so nothing here may name
+       an extension. A library rather than a test project: it holds no tests.
+
+       Mvc.Testing's build targets only run in the project that references the
+       package directly, so a test project using this still references it, and
+       Solo.Api, itself. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Solo.Api\Solo.Api.csproj" />
+  </ItemGroup>
+
+</Project>

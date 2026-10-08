@@ -19,13 +19,16 @@
 # ExtensionLoadContext.IsShared on the server, and what the browser has already
 # loaded on the client.
 #
+# Both halves build from the contract packages, through extensions/nuget.config,
+# so build/pack-contract.sh has to have packed them first.
+#
 # Usage: build/pack-mcp-extension.sh [output-directory]
 
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-server="$root/src/Solo.Mcp"
-client="$root/src/Solo.Mcp.Client"
+server="$root/extensions/Mcp/Solo.Mcp"
+client="$root/extensions/Mcp/Solo.Mcp.Client"
 output="${1:-$root/artifacts}"
 
 version_of_manifest() {
@@ -47,6 +50,18 @@ for project in "$server/Solo.Mcp.csproj" "$client/Solo.Mcp.Client.csproj"; do
     if [ "$declared" != "$version" ]; then
         echo "error: extension.json says $version but $(basename "$project") says $declared." >&2
         echo "       Bump all three — the manifest names the package, the projects stamp the assemblies." >&2
+        exit 1
+    fi
+done
+
+# Restore would fail on its own without the packages, but naming the step is
+# kinder than NU1101. artifacts/nuget is the source extensions/nuget.config
+# maps them to.
+contract=$(sed -n 's/.*Include="HunterAhlquist\.Solo\.Extensibility" Version="\([^"]*\)".*/\1/p' \
+    "$server/Solo.Mcp.csproj" | head -1)
+for id in Extensibility Shared; do
+    if [ ! -f "$root/artifacts/nuget/HunterAhlquist.Solo.$id.$contract.nupkg" ]; then
+        echo "error: no HunterAhlquist.Solo.$id $contract in artifacts/nuget. Run build/pack-contract.sh first." >&2
         exit 1
     fi
 done

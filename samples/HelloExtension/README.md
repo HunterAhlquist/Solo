@@ -33,6 +33,6 @@ Drop `hello.zip` into the instance's extensions directory (`/data/extensions` in
 
 ## Next
 
-[Writing a Solo extension](../../docs/writing-extensions.md) covers data in your own schema, hooks on core writes, events, and the client seams. `src/Solo.Mcp` is a complete extension that uses most of them.
+[Writing a Solo extension](../../docs/writing-extensions.md) covers data in your own schema, hooks on core writes, events, and the client seams. `extensions/Mcp` is a complete extension that uses most of them.
 
 Inside the Solo repository, `build/pack-contract.sh` builds this sample against freshly packed contract packages, which keeps it honest. Bump its `HunterAhlquist.Solo.*` versions whenever the contract version moves.

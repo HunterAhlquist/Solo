@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The MCP server, built the way a third-party extension would be: it
+       references the contract package and nothing from src/, owns its own
+       Postgres schema and its own migrations, and reaches core only through
+       the contract and the public REST API.
+
+       Nothing about this feature lives in Solo.Api or Solo.Data. That is the
+       point of the exercise: remove the package and the instance loses MCP
+       access and nothing else. If this project ever needs something the
+       contract does not offer, that is a finding about the contract.
+
+       Versioned independently of the app — build/pack-mcp-extension.sh stamps
+       this version into extension.json and into the package filename. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <Version>1.6.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The package, not a ProjectReference into src/, resolved through
+         extensions/nuget.config. The version must be the contract version
+         build/pack-contract.sh packs, which checks it: until the public launch
+         that feed holds no other.
+
+         PrivateAssets keeps it out of Solo.Mcp.Tests, which must get the host's
+         own Solo.Extensibility through Solo.Api — the copy this binds to at
+         runtime. The src project and the package share an ID, and left to
+         itself NuGet can settle on the package there instead. -->
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.7.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The workflow guides, served as MCP prompts. Embedded in the assembly
+         rather than dropped in content/: that folder is anonymous by design, and
+         these should reach exactly the people the tools do. Embedding also means
+         the packaging script needs no change — the DLL already ships. -->
+    <EmbeddedResource Include="Skills\*.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Migrations are scaffolded at build time by the extension author, exactly
+         as core's are; the host only applies them. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

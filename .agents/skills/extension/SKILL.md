@@ -14,12 +14,13 @@ system is shaped this way — not what you need in order to build one.
 ## The failure this exists to prevent
 
 An extension is **its own project** and **modifies no core project**. Its server
-half references `Solo.Extensibility` and nothing else from the solution; its
-client half references `Solo.Shared` and MudBlazor.
+half references the `Solo.Extensibility` contract package and nothing else of
+core; its client half references `Solo.Shared` and MudBlazor.
 
 The test is removability: uninstall the package and the instance loses that
-feature and nothing else. Where the folder lives is incidental — `src/Solo.Mcp`
-sits alongside core and is still a proper extension.
+feature and nothing else. In this repository an extension lives under
+`extensions/<Name>/` as its own solution, outside `Solo.slnx` — delete the folder
+and core still builds and passes its tests.
 
 The tempting path is wrong: adding a controller to `Solo.Api`, an entity to
 `Solo.Data`, and a page to `Solo.Client` is fewer steps and it *works* — it just
@@ -65,15 +66,24 @@ start in core intending to extract later.
 
 ## Reference package
 
-**`src/Solo.Mcp` + `src/Solo.Mcp.Client`** is the worked example: own schema and
-migrations, namespaced endpoints, its own authentication scheme, a client page
-with static content, packaged by `build/pack-mcp-extension.sh`. Its csproj
-comments explain each constraint where it applies. Read it before writing a new
-extension.
+**`extensions/Mcp`** (`Solo.Mcp` + `Solo.Mcp.Client`, with `Solo.Mcp.slnx`) is the
+worked example: own schema and migrations, namespaced endpoints, its own
+authentication scheme, a client page with static content, tests that load the
+package into the real host, packaged by `build/pack-mcp-extension.sh`. Its
+csproj comments explain each constraint where it applies. Read it before writing
+a new extension.
 
 `tests/Solo.Extension.Fixture/` is the other working package, but it is a *test*
-fixture — server-only, and its hook deliberately misbehaves on an
-`X-Fixture-Hook` header. Copy its structure, not its behavior.
+fixture — a server half with a one-page client half, and its hook deliberately
+misbehaves on an `X-Fixture-Hook` header. Copy its structure, not its behavior.
+
+## Building one here
+
+The extensions build from the contract packages, not from `src/`. Until the
+public launch those exist only as what `build/pack-contract.sh` writes to
+`artifacts/nuget` — the one source `extensions/nuget.config` allows for them — so
+run it first, and again after changing the contract, then
+`dotnet test extensions/<Name>/Solo.<Name>.slnx`.
 
 ## Development loop
 

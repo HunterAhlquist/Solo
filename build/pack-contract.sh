@@ -12,6 +12,9 @@
 # nor a copy already on nuget.org can stand in for them. If the sample builds,
 # an author outside this repository can build an extension.
 #
+# The same folder is the contract source for the extensions under extensions/
+# (see extensions/nuget.config), so run this before building them.
+#
 # Nothing is pushed. Publishing to nuget.org is a separate, deliberate step.
 #
 # Usage: build/pack-contract.sh [output-directory]
@@ -31,13 +34,21 @@ fi
 
 # The sample pins the contract version literally, as an author's project would,
 # so it has to be bumped with the contract or it would quietly prove an older one.
-for project in "$sample"/*/*.csproj; do
-    pinned=$(sed -n 's/.*Include="HunterAhlquist\.Solo\.[A-Za-z]*" Version="\([^"]*\)".*/\1/p' "$project" | head -1)
-    if [ "$pinned" != "$version" ]; then
-        echo "error: $(basename "$project") references contract ${pinned:-(none)} but the contract is $version." >&2
-        echo "       Bump the sample's HunterAhlquist.Solo.* references with build/contract-package.props." >&2
-        exit 1
-    fi
+# The extensions under extensions/ pin it too, and restore it from the folder
+# this script writes — which, until the packages are on nuget.org, holds no
+# other version.
+for project in "$sample"/*/*.csproj "$root"/extensions/*/*/*.csproj; do
+    pins=$(sed -n 's/.*Include="HunterAhlquist\.Solo\.[A-Za-z]*" Version="\([^"]*\)".*/\1/p' "$project")
+    case "$project" in
+        "$sample"/*) pins=${pins:-(none)} ;;
+    esac
+    for pinned in $pins; do
+        if [ "$pinned" != "$version" ]; then
+            echo "error: $(basename "$project") references contract $pinned but the contract is $version." >&2
+            echo "       Bump its HunterAhlquist.Solo.* references with build/contract-package.props." >&2
+            exit 1
+        fi
+    done
 done
 
 mkdir -p "$output"
@@ -46,6 +57,18 @@ output="$(cd "$output" && pwd)"
 echo "Packing the extension contract $version…"
 dotnet pack "$root/src/Solo.Shared/Solo.Shared.csproj" -c Release -o "$output" --nologo
 dotnet pack "$root/src/Solo.Extensibility/Solo.Extensibility.csproj" -c Release -o "$output" --nologo
+
+# NuGet extracts a package version once and restores from that copy from then
+# on, so a repack under an unchanged version would leave extensions/ building
+# against the contract as it was. These two IDs come from nowhere but this
+# folder, so dropping them from the global packages folder only forces a
+# re-extract of what was just packed.
+cache=$(dotnet nuget locals global-packages --list | sed -n 's/^global-packages: //p')
+if [ -n "$cache" ]; then
+    for id in hunterahlquist.solo.shared hunterahlquist.solo.extensibility; do
+        rm -rf "${cache%/}/$id/$version"
+    done
+fi
 
 staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT

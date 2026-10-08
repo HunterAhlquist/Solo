@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Solo.Roadmap/Solo.Roadmap.csproj" />
+  <Project Path="Solo.Roadmap.Client/Solo.Roadmap.Client.csproj" />
+  <Project Path="Solo.Roadmap.Data.Tests/Solo.Roadmap.Data.Tests.csproj" />
+  <Project Path="Solo.Roadmap.Tests/Solo.Roadmap.Tests.csproj" />
+</Solution>

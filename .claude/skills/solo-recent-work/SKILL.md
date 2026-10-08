@@ -1,1 +1,1 @@
-../../../src/Solo.Mcp/Skills/solo-recent-work.md
+../../../extensions/Mcp/Solo.Mcp/Skills/solo-recent-work.md
