@@ -69,6 +69,15 @@ public interface IBoardHubServer
 
     /// <summary>Report viewing/editing a subscribed topic; <see cref="PresenceMode.None"/> clears it.</summary>
     Task SetTopicPresence(Guid projectId, string topic, PresenceMode mode);
+
+    /// <summary>
+    /// Start receiving the signed-in user's own extension topic. Nothing to
+    /// check: the group is the connection's own user's, so no caller can name
+    /// anyone else's. Counts toward <see cref="BoardHubConstants.TopicsPerConnection"/>.
+    /// </summary>
+    Task SubscribeUserTopic(string topic);
+
+    Task UnsubscribeUserTopic(string topic);
 }
 
 /// <summary>Entity type names used in change events and presence reports.</summary>
@@ -98,6 +107,9 @@ public static class BoardHubConstants
     public static string BoardGroup(Guid boardId) => $"board:{boardId}";
 
     public static string TopicGroup(Guid projectId, string topic) => $"topic:{projectId:N}:{topic}";
+
+    /// <summary>One user's own topic. A different prefix from <see cref="TopicGroup"/>, so no project id can collide with a user id.</summary>
+    public static string UserTopicGroup(Guid userId, string topic) => $"usertopic:{userId:N}:{topic}";
 
     /// <summary>Longest topic name accepted; topics are short keys like "roadmap:{id}", not payloads.</summary>
     public const int TopicMaxLength = 200;

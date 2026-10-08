@@ -43,6 +43,26 @@ public class LiveTopicsTests
     }
 
     [Fact]
+    public async Task A_user_topic_hears_its_own_messages_and_lets_go_on_dispose()
+    {
+        var heard = new List<string>();
+        var mine = await _topics.SubscribeUserAsync("inbox", m => { heard.Add($"user:{m.Kind}"); return Task.CompletedTask; });
+        await _topics.SubscribeAsync(Project, "inbox", m => { heard.Add($"project:{m.Kind}"); return Task.CompletedTask; });
+
+        // A user topic's messages carry no project, so a project topic of the
+        // same name doesn't hear them, nor they it.
+        await _hub.RaiseTopicMessage(new TopicMessage(Guid.Empty, "inbox", "unread", "3", Guid.Empty));
+        await _hub.RaiseTopicMessage(new TopicMessage(Project, "inbox", "changed", null, Guid.Empty));
+
+        Assert.Equal(["user:unread", "project:changed"], heard);
+        Assert.Equal(["inbox"], _hub.UserSubscribed);
+
+        await mine.DisposeAsync();
+        Assert.Equal(["inbox"], _hub.UserUnsubscribed);
+        Assert.Empty(_hub.Unsubscribed);
+    }
+
+    [Fact]
     public async Task Presence_leaves_out_the_signed_in_user()
     {
         IReadOnlyList<TopicPresenceEntry>? seen = null;

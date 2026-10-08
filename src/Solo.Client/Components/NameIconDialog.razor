@@ -14,6 +14,7 @@
                       ErrorText="@Aliases.PatternError"
                       OnKeyUp="@OnKeyUp" />
         <IconImagePicker @bind-Icon="_icon" @bind-ImageId="_imageId" />
+        @ChildContent
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@Cancel">Cancel</MudButton>
@@ -47,6 +48,14 @@
 
     [Parameter]
     public string SaveText { get; set; } = "Create";
+
+    /// <summary>
+    /// Anything more the caller shows under the icon — a board's extension
+    /// sections. It saves on its own terms; Save here only closes with the name,
+    /// alias and icon.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
 
     private string NormalizedAlias => Aliases.Normalize(_alias);
 

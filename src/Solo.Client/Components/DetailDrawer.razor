@@ -5,6 +5,7 @@
 @inject SaveGuard Guard
 @inject IDialogService Dialogs
 @inject NavigationManager Nav
+@inject TaskMenuService TaskMenu
 
 @*
     The right-hand detail drawer for a task or an epic. Every field commits on a
@@ -26,6 +27,13 @@
                 @HeaderText
             </MudText>
             <PresenceCluster Entries="@PresenceEntries" MaxVisible="4" />
+            @* The task menu's way in where there's no right click: a touchscreen,
+               or a task opened over a page that isn't a board. *@
+            @if (Task is not null && TaskMenu.HasContributors)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small"
+                               OnClick="@ShowTaskMenuAsync" aria-label="More actions" />
+            }
             <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
                            OnClick="@CloseAsync" aria-label="Close" />
         </MudDrawerHeader>
@@ -507,4 +515,9 @@
 
         await CloseAsync();
     }
+
+    private Task ShowTaskMenuAsync(MouseEventArgs e) =>
+        Task is { } task && Store.Board is { } board
+            ? TaskMenu.ShowAsync(e.ClientX, e.ClientY, new TaskMenuContext(task, board.ProjectId, CanWrite))
+            : System.Threading.Tasks.Task.CompletedTask;
 }

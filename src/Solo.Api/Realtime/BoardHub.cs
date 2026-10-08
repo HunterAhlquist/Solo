@@ -90,6 +90,11 @@ public sealed class BoardHub(
     public async Task SetTopicPresence(Guid projectId, string topic, PresenceMode mode)
     {
         RequireTopic(topic);
+        if (projectId == TopicRegistry.UserScope)
+        {
+            throw new HubException("A user topic has no presence.");
+        }
+
         // Subscribing is where access was checked; presence rides on it.
         if (!topics.SetPresence(Context.ConnectionId, projectId, topic, mode))
         {
@@ -98,6 +103,28 @@ public sealed class BoardHub(
 
         await Clients.Group(BoardHubConstants.TopicGroup(projectId, topic))
             .TopicPresenceChanged(topics.Snapshot(projectId, topic));
+    }
+
+    public async Task SubscribeUserTopic(string topic)
+    {
+        RequireTopic(topic);
+        // The group is named for whoever is signed in on this connection, so
+        // there is no one else's to ask for and nothing further to check.
+        var user = await RequireUserAsync();
+        if (!topics.Subscribe(Context.ConnectionId, TopicRegistry.UserScope, topic, user.Id, user.DisplayName ?? user.Email))
+        {
+            throw new HubException($"A connection can hold at most {BoardHubConstants.TopicsPerConnection} topics.");
+        }
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, BoardHubConstants.UserTopicGroup(user.Id, topic));
+    }
+
+    public async Task UnsubscribeUserTopic(string topic)
+    {
+        RequireTopic(topic);
+        var user = await RequireUserAsync();
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, BoardHubConstants.UserTopicGroup(user.Id, topic));
+        topics.Unsubscribe(Context.ConnectionId, TopicRegistry.UserScope, topic);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -122,13 +149,16 @@ public sealed class BoardHub(
     /// <summary>The caller, if they may read the project — the same check that gates the REST API.</summary>
     private async Task<Solo.Data.Entities.User> RequireMemberAsync(Guid projectId)
     {
-        var user = await provisioning.ResolveAsync(Context.User!, Context.ConnectionAborted)
-                   ?? throw new HubException("Unknown user.");
+        var user = await RequireUserAsync();
 
         var allowed = await ProjectAccessHandler.AllowsAsync(
             db, user.Id, user.IsSuperAdmin, projectId, ProjectAccessLevel.Read, Context.ConnectionAborted);
         return allowed ? user : throw new HubException("Not a member of this project.");
     }
+
+    private async Task<Solo.Data.Entities.User> RequireUserAsync() =>
+        await provisioning.ResolveAsync(Context.User!, Context.ConnectionAborted)
+        ?? throw new HubException("Unknown user.");
 
     private static void RequireTopic(string topic)
     {

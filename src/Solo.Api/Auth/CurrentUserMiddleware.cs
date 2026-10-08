@@ -1,3 +1,5 @@
+using Solo.Extensions;
+
 namespace Solo.Api.Auth;
 
 /// <summary>
@@ -16,6 +18,7 @@ public sealed class CurrentUserMiddleware(RequestDelegate next)
             context.User.Identity.AuthenticationType != AuthConstants.SetupScheme)
         {
             accessor.User = await provisioning.ResolveAsync(context.User, context.RequestAborted);
+            accessor.IsBackground = context.User.Identity.AuthenticationType == BackgroundTokens.Scheme;
         }
 
         await next(context);

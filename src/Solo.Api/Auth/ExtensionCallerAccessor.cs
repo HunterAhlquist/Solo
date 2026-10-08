@@ -36,7 +36,7 @@ public sealed class ExtensionCallerAccessor(CurrentUserAccessor currentUser, Sol
             : await roles.ForAsync(user.Id, projectId.Value, ct);
 
         return (
-            new ExtensionCaller(user.Id, user.Email, user.DisplayName, user.IsSuperAdmin, role, isOwner),
+            new ExtensionCaller(user.Id, user.Email, user.DisplayName, currentUser.IsSuperAdmin, role, isOwner),
             projectId);
     }
 }

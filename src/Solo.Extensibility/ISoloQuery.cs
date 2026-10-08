@@ -38,9 +38,32 @@ public interface ISoloQuery
     Task<bool> CanWriteBoardAsync(Guid boardId, CancellationToken ct = default);
 
     /// <summary>
+    /// A project's members, pending invites included, or empty when the caller
+    /// can't read the project (contract 1.8).
+    /// </summary>
+    /// <remarks>
+    /// The same list, emails and all, that core's own members endpoint shows
+    /// anyone who can read the project, so it reveals nothing a member couldn't
+    /// already see. That is also the limit: there is no instance-wide user list,
+    /// and a person in none of the caller's projects can't be looked up.
+    /// </remarks>
+    Task<IReadOnlyList<ProjectMemberDto>> MembersAsync(Guid projectId, CancellationToken ct = default);
+
+    /// <summary>
+    /// A single comment, or null when it doesn't exist or the caller can't read
+    /// what it is on (contract 1.8). A comment event carries only the id; this is
+    /// how a handler gets the text.
+    /// </summary>
+    Task<CommentDto?> CommentAsync(Guid commentId, CancellationToken ct = default);
+
+    /// <summary>A task's comments, oldest first, or empty when the caller can't read the task (contract 1.8).</summary>
+    Task<IReadOnlyList<CommentDto>> TaskCommentsAsync(Guid taskId, CancellationToken ct = default);
+
+    /// <summary>
     /// The signed-in caller — who to record as the author of a row the extension
     /// writes. <see cref="ExtensionCaller.UserId"/> is empty for an anonymous
-    /// request; role and owner flag are set on a project-scoped route.
+    /// request; role and owner flag are set on a project-scoped route. Inside
+    /// <see cref="ISoloBackground.RunAsAsync"/> it is the user the work runs as.
     /// </summary>
     Task<ExtensionCaller> CallerAsync(CancellationToken ct = default);
 }

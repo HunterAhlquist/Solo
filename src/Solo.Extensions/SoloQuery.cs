@@ -18,8 +18,18 @@ namespace Solo.Extensions;
 /// <para>Projections stay local because the extension host cannot reference
 /// Solo.Api. Project lists match <c>GET /api/projects</c> and require membership;
 /// entity reads also apply the super-admin path from <see cref="AccessPolicy"/>.</para>
+///
+/// <para>The caller is the request's, unless background work set one on
+/// <see cref="ExtensionCallerOverride"/> for its scope. The override wins even
+/// inside a request: <see cref="IHttpContextAccessor"/> flows into anything the
+/// request awaits, so work started from an endpoint would otherwise read as
+/// whoever made that request rather than the user it runs as.</para>
 /// </remarks>
-public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller, IHttpContextAccessor http)
+public sealed class SoloQuery(
+    SoloDbContext db,
+    IExtensionCallerAccessor caller,
+    IHttpContextAccessor http,
+    ExtensionCallerOverride background)
     : ISoloQuery
 {
     public async Task<IReadOnlyList<ProjectSummaryDto>> ProjectsAsync(CancellationToken ct = default)
@@ -112,6 +122,62 @@ public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller,
     public Task<bool> CanWriteBoardAsync(Guid boardId, CancellationToken ct = default) =>
         CanAccessBoardAsync(boardId, ProjectAccessLevel.Write, ct);
 
+    public async Task<IReadOnlyList<ProjectMemberDto>> MembersAsync(Guid projectId, CancellationToken ct = default)
+    {
+        if (!await AllowsAsync(projectId, ProjectAccessLevel.Read, ct))
+        {
+            return [];
+        }
+
+        // Matches GET api/projects/{id}/members, which any reader already sees.
+        return await db.ProjectMembers.AsNoTracking()
+            .Where(m => m.ProjectId == projectId)
+            .OrderBy(m => m.Email)
+            .Select(m => new ProjectMemberDto(
+                m.Id, m.UserId, m.Email, m.User!.DisplayName, m.User.AvatarUrl,
+                m.Role, m.IsOwner, m.UserId == null))
+            .ToListAsync(ct);
+    }
+
+    public async Task<CommentDto?> CommentAsync(Guid commentId, CancellationToken ct = default)
+    {
+        var comment = await db.Comments.AsNoTracking()
+            .Include(c => c.Author)
+            .FirstOrDefaultAsync(c => c.Id == commentId, ct);
+        if (comment is null)
+        {
+            return null;
+        }
+
+        // A comment is on exactly one of a task or an epic; its board decides access.
+        var boardId = comment.TaskId is { } taskId
+            ? await db.Tasks.AsNoTracking().Where(t => t.Id == taskId).Select(t => (Guid?)t.BoardId).FirstOrDefaultAsync(ct)
+            : await db.Epics.AsNoTracking().Where(e => e.Id == comment.EpicId).Select(e => (Guid?)e.BoardId).FirstOrDefaultAsync(ct);
+
+        return boardId is not null && await CanAccessBoardAsync(boardId.Value, ProjectAccessLevel.Read, ct)
+            ? ToDto(comment)
+            : null;
+    }
+
+    public async Task<IReadOnlyList<CommentDto>> TaskCommentsAsync(Guid taskId, CancellationToken ct = default)
+    {
+        var boardId = await db.Tasks.AsNoTracking()
+            .Where(t => t.Id == taskId)
+            .Select(t => (Guid?)t.BoardId)
+            .FirstOrDefaultAsync(ct);
+        if (boardId is null || !await CanAccessBoardAsync(boardId.Value, ProjectAccessLevel.Read, ct))
+        {
+            return [];
+        }
+
+        var comments = await db.Comments.AsNoTracking()
+            .Where(c => c.TaskId == taskId)
+            .Include(c => c.Author)
+            .OrderBy(c => c.CreatedAt)
+            .ToListAsync(ct);
+        return comments.Select(ToDto).ToList();
+    }
+
     private async Task<bool> CanAccessBoardAsync(Guid boardId, ProjectAccessLevel level, CancellationToken ct)
     {
         var projectId = await db.Boards.AsNoTracking()
@@ -136,6 +202,11 @@ public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller,
 
     public async Task<ExtensionCaller> CallerAsync(CancellationToken ct = default)
     {
+        if (background.Caller is { } runAs)
+        {
+            return runAs;
+        }
+
         var context = http.HttpContext;
         if (context is null)
         {
@@ -156,6 +227,10 @@ public sealed class SoloQuery(SoloDbContext db, IExtensionCallerAccessor caller,
             t.Assignments.Select(a => a.UserId).ToList(),
             t.SubTasks.OrderBy(s => s.Rank).Select(ToDto).ToList(),
             t.StartAt);
+
+    private static CommentDto ToDto(Comment c) =>
+        new(c.Id, c.AuthorId, c.Author?.DisplayName, c.Author?.AvatarUrl, c.Body, c.CreatedAt,
+            c.EpicId, c.TaskId, c.Version);
 
     private static SubTaskDto ToDto(SubTask s) =>
         new(s.Id, s.TaskId, s.Name, s.LabelId, s.IsFinished, s.Rank, s.Version);

@@ -32,4 +32,17 @@ public interface ISoloLiveTopics
     /// (<see cref="PresenceMode.None"/>) gone.
     /// </summary>
     Task SetPresenceAsync(Guid projectId, string topic, PresenceMode mode);
+
+    /// <summary>
+    /// Starts receiving the signed-in user's own topic: what the server half
+    /// publishes with <c>ISoloLiveUpdates.PublishToUserAsync</c> for this person,
+    /// in every tab they have open (contract 1.8). Messages carry an empty
+    /// <c>ProjectId</c>. Dispose the result to stop.
+    /// </summary>
+    /// <remarks>
+    /// The hub joins the topic for whoever is signed in on the connection, so
+    /// there is nothing to check and no way to ask for someone else's. There is
+    /// no presence on a user topic: the only person on it is the one listening.
+    /// </remarks>
+    Task<IAsyncDisposable> SubscribeUserAsync(string topic, Func<TopicMessage, Task> onMessage);
 }

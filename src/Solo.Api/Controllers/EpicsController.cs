@@ -173,6 +173,7 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpPut("api/epics/{epicId:guid}/assignees")]
+    [SoloOperation(Operations.EpicSetAssignees)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<EpicDto>> SetAssignees(
         Guid epicId, SetAssigneesRequest request, CancellationToken ct)

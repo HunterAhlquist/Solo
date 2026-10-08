@@ -33,6 +33,10 @@ internal sealed class FakeLiveTopics : ISoloLiveTopics
         return Task.FromResult<IAsyncDisposable>(new Release(() => _holders.Remove(holder)));
     }
 
+    /// <summary>Roadmaps hold no user topics; held under an empty project, as the host does.</summary>
+    public Task<IAsyncDisposable> SubscribeUserAsync(string topic, Func<TopicMessage, Task> onMessage) =>
+        SubscribeAsync(Guid.Empty, topic, onMessage);
+
     public Task SetPresenceAsync(Guid projectId, string topic, PresenceMode mode)
     {
         Reported.Add((topic, mode));

@@ -67,6 +67,24 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
         return new Subscription(this, subscriber);
     }
 
+    public async Task<IAsyncDisposable> SubscribeUserAsync(string topic, Func<TopicMessage, Task> onMessage)
+    {
+        // Held under an empty project id, which is what the server's messages on
+        // a user topic carry, so the one dispatch path serves both kinds.
+        var subscriber = new Subscriber(Guid.Empty, topic, onMessage, null);
+        _subscribers.Add(subscriber);
+        try
+        {
+            await _hub.SubscribeUserTopic(topic);
+        }
+        catch (Exception e) when (e is HubException or InvalidOperationException or HttpRequestException)
+        {
+            _logger.LogWarning(e, "Couldn't subscribe to user topic {Topic}; it will stay quiet.", topic);
+        }
+
+        return new Subscription(this, subscriber);
+    }
+
     public async Task SetPresenceAsync(Guid projectId, string topic, PresenceMode mode)
     {
         if (mode == PresenceMode.None)
@@ -92,6 +110,12 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
     {
         if (!_subscribers.Remove(subscriber))
         {
+            return;
+        }
+
+        if (subscriber.ProjectId == Guid.Empty)
+        {
+            await _hub.UnsubscribeUserTopic(subscriber.Topic);
             return;
         }
 

@@ -672,6 +672,16 @@ window.solo = window.solo || {};
 
     document.addEventListener('pointerdown', onPointerDown, true);
 
+    // A long press on a touchscreen is a drag here, not a right click, but
+    // Android fires contextmenu on the same press — which would open a card's
+    // task menu over the card being lifted. Swallowed before the page sees it.
+    document.addEventListener('contextmenu', e => {
+        if (drag || pending?.pointerType === 'touch') {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+
     // WebKit still runs a long-press drag of its own on anything it thinks is
     // draggable, and it would swallow the touch stream mid-press. Nothing in the
     // app sets the attribute any more; this is the guard for anything MudBlazor

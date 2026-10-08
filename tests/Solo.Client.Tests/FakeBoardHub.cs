@@ -69,6 +69,22 @@ internal sealed class FakeBoardHub : IBoardHubClient
         return Task.CompletedTask;
     }
 
+    public List<string> UserSubscribed { get; } = [];
+
+    public List<string> UserUnsubscribed { get; } = [];
+
+    public Task SubscribeUserTopic(string topic)
+    {
+        UserSubscribed.Add(topic);
+        return Task.CompletedTask;
+    }
+
+    public Task UnsubscribeUserTopic(string topic)
+    {
+        UserUnsubscribed.Add(topic);
+        return Task.CompletedTask;
+    }
+
     public Task RaiseTopicMessage(TopicMessage message) =>
         TopicMessage?.Invoke(message) ?? Task.CompletedTask;
 

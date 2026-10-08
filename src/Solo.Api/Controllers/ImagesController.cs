@@ -120,7 +120,7 @@ public sealed class ImagesController(SoloDbContext db, CurrentUserAccessor curre
     private async Task<bool> CanPlaceAnIconAsync(CancellationToken ct)
     {
         var user = currentUser.User!;
-        return user.IsSuperAdmin || await db.ProjectMembers.AsNoTracking()
+        return currentUser.IsSuperAdmin || await db.ProjectMembers.AsNoTracking()
             .AnyAsync(m => m.UserId == user.Id && (m.IsOwner || m.Role == ProjectRole.ReadWrite), ct);
     }
 

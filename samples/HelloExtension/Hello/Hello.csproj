@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.7.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.8.0" />
   </ItemGroup>
 
 </Project>

@@ -23,6 +23,9 @@ public static class AuthConstants
     /// <summary>Short-lived tickets for the hub's URL (see HubTickets).</summary>
     public const string HubTicketScheme = "SoloHubTicket";
 
+    /// <summary>An extension's background work acting as a user who granted it (contract 1.8).</summary>
+    public const string BackgroundScheme = Solo.Extensions.BackgroundTokens.Scheme;
+
     /// <summary>Claim carrying the AuthSession id on session-authenticated principals.</summary>
     public const string SessionIdClaim = "solo:session";
 

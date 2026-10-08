@@ -1,6 +1,7 @@
 @*
     A card is: name, label, deadline countdown, assignees, sub-task progress,
-    presence. It flashes its outline once when a remote change lands on it.
+    presence, and whatever extensions add beside the countdown. It flashes its
+    outline once when a remote change lands on it.
 *@
 <MudPaper Elevation="1"
           Class="@CardClass"
@@ -37,6 +38,26 @@
                 </div>
             </MudTooltip>
         }
+        @if (Extensions.Count > 0)
+        {
+            <span class="kanban-card__extensions">
+                @foreach (var contribution in Extensions)
+                {
+                    @* A card has no room for a sentence: a broken contribution is an icon. *@
+                    <ErrorBoundary @key="contribution">
+                        <ChildContent>
+                            <DynamicComponent Type="@contribution" Parameters="@ExtensionParameters" />
+                        </ChildContent>
+                        <ErrorContent>
+                            <MudTooltip Text="An extension couldn't draw its part of this card.">
+                                <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" Color="Color.Error" />
+                            </MudTooltip>
+                        </ErrorContent>
+                    </ErrorBoundary>
+                }
+            </span>
+        }
+
         <MudSpacer />
 
         @if (Task.SubTasks.Count > 0)
@@ -86,6 +107,25 @@
 
     [Parameter]
     public EventCallback<TaskDto> OnOpen { get; set; }
+
+    /// <summary>The project the card's board belongs to, handed to extension contributions.</summary>
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public bool CanWrite { get; set; }
+
+    /// <summary>
+    /// Components extensions contribute to every card (<c>[TaskCardExtension]</c>),
+    /// found once by the board rather than by each of its cards.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<Type> Extensions { get; set; } = [];
+
+    private IDictionary<string, object> ExtensionParameters => new Dictionary<string, object>
+    {
+        ["Task"] = Task, ["ProjectId"] = ProjectId, ["CanWrite"] = CanWrite,
+    };
 
     private int FinishedCount => Task.SubTasks.Count(s => s.IsFinished);
 

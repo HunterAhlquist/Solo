@@ -30,7 +30,9 @@ public sealed class LiveAccess(
     public async Task RevalidateAsync(Guid userId, CancellationToken ct)
     {
         var boards = presence.JoinedBy(userId);
-        var held = topics.HeldBy(userId);
+        // A user's own topics follow the person, not a project, so leaving one
+        // takes nothing away from them.
+        var held = topics.HeldBy(userId).Where(t => t.ProjectId != TopicRegistry.UserScope).ToList();
         if (boards.Count == 0 && held.Count == 0)
         {
             return;

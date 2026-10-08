@@ -49,8 +49,9 @@ builder.Services.AddDbContext<SoloDbContext>((sp, options) =>
 // Authentication. The default "Bearer" scheme validates OIDC ID tokens, but
 // forwards solo_ tokens to the session scheme — long-lived sessions minted by
 // POST api/auth/sessions for clients that can't renew provider tokens
-// silently (the desktop app) — and hub tickets to theirs. Plus the setup-only
-// static-credential scheme used until first-run handoff.
+// silently (the desktop app) — and hub tickets and extensions' background
+// tokens to theirs. Plus the setup-only static-credential scheme used until
+// first-run handoff.
 // ---------------------------------------------------------------------------
 var authority = builder.Configuration["Auth:Authority"];
 var clientId = builder.Configuration["Auth:ClientId"];
@@ -65,6 +66,10 @@ authBuilder.AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>
     AuthConstants.SessionScheme, null);
 authBuilder.AddScheme<AuthenticationSchemeOptions, HubTicketAuthenticationHandler>(
     AuthConstants.HubTicketScheme, null);
+// Extensions' background work, calling back in as a user who granted it.
+// Forwarded to like sessions; never super admin (see CurrentUserAccessor).
+authBuilder.AddScheme<AuthenticationSchemeOptions, BackgroundAuthenticationHandler>(
+    AuthConstants.BackgroundScheme, null);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<HubTickets>();
 if (!string.IsNullOrEmpty(authority))

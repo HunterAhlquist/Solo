@@ -61,5 +61,11 @@ public abstract class ComponentTestBase : SoloBunitContext
         // MainLayout hosts the context menu, closed unless something opens it,
         // so every test that renders the layout needs it.
         Services.AddScoped<ContextMenuService>();
+
+        // The layout, a board and its drawer all look for extension
+        // contributions. Empty, as an instance with none installed; a test about
+        // extensions registers its own catalog after this, which wins.
+        Services.AddSingleton<Solo.Client.Extensions.ExtensionCatalog>();
+        Services.AddScoped<TaskMenuService>();
     }
 }

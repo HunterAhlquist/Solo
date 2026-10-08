@@ -236,6 +236,64 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.False(strayMessage, "a subscriber to another topic heard it");
     }
 
+    // -----------------------------------------------------------------------
+    // User topics (contract 1.8)
+    // -----------------------------------------------------------------------
+
+    [SkippableFact]
+    public async Task A_user_topic_message_reaches_that_user_in_every_tab_and_no_one_else()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await MemberElsewhereAsync("bob@example.com");
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+
+        await using var tab = Connect("admin", "admin@example.com", "Admin");
+        await using var otherTab = Connect("admin", "admin@example.com", "Admin");
+        await using var bob = Connect("bob", "bob@example.com", "Bob");
+        var heard = new TaskCompletionSource<TopicMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var heardInOtherTab = new TaskCompletionSource<TopicMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        tab.On<TopicMessage>(nameof(IBoardClient.TopicMessage), m => heard.TrySetResult(m));
+        otherTab.On<TopicMessage>(nameof(IBoardClient.TopicMessage), m => heardInOtherTab.TrySetResult(m));
+        var bobHeard = false;
+        bob.On<TopicMessage>(nameof(IBoardClient.TopicMessage), _ => bobHeard = true);
+        foreach (var connection in new[] { tab, otherTab, bob })
+        {
+            await connection.StartAsync();
+            // The same topic name on every connection: what keeps Bob out is
+            // whose it is, not what it's called.
+            await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), "test:inbox");
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<Solo.Extensibility.ISoloLiveUpdates>()
+                .PublishToUserAsync(me.Id, "test:inbox", "unread", "3");
+        }
+
+        var message = await heard.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal((Guid.Empty, "test:inbox", "unread", "3"), (message.ProjectId, message.Topic, message.Kind, message.Data));
+        await heardInOtherTab.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await Task.Delay(300);
+        Assert.False(bobHeard, "another user heard someone else's topic");
+    }
+
+    [SkippableFact]
+    public async Task A_user_topic_has_no_presence_and_no_project_way_in()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        await using var connection = Connect("admin", "admin@example.com", "Admin");
+        await connection.StartAsync();
+
+        // The empty project id user topics are held under is no project to join.
+        await Assert.ThrowsAsync<Microsoft.AspNetCore.SignalR.HubException>(() =>
+            connection.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), Guid.Empty, "test:inbox"));
+
+        await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), "test:inbox");
+        await Assert.ThrowsAsync<Microsoft.AspNetCore.SignalR.HubException>(() =>
+            connection.InvokeAsync(nameof(IBoardHubServer.SetTopicPresence), Guid.Empty, "test:inbox", PresenceMode.Viewing));
+    }
+
     [SkippableFact]
     public async Task Topic_presence_follows_a_reader_onto_and_off_the_topic()
     {
