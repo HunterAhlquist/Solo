@@ -232,6 +232,9 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
             Published.Add((projectId, topic, kind, data));
             return Task.CompletedTask;
         }
+
+        public Task PublishToUserAsync(Guid userId, string topic, string kind, string? data = null,
+            CancellationToken ct = default) => throw new NotSupportedException();
     }
 
     private sealed class StubQuery(TaskDto? task) : ISoloQuery
@@ -257,6 +260,15 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
             throw new NotSupportedException();
 
         public Task<ExtensionCaller> CallerAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ProjectMemberDto>> MembersAsync(Guid projectId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<CommentDto?> CommentAsync(Guid commentId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<CommentDto>> TaskCommentsAsync(Guid taskId, CancellationToken ct = default) =>
             throw new NotSupportedException();
     }
 }
