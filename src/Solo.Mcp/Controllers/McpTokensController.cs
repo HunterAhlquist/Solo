@@ -28,7 +28,7 @@ namespace Solo.Mcp.Controllers;
 [ApiController]
 [Route("tokens")]
 [Authorize]
-public sealed class McpTokensController(McpDbContext db) : ControllerBase
+public sealed class McpTokensController(McpDbContext db, ISoloQuery query) : ControllerBase
 {
     /// <summary>What the emergency revoke-all asks an admin to retype.</summary>
     public const string RevokeAllConfirmation = "revoke all tokens";
@@ -75,11 +75,19 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
             return Forbid();
         }
 
-        await RevokeAsync(
-            db.Tokens.Where(t =>
-                t.Issuer == caller.Issuer && t.Subject == caller.Subject && t.RevokedAt == null),
-            McpTokenRevocation.Regenerated,
-            ct);
+        // A valid sign-in is not a Solo user: any Google account can present
+        // one. Only someone core provisioned may hold a token, and the profile
+        // stored with it is that user's, never the raw claims — an IdP can send
+        // an email it marks unverified, which core discards and this must too.
+        var user = await query.CallerAsync(ct);
+        if (user.UserId == Guid.Empty)
+        {
+            return Forbid();
+        }
+
+        await db.Tokens.Where(t =>
+                t.Issuer == caller.Issuer && t.Subject == caller.Subject && t.RevokedAt == null)
+            .RevokeAsync(McpTokenRevocation.Regenerated, ct);
 
         var value = McpTokens.Generate();
         var token = new McpToken
@@ -87,8 +95,8 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
             TokenHash = McpTokens.Hash(value),
             Issuer = caller.Issuer,
             Subject = caller.Subject,
-            Email = caller.Email,
-            DisplayName = caller.DisplayName,
+            Email = user.Email,
+            DisplayName = user.DisplayName,
             Description = request?.Description,
         };
         db.Tokens.Add(token);
@@ -111,11 +119,9 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
             return Forbid();
         }
 
-        await RevokeAsync(
-            db.Tokens.Where(t =>
-                t.Issuer == caller.Issuer && t.Subject == caller.Subject && t.RevokedAt == null),
-            McpTokenRevocation.RevokedByOwner,
-            ct);
+        await db.Tokens.Where(t =>
+                t.Issuer == caller.Issuer && t.Subject == caller.Subject && t.RevokedAt == null)
+            .RevokeAsync(McpTokenRevocation.RevokedByOwner, ct);
         return NoContent();
     }
 
@@ -206,10 +212,8 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
             return NoContent();
         }
 
-        await RevokeAsync(
-            db.Tokens.Where(t => t.Id == tokenId && t.RevokedAt == null),
-            McpTokenRevocation.RevokedByAdmin,
-            ct);
+        await db.Tokens.Where(t => t.Id == tokenId && t.RevokedAt == null)
+            .RevokeAsync(McpTokenRevocation.RevokedByAdmin, ct);
 
         logger.LogWarning(
             "MCP token {TokenId} ({Owner}) revoked by {User}.",
@@ -243,8 +247,7 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
                 detail: $"Type \"{RevokeAllConfirmation}\" exactly to confirm.");
         }
 
-        var revoked = await RevokeAsync(
-            db.Tokens.Where(t => t.RevokedAt == null), McpTokenRevocation.RevokedByAdmin, ct);
+        var revoked = await db.Tokens.RevokeAsync(McpTokenRevocation.RevokedByAdmin, ct);
 
         logger.LogWarning(
             "Emergency revoke-all cut off {Count} MCP token(s), at the request of {User}.",
@@ -255,19 +258,6 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
 
     // -----------------------------------------------------------------------
 
-    private async Task<int> RevokeAsync(
-        IQueryable<McpToken> tokens, McpTokenRevocation reason, CancellationToken ct)
-    {
-        var now = DateTimeOffset.UtcNow;
-        // Set-based: revoke-all must not load every token on the instance, and
-        // the single-token case is the same statement with a narrower predicate.
-        return await tokens.ExecuteUpdateAsync(
-            update => update
-                .SetProperty(t => t.RevokedAt, now)
-                .SetProperty(t => t.RevokedReason, reason),
-            ct);
-    }
-
     /// <summary>
     /// The caller's OIDC identity — the same issuer/subject pair core keys users
     /// on, which is why tokens are stored against it rather than a user id this
@@ -277,13 +267,7 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
     {
         var issuer = User.FindFirstValue("iss");
         var subject = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
-        return issuer is null || subject is null
-            ? null
-            : new McpCaller(
-                issuer,
-                subject,
-                User.FindFirstValue("email") ?? User.FindFirstValue(ClaimTypes.Email),
-                User.FindFirstValue("name") ?? User.FindFirstValue(ClaimTypes.Name));
+        return issuer is null || subject is null ? null : new McpCaller(issuer, subject);
     }
 
     /// <summary>
@@ -302,7 +286,7 @@ public sealed class McpTokensController(McpDbContext db) : ControllerBase
                 detail: "Sign in to Solo in a browser to generate, rotate or revoke an MCP token.")
             : null;
 
-    private sealed record McpCaller(string Issuer, string Subject, string? Email, string? DisplayName);
+    private sealed record McpCaller(string Issuer, string Subject);
 }
 
 // ---------------------------------------------------------------------------

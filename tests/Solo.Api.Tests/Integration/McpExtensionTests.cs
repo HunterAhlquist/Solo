@@ -125,6 +125,97 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     /// <summary>
+    /// Nor any other credential. A token that could mint a session would
+    /// outlive its own revocation, and a session can mint a token — so the two
+    /// would renew each other forever.
+    /// </summary>
+    [SkippableFact]
+    public async Task An_mcp_token_cannot_mint_a_session_or_complete_a_desktop_sign_in()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var token = await MintTokenAsync();
+        var client = McpClient(token.Value);
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/auth/sessions", new { }, TestClients.Json)).StatusCode);
+
+        var flow = await _factory.CreateClient().PostJson<DesktopAuthFlowDto>("/api/auth/desktop/start", new
+        {
+            description = "Solo Desktop (test)",
+            codeChallenge = Auth.DesktopSignInFlows.PkceChallenge(new string('v', 43)),
+            loopbackPort = 50123,
+        });
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await client.PostAsJsonAsync("/api/auth/desktop/complete", new { state = flow.State }, TestClients.Json))
+            .StatusCode);
+
+        // Or manage the sessions its owner has.
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/auth/sessions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.DeleteAsync("/api/auth/sessions")).StatusCode);
+    }
+
+    /// <summary>
+    /// Core ignores an email the provider marks unverified, so an address
+    /// nobody proved can't activate an invite. A token must not launder one
+    /// into an identity that looks verified.
+    /// </summary>
+    [SkippableFact]
+    public async Task An_unverified_email_cannot_claim_an_invite_through_a_token()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Secret", alias = "SECRET" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "victim@example.com", role = "ReadWrite" });
+
+        var impostor = _factory.As("impostor", "victim@example.com", "Impostor");
+        impostor.DefaultRequestHeaders.Add(TestAuthHandler.EmailVerifiedHeader, "false");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await impostor.GetAsync("/api/users/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await impostor.PostAsJsonAsync(Tokens, new { description = "x" }, TestClients.Json)).StatusCode);
+
+        var members = await _admin.GetJson<List<ProjectMemberDto>>($"/api/projects/{project.Id}/members");
+        Assert.True(members.Single(m => m.Email == "victim@example.com").IsPending);
+    }
+
+    /// <summary>
+    /// A token carries its owner's identity and nothing else. The email it was
+    /// minted with is a snapshot: replayed later, provisioning would read it as
+    /// the provider's word, overwrite the user's address and hand them any
+    /// invite to the old one.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_token_activates_no_invite_to_the_address_it_was_minted_with()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var home = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Home", alias = "HOME" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{home.Id}/members", new { email = "old@example.com", role = "Read" });
+        var mover = _factory.As("mover", "old@example.com", "Mover");
+        var token = await MintTokenAsync(client: mover);
+
+        // The address changes at the provider, then someone invites the old one.
+        await using (var connection = new NpgsqlConnection(_connectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(
+                """UPDATE "Users" SET "Email" = 'new@example.com' WHERE "Email" = 'old@example.com'""", connection);
+            Assert.Equal(1, await command.ExecuteNonQueryAsync());
+        }
+
+        var other = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Other", alias = "OTHER" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{other.Id}/members", new { email = "old@example.com", role = "ReadWrite" });
+
+        var projects = await McpClient(token.Value).GetJson<List<ProjectSummaryDto>>("/api/projects");
+        Assert.Contains(projects, p => p.Id == home.Id);
+        Assert.DoesNotContain(projects, p => p.Id == other.Id);
+    }
+
+    /// <summary>
     /// The endpoint takes an MCP token specifically. A browser session reaching
     /// it would be MCP usage nobody could see in the audit or cut off.
     /// </summary>
@@ -925,8 +1016,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         postgres.SkipUnlessDockerAvailable();
 
         var mine = await MintTokenAsync();
-        var stranger = _factory.As("stranger", "stranger@example.com", "Stranger");
-        await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Anything", alias = "ANY" });
+        var stranger = await OtherMemberAsync();
         var theirs = await MintTokenAsync(client: stranger);
 
         var audit = await _admin.GetJson<JsonObject>($"{Tokens}/admin");
@@ -982,14 +1072,41 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    /// <summary>
+    /// Core's "sign out everywhere" reaches this extension's tokens through
+    /// <c>ISoloCredentialIssuer</c>, so one action in Admin settings cuts off a
+    /// person's MCP access along with their desktop sessions.
+    /// </summary>
+    [SkippableFact]
+    public async Task Signing_a_user_out_everywhere_revokes_their_token()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var mine = await MintTokenAsync();
+        var stranger = await OtherMemberAsync();
+        var strangerUser = await stranger.GetJson<UserDto>("/api/users/me");
+        var theirs = await MintTokenAsync(client: stranger);
+
+        var result = await _admin.PostJson<SignOutEverywhereResultDto>(
+            $"/api/admin/users/{strangerUser.Id}/sign-out-everywhere", new { });
+        Assert.Equal(new RevokedCredentialsDto("mcp", 1), Assert.Single(result.Extensions));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await ListToolsAsync(McpClient(theirs.Value))).Status);
+        Assert.Equal(HttpStatusCode.OK, (await ListToolsAsync(McpClient(mine.Value))).Status);
+
+        var audit = await _admin.GetJson<JsonObject>($"{Tokens}/admin");
+        var theirRow = audit["tokens"]!.AsArray()
+            .Single(t => Guid.Parse(t!["id"]!.GetValue<string>()) == theirs.Id)!;
+        Assert.Equal("RevokedByAdmin", theirRow["revokedReason"]!.GetValue<string>());
+    }
+
     [SkippableFact]
     public async Task Revoke_all_cuts_off_every_token_on_the_instance()
     {
         postgres.SkipUnlessDockerAvailable();
 
         var mine = await MintTokenAsync();
-        var stranger = _factory.As("stranger", "stranger@example.com", "Stranger");
-        await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Anything", alias = "ANY" });
+        var stranger = await OtherMemberAsync();
         var theirs = await MintTokenAsync(client: stranger);
 
         var result = await _admin.PostJson<JsonObject>(
@@ -1022,8 +1139,7 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
 
-        await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Anything", alias = "ANY" });
-        var stranger = _factory.As("stranger", "stranger@example.com", "Stranger");
+        var stranger = await OtherMemberAsync();
         await MintTokenAsync(client: stranger);
 
         Assert.Equal(HttpStatusCode.Forbidden, (await stranger.GetAsync($"{Tokens}/admin")).StatusCode);
@@ -1323,6 +1439,19 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     // -----------------------------------------------------------------------
 
     private sealed record MintedToken(Guid Id, string Value);
+
+    /// <summary>
+    /// Someone other than the admin who can hold a token: a read-only member of
+    /// a project of their own. Only a provisioned user may mint one, and an
+    /// identity nobody invited is not provisioned.
+    /// </summary>
+    private async Task<HttpClient> OtherMemberAsync()
+    {
+        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Anything", alias = "ANY" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "stranger@example.com", role = "Read" });
+        return _factory.As("stranger", "stranger@example.com", "Stranger");
+    }
 
     private async Task<MintedToken> MintTokenAsync(string? description = null, HttpClient? client = null)
     {

@@ -138,16 +138,28 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
         var board = await _admin.PostJson<BoardDto>(
             $"/api/projects/{project.Id}/boards", new { name = "Locked board", alias = "LOCKEDB" });
 
-        // Provision the outsider (the accessless profile is refused, but the
-        // user row still lands), then try to join.
-        var outsider = _factory.As("outsider", "outsider@example.com");
-        var me = await outsider.GetAsync("/api/users/me");
-        Assert.Equal(HttpStatusCode.Forbidden, me.StatusCode);
+        // An identity nobody invited doesn't get as far as joining: the hub is
+        // on the default policy, which wants a provisioned user.
+        await using var uninvited = Connect("drifter", "drifter@example.com", "Drifter");
+        var refused = await Assert.ThrowsAsync<HttpRequestException>(() => uninvited.StartAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
 
+        // A real user who belongs to another project connects, and still can't
+        // join this one's board.
+        await MemberElsewhereAsync("outsider@example.com");
         await using var connection = Connect("outsider", "outsider@example.com", "Outsider");
         await connection.StartAsync();
         await Assert.ThrowsAsync<Microsoft.AspNetCore.SignalR.HubException>(
             () => connection.InvokeAsync(nameof(IBoardHubServer.JoinBoard), board.Id));
+    }
+
+    /// <summary>Makes <paramref name="email"/> a provisioned user who belongs to a different project.</summary>
+    private async Task MemberElsewhereAsync(string email)
+    {
+        var elsewhere = await _admin.PostJson<ProjectDto>(
+            "/api/projects", new { name = "Elsewhere", alias = "ELSE" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{elsewhere.Id}/members", new { email, role = "Read" });
     }
 
     // -----------------------------------------------------------------------
@@ -227,8 +239,7 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
         var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Guarded", alias = "GUARDED" });
-        var outsider = _factory.As("stranger", "stranger@example.com");
-        await outsider.GetAsync("/api/users/me");
+        await MemberElsewhereAsync("stranger@example.com");
 
         await using var stranger = Connect("stranger", "stranger@example.com", "Stranger");
         await stranger.StartAsync();

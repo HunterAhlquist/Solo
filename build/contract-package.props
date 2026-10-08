@@ -20,7 +20,7 @@
   <PropertyGroup>
     <!-- Both packages carry the contract version, ContractVersion.Current.
          ContractPackageTests fails when the two disagree. -->
-    <Version>1.6.0</Version>
+    <Version>1.7.0</Version>
 
     <!-- Held at the major for the whole 1.x line. At runtime an extension binds
          to the host's copy of these assemblies, and .NET refuses a reference to

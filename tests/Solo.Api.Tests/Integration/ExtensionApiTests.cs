@@ -99,10 +99,53 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await anonymous.GetAsync("/api/extensions/no-such-extension/client/Anything.dll")).StatusCode);
 
-        // A signed-in caller gets the inventory — any signed-in caller, since an
-        // extension's own endpoints do their own authorization.
+        // A Solo user gets the inventory — any user, since an extension's own
+        // endpoints do their own authorization. A valid sign-in nobody invited
+        // is not one.
+        Assert.Equal(HttpStatusCode.OK, (await _admin.GetAsync("/api/extensions")).StatusCode);
         var stranger = _factory.As("stranger", "stranger@example.com");
-        Assert.Equal(HttpStatusCode.OK, (await stranger.GetAsync("/api/extensions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await stranger.GetAsync("/api/extensions")).StatusCode);
+    }
+
+    // -----------------------------------------------------------------------
+    // Credentials an extension issues (contract 1.7)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Signing someone out everywhere reaches each extension's credentials, and
+    /// one that can't revoke its own is reported rather than hidden: an admin
+    /// cutting off a leaked credential has to know if one survived.
+    /// </summary>
+    [SkippableFact]
+    public async Task SignOutEverywhere_ReachesExtensions_AndReportsOneThatFails()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Creds", alias = "CREDS" });
+        foreach (var email in new[] { "stuck@example.com", "fine@example.com" })
+        {
+            await _admin.PostJson<ProjectMemberDto>(
+                $"/api/projects/{project.Id}/members", new { email, role = "Read" });
+        }
+
+        // The fixture's issuer fails for this subject (FixtureCredentialIssuer).
+        var stuck = _factory.As("unrevocable", "stuck@example.com");
+        var stuckUser = await stuck.GetJson<UserDto>("/api/users/me");
+        var session = await stuck.PostJson<SessionDto>("/api/auth/sessions", new { description = "laptop" });
+
+        var failed = await _admin.PostAsync($"/api/admin/users/{stuckUser.Id}/sign-out-everywhere", null);
+        Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+        Assert.Contains("fixture", await failed.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        // Core's own sessions went first and stay gone.
+        var viaSession = _factory.CreateClient();
+        viaSession.DefaultRequestHeaders.Authorization = new("Bearer", session.Token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await viaSession.GetAsync("/api/users/me")).StatusCode);
+
+        var fineUser = await _factory.As("fine", "fine@example.com").GetJson<UserDto>("/api/users/me");
+        var fine = await _admin.PostJson<SignOutEverywhereResultDto>(
+            $"/api/admin/users/{fineUser.Id}/sign-out-everywhere", new { });
+        Assert.Equal(new RevokedCredentialsDto("fixture", 0), Assert.Single(fine.Extensions));
     }
 
     // -----------------------------------------------------------------------

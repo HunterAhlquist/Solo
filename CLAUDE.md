@@ -64,5 +64,5 @@ Things that will silently not work if you get them wrong:
 - Comments explain *why*, not what. Match the density and voice of the surrounding file — this codebase documents reasoning and non-obvious constraints, not mechanics.
 - DTOs cross the API boundary; entities never do.
 - Mutations send the `Version` (xmin) for optimistic concurrency; a 409 means re-fetch and merge.
-- New endpoints inherit the fail-closed fallback authorization policy — an action without `[Authorize]` requires an authenticated caller rather than being public.
+- New endpoints inherit the fail-closed fallback authorization policy — an action without `[Authorize]` requires a provisioned Solo user rather than being public. A plain `[Authorize]` means the same: a valid Google sign-in alone is not enough, since anyone can get one from the sign-in page.
 - Migrations apply automatically on startup, gated on `Database__AutoMigrate`.

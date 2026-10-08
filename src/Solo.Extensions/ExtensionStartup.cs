@@ -32,6 +32,7 @@ public static class ExtensionStartup
 
         builder.Services.AddSingleton(state);
         builder.Services.AddScoped<ExtensionAuditContributions>();
+        builder.Services.AddScoped<ExtensionCredentialIssuers>();
         builder.Services.AddScoped<ExtensionAuditInterceptor>();
         builder.Services.AddSingleton<HookCatalog>();
         // Scoped, not singleton: handlers are scoped (they hold the extension's

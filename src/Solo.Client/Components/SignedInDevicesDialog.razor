@@ -1,0 +1,142 @@
+@*
+    The signed-in user's sessions, each one revocable. Only the desktop app
+    holds a session — a browser signs in with the provider each time — so on
+    the web this lists desktop apps, and in the desktop app the current one is
+    marked and left to the ordinary Sign out.
+*@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+        }
+        else if (_sessions is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_sessions.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                No desktop apps are signed in to your account. Browsers sign in
+                through your provider and aren't listed here.
+            </MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Desktop apps signed in to your account. A device you sign out has
+                to sign in again before it can reach Solo.
+            </MudText>
+
+            @foreach (var session in _sessions)
+            {
+                <div class="d-flex align-center py-2" style="gap:.75rem">
+                    <MudIcon Icon="@Icons.Material.Filled.Computer" Color="Color.Secondary" />
+                    <div class="flex-grow-1" style="min-width:0">
+                        <MudText Typo="Typo.body1">
+                            @(session.Description ?? "Unnamed device")
+                            @if (session.IsCurrent)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">This device</MudChip>
+                            }
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Signed in @Day(session.CreatedAt) · last used @Day(session.LastUsedAt)
+                        </MudText>
+                    </div>
+                    @if (!session.IsCurrent)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                                   Disabled="@_busy" OnClick="@(() => RevokeAsync(session))">
+                            Sign out
+                        </MudButton>
+                    }
+                </div>
+                <MudDivider />
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_sessions?.Any(s => !s.IsCurrent) == true)
+        {
+            <MudButton Color="Color.Error" Disabled="@_busy" OnClick="@RevokeOthersAsync">
+                Sign out all other devices
+            </MudButton>
+        }
+        <MudButton OnClick="@(() => Dialog.Close())">Done</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private IReadOnlyList<AuthSessionDto>? _sessions;
+    private string? _error;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _sessions = await Api.GetSessionsAsync();
+            _error = null;
+        }
+        catch (ApiException e)
+        {
+            _error = e.Detail ?? "Couldn't load your signed-in devices.";
+        }
+    }
+
+    private async Task RevokeAsync(AuthSessionDto session)
+    {
+        _busy = true;
+        try
+        {
+            await Api.RevokeSessionAsync(session.Id);
+            Snackbar.Add($"Signed out {session.Description ?? "that device"}.", Severity.Success);
+        }
+        catch (ApiException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Already gone: it expired, or another window signed it out.
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't sign that device out.", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task RevokeOthersAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.RevokeOtherSessionsAsync();
+            Snackbar.Add("Signed out every other device.", Severity.Success);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't sign the other devices out.", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        await LoadAsync();
+    }
+
+    private static string Day(DateTimeOffset at) =>
+        at.ToLocalTime().ToString("d MMM yyyy", System.Globalization.CultureInfo.CurrentCulture);
+}

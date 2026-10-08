@@ -152,6 +152,29 @@ public sealed class ProjectAccessHandler(
     }
 }
 
+/// <summary>
+/// A provisioned Solo user, not merely a valid credential. Anyone with a Google
+/// account can get an ID token for this client ID from the sign-in page, and
+/// provisioning gives an identity nobody invited no row — so authentication
+/// alone says nothing about whether the caller belongs here.
+/// </summary>
+public sealed class SoloUserRequirement : IAuthorizationRequirement;
+
+public sealed class SoloUserHandler(CurrentUserAccessor currentUser)
+    : AuthorizationHandler<SoloUserRequirement>
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context, SoloUserRequirement requirement)
+    {
+        if (currentUser.User is not null)
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class SuperAdminRequirement : IAuthorizationRequirement;
 
 public sealed class SuperAdminHandler(CurrentUserAccessor currentUser)

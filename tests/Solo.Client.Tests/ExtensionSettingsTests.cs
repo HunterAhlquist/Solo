@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.DependencyInjection;
 using Solo.Client.Extensions;
 using Solo.Client.Pages;
+using Solo.Client.State;
 using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
 
@@ -22,8 +23,11 @@ public class ExtensionSettingsTests : ComponentTestBase
     {
         _http.RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
             .RouteJson("api/themes", new ThemeScanResultDto([], []))
-            .RouteJson("api/extensions/admin", extensions);
-        Services.AddSingleton(_http.CreateClient());
+            .RouteJson("api/extensions/admin", extensions)
+            .RouteJson("api/admin/users", new List<AdminUserDto>());
+        var api = _http.CreateClient();
+        Services.AddSingleton(api);
+        Services.AddSingleton(new UserSession(api));
         Services.AddSingleton(catalog);
         var page = Render<InstanceSettings>();
         page.WaitForAssertion(() => Assert.Contains("Extensions", page.Markup));

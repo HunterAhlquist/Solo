@@ -9,6 +9,13 @@ public static class AuthConstants
     /// </summary>
     public const string BearerScheme = "Bearer";
 
+    /// <summary>
+    /// <c>AuthenticationType</c> of an identity the OIDC scheme validated from a
+    /// provider token — what <see cref="CredentialKind.IsProviderSignIn"/> tests.
+    /// Set explicitly so it is ours to rely on, not the token handler's default.
+    /// </summary>
+    public const string OidcAuthenticationType = "SoloOidc";
+
     /// <summary>Long-lived Solo session tokens (see SessionAuthenticationHandler).</summary>
     public const string SessionScheme = "SoloSession";
 

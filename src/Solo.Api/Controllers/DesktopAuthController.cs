@@ -83,8 +83,9 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
         [FromServices] CurrentUserAccessor currentUser)
     {
         // Only a provider-issued credential proves the user is still who they
-        // say they are; a session token must never buy another session.
-        if (User.HasClaim(c => c.Type == AuthConstants.SessionIdClaim))
+        // say they are; nothing Solo or an extension issued may buy a session
+        // (see CredentialKind).
+        if (!User.IsProviderSignIn())
         {
             return Forbid();
         }

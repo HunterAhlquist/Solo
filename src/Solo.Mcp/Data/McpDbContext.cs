@@ -98,7 +98,10 @@ public sealed class McpToken
     /// <summary>OIDC subject of the owner — the other half.</summary>
     public required string Subject { get; set; }
 
-    /// <summary>Owner's address at generation time. Replayed as a claim, and shown in the audit.</summary>
+    /// <summary>
+    /// Owner's address at generation time, for the admin audit. Never replayed
+    /// as a claim: see <c>McpTokenAuthenticationHandler</c>.
+    /// </summary>
     public string? Email { get; set; }
 
     /// <summary>Owner's display name at generation time, for the admin audit.</summary>
@@ -129,8 +132,31 @@ public enum McpTokenRevocation
     /// <summary>The owner revoked it deliberately.</summary>
     RevokedByOwner = 1,
 
-    /// <summary>An admin revoked it, most likely through the emergency revoke-all.</summary>
+    /// <summary>
+    /// An admin revoked it: this token alone, the emergency revoke-all, or by
+    /// signing its owner out everywhere.
+    /// </summary>
     RevokedByAdmin = 2,
+}
+
+public static class McpTokenRevocations
+{
+    /// <summary>
+    /// Revokes every live token the query selects, returning how many.
+    /// Set-based, so revoking many never loads them, and an already-revoked
+    /// token keeps its original time and reason: the audit's account of when
+    /// access stopped must not move.
+    /// </summary>
+    public static Task<int> RevokeAsync(
+        this IQueryable<McpToken> tokens, McpTokenRevocation reason, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return tokens
+            .Where(t => t.RevokedAt == null)
+            .ExecuteUpdateAsync(update => update
+                .SetProperty(t => t.RevokedAt, now)
+                .SetProperty(t => t.RevokedReason, reason), ct);
+    }
 }
 
 /// <summary>
