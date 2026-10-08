@@ -43,7 +43,10 @@ services:
       # Used only by the setup wizard; permanently disabled after the wizard
       # hands super admin off to your SSO account. Until that handoff these
       # credentials are the way in, and only a per-IP rate limit stands in
-      # front of them — make the password a long random one.
+      # front of them. The password must be at least 20 characters and not a
+      # CHANGE_ME placeholder; otherwise the setup account stays disabled, and
+      # the wizard and the startup log say why. To generate one:
+      #   openssl rand -base64 32
       Setup__Username: "setup"
       Setup__Password: "CHANGE_ME_SETUP_PASSWORD"
 

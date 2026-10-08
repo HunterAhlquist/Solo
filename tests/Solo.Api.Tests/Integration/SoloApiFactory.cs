@@ -67,7 +67,7 @@ public sealed class SoloApiFactory(
     : WebApplicationFactory<Program>
 {
     public const string SetupUsername = "setup-admin";
-    public const string SetupPassword = "first-run-secret";
+    public const string SetupPassword = "first-run-setup-secret-for-tests";
 
     /// <summary>
     /// Where the build staged a package. Laid out as a real package directory

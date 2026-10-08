@@ -14,13 +14,21 @@ namespace Solo.Client.Api;
 /// </summary>
 public sealed class SetupClient(HttpClient http)
 {
-    /// <summary>Confirms the static setup credentials. False = wrong credentials, or setup is already done.</summary>
+    /// <summary>
+    /// Confirms the static setup credentials. False = wrong credentials, or setup
+    /// is already done. Throws <see cref="ApiException"/> when the server has
+    /// disabled the account itself, since retyping won't fix that.
+    /// </summary>
     public async Task<bool> VerifyAsync(string username, string password, CancellationToken ct = default)
     {
         using var response = await SendAsync(HttpMethod.Post, "api/setup/verify", username, password, null, ct);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            return false;
+            // A plain rejection carries no detail. One that does is the server
+            // refusing a guessable configured password, which the operator has
+            // typed correctly and needs to hear about instead of "wrong".
+            var (title, detail) = await ApiClient.ReadProblemAsync(response, ct);
+            return detail is null ? false : throw new ApiException(response.StatusCode, title, detail);
         }
 
         response.EnsureSuccessStatusCode();

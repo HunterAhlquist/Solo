@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Bunit;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using MudBlazor;
 using MudBlazor.Services;
 using Solo.Client.Api;
 using Solo.Client.Auth;
@@ -108,6 +109,40 @@ public class SetupWizardTests : ComponentTestBase
         // Still asking for operator credentials, and no retention call was made.
         Assert.Contains("Operator credentials", wizard.Markup);
         Assert.DoesNotContain(_http.Paths, p => p.Contains("/api/setup/settings"));
+    }
+
+    [Fact]
+    public void A_plain_rejection_reads_as_wrong_credentials()
+    {
+        // What the server's status-code pages put in an ordinary 401.
+        _http.Respond(System.Net.HttpStatusCode.Unauthorized, """{"title":"Unauthorized","status":401}""");
+
+        var wizard = RenderWizard();
+        Fill(wizard, "setup", "wrong");
+        ClickNext(wizard);
+
+        Assert.Equal("Those setup credentials were rejected.", Services.GetRequiredService<ISnackbar>()
+            .ShownSnackbars.Single().Message?.ToString());
+    }
+
+    [Fact]
+    public void A_disabled_setup_account_says_why_instead_of_blaming_the_typing()
+    {
+        // The operator typed the template's placeholder correctly; "rejected"
+        // would send them back to retype it.
+        _http.Respond(System.Net.HttpStatusCode.Unauthorized, """
+            {"title":"The setup account is disabled","status":401,
+             "detail":"Setup__Password is still the template's CHANGE_ME placeholder."}
+            """);
+
+        var wizard = RenderWizard();
+        Fill(wizard, "setup", "CHANGE_ME_SETUP_PASSWORD");
+        ClickNext(wizard);
+
+        Assert.Contains("Operator credentials", wizard.Markup);
+        var shown = Services.GetRequiredService<ISnackbar>().ShownSnackbars.Single();
+        Assert.Equal("Setup__Password is still the template's CHANGE_ME placeholder.", shown.Message?.ToString());
+        Assert.Equal(Severity.Error, shown.Severity);
     }
 
     [Fact]

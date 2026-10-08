@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
@@ -15,16 +14,23 @@ namespace Solo.Api.Auth;
 /// during first-run setup. Credentials come from environment config
 /// (Setup:Username / Setup:Password) and arrive as
 /// <c>Authorization: Setup base64(username:password)</c>. The scheme is
-/// permanently disabled once <see cref="InstanceSettings.SetupCompleted"/> is true.
+/// permanently disabled once <see cref="InstanceSettings.SetupCompleted"/> is
+/// true, and never enabled with a guessable password (see <see cref="SetupAccount"/>).
 /// </summary>
 public sealed class SetupAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
     UrlEncoder encoder,
-    IConfiguration config,
+    SetupAccount account,
     SoloDbContext db)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    /// <summary>
+    /// Set when this request was refused because the account is disabled rather
+    /// than because the pair was wrong. The challenge reports it.
+    /// </summary>
+    private string? _disabledReason;
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header = Request.Headers.Authorization.ToString();
@@ -49,16 +55,22 @@ public sealed class SetupAuthenticationHandler(
             return AuthenticateResult.Fail("Malformed setup credentials.");
         }
 
-        if (!CredentialsValid(decoded[..separator], decoded[(separator + 1)..], config))
-        {
-            return AuthenticateResult.Fail("Invalid setup credentials.");
-        }
-
         var settings = await db.InstanceSettings.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == InstanceSettings.SingletonId);
         if (settings?.SetupCompleted == true)
         {
             return AuthenticateResult.Fail("Setup is complete; the static setup account is disabled.");
+        }
+
+        if (account.DisabledReason is { } reason)
+        {
+            _disabledReason = reason;
+            return AuthenticateResult.Fail(reason);
+        }
+
+        if (!account.Accepts(decoded[..separator], decoded[(separator + 1)..]))
+        {
+            return AuthenticateResult.Fail("Invalid setup credentials.");
         }
 
         var identity = new ClaimsIdentity(
@@ -72,18 +84,23 @@ public sealed class SetupAuthenticationHandler(
         return AuthenticateResult.Success(ticket);
     }
 
-    public static bool CredentialsValid(string username, string password, IConfiguration config)
+    /// <summary>
+    /// A disabled account says why, so the wizard can show it: the operator is
+    /// typing the password they configured, and a bare 401 tells them it's wrong.
+    /// Only reached while setup is pending (the completed check comes first), so
+    /// a finished instance never describes its setup password to anyone.
+    /// </summary>
+    protected override async Task HandleChallengeAsync(AuthenticationProperties properties)
     {
-        var expectedUser = config["Setup:Username"];
-        var expectedPassword = config["Setup:Password"];
-        if (string.IsNullOrEmpty(expectedUser) || string.IsNullOrEmpty(expectedPassword))
+        if (_disabledReason is null)
         {
-            return false;
+            await base.HandleChallengeAsync(properties);
+            return;
         }
 
-        return FixedTimeEquals(username, expectedUser) && FixedTimeEquals(password, expectedPassword);
+        await Results.Problem(
+            statusCode: StatusCodes.Status401Unauthorized,
+            title: "The setup account is disabled",
+            detail: _disabledReason).ExecuteAsync(Context);
     }
-
-    private static bool FixedTimeEquals(string a, string b) =>
-        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(a), Encoding.UTF8.GetBytes(b));
 }

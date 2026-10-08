@@ -71,13 +71,13 @@ compose file.
 
    Here is an example that should get you started, though I recommend you use a secrets manager for the passwords.
    ```yaml
-      services:
+   services:
       solo:
          image: ghcr.io/hunterahlquist/solo:latest
          restart: unless-stopped
          depends_on:
             postgres:
-            condition: service_healthy
+               condition: service_healthy
          ports:
             - "30080:8080"
          environment:
@@ -92,7 +92,9 @@ compose file.
             # Used only by the setup wizard; permanently disabled after the wizard
             # hands super admin off to your SSO account. Until that handoff these
             # credentials are the way in, and only a per-IP rate limit stands in
-            # front of them — make the password a long random one.
+            # front of them. The password must be at least 20 characters and not
+            # a CHANGE_ME placeholder, or the account stays disabled:
+            #   openssl rand -base64 32
             Setup__Username: "admin"
             Setup__Password: "CHANGE_ME_SETUP_PASSWORD"
 
@@ -122,11 +124,16 @@ compose file.
             timeout: 5s
             retries: 5
 
-      volumes:
+   volumes:
       solo-pgdata:
       solo-themes:
       solo-extensions:
    ```
+   Replace every `CHANGE_ME` value before the first start. The setup password
+   is the one that matters most, since it is the way in until setup finishes:
+   it has to be at least 20 characters and can't be a `CHANGE_ME` placeholder.
+   Anything else leaves the setup account disabled, and the wizard and the
+   startup log say why. `openssl rand -base64 32` makes a good one.
 4. **Complete setup.** Browse to the app and sign in with the static
    `Setup__Username` / `Setup__Password` account. The wizard verifies SSO
    sign-in and sets audit retention; finish it while signed in with your own SSO

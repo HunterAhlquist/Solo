@@ -97,6 +97,7 @@ if (!string.IsNullOrEmpty(authority))
     });
 }
 
+builder.Services.AddSingleton<SetupAccount>();
 builder.Services.AddScoped<UserProvisioningService>();
 // Desktop shell browser sign-in: pending PKCE loopback flows (see DesktopAuthController).
 builder.Services.AddSingleton<DesktopSignInFlows>();
@@ -300,6 +301,18 @@ if (app.Configuration.GetValue("Database:AutoMigrate", true))
     {
         db.InstanceSettings.Add(new InstanceSettings());
         await db.SaveChangesAsync();
+    }
+
+    // A setup account with a guessable password refuses to exist (see
+    // SetupAccount). Say so here, where an operator looks when the wizard turns
+    // them away, but only while setup is pending: afterwards the account is dead
+    // whatever its password, and an error on every restart would be noise.
+    if (app.Services.GetRequiredService<SetupAccount>().DisabledReason is { } setupDisabled
+        && !await db.InstanceSettings.AnyAsync(s => s.Id == InstanceSettings.SingletonId && s.SetupCompleted))
+    {
+        app.Logger.LogError(
+            "The first-run setup account is disabled, so this instance can't be set up yet. {Reason}",
+            setupDisabled);
     }
 }
 

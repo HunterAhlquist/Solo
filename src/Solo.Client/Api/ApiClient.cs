@@ -164,7 +164,7 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
             : new ApiException(response.StatusCode, title, detail);
     }
 
-    private static async Task<(string? Title, string? Detail)> ReadProblemAsync(
+    internal static async Task<(string? Title, string? Detail)> ReadProblemAsync(
         HttpResponseMessage response, CancellationToken ct)
     {
         try

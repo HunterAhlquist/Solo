@@ -17,7 +17,7 @@ namespace Solo.Api.Controllers;
 /// permanently disables the static account.
 /// </summary>
 [Route("api/setup")]
-public sealed class SetupController(SoloDbContext db, IConfiguration config) : ApiControllerBase
+public sealed class SetupController(SoloDbContext db, SetupAccount setupAccount) : ApiControllerBase
 {
     [HttpGet("status")]
     [AllowAnonymous]
@@ -69,8 +69,7 @@ public sealed class SetupController(SoloDbContext db, IConfiguration config) : A
             return Forbid();
         }
 
-        if (!SetupAuthenticationHandler.CredentialsValid(
-                request.SetupUsername, request.SetupPassword, config))
+        if (!setupAccount.Accepts(request.SetupUsername, request.SetupPassword))
         {
             return Problem(
                 statusCode: StatusCodes.Status403Forbidden,

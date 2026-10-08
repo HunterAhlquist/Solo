@@ -42,7 +42,8 @@ public static class TestClients
     };
 
     /// <summary>An HttpClient signed in as the given test persona.</summary>
-    public static HttpClient As(this SoloApiFactory factory, string sub, string email, string? name = null)
+    public static HttpClient As(
+        this WebApplicationFactory<Program> factory, string sub, string email, string? name = null)
     {
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.SubHeader, sub);
