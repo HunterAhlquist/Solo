@@ -58,6 +58,14 @@ public sealed class TopicRegistry
         return true;
     }
 
+    /// <summary>The topics a user's connections hold, for re-checking their access.</summary>
+    public IReadOnlyList<(string ConnectionId, Guid ProjectId, string Topic)> HeldBy(Guid userId) =>
+        _connections
+            .SelectMany(connection => connection.Value
+                .Where(t => t.Value.UserId == userId)
+                .Select(t => (connection.Key, t.Key.ProjectId, t.Key.Topic)))
+            .ToList();
+
     /// <summary>Forgets the connection; returns the topics it was present on, whose snapshots changed.</summary>
     public IReadOnlyList<(Guid ProjectId, string Topic)> Leave(string connectionId) =>
         _connections.TryRemove(connectionId, out var topics)

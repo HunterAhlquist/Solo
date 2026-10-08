@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
+using Solo.Api.Realtime;
 using Solo.Api.Services;
 using Solo.Data;
 using Solo.Shared.Dtos;
@@ -82,6 +83,7 @@ public sealed class SessionsController : ApiControllerBase
         Guid sessionId,
         [FromServices] CurrentUserAccessor currentUser,
         [FromServices] SoloDbContext db,
+        [FromServices] LiveAccess live,
         CancellationToken ct)
     {
         if (!User.IsSoloSignIn())
@@ -95,7 +97,13 @@ public sealed class SessionsController : ApiControllerBase
         var revoked = await db.AuthSessions
             .Where(s => s.Id == sessionId && s.UserId == userId)
             .ExecuteDeleteAsync(ct);
-        return revoked == 0 ? NotFound() : NoContent();
+        if (revoked == 0)
+        {
+            return NotFound();
+        }
+
+        live.EndSessions([sessionId]);
+        return NoContent();
     }
 
     /// <summary>
@@ -106,6 +114,7 @@ public sealed class SessionsController : ApiControllerBase
     public async Task<IActionResult> RevokeOthers(
         [FromServices] CurrentUserAccessor currentUser,
         [FromServices] SoloDbContext db,
+        [FromServices] LiveAccess live,
         CancellationToken ct)
     {
         if (!User.IsSoloSignIn())
@@ -120,7 +129,9 @@ public sealed class SessionsController : ApiControllerBase
             others = others.Where(s => s.Id != current);
         }
 
-        await others.ExecuteDeleteAsync(ct);
+        var revoked = await others.Select(s => s.Id).ToListAsync(ct);
+        await db.AuthSessions.Where(s => revoked.Contains(s.Id)).ExecuteDeleteAsync(ct);
+        live.EndSessions(revoked);
         return NoContent();
     }
 

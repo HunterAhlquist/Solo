@@ -3,6 +3,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Solo.Shared.Dtos;
 using Npgsql;
 using Xunit;
@@ -1004,6 +1007,94 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
         var usage = row["usage"]!.AsArray().Select(v => v!.GetValue<int>()).ToList();
         Assert.Equal(24, usage.Count);
         Assert.True(usage[^1] > 0, "the current hour should have counted the requests just made");
+    }
+
+    /// <summary>
+    /// The extension authenticates ahead of core's rate limiter, so whatever a
+    /// lookup costs, a request the limiter then throttles has already paid it.
+    /// A burst on one token, or one bogus token replayed, costs one lookup, and
+    /// usage is counted in memory rather than written per request.
+    /// </summary>
+    [SkippableFact]
+    public async Task Repeated_requests_cost_one_lookup_and_no_usage_writes()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var commands = new CommandLog();
+        using var observed = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureLogging(logging => logging.AddProvider(commands)));
+        using var admin = observed.As("admin", "admin@example.com", "Admin");
+        var token = await MintTokenAsync("Burst", admin);
+        using var valid = observed.CreateClient();
+        valid.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
+        using var bogus = observed.CreateClient();
+        bogus.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "solomcp_not-a-real-token");
+
+        commands.Clear();
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await valid.GetAsync("/api/settings")).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await bogus.GetAsync("/api/settings")).StatusCode);
+        }
+
+        Assert.Equal(2, commands.Matching("\"TokenHash\""));
+        Assert.Equal(0, commands.Matching("\"TokenUsage\""));
+
+        // Reading the graph writes out what was counted, so it is never behind.
+        var audit = await admin.GetJson<JsonObject>($"{Tokens}/admin");
+        var row = audit["tokens"]!.AsArray().Single(t => t!["id"]!.GetValue<Guid>() == token.Id)!;
+        Assert.Equal(5, row["usage"]!.AsArray()[^1]!.GetValue<int>());
+        Assert.NotNull(row["lastUsedAt"]);
+
+        // And a cached token still dies the moment it's revoked.
+        var revoke = await admin.PostAsync($"{Tokens}/admin/{token.Id}/revoke", null);
+        Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await valid.GetAsync("/api/settings")).StatusCode);
+    }
+
+    /// <summary>EF's executed commands, as one host logs them.</summary>
+    private sealed class CommandLog : ILoggerProvider
+    {
+        private readonly List<string> _commands = [];
+
+        public int Matching(string text)
+        {
+            lock (_commands)
+            {
+                return _commands.Count(c => c.Contains(text, StringComparison.Ordinal));
+            }
+        }
+
+        public void Clear()
+        {
+            lock (_commands)
+            {
+                _commands.Clear();
+            }
+        }
+
+        public ILogger CreateLogger(string categoryName) =>
+            categoryName == "Microsoft.EntityFrameworkCore.Database.Command" ? new Logger(this) : NullLogger.Instance;
+
+        public void Dispose()
+        {
+        }
+
+        private sealed class Logger(CommandLog log) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+                Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                lock (log._commands)
+                {
+                    log._commands.Add(formatter(state, exception));
+                }
+            }
+        }
     }
 
     /// <summary>

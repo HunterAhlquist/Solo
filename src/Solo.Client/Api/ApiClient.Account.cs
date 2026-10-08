@@ -16,6 +16,15 @@ public sealed partial class ApiClient
     public Task RevokeOtherSessionsAsync(CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, "api/auth/sessions", null, ct);
 
+    // -- Live updates --------------------------------------------------------
+    /// <summary>
+    /// A ticket for the hub's URL, good for one connection attempt in the next
+    /// 30 seconds. The URL is where a browser has to put a WebSocket's
+    /// credential, and proxies log it, so the real one never goes there.
+    /// </summary>
+    public Task<string> GetHubTicketAsync(CancellationToken ct = default) =>
+        SendAsync<string>(HttpMethod.Post, "api/auth/hub-ticket", null, ct);
+
     // -- Users (super admin) -------------------------------------------------
     public Task<IReadOnlyList<AdminUserDto>> GetAdminUsersAsync(CancellationToken ct = default) =>
         GetAsync<IReadOnlyList<AdminUserDto>>("api/admin/users", ct);

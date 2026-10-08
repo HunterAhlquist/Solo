@@ -47,6 +47,11 @@ public sealed class McpExtension : ISoloExtension
             .AddScheme<AuthenticationSchemeOptions, McpTokenAuthenticationHandler>(
                 McpAuthentication.Scheme, null);
         services.AddSingleton<IStartupFilter, McpAuthenticationStartupFilter>();
+        // That position is ahead of core's rate limiter, so neither the lookup
+        // nor the usage count may cost the database a statement per request.
+        services.AddSingleton<McpTokenCache>();
+        services.AddSingleton<McpUsageCounter>();
+        services.AddHostedService<McpUsageFlusher>();
 
         services.AddHttpClient(SoloRestClient.HttpClientName, client =>
         {

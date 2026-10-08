@@ -4,8 +4,9 @@ public static class AuthConstants
 {
     /// <summary>
     /// OIDC ID-token validation (JWT bearer against the provider) — and the
-    /// default scheme. Its forward selector hands <c>solo_</c> tokens to
-    /// <see cref="SessionScheme"/> instead.
+    /// default scheme. Its forward selector (<see cref="BearerForwarding"/>) hands
+    /// Solo's own credentials to <see cref="SessionScheme"/> and
+    /// <see cref="HubTicketScheme"/> instead.
     /// </summary>
     public const string BearerScheme = "Bearer";
 
@@ -18,6 +19,9 @@ public static class AuthConstants
 
     /// <summary>Long-lived Solo session tokens (see SessionAuthenticationHandler).</summary>
     public const string SessionScheme = "SoloSession";
+
+    /// <summary>Short-lived tickets for the hub's URL (see HubTickets).</summary>
+    public const string HubTicketScheme = "SoloHubTicket";
 
     /// <summary>Claim carrying the AuthSession id on session-authenticated principals.</summary>
     public const string SessionIdClaim = "solo:session";

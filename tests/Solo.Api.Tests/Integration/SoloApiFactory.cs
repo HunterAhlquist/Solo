@@ -134,14 +134,11 @@ public sealed class SoloApiFactory(
         {
             // Auth:Authority is empty, so Program registered no "Bearer" scheme;
             // supply the header-driven test scheme under that name — with the
-            // same solo_ forward rule production's JwtBearer carries, so the
-            // session scheme is exercised exactly as deployed.
+            // same forward rule production's JwtBearer carries, so sessions and
+            // hub tickets are exercised exactly as deployed.
             services.AddAuthentication()
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Bearer", options =>
-                    options.ForwardDefaultSelector = context =>
-                        Auth.SessionTokens.IsSessionToken(Auth.SessionTokens.FromRequest(context.Request))
-                            ? Auth.AuthConstants.SessionScheme
-                            : null);
+                    options.ForwardDefaultSelector = Auth.BearerForwarding.Select);
 
             if (extensions.HasFlag(TestExtensions.Mcp) || extensionsDirectory is not null)
             {

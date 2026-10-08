@@ -30,19 +30,6 @@ public sealed class ImagesController(SoloDbContext db, CurrentUserAccessor curre
         ["image/svg+xml"] = ".svg",
     };
 
-    /// <summary>
-    /// Uploads are served from the app's own origin, and an SVG opened as a
-    /// document — not through <c>&lt;img&gt;</c>, which never runs script — is a
-    /// document on that origin, so a scripted SVG would be stored XSS against
-    /// whoever follows the link, with the session token one localStorage read
-    /// away. Any authenticated member can upload one. This is what stops it:
-    /// <c>default-src 'none'</c> blocks every subresource and script the file
-    /// might reach for, and <c>sandbox</c> drops the response into an opaque
-    /// origin so even inline script has nothing to steal. Neither affects the
-    /// <c>&lt;img&gt;</c> path the app actually uses.
-    /// </summary>
-    private const string IsolationPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
-
     [HttpPost]
     [Authorize]
     [RequestSizeLimit(MaxBytes + 4096)]
@@ -119,7 +106,7 @@ public sealed class ImagesController(SoloDbContext db, CurrentUserAccessor curre
         // Immutable: the content under an id never changes, so cache aggressively.
         Response.Headers.CacheControl = "public, max-age=31536000, immutable";
         Response.Headers.XContentTypeOptions = "nosniff";
-        Response.Headers.ContentSecurityPolicy = IsolationPolicy;
+        Response.Headers.ContentSecurityPolicy = SecurityHeaders.IsolationPolicy;
         return File(image.Data, image.ContentType);
     }
 

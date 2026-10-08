@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
+using Solo.Api.Realtime;
 using Solo.Data;
 using Solo.Data.Entities;
 using Solo.Extensibility;
@@ -28,6 +29,7 @@ namespace Solo.Api.Controllers;
 public sealed class AdminUsersController(
     SoloDbContext db,
     CurrentUserAccessor currentUser,
+    LiveAccess live,
     ILogger<AdminUsersController> logger) : ApiControllerBase
 {
     [HttpGet]
@@ -112,7 +114,9 @@ public sealed class AdminUsersController(
             return NotFound();
         }
 
-        var sessions = await db.AuthSessions.Where(s => s.UserId == userId).ExecuteDeleteAsync(ct);
+        var sessionIds = await db.AuthSessions.Where(s => s.UserId == userId).Select(s => s.Id).ToListAsync(ct);
+        var sessions = await db.AuthSessions.Where(s => sessionIds.Contains(s.Id)).ExecuteDeleteAsync(ct);
+        live.EndSessions(sessionIds);
 
         var holder = new CredentialHolder(user.Id, user.Issuer, user.Subject);
         var revoked = new List<RevokedCredentialsDto>();
