@@ -54,9 +54,9 @@ jobs:
           fi
 
           # The project-reference closure published by Solo.Api, plus the two
-          # files that define the container. Tests, MCP/Desktop sources, the
-          # solution file, workflow changes, and local launch settings cannot
-          # alter the final image.
+          # files that define the container. Tests, extensions/, Desktop
+          # sources, the solution file, workflow changes, and local launch
+          # settings cannot alter the final image.
           SERVER_PATHS=(
             Dockerfile
             .dockerignore
@@ -70,27 +70,30 @@ jobs:
           )
 
           # Source and packaging inputs that can change the installable MCP
-          # package. Solo.Shared is included both for the client and as a
-          # transitive dependency of Solo.Extensibility; its READMEs are not
-          # copied into the package.
+          # package. Both halves build from the contract packages, which are
+          # packed from src/Solo.Extensibility and src/Solo.Shared on every run,
+          # so those stay inputs. Its tests and READMEs are not copied into the
+          # package.
           MCP_PATHS=(
             src/Solo.Extensibility
-            src/Solo.Mcp
-            src/Solo.Mcp.Client
             src/Solo.Shared
+            extensions/nuget.config
+            extensions/Mcp/Solo.Mcp
+            extensions/Mcp/Solo.Mcp.Client
             build/pack-mcp-extension.sh
-            ":(exclude)src/Solo.Mcp/README.md"
-            ":(exclude)src/Solo.Mcp.Client/README.md"
+            ":(exclude)extensions/Mcp/Solo.Mcp/README.md"
+            ":(exclude)extensions/Mcp/Solo.Mcp.Client/README.md"
           )
 
           # The same, for the Roadmaps package.
           ROADMAP_PATHS=(
             src/Solo.Extensibility
-            src/Solo.Roadmap
-            src/Solo.Roadmap.Client
             src/Solo.Shared
+            extensions/nuget.config
+            extensions/Roadmap/Solo.Roadmap
+            extensions/Roadmap/Solo.Roadmap.Client
             build/pack-roadmap-extension.sh
-            ":(exclude)src/Solo.Roadmap/README.md"
+            ":(exclude)extensions/Roadmap/Solo.Roadmap/README.md"
           )
 
           # Nearest earlier tag in this series that HEAD descends from. The
@@ -160,6 +163,25 @@ jobs:
       - name: Test
         run: dotnet test Solo.slnx --no-build -c Release --logger "trx" --results-directory TestResults
 
+      # The extension contract as NuGet packages, and proof that
+      # samples/HelloExtension builds from them with nothing else from this
+      # repository. Packed on every run and neither uploaded nor pushed: the
+      # packages go to nuget.org at the public launch, not before. Until then
+      # artifacts/nuget, where this leaves them, is also the only source the
+      # extensions below can restore the contract from (extensions/nuget.config).
+      - name: Package the extension contract
+        run: build/pack-contract.sh
+
+      # Each extension is its own solution under extensions/, outside
+      # Solo.slnx. Its tests load the package into the real host, so they run
+      # whenever this job does: a change to core can break an extension that
+      # did not change.
+      - name: Test the MCP extension
+        run: dotnet test extensions/Mcp/Solo.Mcp.slnx -c Release --logger "trx" --results-directory TestResults
+
+      - name: Test the Roadmaps extension
+        run: dotnet test extensions/Roadmap/Solo.Roadmap.slnx -c Release --logger "trx" --results-directory TestResults
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -198,13 +220,6 @@ jobs:
           path: artifacts/solo-roadmap-*.zip
           if-no-files-found: error
           retention-days: 7
-
-      # The extension contract as NuGet packages, and proof that
-      # samples/HelloExtension builds from them with nothing else from this
-      # repository. Packed on every run and neither uploaded nor pushed: the
-      # packages go to nuget.org at the public launch, not before.
-      - name: Package the extension contract
-        run: build/pack-contract.sh
 
   publish-image:
     name: Publish image to GHCR

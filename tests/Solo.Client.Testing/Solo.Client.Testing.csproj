@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The bUnit harness: the base contexts, the stub transport behind the real
+       ApiClient, and canned DTOs. Used by Solo.Client.Tests, and by the
+       extensions' test projects under extensions/, which render their client
+       halves against the same host services — so nothing here may name an
+       extension. A library rather than a test project: it holds no tests. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="bunit" Version="2.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Solo.Client\Solo.Client.csproj" />
+  </ItemGroup>
+
+</Project>

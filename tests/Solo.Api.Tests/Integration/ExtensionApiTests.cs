@@ -31,7 +31,7 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         }
 
         _connectionString = await postgres.CreateDatabaseAsync("extensions");
-        _factory = new SoloApiFactory(_connectionString, TestExtensions.Fixture);
+        _factory = new SoloApiFactory(_connectionString, [SoloApiFactory.FixtureDirectory]);
         _admin = _factory.As("admin", "admin@example.com", "Admin");
         await TestClients.CompleteSetupAsync(_admin);
     }
@@ -234,7 +234,7 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         // Restart with no packages at all — the case that used to skip
         // reconcile and leave the row reading Loaded.
         _factory.Dispose();
-        _factory = new SoloApiFactory(_connectionString, TestExtensions.None);
+        _factory = new SoloApiFactory(_connectionString);
         _admin = _factory.As("admin", "admin@example.com", "Admin");
 
         var admin = await _admin.GetJson<ExtensionAdminDto>("/api/extensions/admin");

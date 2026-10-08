@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The MCP extension's tests, against the real host: the package loaded,
+       migrated and called over HTTP, its protocol driven directly, and its pages
+       rendered under bUnit.
+
+       This is where the extension's build reaches into src/: for the host the
+       package runs in, and for the harnesses core's own tests use. The
+       extension projects themselves stay on the contract packages, kept private
+       so this project sees only the host's Solo.Extensibility and Solo.Shared —
+       the copies the package binds to once loaded. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="bunit" Version="2.9.0" />
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Solo.Api.Testing" />
+    <Using Include="Solo.Client.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Solo.Api\Solo.Api.csproj" />
+    <ProjectReference Include="..\..\..\tests\Solo.Api.Testing\Solo.Api.Testing.csproj" />
+    <ProjectReference Include="..\..\..\tests\Solo.Client.Testing\Solo.Client.Testing.csproj" />
+    <!-- Built and staged, never referenced: a reference would load the server
+         half into the default context, and the loader would never be exercised. -->
+    <ProjectReference Include="..\Solo.Mcp\Solo.Mcp.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+    <!-- Referenced: bUnit renders its components directly. The host never loads
+         a client half itself, only serves it. -->
+    <ProjectReference Include="..\Solo.Mcp.Client\Solo.Mcp.Client.csproj" />
+  </ItemGroup>
+
+  <!-- Lay the package out under the test output as a release ships it — both
+       halves plus content/ — so Extensions:DevelopmentDirectories can point at
+       it, and McpPackageTests can zip it the way an operator installs it. -->
+  <Target Name="StageMcpExtension" AfterTargets="Build">
+    <MSBuild Projects="..\Solo.Mcp\Solo.Mcp.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="McpAssembly" />
+    </MSBuild>
+    <MSBuild Projects="..\Solo.Mcp.Client\Solo.Mcp.Client.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="McpClientAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <McpContent Include="..\Solo.Mcp\content\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(McpAssembly)"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp\server" />
+    <Copy SourceFiles="@(McpClientAssembly)"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp\client" />
+    <Copy SourceFiles="@(McpContent)"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp\content\%(RecursiveDir)" />
+    <Copy SourceFiles="..\Solo.Mcp\extension.json"
+          DestinationFolder="$(OutDir)extension-fixtures\mcp" />
+  </Target>
+
+</Project>

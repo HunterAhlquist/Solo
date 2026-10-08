@@ -119,7 +119,7 @@ works depends on the provider's webview policy.
 ## MCP
 
 The shell no longer serves an MCP endpoint. It moved to the instance, where it
-belongs: [src/Solo.Mcp](../Solo.Mcp) is an extension the server loads, so MCP
+belongs: [extensions/Mcp](../../extensions/Mcp) is an extension the server loads, so MCP
 works from any machine and any client rather than only while this app is
 running, and access is granted per user by a token the owner can rotate and an
 admin can audit and revoke.

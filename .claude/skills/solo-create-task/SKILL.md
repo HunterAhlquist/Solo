@@ -1,1 +1,1 @@
-../../../src/Solo.Mcp/Skills/solo-create-task.md
+../../../extensions/Mcp/Solo.Mcp/Skills/solo-create-task.md

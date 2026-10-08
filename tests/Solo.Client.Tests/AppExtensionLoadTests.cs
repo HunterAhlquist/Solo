@@ -12,7 +12,7 @@ using Solo.Client.Extensions;
 using Solo.Client.Realtime;
 using Solo.Client.State;
 using Solo.Client.Theming;
-using Solo.Mcp.Client;
+using Solo.Extension.Fixture.Client;
 using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
 
@@ -33,14 +33,14 @@ namespace Solo.Client.Tests;
 public class AppExtensionLoadTests : SoloBunitContext
 {
     private const string Inventory = "api/extensions";
-    private const string AssemblyName = "Solo.Mcp.Client";
+    private const string AssemblyName = "Solo.Extension.Fixture.Client";
 
     /// <summary>
-    /// The real MCP client half, as bytes — what the instance would serve. The
+    /// The fixture package's client half, as bytes — what the instance would serve. The
     /// loader <c>Assembly.Load</c>s these, so the router sees a route that this
     /// test project's own references could not have given it.
     /// </summary>
-    private static readonly byte[] AssemblyBytes = File.ReadAllBytes(typeof(McpApi).Assembly.Location);
+    private static readonly byte[] AssemblyBytes = File.ReadAllBytes(typeof(FixturePage).Assembly.Location);
 
     private readonly StubHttp _http = new();
     private readonly ExtensionCatalog _catalog = new();
@@ -78,11 +78,11 @@ public class AppExtensionLoadTests : SoloBunitContext
         Services.AddScoped<TaskDrawerService>();
         Services.AddScoped<ContextMenuService>();
 
-        _http.RouteBytes($"{Inventory}/mcp/client/{AssemblyName}.dll", AssemblyBytes)
+        _http.RouteBytes($"{Inventory}/fixture/client/{AssemblyName}.dll", AssemblyBytes)
              .RouteJson(Inventory, new[]
              {
-                 new ClientExtensionDto("mcp", "MCP", "1.0.0", ">=1.0 <2.0", AssemblyName,
-                     [new ClientExtensionNavDto("/mcp", "MCP access", null, "Read")]),
+                 new ClientExtensionDto("fixture", "Fixture", "1.0.0", ">=1.0 <2.0", AssemblyName,
+                     [new ClientExtensionNavDto("/fixture", "Fixture page", null, "Read")]),
              });
     }
 
@@ -96,7 +96,7 @@ public class AppExtensionLoadTests : SoloBunitContext
     {
         this.AddAuthorization();
         var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo("mcp");
+        navigation.NavigateTo("fixture");
 
         Render<App>();
 
@@ -115,12 +115,12 @@ public class AppExtensionLoadTests : SoloBunitContext
     {
         var authorization = this.AddAuthorization();
         var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo("mcp");
+        navigation.NavigateTo("fixture");
 
         var app = Render<App>();
 
         app.WaitForAssertion(() =>
-            Assert.EndsWith("signin?returnUrl=%2Fmcp", navigation.Uri, StringComparison.Ordinal));
+            Assert.EndsWith("signin?returnUrl=%2Ffixture", navigation.Uri, StringComparison.Ordinal));
 
         // Signing in, as GoogleSignInButton does it: the authentication state
         // changes, and the sign-in page then navigates to the returnUrl it was
@@ -135,17 +135,17 @@ public class AppExtensionLoadTests : SoloBunitContext
         _http.Pause = () => instanceAnswering.Task;
 
         authorization.SetAuthorized("Hunter");
-        navigation.NavigateTo("mcp");
+        navigation.NavigateTo("fixture");
 
         // Waiting, not bounced back to the sign-in page it just came from, and
         // not told the page does not exist.
-        Assert.EndsWith("/mcp", navigation.Uri, StringComparison.Ordinal);
+        Assert.EndsWith("/fixture", navigation.Uri, StringComparison.Ordinal);
         Assert.DoesNotContain("That page doesn't exist", app.Markup, StringComparison.Ordinal);
         Assert.Empty(app.FindAll("h1"));
 
         instanceAnswering.SetResult();
 
-        app.WaitForAssertion(() => Assert.Equal("MCP access", app.Find("h1").TextContent));
+        app.WaitForAssertion(() => Assert.Equal("Fixture page", app.Find("h1").TextContent));
     }
 
     /// <summary>
@@ -162,13 +162,13 @@ public class AppExtensionLoadTests : SoloBunitContext
         app.WaitForAssertion(() =>
         {
             Assert.Equal(AssemblyName, Assert.Single(_catalog.RouteAssemblies).GetName().Name);
-            Assert.Equal("/mcp", Assert.Single(_catalog.InstanceNav).Route);
+            Assert.Equal("/fixture", Assert.Single(_catalog.InstanceNav).Route);
         });
 
         // The bytes came off the wire rather than out of this project's own
-        // reference to Solo.Mcp.Client.
+        // reference to the fixture.
         Assert.Contains(_http.Paths, path =>
-            path.Contains($"{Inventory}/mcp/client/{AssemblyName}.dll", StringComparison.Ordinal));
+            path.Contains($"{Inventory}/fixture/client/{AssemblyName}.dll", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -180,13 +180,13 @@ public class AppExtensionLoadTests : SoloBunitContext
     public void The_extension_route_resolves_once_the_assembly_is_in()
     {
         this.AddAuthorization().SetAuthorized("Hunter");
-        Services.GetRequiredService<NavigationManager>().NavigateTo("mcp");
+        Services.GetRequiredService<NavigationManager>().NavigateTo("fixture");
 
         var app = Render<App>();
 
         // The page's own heading, not the sidebar entry of the same name: this
         // has to prove the route resolved, not that the nav arrived.
-        app.WaitForAssertion(() => Assert.Equal("MCP access", app.Find("h1").TextContent));
+        app.WaitForAssertion(() => Assert.Equal("Fixture page", app.Find("h1").TextContent));
         Assert.DoesNotContain("That page doesn't exist", app.Markup, StringComparison.Ordinal);
     }
 

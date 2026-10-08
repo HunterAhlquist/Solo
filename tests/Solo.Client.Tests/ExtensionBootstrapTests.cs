@@ -1,6 +1,6 @@
 using System.Net;
 using Solo.Client.Extensions;
-using Solo.Mcp.Client;
+using Solo.Extension.Fixture.Client;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
@@ -33,9 +33,9 @@ public class ExtensionBootstrapTests
     /// on disk would do; this one is here because the test project already
     /// references it.
     /// </summary>
-    private static readonly byte[] AssemblyBytes = File.ReadAllBytes(typeof(McpApi).Assembly.Location);
+    private static readonly byte[] AssemblyBytes = File.ReadAllBytes(typeof(FixturePage).Assembly.Location);
 
-    private const string AssemblyName = "Solo.Mcp.Client";
+    private const string AssemblyName = "Solo.Extension.Fixture.Client";
 
     [Fact]
     public async Task A_compatible_extension_is_downloaded_and_handed_to_the_router()

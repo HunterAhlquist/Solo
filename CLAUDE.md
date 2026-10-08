@@ -10,15 +10,18 @@ src/Solo.Extensibility  the public contract EXTENSIONS compile against
 src/Solo.Extensions     the extension host (loader, hook dispatch, registry)
 src/Solo.Client         Blazor WASM client
 src/Solo.Desktop        Electron shell (serves the published client, proxies /api)
-src/Solo.Mcp(.Client)   an EXTENSION, not core — the reference example
-src/Solo.Roadmap(.Client) an EXTENSION, not core — timelines; uses every 1.3–1.6 seam
+tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, plus the harnesses
+                        (Solo.Api.Testing, Solo.Client.Testing) and the fixture extension
+extensions/Mcp          an EXTENSION, not core — the reference example (Solo.Mcp.slnx)
+extensions/Roadmap      an EXTENSION, not core — timelines; uses every 1.3–1.6 seam (Solo.Roadmap.slnx)
 samples/HelloExtension  an EXTENSION built from the NuGet contract packages alone (not in Solo.slnx)
-tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, Solo.Roadmap.Tests
 ```
 
-`Solo.Extensibility` and `Solo.Shared` are also published as the NuGet packages `HunterAhlquist.Solo.Extensibility` / `HunterAhlquist.Solo.Shared`. Their version is the contract version: bump `build/contract-package.props` together with `ContractVersion.Current` (a test enforces it) and the sample's references (`build/pack-contract.sh` enforces that).
+`Solo.slnx` is core and nothing else. Each extension under `extensions/` is its own solution, building from the contract packages rather than from `src/`; only the test projects that run the host reference `src/`, for the package to be loaded into. A new extension in this repository goes there too, as `extensions/<Name>/`.
 
-Build and test: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. Integration tests need Docker (Testcontainers Postgres). To run and drive the app locally, use the `verify` skill.
+`Solo.Extensibility` and `Solo.Shared` are also published as the NuGet packages `HunterAhlquist.Solo.Extensibility` / `HunterAhlquist.Solo.Shared`. Their version is the contract version: bump `build/contract-package.props` together with `ContractVersion.Current` (a test enforces it) and the `HunterAhlquist.Solo.*` references in the sample and in `extensions/` (`build/pack-contract.sh` enforces that).
+
+Build and test core: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. An extension: `build/pack-contract.sh` first — until the public launch its output in `artifacts/nuget` is the only place the contract packages exist — then `dotnet test extensions/Mcp/Solo.Mcp.slnx`. Run the script again after changing the contract. Integration tests need Docker (Testcontainers Postgres). To run and drive the app locally, use the `verify` skill.
 
 ---
 
@@ -41,11 +44,11 @@ Build and test: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. Integration 
 
 The one rule that catches the common failure:
 
-> **An extension modifies no core project.** It is its own project — server half referencing `Solo.Extensibility` and nothing else from this solution, client half referencing `Solo.Shared` and MudBlazor. If you find yourself editing `Solo.Api`, `Solo.Data`, `Solo.Client`, `Solo.Shared` or `Solo.Extensions`, you have stopped writing an extension and started modifying core — back out and reconsider.
+> **An extension modifies no core project.** It is its own project — server half referencing the `Solo.Extensibility` contract and nothing else of core, client half referencing `Solo.Shared` and MudBlazor. If you find yourself editing `Solo.Api`, `Solo.Data`, `Solo.Client`, `Solo.Shared` or `Solo.Extensions`, you have stopped writing an extension and started modifying core — back out and reconsider.
 >
-> The test is removability: uninstall the package and the instance should lose that feature and nothing else. Living under `src/` is fine — `src/Solo.Mcp` does — what matters is that no core project knows the extension exists.
+> The test is removability: uninstall the package and the instance should lose that feature and nothing else. Delete its folder under `extensions/` and core still builds and its tests still pass — no core project knows the extension exists.
 
-**`src/Solo.Mcp` + `src/Solo.Mcp.Client` is the reference example.** A complete extension with its own schema and migrations, namespaced endpoints, an authentication scheme, a client page, static content, and a CI-built package. Read it before writing a new one; its csproj comments explain each constraint at the point it applies.
+**`extensions/Mcp` (`Solo.Mcp` + `Solo.Mcp.Client`) is the reference example.** A complete extension with its own schema and migrations, namespaced endpoints, an authentication scheme, a client page, static content, and a CI-built package. Read it before writing a new one; its csproj comments explain each constraint at the point it applies.
 
 Things that will silently not work if you get them wrong:
 

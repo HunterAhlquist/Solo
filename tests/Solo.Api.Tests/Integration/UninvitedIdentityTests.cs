@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using Npgsql;
 using Solo.Shared.Dtos;
 using Xunit;
@@ -12,11 +11,14 @@ namespace Solo.Api.Tests.Integration;
 /// can get an ID token for the instance's client ID from its own sign-in page,
 /// and these endpoints used to serve such a caller because the policies asked
 /// only for authentication: image uploads from anyone on the internet, the
-/// extension inventory and assemblies, and MCP tokens that never expire.
+/// extension inventory and assemblies, and MCP tokens that never expire — the
+/// last now covered by the MCP extension's own tests.
 /// </summary>
 [Collection("postgres")]
 public sealed class UninvitedIdentityTests(PostgresFixture postgres) : IAsyncLifetime
 {
+    private const string FixtureClientAssembly = "/api/extensions/fixture/client/Solo.Extension.Fixture.Client.dll";
+
     private string _connectionString = null!;
     private SoloApiFactory _factory = null!;
     private HttpClient _admin = null!;
@@ -29,7 +31,7 @@ public sealed class UninvitedIdentityTests(PostgresFixture postgres) : IAsyncLif
         }
 
         _connectionString = await postgres.CreateDatabaseAsync("uninvited");
-        _factory = new SoloApiFactory(_connectionString, TestExtensions.Mcp);
+        _factory = new SoloApiFactory(_connectionString, [SoloApiFactory.FixtureDirectory]);
         _admin = _factory.As("admin", "admin@example.com", "Admin");
         await TestClients.CompleteSetupAsync(_admin);
     }
@@ -49,22 +51,17 @@ public sealed class UninvitedIdentityTests(PostgresFixture postgres) : IAsyncLif
 
         Assert.Equal(HttpStatusCode.Forbidden, (await drifter.PostAsync("/api/images", Png())).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await drifter.GetAsync("/api/extensions")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden,
-            (await drifter.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden,
-            (await drifter.PostAsJsonAsync("/api/ext/mcp/tokens", new { description = "x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await drifter.GetAsync(FixtureClientAssembly)).StatusCode);
 
         // The same requests from a Solo user still work, so the refusals above
         // are about who is asking.
         Assert.Equal(HttpStatusCode.Created, (await _admin.PostAsync("/api/images", Png())).StatusCode);
-        Assert.Equal(HttpStatusCode.OK,
-            (await _admin.GetAsync("/api/extensions/mcp/client/Solo.Mcp.Client.dll")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await _admin.GetAsync(FixtureClientAssembly)).StatusCode);
 
         // Public endpoints stay public with a token attached.
         Assert.Equal(HttpStatusCode.OK, (await drifter.GetAsync("/api/config/auth")).StatusCode);
 
         Assert.Equal(1, await CountAsync("""SELECT count(*) FROM "ImageAssets" """));
-        Assert.Equal(0, await CountAsync("""SELECT count(*) FROM ext_mcp."Tokens" """));
     }
 
     [SkippableFact]

@@ -20,83 +20,38 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Solo.Api.Testing" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Solo.Api\Solo.Api.csproj" />
+    <ProjectReference Include="..\Solo.Api.Testing\Solo.Api.Testing.csproj" />
     <!-- Built, but deliberately NOT referenced: the fixture extension has to
          arrive the way a real package does — discovered on disk and loaded into
          its own AssemblyLoadContext. Referencing it would load it into the
          default context and the loader would never be exercised. -->
     <ProjectReference Include="..\Solo.Extension.Fixture\Solo.Extension.Fixture.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
-    <!-- Same arrangement for the shipped MCP extension: built and staged as a
-         package, never referenced, so the tests exercise the package a release
-         actually produces rather than a project reference. -->
-    <ProjectReference Include="..\..\src\Solo.Mcp\Solo.Mcp.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
-    <ProjectReference Include="..\..\src\Solo.Mcp.Client\Solo.Mcp.Client.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
-    <!-- And the Roadmaps extension, the same way. -->
-    <ProjectReference Include="..\..\src\Solo.Roadmap\Solo.Roadmap.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
-    <ProjectReference Include="..\..\src\Solo.Roadmap.Client\Solo.Roadmap.Client.csproj"
+    <ProjectReference Include="..\Solo.Extension.Fixture.Client\Solo.Extension.Fixture.Client.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <!-- Lay the fixture out as a package directory under the test output, so
-       Extensions:DevelopmentDirectories can point at it. -->
+       Extensions:DevelopmentDirectories can point at it. The shipped extensions
+       are staged the same way by their own test projects under extensions/. -->
   <Target Name="StageExtensionFixture" AfterTargets="Build">
     <MSBuild Projects="..\Solo.Extension.Fixture\Solo.Extension.Fixture.csproj" Targets="GetTargetPath">
       <Output TaskParameter="TargetOutputs" ItemName="FixtureAssembly" />
     </MSBuild>
+    <MSBuild Projects="..\Solo.Extension.Fixture.Client\Solo.Extension.Fixture.Client.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="FixtureClientAssembly" />
+    </MSBuild>
     <Copy SourceFiles="@(FixtureAssembly)"
           DestinationFolder="$(OutDir)extension-fixtures\fixture\server" />
+    <Copy SourceFiles="@(FixtureClientAssembly)"
+          DestinationFolder="$(OutDir)extension-fixtures\fixture\client" />
     <Copy SourceFiles="..\Solo.Extension.Fixture\extension.json"
           DestinationFolder="$(OutDir)extension-fixtures\fixture" />
-  </Target>
-
-  <!-- And the real MCP package, laid out the same way — both halves plus its
-       content/, so the tests exercise the archive a release actually ships. -->
-  <Target Name="StageMcpExtension" AfterTargets="Build">
-    <MSBuild Projects="..\..\src\Solo.Mcp\Solo.Mcp.csproj" Targets="GetTargetPath">
-      <Output TaskParameter="TargetOutputs" ItemName="McpAssembly" />
-    </MSBuild>
-    <MSBuild Projects="..\..\src\Solo.Mcp.Client\Solo.Mcp.Client.csproj" Targets="GetTargetPath">
-      <Output TaskParameter="TargetOutputs" ItemName="McpClientAssembly" />
-    </MSBuild>
-    <ItemGroup>
-      <McpContent Include="..\..\src\Solo.Mcp\content\**\*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(McpAssembly)"
-          DestinationFolder="$(OutDir)extension-fixtures\mcp\server" />
-    <Copy SourceFiles="@(McpClientAssembly)"
-          DestinationFolder="$(OutDir)extension-fixtures\mcp\client" />
-    <Copy SourceFiles="@(McpContent)"
-          DestinationFolder="$(OutDir)extension-fixtures\mcp\content\%(RecursiveDir)" />
-    <Copy SourceFiles="..\..\src\Solo.Mcp\extension.json"
-          DestinationFolder="$(OutDir)extension-fixtures\mcp" />
-  </Target>
-
-  <!-- The Roadmaps package, laid out like the MCP one. -->
-  <Target Name="StageRoadmapExtension" AfterTargets="Build">
-    <MSBuild Projects="..\..\src\Solo.Roadmap\Solo.Roadmap.csproj" Targets="GetTargetPath">
-      <Output TaskParameter="TargetOutputs" ItemName="RoadmapAssembly" />
-    </MSBuild>
-    <MSBuild Projects="..\..\src\Solo.Roadmap.Client\Solo.Roadmap.Client.csproj" Targets="GetTargetPath">
-      <Output TaskParameter="TargetOutputs" ItemName="RoadmapClientAssembly" />
-    </MSBuild>
-    <ItemGroup>
-      <RoadmapContent Include="..\..\src\Solo.Roadmap\content\**\*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(RoadmapAssembly)"
-          DestinationFolder="$(OutDir)extension-fixtures\roadmap\server" />
-    <Copy SourceFiles="@(RoadmapClientAssembly)"
-          DestinationFolder="$(OutDir)extension-fixtures\roadmap\client" />
-    <Copy SourceFiles="@(RoadmapContent)"
-          DestinationFolder="$(OutDir)extension-fixtures\roadmap\content\%(RecursiveDir)" />
-    <Copy SourceFiles="..\..\src\Solo.Roadmap\extension.json"
-          DestinationFolder="$(OutDir)extension-fixtures\roadmap" />
   </Target>
 
 </Project>

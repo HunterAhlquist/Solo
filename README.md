@@ -257,14 +257,14 @@ the extension is still loaded.
 
 ### MCP server (bundled extension)
 
-One of the two extensions this repo ships is **`solo-mcp`** ([src/Solo.Mcp](src/Solo.Mcp)),
+One of the two extensions this repo ships is **`solo-mcp`** ([extensions/Mcp](extensions/Mcp)),
 which lets an LLM client read and edit Solo's boards. It is a package like any
 other, not part of the image: download `solo-mcp-<version>.zip` from the
 [releases](../../releases), copy it into the extensions directory, and restart.
 `build/pack-mcp-extension.sh` builds the same archive locally.
 
-The package carries both halves: the server ([src/Solo.Mcp](src/Solo.Mcp)) and
-the pages ([src/Solo.Mcp.Client](src/Solo.Mcp.Client)), whose **MCP access**
+The package carries both halves: the server ([Solo.Mcp](extensions/Mcp/Solo.Mcp)) and
+the pages ([Solo.Mcp.Client](extensions/Mcp/Solo.Mcp.Client)), whose **MCP access**
 entry appears in the sidebar once the extension is installed. Each person
 generates their own token there and pastes the connection snippet the page
 produces into Claude Code, Claude Desktop, Cursor, VS Code or any other MCP
@@ -292,7 +292,7 @@ one person, and an emergency **Revoke all** for cutting off the instance.
 
 ### Roadmaps (bundled extension)
 
-The other is **`solo-roadmap`** ([src/Solo.Roadmap](src/Solo.Roadmap)), which
+The other is **`solo-roadmap`** ([extensions/Roadmap](extensions/Roadmap)), which
 adds timelines. A roadmap gathers tasks from any of a project's boards into one
 row each, drawn as a bar from start date to deadline over a day grid with
 sprint stripes. Dragging a bar reschedules the task itself, so the board and
@@ -303,7 +303,7 @@ Whoever else has the roadmap open shows in the header.
 
 Install it like the MCP package: `solo-roadmap-<version>.zip` from the
 [releases](../../releases), or `build/pack-roadmap-extension.sh` locally. The
-full feature list is in [its README](src/Solo.Roadmap/README.md).
+full feature list is in [its README](extensions/Roadmap/Solo.Roadmap/README.md).
 
 ![The Road to Next Fest roadmap: bars for tasks across the Vertical Slice, Art & Audio and Bugs boards, today's column highlighted, dotted milestone lines for the vertical slice playtest and the publisher pitch, the overdue battle-theme bar in red, and the Missed deadlines table below](docs/images/screenshots/roadmap.png)
 
@@ -340,7 +340,18 @@ src/Solo.Data          EF Core DbContext, entities, migrations, audit intercepto
 src/Solo.Shared        DTOs, enums, hub contracts (shared with the WASM client)
 src/Solo.Extensibility the public contract extensions compile against (see Extensions)
 src/Solo.Extensions    the extension host: package loading, hook dispatch, registry
-tests/                 unit (Solo.Data.Tests) + integration (Solo.Api.Tests)
+tests/                 unit (Solo.Data.Tests) + integration (Solo.Api.Tests) + bUnit (Solo.Client.Tests)
+extensions/            the bundled extensions, each its own solution (not in Solo.slnx)
+```
+
+`Solo.slnx` is core only. The bundled extensions build the way a third-party
+one does, from the contract's NuGet packages, which until they are published
+exist only as what `build/pack-contract.sh` writes to `artifacts/nuget`:
+
+```sh
+build/pack-contract.sh
+dotnet test extensions/Mcp/Solo.Mcp.slnx
+dotnet test extensions/Roadmap/Solo.Roadmap.slnx
 ```
 
 Migrations are applied automatically on startup. To add one:
