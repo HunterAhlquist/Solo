@@ -35,6 +35,11 @@
 </div>
 
 <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+<!-- Defines highlightCodeElement, which MudMarkdown calls for every fenced code
+     block; without it a description with a code fence fails to render. Its
+     stylesheet is deliberately not linked: it restyles every heading, list and
+     paragraph in rendered markdown, not just code. -->
+<script src="_content/MudBlazor.Markdown/MudBlazor.Markdown.min.js"></script>
 <script src="_content/Microsoft.AspNetCore.Components.WebAssembly.Authentication/AuthenticationService.js"></script>
 <script src="js/solo-interop.js"></script>
 <script src="js/drag.js"></script>

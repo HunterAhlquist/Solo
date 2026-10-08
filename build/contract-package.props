@@ -1,0 +1,60 @@
+<Project>
+
+  <!-- NuGet packaging for the two assemblies an extension compiles against:
+       Solo.Extensibility (the server half) and Solo.Shared (the client half, and
+       the server half through Solo.Extensibility). Imported by both projects.
+       build/pack-contract.sh packs them; nothing here pushes anything.
+
+       Only the package ID carries the owner prefix. Assembly names and
+       namespaces stay Solo.*: the host recognises the contract by assembly name
+       (ExtensionLoadContext.IsShared), and every extension already says
+       `using Solo.Extensibility`. The bare Solo.* IDs on nuget.org belong to
+       unrelated publishers, and an owner prefix is one nuget.org can reserve.
+
+       The Dockerfile copies this file into its restore layer. The release
+       workflows' change filters don't watch it, deliberately: the version can
+       only move together with ContractVersion.cs in src/Solo.Shared, which they
+       do watch, and nothing else here changes how the image or the desktop
+       installers behave. -->
+
+  <PropertyGroup>
+    <!-- Both packages carry the contract version, ContractVersion.Current.
+         ContractPackageTests fails when the two disagree. -->
+    <Version>1.6.0</Version>
+
+    <!-- Held at the major for the whole 1.x line. At runtime an extension binds
+         to the host's copy of these assemblies, and .NET refuses a reference to
+         a higher assembly version than the one loaded — so a package compiled
+         against 1.6 would fail to load on a 1.4 host even when its
+         soloApiVersion range admits 1.4. The manifest range is the
+         compatibility check; the assembly version must not become a second,
+         stricter one. Bump it with the major. -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+
+    <PackageId>HunterAhlquist.$(MSBuildProjectName)</PackageId>
+    <Authors>Hunter Ahlquist</Authors>
+    <Copyright>Copyright (c) 2026 Hunter Ahlquist</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/HunterAhlquist/Solo</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/HunterAhlquist/Solo</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>solo;extension;plugin;aspnetcore;blazor</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- The doc comments are most of what an author outside this repository
+         has to go on, so they ship as IntelliSense. Undocumented members, and
+         records documenting only the parameters that need it, are the norm here
+         and not worth a warning each. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)contract-package.md" Pack="true" PackagePath="README.md" Visible="false" />
+  </ItemGroup>
+
+</Project>

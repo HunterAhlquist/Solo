@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The server half. Its only Solo reference is the contract package: no
+       ProjectReference into the Solo repository, so this builds anywhere
+       nuget.org is reachable. build/pack-contract.sh builds it against freshly
+       packed packages to keep that true. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.6.0" />
+  </ItemGroup>
+
+</Project>

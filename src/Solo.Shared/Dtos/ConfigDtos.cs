@@ -26,8 +26,8 @@ public sealed record AuthConfigDto(
 /// configured — so the two halves version independently, and the client has to
 /// be able to tell. Also lets the shell warn that it is older than the instance.
 /// </remarks>
+/// <param name="ExtensionApiVersion">The extension contract the server implements.</param>
+/// <param name="ServerVersion">Informational build version of the running server.</param>
 public sealed record InstanceVersionDto(
-    /// <summary>The extension contract the server implements.</summary>
     string ExtensionApiVersion,
-    /// <summary>Informational build version of the running server.</summary>
     string ServerVersion);

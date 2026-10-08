@@ -7,6 +7,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Solo.Shared and Solo.Extensibility import their package metadata from here,
+# so restore can't evaluate either project without it.
+COPY build/contract-package.props build/
 COPY src/Solo.Shared/Solo.Shared.csproj src/Solo.Shared/
 COPY src/Solo.Data/Solo.Data.csproj src/Solo.Data/
 COPY src/Solo.Extensibility/Solo.Extensibility.csproj src/Solo.Extensibility/

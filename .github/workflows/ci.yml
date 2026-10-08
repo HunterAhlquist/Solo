@@ -199,6 +199,13 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # The extension contract as NuGet packages, and proof that
+      # samples/HelloExtension builds from them with nothing else from this
+      # repository. Packed on every run and neither uploaded nor pushed: the
+      # packages go to nuget.org at the public launch, not before.
+      - name: Package the extension contract
+        run: build/pack-contract.sh
+
   publish-image:
     name: Publish image to GHCR
     needs: [changes, build-test]

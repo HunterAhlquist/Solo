@@ -31,18 +31,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "HunterAhlquist"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;HunterAhlquist&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/HunterAhlquist/Solo.git",
-    "accountId": "843edabc-ddde-47f4-826c-a67baee1d1ec"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/HunterAhlquist/Solo.git&quot;,
+    &quot;accountId&quot;: &quot;843edabc-ddde-47f4-826c-a67baee1d1ec&quot;
   }
-}]]></component>
+}</component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$USER_HOME$/.microsoft/usersecrets/4fceb2f8-d72b-4025-9056-abc6e3c24000/secrets.json" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$USER_HOME$/.microsoft/usersecrets/f5399124-267b-4d5a-bfb0-afe8c0241868/secrets.json" root0="FORCE_HIGHLIGHTING" />
@@ -148,11 +148,6 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
-  <component name="QodanaReportsService">
-    <option name="descriptions">
-      <ReportDescription localRun="true" path="/private/var/folders/7h/gwff804n3cqbwj9w4jwfnj6c0000gn/T/qodana_output/qodana.sarif.json" reportGuid="5c6988ed-c0b4-4623-89c3-9a5e1c1c9846" reportId="Solo/qodana/2026-07-10" />
-    </option>
-  </component>
   <component name="RunManager" selected=".NET Launch Settings Profile.Solo.Api: http">
     <configuration name="Solo.Client" type="DotNetProject" factoryName=".NET Project">
       <option name="EXE_PATH" value="" />

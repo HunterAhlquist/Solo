@@ -12,8 +12,11 @@ src/Solo.Client         Blazor WASM client
 src/Solo.Desktop        Electron shell (serves the published client, proxies /api)
 src/Solo.Mcp(.Client)   an EXTENSION, not core — the reference example
 src/Solo.Roadmap(.Client) an EXTENSION, not core — timelines; uses every 1.3–1.6 seam
+samples/HelloExtension  an EXTENSION built from the NuGet contract packages alone (not in Solo.slnx)
 tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, Solo.Roadmap.Tests
 ```
+
+`Solo.Extensibility` and `Solo.Shared` are also published as the NuGet packages `HunterAhlquist.Solo.Extensibility` / `HunterAhlquist.Solo.Shared`. Their version is the contract version: bump `build/contract-package.props` together with `ContractVersion.Current` (a test enforces it) and the sample's references (`build/pack-contract.sh` enforces that).
 
 Build and test: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. Integration tests need Docker (Testcontainers Postgres). To run and drive the app locally, use the `verify` skill.
 

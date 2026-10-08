@@ -3,16 +3,20 @@
   <!-- The public contract extensions compile against. Versioned independently of
        the app (see docs/extension-plan.md §10): the host checks a package's
        declared range against ContractVersion and refuses to load out-of-range.
+       Published as HunterAhlquist.Solo.Extensibility; the version and package
+       metadata live in build/contract-package.props, shared with Solo.Shared.
 
        It may reference Solo.Shared and NOTHING ELSE from this solution. A
        reference to Solo.Data or Solo.Api would make every internal refactor a
        breaking change for every installed extension. -->
 
+  <Import Project="..\..\build\contract-package.props" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.0.0</Version>
+    <Description>The contract a Solo extension's server half compiles against: the entry point, operation hooks, domain events, caller-scoped reads of core data, and a DbContext in the extension's own schema.</Description>
   </PropertyGroup>
 
   <ItemGroup>

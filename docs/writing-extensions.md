@@ -35,7 +35,7 @@ A folder beside the solution, its own repository, or alongside core under `src/`
 
   <ItemGroup>
     <!-- The ONLY Solo reference an extension may take. -->
-    <ProjectReference Include="../Solo.Extensibility/Solo.Extensibility.csproj" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.6.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -45,6 +45,10 @@ A folder beside the solution, its own repository, or alongside core under `src/`
   </ItemGroup>
 </Project>
 ```
+
+The contract ships on nuget.org as two packages: `HunterAhlquist.Solo.Extensibility` for the server half, and `HunterAhlquist.Solo.Shared` for the client half (§9). The package version is the contract version. Compile against the newest one and declare the lowest you actually use in the manifest (§2). [`samples/HelloExtension`](../samples/HelloExtension) is the smallest complete extension built from the packages alone.
+
+Inside this repository, `src/Solo.Mcp` and `src/Solo.Roadmap` take a `ProjectReference` to `src/Solo.Extensibility` instead, so they build against the contract as it changes.
 
 If you need something the contract doesn't offer, that's a finding about the contract — raise it rather than reaching into `Solo.Data` or `Solo.Api`.
 
@@ -241,7 +245,7 @@ Delivery is in-process and best-effort — there is no outbox, so don't build an
 
 A Razor Class Library. Its `@page` routes join the app's router automatically, and MudBlazor, dialogs and JS interop all resolve from the host's service provider.
 
-**It cannot reference `Solo.Extensibility`** — that carries a FrameworkReference to ASP.NET Core plus EF Core, and neither resolves for `browser-wasm`. Reference `Solo.Shared` instead, take `Components.Web` and MudBlazor as packages, and turn off static web assets (the package's own `content/` folder carries CSS):
+**It cannot reference `Solo.Extensibility`** — that carries a FrameworkReference to ASP.NET Core plus EF Core, and neither resolves for `browser-wasm`. Reference `Solo.Shared` (the `HunterAhlquist.Solo.Shared` package) instead, take `Components.Web` and MudBlazor as packages at the versions the instance runs, and turn off static web assets (the package's own `content/` folder carries CSS):
 
 ```xml
 <!-- Roadmap.Client/Roadmap.Client.csproj -->
@@ -256,7 +260,7 @@ A Razor Class Library. Its `@page` routes join the app's router automatically, a
     <SupportedPlatform Include="browser" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.11" />
     <PackageReference Include="MudBlazor" Version="9.8.0" />
-    <ProjectReference Include="../Solo.Shared/Solo.Shared.csproj" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.6.0" />
   </ItemGroup>
 </Project>
 ```
@@ -314,6 +318,8 @@ roadmap.zip
 ├── client/Roadmap.Client.dll + private dependencies
 └── content/                  optional static assets
 ```
+
+**"Private dependencies" means yours alone.** The instance supplies `Solo.Shared`, `Solo.Extensibility`, MudBlazor, ASP.NET Core, EF Core and Npgsql, and a package's own copy of any of them is never the one that runs. A build's output folder contains all of them, so copy out your own assemblies rather than zipping the folder — `build/pack-mcp-extension.sh` filters the same list.
 
 Drop the zip in the extensions directory (`Extensions__Directory`, `/data/extensions` in the deployment template) and **restart** — controllers and DI are fixed once the host is built, so there is no rescan.
 

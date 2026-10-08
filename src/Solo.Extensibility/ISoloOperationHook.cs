@@ -51,7 +51,7 @@ public abstract record HookOutcome
 
     public static HookOutcome Proceed { get; } = new Continue();
 
-    /// <summary>Rejects the operation. <paramref name="Status"/> should be 4xx.</summary>
+    /// <summary>Rejects the operation. <paramref name="status"/> should be 4xx.</summary>
     public static HookOutcome Reject(int status, string title, string detail) =>
         new Rejection(status, title, detail);
 

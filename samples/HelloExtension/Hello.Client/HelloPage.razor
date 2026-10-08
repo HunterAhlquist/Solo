@@ -1,0 +1,23 @@
+@page "/hello"
+@attribute [Authorize]
+@inject ISoloClientApi Api
+
+@*
+    The manifest's nav entry points here. Its route has no {projectAlias}, so
+    the entry is instance-level: drawn once in the sidebar footer rather than
+    under each project.
+
+    ISoloClientApi is the host's own API client, so this request carries the
+    signed-in user's credential and goes to the instance's base address.
+*@
+
+<PageTitle>Hello · Solo</PageTitle>
+
+<MudText Typo="Typo.h4">@(_greeting?.Message ?? "…")</MudText>
+
+@code {
+    private Greeting? _greeting;
+
+    protected override async Task OnInitializedAsync() =>
+        _greeting = await Api.GetAsync<Greeting>("api/ext/hello/greeting");
+}

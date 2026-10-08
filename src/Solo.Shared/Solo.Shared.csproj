@@ -1,9 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- DTOs, enums and hub contracts shared by the API and the client — and, as
+       HunterAhlquist.Solo.Shared, what an extension's client half compiles
+       against, since Solo.Extensibility can't resolve for browser-wasm. So the
+       public types here are extension contract too: changing one is a contract
+       change. Version and package metadata: build/contract-package.props. -->
+
+  <Import Project="..\..\build\contract-package.props" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>DTOs and the client-side seams a Solo extension's pages compile against: the host's API client, task drawer, task picker, context menu, live topics, and the attributes that place components in the app.</Description>
   </PropertyGroup>
 
 </Project>
