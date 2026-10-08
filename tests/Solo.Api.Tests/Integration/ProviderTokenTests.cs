@@ -142,4 +142,54 @@ public sealed class ProviderTokenTests(PostgresFixture postgres) : IAsyncLifetim
         using var forged = WithBearer("eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.");
         Assert.Equal(HttpStatusCode.Unauthorized, (await forged.GetAsync("/api/extensions")).StatusCode);
     }
+
+    /// <summary>
+    /// A browser can't put a header on a WebSocket, so the hub's credential rides
+    /// in the URL, and every proxy and CDN on the way writes URLs to its access
+    /// log. Only a hub ticket belongs there: short-lived, one use, hub only.
+    /// </summary>
+    [SkippableFact]
+    public async Task Only_a_hub_ticket_is_accepted_in_the_hub_url()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var idToken = IdToken("admin-sub", "admin@example.com");
+        using var admin = WithBearer(idToken);
+        await admin.PostAsJsonAsync("/api/setup/complete", new
+        {
+            setupUsername = SoloApiFactory.SetupUsername,
+            setupPassword = SoloApiFactory.SetupPassword,
+        }, TestClients.Json);
+        var session = (await (await admin.PostAsJsonAsync("/api/auth/sessions", new { description = "desktop" },
+            TestClients.Json)).Content.ReadFromJsonAsync<SessionDto>(TestClients.Json))!;
+
+        using var anonymous = _factory.CreateClient();
+        Task<HttpResponseMessage> NegotiateWith(string token) => anonymous.PostAsync(
+            $"/hubs/board/negotiate?negotiateVersion=1&access_token={Uri.EscapeDataString(token)}", null);
+
+        // The credentials that outlive a log line are refused there outright.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await NegotiateWith(idToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await NegotiateWith(session.Token)).StatusCode);
+
+        // A ticket works in a URL once. Both sign-ins can mint one: the web app
+        // holds a provider token, the desktop app a session.
+        var ticket = await MintHubTicketAsync(admin);
+        Assert.Equal(HttpStatusCode.OK, (await NegotiateWith(ticket)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await NegotiateWith(ticket)).StatusCode);
+
+        using var desktop = WithBearer(session.Token);
+        var desktopTicket = await MintHubTicketAsync(desktop);
+        Assert.Equal(HttpStatusCode.OK, (await NegotiateWith(desktopTicket)).StatusCode);
+
+        // And it opens the hub, nothing else.
+        using var viaTicket = WithBearer(await MintHubTicketAsync(admin));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await viaTicket.GetAsync("/api/settings")).StatusCode);
+    }
+
+    private static async Task<string> MintHubTicketAsync(HttpClient client)
+    {
+        var response = await client.PostAsync("/api/auth/hub-ticket", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<string>(TestClients.Json))!;
+    }
 }

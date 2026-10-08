@@ -49,8 +49,8 @@ builder.Services.AddDbContext<SoloDbContext>((sp, options) =>
 // Authentication. The default "Bearer" scheme validates OIDC ID tokens, but
 // forwards solo_ tokens to the session scheme — long-lived sessions minted by
 // POST api/auth/sessions for clients that can't renew provider tokens
-// silently (the desktop app). Plus the setup-only static-credential scheme
-// used until first-run handoff.
+// silently (the desktop app) — and hub tickets to theirs. Plus the setup-only
+// static-credential scheme used until first-run handoff.
 // ---------------------------------------------------------------------------
 var authority = builder.Configuration["Auth:Authority"];
 var clientId = builder.Configuration["Auth:ClientId"];
@@ -63,6 +63,10 @@ authBuilder.AddScheme<AuthenticationSchemeOptions, SetupAuthenticationHandler>(
     AuthConstants.SetupScheme, null);
 authBuilder.AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
     AuthConstants.SessionScheme, null);
+authBuilder.AddScheme<AuthenticationSchemeOptions, HubTicketAuthenticationHandler>(
+    AuthConstants.HubTicketScheme, null);
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<HubTickets>();
 if (!string.IsNullOrEmpty(authority))
 {
     authBuilder.AddJwtBearer(AuthConstants.BearerScheme, options =>
@@ -74,26 +78,10 @@ if (!string.IsNullOrEmpty(authority))
         // Marks a provider sign-in as such, for the endpoints that mint Solo
         // credentials and must accept nothing else (see CredentialKind).
         options.TokenValidationParameters.AuthenticationType = AuthConstants.OidcAuthenticationType;
-        // solo_ tokens are Solo sessions, not JWTs — hand them to that scheme.
-        options.ForwardDefaultSelector = context =>
-            SessionTokens.IsSessionToken(SessionTokens.FromRequest(context.Request))
-                ? AuthConstants.SessionScheme
-                : null;
-        // SignalR websocket connections carry the token as a query parameter.
-        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
-        {
-            OnMessageReceived = context =>
-            {
-                var accessToken = context.Request.Query["access_token"];
-                if (!string.IsNullOrEmpty(accessToken) &&
-                    context.HttpContext.Request.Path.StartsWithSegments(BoardHubConstants.Path))
-                {
-                    context.Token = accessToken;
-                }
-
-                return Task.CompletedTask;
-            },
-        };
+        // Sessions and hub tickets are Solo's, not JWTs — hand them to their schemes.
+        options.ForwardDefaultSelector = BearerForwarding.Select;
+        // No OnMessageReceived reading access_token off the hub URL: an ID
+        // token there lands in proxy access logs. The hub URL carries a ticket.
     });
 }
 
@@ -196,6 +184,8 @@ builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
     });
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddSingleton<TopicRegistry>();
+builder.Services.AddSingleton<SessionConnections>();
+builder.Services.AddScoped<LiveAccess>();
 builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();
 builder.Services.AddScoped<Solo.Extensibility.ISoloLiveUpdates, LiveUpdates>();
 builder.Services.AddScoped<IExtensionFieldNotifier, ExtensionFieldNotifier>();

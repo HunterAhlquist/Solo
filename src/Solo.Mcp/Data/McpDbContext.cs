@@ -147,15 +147,22 @@ public static class McpTokenRevocations
     /// token keeps its original time and reason: the audit's account of when
     /// access stopped must not move.
     /// </summary>
-    public static Task<int> RevokeAsync(
+    /// <remarks>
+    /// Authentication caches lookups (see <see cref="Auth.McpTokenCache"/>), so
+    /// this also tells the cache to forget them; a revoked token must stop
+    /// working at once. That is why every revocation goes through here.
+    /// </remarks>
+    public static async Task<int> RevokeAsync(
         this IQueryable<McpToken> tokens, McpTokenRevocation reason, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        return tokens
+        var revoked = await tokens
             .Where(t => t.RevokedAt == null)
             .ExecuteUpdateAsync(update => update
                 .SetProperty(t => t.RevokedAt, now)
                 .SetProperty(t => t.RevokedReason, reason), ct);
+        Auth.McpTokenCache.Invalidate();
+        return revoked;
     }
 }
 
@@ -166,8 +173,8 @@ public static class McpTokenRevocations
 /// <remarks>
 /// Bucketed rather than one row per request: the graph only ever asks "how much,
 /// per hour", so a row per request would be a write-amplified log nobody reads.
-/// Authentication upserts the current hour on every request it accepts, which is
-/// one statement and correct under concurrency.
+/// Authentication counts in memory and <see cref="Auth.McpUsageCounter"/> adds
+/// the counts here in batches.
 /// </remarks>
 public sealed class McpTokenUsage
 {

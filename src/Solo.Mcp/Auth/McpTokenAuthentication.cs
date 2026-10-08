@@ -38,6 +38,11 @@ public static class McpAuthentication
 /// admin's 24-hour usage graph. Every accepted request is counted — including
 /// the REST calls the MCP endpoint makes on the caller's behalf, so the graph
 /// measures requests rather than tool invocations.</para>
+///
+/// <para>Neither the lookup nor the count touches the database per request:
+/// this runs ahead of core's rate limiter, so anything it costs, a throttled
+/// request has already paid. Lookups come from <see cref="McpTokenCache"/> and
+/// counts go to <see cref="McpUsageCounter"/>.</para>
 /// </remarks>
 public sealed class McpTokenAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -53,10 +58,21 @@ public sealed class McpTokenAuthenticationHandler(
             return AuthenticateResult.NoResult();
         }
 
-        var db = Context.RequestServices.GetRequiredService<McpDbContext>();
+        var cache = Context.RequestServices.GetRequiredService<McpTokenCache>();
         var hash = McpTokens.Hash(token!);
+        if (!cache.TryGet(hash, out var record))
+        {
+            // Read before the query, so a revocation landing while it runs
+            // leaves what it found stale rather than cached as live.
+            var generation = McpTokenCache.Generation;
+            var db = Context.RequestServices.GetRequiredService<McpDbContext>();
+            record = await db.Tokens.AsNoTracking()
+                .Where(t => t.TokenHash == hash)
+                .Select(t => new McpTokenCache.Lookup(t.Id, t.Issuer, t.Subject, t.RevokedAt, t.RevokedReason))
+                .FirstOrDefaultAsync(Context.RequestAborted);
+            cache.Set(hash, record, generation);
+        }
 
-        var record = await db.Tokens.FirstOrDefaultAsync(t => t.TokenHash == hash, Context.RequestAborted);
         if (record is null)
         {
             return AuthenticateResult.Fail("Unknown MCP token.");
@@ -71,7 +87,7 @@ public sealed class McpTokenAuthenticationHandler(
                 "Generate a new one from MCP access in Solo.");
         }
 
-        await RecordUseAsync(db, record.Id);
+        Context.RequestServices.GetRequiredService<McpUsageCounter>().Record(record.Id);
 
         // Identity only. Provisioning treats an email claim as the provider's
         // fresh word for it — it activates invites to that address and
@@ -89,36 +105,6 @@ public sealed class McpTokenAuthenticationHandler(
         return AuthenticateResult.Success(
             new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
-
-    /// <summary>
-    /// Bumps the current hour's bucket and the token's last-used stamp.
-    /// </summary>
-    /// <remarks>
-    /// Raw SQL, not the change tracker: an upsert on the natural key is one
-    /// round trip and correct under concurrent requests, where read-modify-write
-    /// through EF would race two MCP calls into a lost increment. The schema
-    /// name is a compile-time constant, not caller input.
-    /// </remarks>
-    private async Task RecordUseAsync(McpDbContext db, Guid tokenId)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var hour = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, 0, 0, TimeSpan.Zero);
-
-        await db.Database.ExecuteSqlRawAsync(RecordUseSql, [tokenId, hour, now], Context.RequestAborted);
-    }
-
-    /// <summary>
-    /// The schema is a compile-time constant rather than caller input; the three
-    /// values are EF positional parameters, so nothing here is concatenated from
-    /// a request.
-    /// </summary>
-    private static readonly string RecordUseSql = $$"""
-        INSERT INTO {{McpDbContext.Schema}}."TokenUsage" ("TokenId", "Hour", "Count")
-        VALUES ({0}, {1}, 1)
-        ON CONFLICT ("TokenId", "Hour")
-        DO UPDATE SET "Count" = "TokenUsage"."Count" + 1;
-        UPDATE {{McpDbContext.Schema}}."Tokens" SET "LastUsedAt" = {2} WHERE "Id" = {0};
-        """;
 }
 
 /// <summary>

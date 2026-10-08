@@ -75,11 +75,23 @@ public sealed class UsersController : ApiControllerBase
 
         Response.Headers.CacheControl = "public, max-age=86400";
         Response.Headers.XContentTypeOptions = "nosniff";
+        Response.Headers.ContentSecurityPolicy = SecurityHeaders.IsolationPolicy;
         return File(avatar.Bytes, avatar.ContentType);
     }
 
     /// <summary>A profile picture that won't fit in 2 MB isn't one.</summary>
     private const int MaxAvatarBytes = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// What a profile picture is. Not every <c>image/*</c>: SVG is a document
+    /// that can carry script, and these bytes come from whatever URL the picture
+    /// claim names, served back from our origin. The isolation policy would
+    /// contain one; refusing it means there is nothing to contain.
+    /// </summary>
+    private static readonly HashSet<string> RasterTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png", "image/jpeg", "image/webp", "image/gif",
+    };
 
     private static async Task<CachedAvatar?> FetchAsync(
         Guid id, SoloDbContext db, IHttpClientFactory httpClientFactory, CancellationToken ct)
@@ -88,7 +100,7 @@ public sealed class UsersController : ApiControllerBase
             .Where(u => u.Id == id).Select(u => u.AvatarUrl).FirstOrDefaultAsync(ct);
 
         // The URL comes from the trusted IdP token's picture claim, but stay strict:
-        // https only, and only serve it back if it really is an image.
+        // https only, and only serve it back if it really is a raster image.
         if (string.IsNullOrEmpty(url) ||
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             uri.Scheme != Uri.UriSchemeHttps)
@@ -108,7 +120,7 @@ public sealed class UsersController : ApiControllerBase
             }
 
             var contentType = response.Content.Headers.ContentType?.MediaType;
-            if (contentType is null || !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            if (contentType is null || !RasterTypes.Contains(contentType))
             {
                 return null;
             }

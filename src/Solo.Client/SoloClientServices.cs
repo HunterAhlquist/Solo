@@ -46,8 +46,9 @@ public static class SoloClientServices
         services.AddHttpClient<SetupClient>(client => client.BaseAddress = instance.BaseAddress);
 
         // Realtime + state. BoardHubClient is scoped rather than singleton: it
-        // depends on the scoped IdTokenProvider, and WASM's single root scope
-        // already makes "scoped" mean one instance for the app's lifetime.
+        // mints its hub tickets through ApiClient, whose handler depends on the
+        // scoped IdTokenProvider, and WASM's single root scope already makes
+        // "scoped" mean one instance for the app's lifetime.
         services.AddScoped<BoardHubClient>();
         services.AddScoped<IBoardHubClient>(sp => sp.GetRequiredService<BoardHubClient>());
         // Extensions' live topics ride the same connection, so a page with both a

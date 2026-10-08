@@ -28,7 +28,7 @@ namespace Solo.Mcp.Controllers;
 [ApiController]
 [Route("tokens")]
 [Authorize]
-public sealed class McpTokensController(McpDbContext db, ISoloQuery query) : ControllerBase
+public sealed class McpTokensController(McpDbContext db, ISoloQuery query, McpUsageCounter usage) : ControllerBase
 {
     /// <summary>What the emergency revoke-all asks an admin to retype.</summary>
     public const string RevokeAllConfirmation = "revoke all tokens";
@@ -47,6 +47,8 @@ public sealed class McpTokensController(McpDbContext db, ISoloQuery query) : Con
             return Forbid();
         }
 
+        // Usage is counted in memory; write it out so last-used is current.
+        await usage.FlushAsync(db, ct);
         var tokens = await db.Tokens.AsNoTracking()
             .Where(t => t.Issuer == caller.Issuer && t.Subject == caller.Subject)
             .OrderByDescending(t => t.CreatedAt)
@@ -147,6 +149,7 @@ public sealed class McpTokensController(McpDbContext db, ISoloQuery query) : Con
         var windowStart = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, 0, 0, TimeSpan.Zero)
             .AddHours(-(hours - 1));
 
+        await usage.FlushAsync(db, ct);
         var tokens = await db.Tokens.AsNoTracking()
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync(ct);

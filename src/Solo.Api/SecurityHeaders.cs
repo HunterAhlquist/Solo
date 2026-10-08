@@ -44,6 +44,20 @@ public static class SecurityHeaders
         "form-action 'self'; " +
         "object-src 'none'";
 
+    /// <summary>
+    /// For responses whose bytes someone else chose: uploaded images, and
+    /// avatars fetched from the provider's picture URL. They are served from the
+    /// app's own origin, and an SVG opened as a document (not through
+    /// <c>&lt;img&gt;</c>, which never runs script) is a document on that origin,
+    /// so a scripted one would be stored XSS against whoever follows the link,
+    /// with the session token one localStorage read away. <c>default-src 'none'</c>
+    /// blocks every subresource and script the file might reach for, and
+    /// <c>sandbox</c> drops the response into an opaque origin so even inline
+    /// script has nothing to steal. Neither affects the <c>&lt;img&gt;</c> path
+    /// the app actually uses.
+    /// </summary>
+    public const string IsolationPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
     public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app) =>
         app.Use((context, next) =>
         {
@@ -51,8 +65,8 @@ public static class SecurityHeaders
             {
                 var headers = ((HttpContext)state).Response.Headers;
 
-                // Endpoints that serve user-uploaded bytes set their own,
-                // stricter policy (see ImagesController); don't overwrite it.
+                // Endpoints that serve bytes someone else chose set their own,
+                // stricter policy (IsolationPolicy); don't overwrite it.
                 if (!headers.ContainsKey("Content-Security-Policy"))
                 {
                     headers.ContentSecurityPolicy = ContentSecurityPolicy;

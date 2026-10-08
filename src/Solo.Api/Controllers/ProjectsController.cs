@@ -234,7 +234,8 @@ public sealed class ProjectsController(
 
     [HttpDelete("{projectId:guid}/members/{memberId:guid}")]
     [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
-    public async Task<IActionResult> RemoveMember(Guid projectId, Guid memberId, CancellationToken ct)
+    public async Task<IActionResult> RemoveMember(
+        Guid projectId, Guid memberId, [FromServices] LiveAccess live, CancellationToken ct)
     {
         var member = await db.ProjectMembers
             .FirstOrDefaultAsync(m => m.ProjectId == projectId && m.Id == memberId, ct);
@@ -250,6 +251,12 @@ public sealed class ProjectsController(
 
         db.ProjectMembers.Remove(member);
         await db.SaveChangesAsync(ct);
+        if (member.UserId is { } userId)
+        {
+            // Before the broadcast below, which they are no longer entitled to.
+            await live.RevalidateAsync(userId, ct);
+        }
+
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Project, projectId,
             ChangeKind.Updated, "Members");
         return NoContent();

@@ -89,6 +89,47 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.False(senderGotEcho, "the saving client should not receive its own change event");
     }
 
+    /// <summary>
+    /// How the app connects: the hub sees no credential of the client's own,
+    /// only hub tickets minted over the API each time the connection asks for one.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_connection_runs_on_hub_tickets_alone()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var project = await _admin.PostJson<ProjectDto>(
+            "/api/projects", new { name = "Tickets", alias = "TICKETS" });
+        var board = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Ticket board", alias = "TICKB" });
+
+        var minted = 0;
+        await using var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri(_factory.Server.BaseAddress, BoardHubConstants.Path), options =>
+            {
+                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                options.Transports = HttpTransportType.LongPolling;
+                options.AccessTokenProvider = async () =>
+                {
+                    minted++;
+                    var response = await _admin.PostAsync("/api/auth/hub-ticket", null);
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadFromJsonAsync<string>(TestClients.Json);
+                };
+            })
+            .Build();
+        var received = new TaskCompletionSource<EntityChangedEvent>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.On<EntityChangedEvent>(nameof(IBoardClient.EntityChanged), e => received.TrySetResult(e));
+
+        await connection.StartAsync();
+        await connection.InvokeAsync(nameof(IBoardHubServer.JoinBoard), board.Id);
+        await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Heard over a ticket" });
+
+        Assert.Equal(EntityTypes.Task, (await received.Task.WaitAsync(TimeSpan.FromSeconds(10))).EntityType);
+        Assert.True(minted > 0);
+    }
+
     [SkippableFact]
     public async Task Presence_IsBroadcastToTheBoardGroup()
     {
@@ -254,5 +295,151 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
             () => member.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), project.Id, new string('x', 201)));
         await Assert.ThrowsAsync<Microsoft.AspNetCore.SignalR.HubException>(
             () => member.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), project.Id, " "));
+    }
+
+    // -----------------------------------------------------------------------
+    // Access that changes after a connection joined
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The hub checks access when a connection joins. Losing it later has to
+    /// cut the feed too, or a removed member keeps hearing every change and
+    /// seeing who is viewing what until their tab happens to disconnect.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_removed_member_stops_hearing_the_project()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, left) = await BoardAsync("Left", "LEFT");
+        var (keptProject, kept) = await BoardAsync("Kept", "KEPT");
+        var membership = await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{left.ProjectId}/members", new { email = "leaver@example.com", role = "ReadWrite" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{keptProject.Id}/members", new { email = "leaver@example.com", role = "Read" });
+
+        await using var leaver = Connect("leaver", "leaver@example.com", "Leaver");
+        var heard = Listen(leaver);
+        await leaver.StartAsync();
+        await leaver.InvokeAsync(nameof(IBoardHubServer.JoinBoard), left.Id);
+
+        // Someone still on the board sees the leaver there, then sees them go.
+        await using var watcher = Connect("admin", "admin@example.com", "Admin");
+        var leaverShown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var leaverGone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        watcher.On<BoardPresenceSnapshot>(nameof(IBoardClient.PresenceChanged), snapshot =>
+        {
+            if (snapshot.Entries.Any(e => e.DisplayName == "Leaver"))
+            {
+                leaverShown.TrySetResult();
+            }
+            else if (leaverShown.Task.IsCompleted)
+            {
+                leaverGone.TrySetResult();
+            }
+        });
+        await watcher.StartAsync();
+        await watcher.InvokeAsync(nameof(IBoardHubServer.JoinBoard), left.Id);
+        await leaver.InvokeAsync(
+            nameof(IBoardHubServer.SetPresence), EntityTypes.Board, left.Id, PresenceMode.Viewing);
+        await leaverShown.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var removed = await _admin.DeleteAsync($"/api/projects/{left.ProjectId}/members/{membership.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        await leaverGone.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await _admin.PostJson<TaskDto>($"/api/boards/{left.Id}/tasks", new { name = "Not for leavers" });
+        await AssertHeardNothingAsync(leaver, heard, kept.Id);
+    }
+
+    /// <summary>
+    /// A connection proves its credential once, when it opens. Revoking the
+    /// session that opened it, however that's done, has to close it, or the
+    /// desktop app it was stolen with keeps listening.
+    /// </summary>
+    [SkippableTheory]
+    [InlineData("device")]
+    [InlineData("other devices")]
+    [InlineData("everywhere")]
+    public async Task Revoking_a_session_closes_the_connection_it_opened(string how)
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var session = await _admin.PostJson<SessionDto>("/api/auth/sessions", new { description = "laptop" });
+        using var desktop = new HttpClient(_factory.Server.CreateHandler()) { BaseAddress = _factory.Server.BaseAddress };
+        desktop.DefaultRequestHeaders.Authorization = new("Bearer", session.Token);
+
+        await using var connection = new HubConnectionBuilder()
+            .WithUrl(new Uri(_factory.Server.BaseAddress, BoardHubConstants.Path), options =>
+            {
+                options.HttpMessageHandlerFactory = _ => _factory.Server.CreateHandler();
+                options.Transports = HttpTransportType.LongPolling;
+                options.AccessTokenProvider = async () =>
+                    await (await desktop.PostAsync("/api/auth/hub-ticket", null)).Content
+                        .ReadFromJsonAsync<string>(TestClients.Json);
+            })
+            .Build();
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.Closed += _ =>
+        {
+            closed.TrySetResult();
+            return Task.CompletedTask;
+        };
+        await connection.StartAsync();
+
+        var revoked = how switch
+        {
+            "device" => await _admin.DeleteAsync(
+                $"/api/auth/sessions/{(await _admin.GetJson<List<AuthSessionDto>>("/api/auth/sessions")).Single().Id}"),
+            "other devices" => await _admin.DeleteAsync("/api/auth/sessions"),
+            _ => await _admin.PostAsync($"/api/admin/users/{session.User.Id}/sign-out-everywhere", null),
+        };
+        Assert.True(revoked.IsSuccessStatusCode, $"{how}: {revoked.StatusCode}");
+        await closed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private async Task<(ProjectDto Project, BoardDto Board)> BoardAsync(string name, string alias)
+    {
+        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name, alias });
+        var board = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = $"{name} board", alias = $"{alias}B" });
+        return (project, board);
+    }
+
+    private static List<EntityChangedEvent> Listen(HubConnection connection)
+    {
+        var heard = new List<EntityChangedEvent>();
+        connection.On<EntityChangedEvent>(nameof(IBoardClient.EntityChanged), e =>
+        {
+            lock (heard)
+            {
+                heard.Add(e);
+            }
+        });
+        return heard;
+    }
+
+    /// <summary>
+    /// Asserts the connection heard no change, without waiting on a timeout: a
+    /// hub writes to a connection in order, so once the presence snapshot from
+    /// joining <paramref name="stillReadable"/> arrives, anything sent to the
+    /// connection before it has arrived too.
+    /// </summary>
+    private static async Task AssertHeardNothingAsync(
+        HubConnection connection, List<EntityChangedEvent> heard, Guid stillReadable)
+    {
+        var sentinel = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var _ = connection.On<BoardPresenceSnapshot>(nameof(IBoardClient.PresenceChanged), snapshot =>
+        {
+            if (snapshot.BoardId == stillReadable)
+            {
+                sentinel.TrySetResult();
+            }
+        });
+        await connection.InvokeAsync(nameof(IBoardHubServer.JoinBoard), stillReadable);
+        await sentinel.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        lock (heard)
+        {
+            Assert.Empty(heard);
+        }
     }
 }

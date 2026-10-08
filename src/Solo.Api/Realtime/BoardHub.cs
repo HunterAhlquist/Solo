@@ -21,9 +21,16 @@ public sealed class BoardHub(
     SoloDbContext db,
     UserProvisioningService provisioning,
     PresenceRegistry presence,
-    TopicRegistry topics)
+    TopicRegistry topics,
+    SessionConnections sessions)
     : Hub<IBoardClient>, IBoardHubServer
 {
+    public override Task OnConnectedAsync()
+    {
+        sessions.Opened(Context);
+        return base.OnConnectedAsync();
+    }
+
     public async Task JoinBoard(Guid boardId)
     {
         var projectId = await ProjectAccessHandler.ResolveProjectIdAsync(
@@ -32,7 +39,7 @@ public sealed class BoardHub(
         var user = await RequireMemberAsync(projectId);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, BoardHubConstants.BoardGroup(boardId));
-        presence.Join(Context.ConnectionId, boardId, user.Id, user.DisplayName ?? user.Email);
+        presence.Join(Context.ConnectionId, projectId, boardId, user.Id, user.DisplayName ?? user.Email);
         await Clients.Group(BoardHubConstants.BoardGroup(boardId))
             .PresenceChanged(presence.Snapshot(boardId));
     }
@@ -95,6 +102,7 @@ public sealed class BoardHub(
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        sessions.Closed(Context.ConnectionId);
         var boardId = presence.Leave(Context.ConnectionId);
         if (boardId is not null)
         {

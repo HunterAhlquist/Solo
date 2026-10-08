@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Solo.Shared.Hubs;
 
 namespace Solo.Api.Auth;
 
@@ -25,24 +24,16 @@ public static class SessionTokens
         token?.StartsWith(Prefix, StringComparison.Ordinal) == true;
 
     /// <summary>
-    /// The bearer credential of a request: the Authorization header, or the
-    /// <c>access_token</c> query parameter on the SignalR hub path — the same
-    /// two places the OIDC scheme reads.
+    /// The bearer credential of a request, from the Authorization header only.
+    /// Never the query string, even on the hub: a URL ends up in access logs,
+    /// and a session lasts 30 days. The hub takes a <see cref="HubTickets"/>
+    /// ticket there instead.
     /// </summary>
     public static string? FromRequest(HttpRequest request)
     {
         string header = request.Headers.Authorization.ToString();
-        if (header.StartsWith($"{JwtBearerDefaults.AuthenticationScheme} ", StringComparison.OrdinalIgnoreCase))
-        {
-            return header[(JwtBearerDefaults.AuthenticationScheme.Length + 1)..];
-        }
-
-        if (request.Path.StartsWithSegments(BoardHubConstants.Path) &&
-            request.Query["access_token"] is { Count: > 0 } token)
-        {
-            return token.ToString();
-        }
-
-        return null;
+        return header.StartsWith($"{JwtBearerDefaults.AuthenticationScheme} ", StringComparison.OrdinalIgnoreCase)
+            ? header[(JwtBearerDefaults.AuthenticationScheme.Length + 1)..]
+            : null;
     }
 }

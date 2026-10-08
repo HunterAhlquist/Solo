@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Solo.Client.Api;
-using Solo.Client.Auth;
 using Solo.Shared;
 using Solo.Shared.Hubs;
 
@@ -20,7 +19,7 @@ namespace Solo.Client.Realtime;
 /// </remarks>
 public sealed class BoardHubClient(
     InstanceConnection instance,
-    IdTokenProvider tokens,
+    ApiClient api,
     ConnectionIdAccessor connections)
     : IBoardHubClient, IAsyncDisposable
 {
@@ -243,7 +242,10 @@ public sealed class BoardHubClient(
 
         var connection = new HubConnectionBuilder()
             .WithUrl(instance.HubUri, options =>
-                options.AccessTokenProvider = async () => await tokens.GetTokenAsync())
+                // Asked again for every start and reconnect. In a browser the
+                // WebSocket's credential has to go in the URL, which proxies
+                // log, so it is a one-use ticket and never the sign-in itself.
+                options.AccessTokenProvider = async () => await api.GetHubTicketAsync())
             .WithAutomaticReconnect()
             .Build();
 
