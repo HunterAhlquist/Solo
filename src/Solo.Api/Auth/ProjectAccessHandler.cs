@@ -41,7 +41,7 @@ public sealed class ProjectAccessHandler(
 
         httpContext.Items[ProjectIdItem] = projectId.Value;
 
-        if (await AllowsAsync(db, currentUser.User.Id, currentUser.User.IsSuperAdmin,
+        if (await AllowsAsync(db, currentUser.User.Id, currentUser.IsSuperAdmin,
                 projectId.Value, requirement.Level, httpContext.RequestAborted))
         {
             context.Succeed(requirement);
@@ -183,7 +183,7 @@ public sealed class SuperAdminHandler(CurrentUserAccessor currentUser)
     protected override Task HandleRequirementAsync(
         AuthorizationHandlerContext context, SuperAdminRequirement requirement)
     {
-        if (currentUser.User?.IsSuperAdmin == true)
+        if (currentUser.IsSuperAdmin)
         {
             context.Succeed(requirement);
         }

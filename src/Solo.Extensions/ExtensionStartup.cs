@@ -42,6 +42,9 @@ public static class ExtensionStartup
         builder.Services.AddScoped<IDomainEventPublisher, DomainEventPublisher>();
         builder.Services.AddScoped<ExtensionRegistry>();
         builder.Services.AddScoped<ISoloQuery, SoloQuery>();
+        builder.Services.AddScoped<ExtensionCallerOverride>();
+        builder.Services.AddSingleton<BackgroundTokens>();
+        builder.Services.AddHttpClient(ExtensionBackground.HttpClientName);
 
         // Each extension gets a field store bound to its own id, so "you may
         // only touch your own key" is structural rather than a convention.
@@ -51,6 +54,12 @@ public static class ExtensionStartup
             builder.Services.AddKeyedScoped<IExtensionFieldStore>(id, (sp, _) =>
                 new ExtensionFieldStore(sp.GetRequiredService<Solo.Data.SoloDbContext>(), id,
                     sp.GetService<IExtensionFieldNotifier>()));
+
+            // The same for background work: the id it may act under is the one
+            // it was registered with, not one it passes in. A singleton, so an
+            // extension's hosted service can take it in its constructor.
+            builder.Services.AddKeyedSingleton<ISoloBackground>(id, (sp, _) =>
+                ActivatorUtilities.CreateInstance<ExtensionBackground>(sp, id));
         }
 
         var assemblyMap = state.Packages

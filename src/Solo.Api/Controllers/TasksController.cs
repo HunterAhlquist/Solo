@@ -257,6 +257,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     /// own copies.
     /// </summary>
     [HttpPut("api/tasks/{taskId:guid}/board")]
+    [SoloOperation(Operations.TaskSetBoard)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> Move(
         Guid taskId, MoveTaskRequest request, CancellationToken ct)
@@ -374,6 +375,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     }
 
     [HttpPut("api/tasks/{taskId:guid}/assignees")]
+    [SoloOperation(Operations.TaskSetAssignees)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> SetAssignees(
         Guid taskId, SetAssigneesRequest request, CancellationToken ct)

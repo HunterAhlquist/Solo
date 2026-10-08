@@ -91,9 +91,9 @@ public sealed class AdminUsersController(
     }
 
     /// <summary>
-    /// Signs the user out everywhere: revokes the sessions core issued them,
-    /// then every credential an enabled extension issued them, such as an MCP
-    /// token.
+    /// Signs the user out everywhere: revokes the sessions core issued them and
+    /// the background access they granted extensions, then every credential an
+    /// enabled extension issued them, such as an MCP token.
     /// </summary>
     /// <remarks>
     /// <para>Sessions go first and stay revoked whatever an extension does
@@ -118,6 +118,15 @@ public sealed class AdminUsersController(
         var sessions = await db.AuthSessions.Where(s => sessionIds.Contains(s.Id)).ExecuteDeleteAsync(ct);
         live.EndSessions(sessionIds);
 
+        // Background grants are core's to revoke, so they go with the sessions
+        // rather than waiting on each extension to remember them. Counted per
+        // extension and folded into its line of the answer below.
+        var grants = await db.ExtensionGrants.Where(g => g.UserId == userId)
+            .GroupBy(g => g.ExtensionId)
+            .Select(g => new { ExtensionId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        await db.ExtensionGrants.Where(g => g.UserId == userId).ExecuteDeleteAsync(ct);
+
         var holder = new CredentialHolder(user.Id, user.Issuer, user.Subject);
         var revoked = new List<RevokedCredentialsDto>();
         var failed = new List<string>();
@@ -132,6 +141,19 @@ public sealed class AdminUsersController(
                 logger.LogError(e, "Extension {ExtensionId} could not revoke the credentials of {UserId}.",
                     extensionId, user.Id);
                 failed.Add(extensionId);
+            }
+        }
+
+        foreach (var grant in grants)
+        {
+            var index = revoked.FindIndex(r => r.ExtensionId == grant.ExtensionId);
+            if (index < 0)
+            {
+                revoked.Add(new RevokedCredentialsDto(grant.ExtensionId, grant.Count));
+            }
+            else
+            {
+                revoked[index] = revoked[index] with { Count = revoked[index].Count + grant.Count };
             }
         }
 

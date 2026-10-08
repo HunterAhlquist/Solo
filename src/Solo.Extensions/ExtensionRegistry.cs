@@ -130,6 +130,10 @@ public sealed class ExtensionRegistry(SoloDbContext db, ILogger<ExtensionRegistr
 
         await StripFieldBagsAsync(registration.ExtensionId, ct);
 
+        // Background grants live in core too. A reinstall must ask people again
+        // rather than inherit permission given to a package that was removed.
+        await db.ExtensionGrants.Where(g => g.ExtensionId == registration.ExtensionId).ExecuteDeleteAsync(ct);
+
         db.ExtensionRegistrations.Remove(
             await db.ExtensionRegistrations.FirstAsync(r => r.ExtensionId == registration.ExtensionId, ct));
         await db.SaveChangesAsync(ct);

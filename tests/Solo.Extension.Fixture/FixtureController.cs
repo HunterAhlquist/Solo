@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Solo.Extensibility;
 
 namespace Solo.Extension.Fixture;
@@ -41,4 +43,40 @@ public sealed class FixtureController(FixtureDbContext db, ISoloQuery query) : C
     [AllowAnonymous]
     public async Task<IReadOnlyList<Guid>> VisibleBoards(Guid projectId, CancellationToken ct) =>
         (await query.BoardsAsync(projectId, ct)).Select(b => b.Id).ToList();
+
+    /// <summary>Contract 1.8's member read, anonymous for the same reason as above.</summary>
+    [HttpGet("members/{projectId:guid}")]
+    [AllowAnonymous]
+    public async Task<IReadOnlyList<string>> Members(Guid projectId, CancellationToken ct) =>
+        (await query.MembersAsync(projectId, ct)).Select(m => m.Email).ToList();
+
+    [HttpGet("comments/{commentId:guid}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<Solo.Shared.Dtos.CommentDto>> Comment(Guid commentId, CancellationToken ct) =>
+        await query.CommentAsync(commentId, ct) is { } comment ? comment : NotFound();
+
+    [HttpGet("task-comments/{taskId:guid}")]
+    [AllowAnonymous]
+    public async Task<IReadOnlyList<string>> TaskComments(Guid taskId, CancellationToken ct) =>
+        (await query.TaskCommentsAsync(taskId, ct)).Select(c => c.Body).ToList();
+
+    /// <summary>
+    /// Where a person turns on the fixture's background work. A refusal — from
+    /// background work itself, say — comes back as a 409 the test can read.
+    /// </summary>
+    [HttpPost("background-grant")]
+    [Authorize]
+    public async Task<IActionResult> Grant(
+        [FromKeyedServices("fixture")] ISoloBackground background, CancellationToken ct)
+    {
+        try
+        {
+            await background.GrantAsync(ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException e)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: "Not granted", detail: e.Message);
+        }
+    }
 }

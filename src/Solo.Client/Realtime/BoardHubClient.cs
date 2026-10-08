@@ -34,6 +34,9 @@ public sealed class BoardHubClient(
     /// </summary>
     private readonly Dictionary<(Guid ProjectId, string Topic), (int Holders, PresenceMode Mode)> _topics = [];
 
+    /// <summary>The signed-in user's own topics held, counted the same way.</summary>
+    private readonly Dictionary<string, int> _userTopics = [];
+
     /// <summary>A change landed from another client. Field names only — refetch to get values.</summary>
     public event Func<EntityChangedEvent, Task>? EntityChanged;
 
@@ -216,6 +219,67 @@ public sealed class BoardHubClient(
         }
     }
 
+    public async Task SubscribeUserTopic(string topic)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_userTopics.TryGetValue(topic, out var holders))
+            {
+                _userTopics[topic] = holders + 1;
+                return;
+            }
+
+            _userTopics[topic] = 1;
+            await EnsureStartedAsync();
+            try
+            {
+                await _connection!.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), topic);
+            }
+            catch (HubException)
+            {
+                _userTopics.Remove(topic);
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task UnsubscribeUserTopic(string topic)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (!_userTopics.TryGetValue(topic, out var holders))
+            {
+                return;
+            }
+
+            if (holders > 1)
+            {
+                _userTopics[topic] = holders - 1;
+                return;
+            }
+
+            _userTopics.Remove(topic);
+            if (_connection is { State: HubConnectionState.Connected })
+            {
+                await _connection.InvokeAsync(nameof(IBoardHubServer.UnsubscribeUserTopic), topic);
+            }
+        }
+        catch (Exception e) when (e is HubException or InvalidOperationException)
+        {
+            // As with project topics: the server forgets it on disconnect anyway.
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task SetPresenceCoreAsync(string entityType, Guid entityId, PresenceMode mode)
     {
         if (_connection is not { State: HubConnectionState.Connected })
@@ -298,6 +362,18 @@ public sealed class BoardHubClient(
                 {
                     // Access lost while away, say: that topic stays quiet, the rest carry on.
                     _topics.Remove((projectId, topic));
+                }
+            }
+
+            foreach (var topic in _userTopics.Keys.ToList())
+            {
+                try
+                {
+                    await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), topic);
+                }
+                catch (HubException)
+                {
+                    _userTopics.Remove(topic);
                 }
             }
 

@@ -17,6 +17,23 @@
                   Class="mb-3" />
     <IconImagePicker Icon="@_icon" IconChanged="@OnIconChanged" ImageId="@_imageId" ImageIdChanged="@OnImageChanged" />
 
+    @* Extensions' sections sit with the settings, above the danger zone rather
+       than after it — nobody should have to scroll past "delete" to find them. *@
+    @foreach (var contributed in Sections)
+    {
+        <MudText Typo="Typo.h4" Class="mt-6 mb-3">@contributed.Title</MudText>
+        <ErrorBoundary @key="(Project.Id, contributed.Component)">
+            <ChildContent>
+                <DynamicComponent Type="@contributed.Component" Parameters="@SectionParameters" />
+            </ChildContent>
+            <ErrorContent>
+                <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
+                    @contributed.Title couldn't load.
+                </MudText>
+            </ErrorContent>
+        </ErrorBoundary>
+    }
+
     <MudDivider Class="my-6" />
 
     <MudText Typo="Typo.h4" Color="Color.Error" Class="mb-2">Danger zone</MudText>
@@ -40,6 +57,14 @@
 
     [Parameter]
     public EventCallback<ProjectDto> OnSaved { get; set; }
+
+    /// <summary>Extensions' <c>[ProjectSettingsSection]</c>s, found by the page that owns the catalog subscription.</summary>
+    [Parameter]
+    public IReadOnlyList<Solo.Client.Extensions.ContributedSection> Sections { get; set; } = [];
+
+    /// <summary>What every project section gets: the sidebar's shape, so one component can serve several places.</summary>
+    [Parameter]
+    public IDictionary<string, object> SectionParameters { get; set; } = new Dictionary<string, object>();
 
     protected override void OnParametersSet()
     {

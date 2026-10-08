@@ -8,8 +8,14 @@ namespace Solo.Api.Auth;
 /// </summary>
 public static class BearerForwarding
 {
+    /// <remarks>
+    /// Background tokens are tested before sessions: their <c>solobg_</c> prefix
+    /// is distinct, but the order keeps it that way should either change.
+    /// </remarks>
     public static string? Select(HttpContext context) =>
         HubTickets.FromRequest(context.Request) is not null ? AuthConstants.HubTicketScheme
+        : Solo.Extensions.BackgroundTokens.IsBackgroundToken(SessionTokens.FromRequest(context.Request))
+            ? AuthConstants.BackgroundScheme
         : SessionTokens.IsSessionToken(SessionTokens.FromRequest(context.Request)) ? AuthConstants.SessionScheme
         : null;
 }

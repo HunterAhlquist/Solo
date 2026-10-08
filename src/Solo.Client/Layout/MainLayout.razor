@@ -8,6 +8,7 @@
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject ThemeState Theme
+@inject Solo.Client.Extensions.ExtensionCatalog Extensions
 
 <SoloThemeProvider />
 <MudPopoverProvider />
@@ -29,6 +30,21 @@
 
         <AuthorizeView Context="auth">
             <Authorized>
+                @* Extensions' app bar contributions — an inbox count, a running
+                   timer — before core's own. Each failure costs an icon. *@
+                @foreach (var contribution in AppBarExtensions)
+                {
+                    <ErrorBoundary @key="contribution">
+                        <ChildContent>
+                            <DynamicComponent Type="@contribution" />
+                        </ChildContent>
+                        <ErrorContent>
+                            <MudTooltip Text="An extension couldn't draw its part of the app bar.">
+                                <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Error" />
+                            </MudTooltip>
+                        </ErrorContent>
+                    </ErrorBoundary>
+                }
                 <ConnectionIndicator />
                 @* MudMenu's built-in Icon activator (not ActivatorContent, which never
                    opens here). The SSO picture rides in as a circular SVG image; with
@@ -93,6 +109,20 @@
     {
         SessionExpiry.Expired += OnSessionExpired;
         Session.AccessDenied += OnAccessDenied;
+        Extensions.Changed += OnExtensionsChanged;
+    }
+
+    private IReadOnlyList<Type>? _appBarExtensions;
+
+    private IReadOnlyList<Type> AppBarExtensions => _appBarExtensions ??=
+        Solo.Client.Extensions.ContributedSections.Components<Solo.Shared.Extensibility.AppBarExtensionAttribute>(
+            Extensions, a => a.Order);
+
+    /// <summary>Extensions load after sign-in, after the layout first renders.</summary>
+    private void OnExtensionsChanged()
+    {
+        _appBarExtensions = null;
+        InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
@@ -141,6 +171,7 @@
     {
         SessionExpiry.Expired -= OnSessionExpired;
         Session.AccessDenied -= OnAccessDenied;
+        Extensions.Changed -= OnExtensionsChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

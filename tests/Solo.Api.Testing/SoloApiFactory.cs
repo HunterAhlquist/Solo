@@ -120,8 +120,14 @@ public class SoloApiFactory(
         // would trip on unrelated tests. RateLimitingTests tightens these.
         builder.UseSetting("RateLimiting:Api:Burst", "1000000");
         builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000000");
+        // Background work calls back into the API over HTTP (ExtensionBackground).
+        // There is no socket under a test server, so point it at the server itself.
+        builder.UseSetting("Extensions:ApiBaseUrl", "http://localhost/");
         builder.ConfigureServices(services =>
         {
+            services.AddHttpClient(Solo.Extensions.ExtensionBackground.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Server.CreateHandler());
+
             // Auth:Authority is empty, so Program registered no "Bearer" scheme;
             // supply the header-driven test scheme under that name — with the
             // same forward rule production's JwtBearer carries, so sessions and

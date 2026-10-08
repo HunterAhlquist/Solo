@@ -67,7 +67,8 @@ else
             </MudTabPanel>
 
             <MudTabPanel Text="Settings" Icon="@Icons.Material.Filled.Settings">
-                <ProjectSettingsTab Project="@_project" OnSaved="@OnProjectSaved" />
+                <ProjectSettingsTab Project="@_project" OnSaved="@OnProjectSaved"
+                                    Sections="@SettingsSections" SectionParameters="@SectionParameters(_project)" />
             </MudTabPanel>
         }
     </MudTabs>
@@ -150,6 +151,12 @@ else
         ContributedSections.Find<Solo.Shared.Extensibility.ProjectHomeSectionAttribute>(
             Extensions, a => a.Title, a => a.Order);
 
+    private IReadOnlyList<ContributedSection>? _settingsSections;
+
+    private IReadOnlyList<ContributedSection> SettingsSections => _settingsSections ??=
+        ContributedSections.Find<Solo.Shared.Extensibility.ProjectSettingsSectionAttribute>(
+            Extensions, a => a.Title, a => a.Order);
+
     /// <summary>"Boards", or "Boards & Roadmaps" once an extension adds a section to the tab.</summary>
     private string WorkTabText => HomeSections.Count == 0
         ? "Boards"
@@ -171,6 +178,7 @@ else
     private void OnExtensionsChanged()
     {
         _sections = null;
+        _settingsSections = null;
         InvokeAsync(StateHasChanged);
     }
 

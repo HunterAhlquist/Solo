@@ -72,6 +72,9 @@ public static class SoloClientServices
         // shell for a native one. ContextMenuHost renders what this holds.
         services.AddScoped<ContextMenuService>();
         services.AddScoped<ISoloContextMenu>(sp => sp.GetRequiredService<ContextMenuService>());
+        // Core's task menu, which extensions add to through contributor classes
+        // it finds in their assemblies and creates on demand.
+        services.AddScoped<TaskMenuService>();
 
         // The site theme arrives with the bootstrap config; the colour scheme is
         // read from localStorage on first render (see SoloThemeProvider).

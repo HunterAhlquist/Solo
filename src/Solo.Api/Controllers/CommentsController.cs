@@ -138,7 +138,7 @@ public sealed class CommentsController(
         if (comment.AuthorId != currentUser.User!.Id)
         {
             var isOwner = await ProjectAccessHandler.AllowsAsync(
-                db, currentUser.User.Id, currentUser.User.IsSuperAdmin, ProjectId(),
+                db, currentUser.User.Id, currentUser.IsSuperAdmin, ProjectId(),
                 ProjectAccessLevel.Owner, ct);
             if (!isOwner)
             {

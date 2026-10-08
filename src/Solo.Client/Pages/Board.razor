@@ -11,6 +11,10 @@
 @inject RecentProjectsStore Recent
 @inject NavigationManager Nav
 @inject DragBridge Drag
+@inject ExtensionCatalog Extensions
+@inject TaskMenuService TaskMenu
+@using Solo.Client.Extensions
+@using Solo.Shared.Extensibility
 
 <PageTitle>@(Store.Board?.Name ?? "Board") · Solo</PageTitle>
 
@@ -79,9 +83,26 @@ else
             <div class="kanban-header__columns">
                 @foreach (var status in BoardZones.Statuses)
                 {
-                    <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
-                        @BoardZones.Title(status) (@_ordered.Count(t => t.Status == status))
-                    </MudText>
+                    <div class="kanban-header__column">
+                        <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
+                            @BoardZones.Title(status) (@_ordered.Count(t => t.Status == status))
+                        </MudText>
+                        @* After core's count, each under its own boundary: a header
+                           that throws costs an icon, not the board. *@
+                        @foreach (var contribution in ColumnExtensions)
+                        {
+                            <ErrorBoundary @key="(BoardId, status, contribution)">
+                                <ChildContent>
+                                    <DynamicComponent Type="@contribution" Parameters="@ColumnParameters(status)" />
+                                </ChildContent>
+                                <ErrorContent>
+                                    <MudTooltip Text="An extension couldn't draw its part of this header.">
+                                        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" Color="Color.Error" />
+                                    </MudTooltip>
+                                </ErrorContent>
+                            </ErrorBoundary>
+                        }
+                    </div>
                 }
             </div>
         </div>
@@ -233,6 +254,7 @@ else
     {
         Store.Changed += OnStoreChanged;
         Store.Pulsed += OnPulsed;
+        Extensions.Changed += OnExtensionsChanged;
         await Drag.RegisterAsync("task", OnTaskDropAsync);
         await Drag.RegisterAsync("epic", OnEpicDropAsync);
 
@@ -331,8 +353,13 @@ else
     /// </summary>
     private RenderFragment<TaskDto> Card => task =>
         @<div class="kanban-card-slot" @key="task.Id"
-              data-drag-item="@(CanWrite ? task.Id.ToString() : null)">
+              data-drag-item="@(CanWrite ? task.Id.ToString() : null)"
+              @oncontextmenu="@(e => OnCardMenuAsync(e, task))"
+              @oncontextmenu:preventDefault="@TaskMenu.HasContributors">
             <TaskCard Task="@task"
+                      ProjectId="@(Store.Board?.ProjectId ?? Guid.Empty)"
+                      CanWrite="@CanWrite"
+                      Extensions="@CardExtensions"
                       Label="@LabelOf(task)"
                       Assignees="@MembersOf(task.AssigneeIds)"
                       Presence="@Store.EditorsOn(EntityTypes.Task, task.Id)"
@@ -722,6 +749,50 @@ else
 
     // -- Drawer -------------------------------------------------------------
 
+    // -- Extensions -----------------------------------------------------------
+
+    private IReadOnlyList<Type>? _cardExtensions;
+    private IReadOnlyList<Type>? _columnExtensions;
+
+    /// <summary>Found once per catalog change rather than per card: a board renders hundreds.</summary>
+    private IReadOnlyList<Type> CardExtensions => _cardExtensions ??=
+        ContributedSections.Components<TaskCardExtensionAttribute>(Extensions, a => a.Order);
+
+    private IReadOnlyList<Type> ColumnExtensions => _columnExtensions ??=
+        ContributedSections.Components<BoardColumnExtensionAttribute>(Extensions, a => a.Order);
+
+    private IDictionary<string, object> ColumnParameters(TaskState status)
+    {
+        var board = Store.Board!;
+        return new Dictionary<string, object>
+        {
+            ["Board"] = new BoardDto(board.Id, board.ProjectId, board.Name, board.Alias, board.Icon,
+                board.ImageId, board.IsOpen, board.Version),
+            ["Status"] = status,
+            // The whole column, as core's count beside it: folded finished cards too.
+            ["Tasks"] = (IReadOnlyList<TaskDto>)_ordered.Where(t => t.Status == status).ToList(),
+            ["CanWrite"] = CanWrite,
+        };
+    }
+
+    /// <summary>
+    /// Core's task menu, offered on a right click only while an extension adds
+    /// to it — core alone has nothing to put there that a click doesn't do.
+    /// </summary>
+    private Task OnCardMenuAsync(MouseEventArgs e, TaskDto task) =>
+        TaskMenu.HasContributors && Store.Board is { } board
+            ? TaskMenu.ShowAsync(e.ClientX, e.ClientY, new TaskMenuContext(task, board.ProjectId, CanWrite),
+                [(new ContextMenuItem("open", "Open task") { Icon = Icons.Material.Filled.OpenInNew },
+                    () => OpenTask(task))])
+            : Task.CompletedTask;
+
+    private void OnExtensionsChanged()
+    {
+        _cardExtensions = null;
+        _columnExtensions = null;
+        InvokeAsync(StateHasChanged);
+    }
+
     private async Task OpenTask(TaskDto task)
     {
         _openEpic = null;
@@ -781,6 +852,7 @@ else
     {
         Store.Changed -= OnStoreChanged;
         Store.Pulsed -= OnPulsed;
+        Extensions.Changed -= OnExtensionsChanged;
         Drag.Unregister("task", OnTaskDropAsync);
         Drag.Unregister("epic", OnEpicDropAsync);
         await Store.DetachAsync();

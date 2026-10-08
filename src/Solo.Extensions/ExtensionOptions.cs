@@ -22,4 +22,12 @@ public sealed class ExtensionOptions
 
     /// <summary>How long an After hook or event handler may take before it is abandoned.</summary>
     public TimeSpan NotificationTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Where background work reaches this instance's own REST API. Unset, it is
+    /// the address the server listens on, rewritten to loopback; set it when that
+    /// address can't be dialled from inside the container — and in tests, where
+    /// there is no socket.
+    /// </summary>
+    public string? ApiBaseUrl { get; set; }
 }

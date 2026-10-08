@@ -417,6 +417,22 @@ code {
     min-width: 0;
 }
 
+/* Extension badges on a card, between the countdown and the progress ring. */
+.kanban-card__extensions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+/* A column title, then whatever extensions add beside it (a WIP count). */
+.kanban-header__column {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
 .kanban-lane__gutter {
     display: flex;
     flex-direction: column;

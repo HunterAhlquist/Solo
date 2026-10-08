@@ -20,9 +20,23 @@ public static class Operations
     public const string TaskMove = "task.move";
     public const string TaskSetSchedule = "task.setSchedule";
 
+    /// <summary>
+    /// Moving a task to another board (contract 1.8). Not <see cref="TaskMove"/>,
+    /// which is a reorder within one board: the destination is the request's
+    /// <c>BoardId</c>, and <c>Target.BoardId</c> is empty because the route names
+    /// only the task.
+    /// </summary>
+    public const string TaskSetBoard = "task.setBoard";
+
+    /// <summary>Replacing a task's assignees (contract 1.8). The request carries the full new list.</summary>
+    public const string TaskSetAssignees = "task.setAssignees";
+
     public const string EpicCreate = "epic.create";
     public const string EpicUpdate = "epic.update";
     public const string EpicDelete = "epic.delete";
+
+    /// <summary>Replacing an epic's assignees (contract 1.8). The request carries the full new list.</summary>
+    public const string EpicSetAssignees = "epic.setAssignees";
 
     public const string SubTaskCreate = "subtask.create";
     public const string SubTaskUpdate = "subtask.update";
@@ -32,7 +46,8 @@ public static class Operations
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
         TaskCreate, TaskUpdate, TaskDelete, TaskSetStatus, TaskSetEpic, TaskMove, TaskSetSchedule,
-        EpicCreate, EpicUpdate, EpicDelete,
+        TaskSetBoard, TaskSetAssignees,
+        EpicCreate, EpicUpdate, EpicDelete, EpicSetAssignees,
         SubTaskCreate, SubTaskUpdate, SubTaskDelete, SubTaskSetFinished,
     };
 }

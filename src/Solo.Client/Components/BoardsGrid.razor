@@ -4,6 +4,9 @@
 @inject ISnackbar Snackbar
 @inject SaveGuard Guard
 @inject NavigationManager Navigation
+@inject Solo.Client.Extensions.ExtensionCatalog Extensions
+@using Solo.Client.Extensions
+@using Solo.Shared.Extensibility
 
 @*
     Fold, don't hide: closed boards live in a faded foldout with one-click
@@ -162,6 +165,7 @@ else
 
     private async Task RenameBoardAsync(BoardDto board)
     {
+        var sections = ContributedSections.Find<BoardSettingsSectionAttribute>(Extensions, a => a.Title, a => a.Order);
         var dialog = await Dialogs.ShowAsync<NameIconDialog>(
             "Board settings",
             new DialogParameters<NameIconDialog>
@@ -171,6 +175,7 @@ else
                 { d => d.Icon, board.Icon },
                 { d => d.ImageId, board.ImageId },
                 { d => d.SaveText, "Save" },
+                { d => d.ChildContent, sections.Count == 0 ? null : BoardSections(board, sections) },
             });
 
         if (await dialog.Result is not { Canceled: false, Data: NameIconDialog.NameIcon edited })
@@ -178,6 +183,7 @@ else
             return;
         }
 
+        var version = sections.Count == 0 ? board.Version : await VersionAfterSectionsAsync(board);
         var saved = await Guard.RunAsync(
             () => Api.UpdateBoardAsync(board.Id, new UpdateBoardRequest
             {
@@ -185,13 +191,53 @@ else
                 Alias = edited.Alias,
                 Icon = edited.Icon,
                 ImageId = edited.ImageId,
-                Version = board.Version,
+                Version = version,
             }),
             LoadAsync);
         if (saved is not null)
         {
             await LoadAsync();
             await Nav.RefreshBoardsAsync(ProjectId);
+        }
+    }
+
+    /// <summary>Extensions' <c>[BoardSettingsSection]</c>s, each under a title and its own boundary.</summary>
+    private RenderFragment BoardSections(BoardDto board, IReadOnlyList<ContributedSection> sections) => __builder =>
+    {
+        var parameters = new Dictionary<string, object> { ["Board"] = board, ["CanWrite"] = CanWrite };
+        foreach (var contributed in sections)
+        {
+            <MudText Typo="Typo.h5" Class="mt-5 mb-2">@contributed.Title</MudText>
+            <ErrorBoundary @key="contributed.Component">
+                <ChildContent>
+                    <DynamicComponent Type="@contributed.Component" Parameters="@parameters" />
+                </ChildContent>
+                <ErrorContent>
+                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
+                        @contributed.Title couldn't load.
+                    </MudText>
+                </ErrorContent>
+            </ErrorBoundary>
+        }
+    };
+
+    /// <summary>
+    /// The version to save the dialog's fields against. A section saving into
+    /// the board's extension field bag moves the board's version without
+    /// touching anything this dialog edits; carry that forward rather than
+    /// answer the person's own change with a conflict. Anything else that moved
+    /// keeps the old version, so a real conflict still is one.
+    /// </summary>
+    private async Task<uint> VersionAfterSectionsAsync(BoardDto board)
+    {
+        try
+        {
+            var fresh = (await Api.GetBoardsAsync(ProjectId)).FirstOrDefault(b => b.Id == board.Id);
+            return fresh is not null && fresh with { Version = board.Version } == board ? fresh.Version : board.Version;
+        }
+        catch (ApiException)
+        {
+            return board.Version;
         }
     }
 

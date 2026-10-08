@@ -16,6 +16,9 @@ public sealed class FixtureHook(IHttpContextAccessor http) : ISoloOperationHook
         Extensibility.Operations.TaskUpdate,
         Extensibility.Operations.TaskSetStatus,
         Extensibility.Operations.TaskSetSchedule,
+        Extensibility.Operations.TaskSetBoard,
+        Extensibility.Operations.TaskSetAssignees,
+        Extensibility.Operations.EpicSetAssignees,
     };
 
     public int Order => 10;

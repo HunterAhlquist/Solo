@@ -302,6 +302,33 @@ namespace Solo.Data.Migrations
                     b.ToTable("EpicGroups");
                 });
 
+            modelBuilder.Entity("Solo.Data.Entities.ExtensionGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ExtensionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("GrantedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ExtensionId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ExtensionGrants");
+                });
+
             modelBuilder.Entity("Solo.Data.Entities.ExtensionRegistration", b =>
                 {
                     b.Property<string>("ExtensionId")
@@ -777,6 +804,17 @@ namespace Solo.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Board");
+                });
+
+            modelBuilder.Entity("Solo.Data.Entities.ExtensionGrant", b =>
+                {
+                    b.HasOne("Solo.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Solo.Data.Entities.Label", b =>

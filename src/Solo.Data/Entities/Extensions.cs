@@ -41,6 +41,35 @@ public class ExtensionRegistration
     public string? FailureReason { get; set; }
 }
 
+/// <summary>
+/// A user's standing permission for one extension to act as them outside a
+/// request — the grant behind <c>ISoloBackground.RunAsAsync</c> (contract 1.8).
+/// </summary>
+/// <remarks>
+/// <para>In core rather than the extension's schema because revoking it is
+/// core's job: signing a user out everywhere deletes these with their sessions,
+/// so background work stops on the same click as everything else they hold. A
+/// grant the extension kept itself would survive that unless every extension
+/// remembered to revoke it.</para>
+///
+/// <para>Only ever created in a request made by the user it names —
+/// <c>GrantAsync</c> takes no user id. No foreign key to
+/// <see cref="ExtensionRegistration"/>: purging an extension deletes its grants
+/// explicitly, alongside its schema.</para>
+/// </remarks>
+public class ExtensionGrant
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+
+    public required string ExtensionId { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public User User { get; set; } = null!;
+
+    public DateTimeOffset GrantedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 /// <summary>What the instance currently knows about a registered extension.</summary>
 public enum ExtensionRegistrationState
 {

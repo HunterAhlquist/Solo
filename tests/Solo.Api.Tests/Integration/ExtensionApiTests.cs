@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Solo.Data;
+using Solo.Extensibility;
 using Solo.Extensions;
 using Solo.Shared;
 using Solo.Shared.Dtos;
@@ -223,7 +224,9 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         // Loaded this boot, so purge is refused — that gate is what makes
         // dropping the schema safe without any locking.
         Assert.False(fixture.CanPurge);
-        Assert.Equal(["task.update", "task.setStatus", "task.setSchedule"], fixture.Hooks);
+        Assert.Equal(
+            ["task.update", "task.setStatus", "task.setSchedule", "task.setBoard", "task.setAssignees", "epic.setAssignees"],
+            fixture.Hooks);
     }
 
     [SkippableFact]
@@ -418,6 +421,177 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         response.EnsureSuccessStatusCode();
     }
 
+    [SkippableFact]
+    public async Task BoardMoves_AndAssigneeChanges_AreHookable()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (project, board) = await CreateProjectWithBoard("Hooked", "HOOK");
+        var other = await _admin.PostJson<BoardDto>(
+            $"/api/projects/{project.Id}/boards", new { name = "Other", alias = "OTHER" });
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Stays put" });
+        var epic = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Epic" });
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+
+        // The three write paths contract 1.8 opened, each vetoed by the fixture.
+        await AssertVetoedAsync(HttpMethod.Put, $"/api/tasks/{task.Id}/board", new { boardId = other.Id });
+        await AssertVetoedAsync(HttpMethod.Put, $"/api/tasks/{task.Id}/assignees", new { userIds = new[] { me.Id } });
+        await AssertVetoedAsync(HttpMethod.Put, $"/api/epics/{epic.Id}/assignees", new { userIds = new[] { me.Id } });
+
+        var unchanged = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
+        Assert.Equal(board.Id, unchanged.BoardId);
+        Assert.Empty(unchanged.AssigneeIds);
+    }
+
+    // -----------------------------------------------------------------------
+    // Member and comment reads (contract 1.8)
+    // -----------------------------------------------------------------------
+
+    [SkippableFact]
+    public async Task ExtensionQuery_ReadsMembersAndComments_OnlyWhereTheCallerCan()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (project, board) = await CreateProjectWithBoard("Readable", "READ");
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "pending@example.com", role = "Read" });
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = "Talked about" });
+        var comment = await _admin.PostJson<CommentDto>($"/api/tasks/{task.Id}/comments", new { body = "First!" });
+
+        // What core's members endpoint shows a reader, pending invites included.
+        var members = await _admin.GetJson<List<string>>($"/api/ext/fixture/api/tasks/members/{project.Id}");
+        Assert.Equal(["admin@example.com", "pending@example.com"], members.Order());
+        Assert.Equal("First!", (await _admin.GetJson<CommentDto>($"/api/ext/fixture/api/tasks/comments/{comment.Id}")).Body);
+        Assert.Equal(["First!"], await _admin.GetJson<List<string>>($"/api/ext/fixture/api/tasks/task-comments/{task.Id}"));
+
+        // Someone outside the project asks the same questions and learns nothing.
+        var stranger = _factory.As("stranger", "stranger@example.com");
+        Assert.Empty(await stranger.GetJson<List<string>>($"/api/ext/fixture/api/tasks/members/{project.Id}"));
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await stranger.GetAsync($"/api/ext/fixture/api/tasks/comments/{comment.Id}")).StatusCode);
+        Assert.Empty(await stranger.GetJson<List<string>>($"/api/ext/fixture/api/tasks/task-comments/{task.Id}"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Background work (contract 1.8)
+    // -----------------------------------------------------------------------
+
+    private ISoloBackground Background => _factory.Services.GetRequiredKeyedService<ISoloBackground>("fixture");
+
+    private async Task<Guid> GrantAsync()
+    {
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        (await _admin.PostAsync("/api/ext/fixture/api/tasks/background-grant", null)).EnsureSuccessStatusCode();
+        return me.Id;
+    }
+
+    [SkippableFact]
+    public async Task Background_RunsOnlyAsAUserWhoGrantedIt()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        var ran = false;
+        Assert.False(await Background.RunAsAsync(me.Id, (_, _) => { ran = true; return Task.CompletedTask; }));
+        Assert.False(ran);
+
+        await GrantAsync();
+        Assert.True(await Background.IsGrantedAsync(me.Id));
+        Assert.True(await Background.RunAsAsync(me.Id, (_, _) => { ran = true; return Task.CompletedTask; }));
+        Assert.True(ran);
+
+        Assert.True(await Background.RevokeAsync(me.Id));
+        Assert.False(await Background.RunAsAsync(me.Id, (_, _) => Task.CompletedTask));
+    }
+
+    [SkippableFact]
+    public async Task Background_ReadsAndWritesAsTheUser_ThroughTheWholePipeline()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var task = await CreateTaskAsync("Nightly", "NITE");
+        var me = await GrantAsync();
+        // The admin is a super admin; what follows shows background work isn't.
+        (await _admin.GetAsync("/api/admin/users")).EnsureSuccessStatusCode();
+
+        var ran = await Background.RunAsAsync(me, async (scope, ct) =>
+        {
+            Assert.Equal(me, scope.Caller.UserId);
+            Assert.False(scope.Caller.IsSuperAdmin);
+            Assert.NotEmpty(await scope.Query.ProjectsAsync(ct));
+
+            // A write meets every extension's hooks, as one from a browser does...
+            using var vetoed = new HttpRequestMessage(HttpMethod.Put, $"api/tasks/{task.Id}/status")
+            {
+                Content = JsonContent.Create(new { status = "InProgress" }, options: TestClients.Json),
+            };
+            vetoed.Headers.Add("X-Fixture-Hook", "reject");
+            Assert.Equal(HttpStatusCode.Conflict, (await scope.Api.SendAsync(vetoed, ct)).StatusCode);
+
+            // ...and lands when nothing objects.
+            (await scope.Api.PutAsJsonAsync($"api/tasks/{task.Id}/status", new { status = "InProgress" },
+                TestClients.Json, ct)).EnsureSuccessStatusCode();
+
+            // Never super admin, whoever granted it.
+            Assert.Equal(HttpStatusCode.Forbidden, (await scope.Api.GetAsync("api/admin/users", ct)).StatusCode);
+
+            // And no way to mint a credential that would outlive the grant.
+            var session = await scope.Api.PostAsJsonAsync("api/auth/sessions", new { description = "escape" }, ct);
+            Assert.False(session.IsSuccessStatusCode);
+        });
+
+        Assert.True(ran);
+        Assert.Equal(TaskState.InProgress, (await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}")).Status);
+    }
+
+    [SkippableFact]
+    public async Task Background_GrantRevokedMidRun_StopsTheNextCall()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var task = await CreateTaskAsync("Revoked", "RVKD");
+        var me = await GrantAsync();
+
+        await Background.RunAsAsync(me, async (scope, ct) =>
+        {
+            (await scope.Api.GetAsync($"api/tasks/{task.Id}", ct)).EnsureSuccessStatusCode();
+            await Background.RevokeAsync(me, ct);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await scope.Api.GetAsync($"api/tasks/{task.Id}", ct)).StatusCode);
+        });
+    }
+
+    [SkippableFact]
+    public async Task Background_GrantComesFromThePerson_NotFromBackgroundWork()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        // Outside any request there is no one to grant.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Background.GrantAsync());
+
+        var me = await GrantAsync();
+        await Background.RunAsAsync(me, async (scope, ct) =>
+        {
+            var response = await scope.Api.PostAsync("api/ext/fixture/api/tasks/background-grant", null, ct);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        });
+    }
+
+    [SkippableFact]
+    public async Task SigningOutEverywhere_EndsBackgroundAccess()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var me = await GrantAsync();
+
+        var result = await _admin.PostJson<SignOutEverywhereResultDto>(
+            $"/api/admin/users/{me}/sign-out-everywhere", new { });
+
+        // Reported against the extension, as its own credentials would be.
+        Assert.Contains(result.Extensions, r => r is { ExtensionId: "fixture", Count: 1 });
+        Assert.False(await Background.IsGrantedAsync(me));
+        Assert.False(await Background.RunAsAsync(me, (_, _) => Task.CompletedTask));
+    }
+
     // -----------------------------------------------------------------------
     // The disabled gate
     // -----------------------------------------------------------------------
@@ -485,6 +659,20 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var (_, board) = await CreateProjectWithBoard(taskName, alias);
         return await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name = taskName });
+    }
+
+    private async Task AssertVetoedAsync(HttpMethod method, string url, object body)
+    {
+        using var request = new HttpRequestMessage(method, url)
+        {
+            Content = JsonContent.Create(body, options: TestClients.Json),
+        };
+        request.Headers.Add("X-Fixture-Hook", "reject");
+        var response = await _admin.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.Equal("fixture", problem!["extension"].ToString());
     }
 
     private static async Task<bool> ScalarBoolAsync(NpgsqlConnection connection, string sql)

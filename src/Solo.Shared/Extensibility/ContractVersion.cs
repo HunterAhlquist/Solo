@@ -40,10 +40,24 @@ namespace Solo.Shared.Extensibility;
 /// out everywhere revokes the credentials an extension issued them as well as
 /// core's sessions. It is server-only, so a package needs 1.7 only in
 /// <c>soloApiVersion</c>.</para>
+/// <para>1.8.0 fills the gaps the first round of extension ideas ran into. On
+/// the server: background work as a user who granted it (<c>ISoloBackground</c>),
+/// member and comment reads on <c>ISoloQuery</c>, per-user live topics, and
+/// three more hookable operations (<c>task.setBoard</c>, <c>task.setAssignees</c>,
+/// <c>epic.setAssignees</c>). In the browser: contributions to task cards
+/// (<see cref="TaskCardExtensionAttribute"/>), board column headers
+/// (<see cref="BoardColumnExtensionAttribute"/>), project and board settings
+/// (<see cref="ProjectSettingsSectionAttribute"/>,
+/// <see cref="BoardSettingsSectionAttribute"/>), the app bar
+/// (<see cref="AppBarExtensionAttribute"/>) and core's task menu
+/// (<see cref="ISoloTaskMenuContributor"/>), plus
+/// <see cref="ISoloLiveTopics.SubscribeUserAsync"/>. Both halves changed, so a
+/// package using any of it needs 1.8 in whichever range covers the half that
+/// uses it.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.7.0";
+    public const string Current = "1.8.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

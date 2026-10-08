@@ -9,13 +9,20 @@ namespace Solo.Api.Realtime;
 /// memory for the same reason as <see cref="PresenceRegistry"/>: one instance.
 /// </summary>
 /// <remarks>
-/// Subscribing and being present are separate: a sidebar list subscribes to
+/// <para>Subscribing and being present are separate: a sidebar list subscribes to
 /// hear about changes without announcing anyone, while a page also reports its
 /// reader. A connection is a tab, so one person with two tabs open is two
-/// entries here and one in a snapshot, at the stronger of the two modes.
+/// entries here and one in a snapshot, at the stronger of the two modes.</para>
+///
+/// <para>A user's own topics are held here too, under <see cref="UserScope"/> in
+/// place of a project, so they count toward the same per-connection limit and
+/// go when the connection does. Nobody reports presence on one.</para>
 /// </remarks>
 public sealed class TopicRegistry
 {
+    /// <summary>The "project" a user topic is held under. No project has an empty id.</summary>
+    public static readonly Guid UserScope = Guid.Empty;
+
     private sealed record Subscription(Guid UserId, string? DisplayName, PresenceMode Mode);
 
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<(Guid ProjectId, string Topic), Subscription>>

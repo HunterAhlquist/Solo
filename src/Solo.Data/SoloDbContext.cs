@@ -21,6 +21,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
     public DbSet<ImageAsset> ImageAssets => Set<ImageAsset>();
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
     public DbSet<ExtensionRegistration> ExtensionRegistrations => Set<ExtensionRegistration>();
+    public DbSet<ExtensionGrant> ExtensionGrants => Set<ExtensionGrant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,6 +58,17 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
             e.Property(x => x.LastSeenVersion).HasMaxLength(32);
             e.Property(x => x.State).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.FailureReason).HasMaxLength(2000);
+        });
+
+        modelBuilder.Entity<ExtensionGrant>(e =>
+        {
+            e.Property(g => g.ExtensionId).HasMaxLength(64);
+            // One grant per user per extension: granting again is a no-op, and
+            // the pair is what RunAsAsync looks up.
+            e.HasIndex(g => new { g.ExtensionId, g.UserId }).IsUnique();
+            e.HasIndex(g => g.UserId);
+            e.HasOne(g => g.User).WithMany()
+                .HasForeignKey(g => g.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Project>(e =>

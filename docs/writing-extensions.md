@@ -742,3 +742,195 @@ services.AddCredentialIssuer<TokenIssuer>();
   provisioning reads an `email` claim as the provider's current word for it. It
   activates pending invites to that address and overwrites the user's own. A
   copy you stored when the token was minted is neither current nor verified.
+
+## Contract 1.8
+
+Both halves changed. Declare `"soloApiVersion": ">=1.8 <2.0"` to use the
+server additions and `"soloClientVersion": ">=1.8 <2.0"` to use the client ones;
+a package using only one half's additions needs 1.8 only in that range.
+
+### More hookable operations
+
+Three more write paths carry `[SoloOperation]`:
+
+| Operation | Endpoint | Note |
+|---|---|---|
+| `task.setBoard` | `PUT api/tasks/{taskId}/board` | Moving to another board. Not `task.move`, which reorders within one. The destination is the request's `BoardId`; `Target.BoardId` is empty. |
+| `task.setAssignees` | `PUT api/tasks/{taskId}/assignees` | The request carries the whole new list. |
+| `epic.setAssignees` | `PUT api/epics/{epicId}/assignees` | The same, for an epic. |
+
+A WIP limit on "work in progress per person" needs both `task.setStatus` and
+`task.setAssignees`: without the second, assigning someone a task that is
+already in progress gets around the limit.
+
+### Members and comments: `ISoloQuery`
+
+- **`MembersAsync(projectId)`** returns the members, pending invites included,
+  as core's own members endpoint shows them to anyone who can read the project.
+  Emails included, because that endpoint includes them. It reveals nothing a
+  member couldn't already see, and there is no instance-wide user list.
+- **`CommentAsync(commentId)`** returns one comment, or null when the caller
+  can't read what it is on. A `comment` event carries only the id, so this is
+  how a handler gets the text, for @mentions or a chat feed.
+- **`TaskCommentsAsync(taskId)`** returns a task's thread, oldest first.
+
+### Background work: `ISoloBackground`
+
+Outside a request there is no caller, so `ISoloQuery` returns nothing and there
+is no credential to write with. `ISoloBackground` gives scheduled work both, as
+a user who said it may.
+
+```csharp
+// The endpoint a person uses to switch the feature on: their grant.
+[HttpPost("projects/{projectId:guid}/digest")]
+[Authorize(Policy = SoloPolicies.ProjectRead)]
+public async Task<IActionResult> Enable(
+    Guid projectId, [FromKeyedServices("digest")] ISoloBackground background, CancellationToken ct)
+{
+    await background.GrantAsync(ct);
+    // ... save the subscription in your own schema ...
+    return NoContent();
+}
+
+// Later, from a hosted service.
+public sealed class DigestService([FromKeyedServices("digest")] ISoloBackground background) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stopping)
+    {
+        foreach (var userId in await SubscribersAsync(stopping))
+        {
+            var ran = await background.RunAsAsync(userId, async (scope, ct) =>
+            {
+                var projects = await scope.Query.ProjectsAsync(ct);   // as this user
+                await scope.Api.PutAsJsonAsync($"api/tasks/{id}/status", body, Json, ct);  // as this user
+            }, stopping);
+            // ran is false when the grant is gone: skip them, or tidy up.
+        }
+    }
+}
+```
+
+- **A grant can only come from the person.** `GrantAsync` takes no user id; it
+  records the caller of the request it runs in, and refuses outside a request,
+  for an anonymous caller, and from background work.
+- **Core keeps the grants**, so core can revoke them: a super admin signing a
+  user out everywhere deletes theirs along with their sessions, and the answer
+  reports them against your extension. Purging the extension deletes its grants.
+  `RevokeAsync` is for when the last thing that needed one is gone.
+- **The work can do what a request from that user could, checked when it
+  runs.** A member who has left a project can no longer touch it. It never
+  carries super admin: Admin settings' endpoints refuse it, and
+  `scope.Caller.IsSuperAdmin` is false.
+- **Write through `scope.Api`.** It is core's REST API, authenticated as the
+  user, so a change passes authorization, every extension's hooks, the audit log
+  and the live broadcast. Each request carries a fresh short-lived credential
+  that names the grant, which core re-reads every time, so a revoked grant stops
+  the very next call. Core reads and writes enums as strings; serialize with a
+  `JsonStringEnumConverter`.
+- **Requests from it carry `SoloBackgroundClaims.ExtensionId`**, set by core
+  from the grant. An `ISoloAuditContributor` can use it to attribute a change to
+  your extension rather than to the person alone.
+- **The API is reached over loopback**, at the address the server listens on.
+  When that can't be dialled from inside the container, set
+  `Extensions__ApiBaseUrl`.
+
+### User topics
+
+A project topic is open to every member of the project, so
+`"inbox:{someoneElse}"` on one would be readable by all of them. A user topic
+belongs to one person:
+
+```csharp
+// Server half.
+await live.PublishToUserAsync(recipientId, "inbox", "unread", count.ToString(), ct);
+
+// Client half: the signed-in user's own topic, in every tab they have open.
+_inbox = await Live.SubscribeUserAsync("inbox", message => InvokeAsync(ReloadAsync));
+```
+
+The hub joins a user topic on behalf of whoever is signed in on the connection,
+so there is no way to ask for someone else's. Messages carry an empty
+`ProjectId`. There is no presence on a user topic. Otherwise it behaves like a
+project topic: a nudge, sender left out, best-effort.
+
+### Task cards and board columns
+
+| Attribute | Where it renders | Parameters |
+|---|---|---|
+| `[TaskCardExtension(Order = 0)]` | Every task card on a board, in its bottom row beside the deadline ring | `Task` (`TaskDto`), `ProjectId` (`Guid`), `CanWrite` (`bool`) |
+| `[BoardColumnExtension(Order = 0)]` | Beside each column's title in the board header, after core's count | `Board` (`BoardDto`), `Status` (`TaskState`), `Tasks` (`IReadOnlyList<TaskDto>`), `CanWrite` (`bool`) |
+
+- **A card contribution renders once per card**, and a board can show
+  hundreds. Load per board, not per card: one fetch shared through a static
+  cache in your assembly, keyed by board id and refreshed from a live topic.
+- **Keep it to a glance:** a badge, a chip, a count. Render nothing when there is
+  nothing to say.
+- **The card opens the drawer when clicked**, so anything interactive inside
+  your contribution needs `@onclick:stopPropagation`.
+- **`Tasks` is the column across all the board's lanes**, folded finished cards
+  included, the same set core counts. A WIP badge needs no request.
+- **The phone layout hides the board header**, so column contributions don't
+  show there.
+
+### The task menu: `ISoloTaskMenuContributor`
+
+Core shows a menu for a task when someone right-clicks its card, and from a ⋯
+button in its drawer, which is how a touchscreen reaches it. An extension adds
+items with a class, not a component:
+
+```csharp
+[TaskMenuContributor(Order = 0)]
+public sealed class SprintMenu(ISoloClientApi api, ISoloTaskPicker picker) : ISoloTaskMenuContributor
+{
+    public ValueTask<IReadOnlyList<ContextMenuItem>> ItemsAsync(TaskMenuContext context, CancellationToken ct) =>
+        ValueTask.FromResult<IReadOnlyList<ContextMenuItem>>(context.CanWrite
+            ? [new ContextMenuItem("add", "Add to sprint")]
+            : []);
+
+    public Task OnChosenAsync(string itemId, TaskMenuContext context) =>
+        api.SendAsync(HttpMethod.Post, $"api/ext/sprints/tasks/{context.Task.Id}", null);
+}
+```
+
+- **The host creates it for each menu** from its own services, so the
+  constructor can take `ISoloClientApi`, `ISoloTaskPicker`, `IDialogService` and
+  the rest. It is disposed after the menu closes if it is disposable.
+- **`ItemsAsync` is awaited before the menu shows.** Answer from what you
+  already hold. A contributor that throws or takes longer than a second is left
+  out of that menu, and the rest still show.
+- **Ids are yours alone.** The host prefixes them, so two extensions can both
+  say `"open"`, and `OnChosenAsync` gets your own id back.
+- **Core's items come first** ("Open task" on a card), then each contributor's
+  as a group of its own. A board only takes over the right click on its cards
+  while some extension contributes; with none installed, it stays the browser's.
+- **Leave out what the person can't do.** The menu checks nothing, so an item
+  that would only fail is worse than no item.
+
+### Project and board settings
+
+| Attribute | Where it renders | Parameters |
+|---|---|---|
+| `[ProjectSettingsSection("Title", Order = 0)]` | A project's Settings tab, below core's fields and above the danger zone | `Project` (`ProjectSummaryDto`), `CanWrite` (`bool`) |
+| `[BoardSettingsSection("Title", Order = 0)]` | A board's settings dialog, below its name, alias and icon | `Board` (`BoardDto`), `CanWrite` (`bool`) |
+
+Core draws the title. Your section saves through your own endpoint, on its own
+control or as it changes, and that endpoint checks for itself: the Settings tab
+only shows to owners, but that is a hiding place, not a guard. Use
+`SoloPolicies.ProjectOwner` or `ProjectWrite` on a route carrying the project or
+board id.
+
+The board dialog's Save button saves core's fields only. Per-board values fit
+the board's extension field bag (`IExtensionFieldStore` with
+`ExtensionEntity.Board`); saving one moves the board's version, and the dialog
+carries that forward rather than answering the person's own change with a
+conflict.
+
+### The app bar
+
+`[AppBarExtension(Order = 0)]` marks a component rendered in the app bar,
+before the connection indicator and the account menu, on every page once
+signed in. It receives no parameters. It is the one place always on screen,
+which makes it the place for state that changes while the person is elsewhere:
+an unread count, a running timer. Keep it to an icon button with a badge. The
+bar is narrow on a phone and every extension shares it. A manifest nav entry is
+still the way to a page. Pair it with a user topic to keep the count live.
