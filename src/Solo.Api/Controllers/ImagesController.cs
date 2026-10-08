@@ -1,22 +1,24 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Solo.Api.Auth;
 using Solo.Api.Services;
 using Solo.Data;
 using Solo.Data.Entities;
+using Solo.Shared;
 using Solo.Shared.Dtos;
 
 namespace Solo.Api.Controllers;
 
 /// <summary>
 /// Stores small custom icons (project/board/label images) inline in Postgres.
-/// Uploads require a signed-in user; reads are anonymous so a plain
+/// Uploads need write access to a project; reads are anonymous so a plain
 /// <c>&lt;img src="api/images/{id}"&gt;</c> resolves without an auth header — the
 /// GUID id is the only capability, and the bytes are immutable per id so they
 /// cache forever.
 /// </summary>
 [Route("api/images")]
-public sealed class ImagesController(SoloDbContext db) : ApiControllerBase
+public sealed class ImagesController(SoloDbContext db, CurrentUserAccessor currentUser) : ApiControllerBase
 {
     /// <summary>1 MB — these are icons, not photos.</summary>
     private const long MaxBytes = 1024 * 1024;
@@ -46,6 +48,14 @@ public sealed class ImagesController(SoloDbContext db) : ApiControllerBase
     [RequestSizeLimit(MaxBytes + 4096)]
     public async Task<ActionResult<ImageAssetDto>> Upload(IFormFile file, CancellationToken ct)
     {
+        if (!await CanPlaceAnIconAsync(ct))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status403Forbidden,
+                title: "Not allowed",
+                detail: "Uploading an image needs write access to a project.");
+        }
+
         if (file is null || file.Length == 0)
         {
             return Problem(
@@ -111,6 +121,20 @@ public sealed class ImagesController(SoloDbContext db) : ApiControllerBase
         Response.Headers.XContentTypeOptions = "nosniff";
         Response.Headers.ContentSecurityPolicy = IsolationPolicy;
         return File(image.Data, image.ContentType);
+    }
+
+    /// <summary>
+    /// Every image is an icon for a project, board or label, so only someone who
+    /// could put one there may upload: write access somewhere (the same test as
+    /// <c>AccessPolicy</c>'s Write level), or super admin, who creates projects.
+    /// Nothing deletes an image, and the bytes are served to anyone holding the
+    /// id, so a read-only member has no business adding rows.
+    /// </summary>
+    private async Task<bool> CanPlaceAnIconAsync(CancellationToken ct)
+    {
+        var user = currentUser.User!;
+        return user.IsSuperAdmin || await db.ProjectMembers.AsNoTracking()
+            .AnyAsync(m => m.UserId == user.Id && (m.IsOwner || m.Role == ProjectRole.ReadWrite), ct);
     }
 
     /// <summary>

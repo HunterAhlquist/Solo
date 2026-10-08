@@ -34,8 +34,11 @@ public class LayoutWidthTests : ComponentTestBase
         var http = new StubHttp()
             .RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
             .RouteJson("api/themes", new ThemeScanResultDto([], []))
-            .RouteJson("api/extensions/admin", new ExtensionAdminDto([], []));
-        Services.AddSingleton(http.CreateClient());
+            .RouteJson("api/extensions/admin", new ExtensionAdminDto([], []))
+            .RouteJson("api/admin/users", new List<AdminUserDto>());
+        var api = http.CreateClient();
+        Services.AddSingleton(api);
+        Services.AddSingleton(new UserSession(api));
 
         var page = Render<InstanceSettings>();
 

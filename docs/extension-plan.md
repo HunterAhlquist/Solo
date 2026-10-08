@@ -141,7 +141,7 @@ The host then calls `mvcBuilder.AddApplicationPart(assembly)` so the extension's
 Extension controllers are ordinary MVC controllers. Two rules the host enforces rather than trusts:
 
 - **Routes are namespaced.** An `IApplicationModelConvention` applied only to extension application parts rewrites every route to `/api/ext/{extensionId}/…`, regardless of what the extension's `[Route]` says. Without this an extension can shadow `/api/tasks`.
-- **Authorization is inherited.** The fallback policy in `Program.cs` already requires an authenticated caller, so an extension action shipped without `[Authorize]` fails closed. `Solo.Extensibility` re-exports the `ProjectRead`/`ProjectWrite`/`ProjectOwner` policy names so extensions authorize identically to core.
+- **Authorization is inherited.** The default and fallback policies in `Program.cs` require a provisioned Solo user, so an extension action shipped without `[Authorize]` fails closed. `Solo.Extensibility` re-exports the `ProjectRead`/`ProjectWrite`/`ProjectOwner` policy names so extensions authorize identically to core.
 
 ## 6. Data
 

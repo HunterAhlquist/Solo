@@ -67,6 +67,68 @@ public sealed class SessionsApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task SignedInDevices_ListYourOwnSessions_AndRevokeOne()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var mine = await CreateSessionAsync();
+        var spare = await CreateSessionAsync();
+        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Devices", alias = "DEVICES" });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "other@example.com", role = "Read" });
+        var other = _factory.As("other", "other@example.com");
+        var theirs = await other.PostJson<SessionDto>("/api/auth/sessions", new { description = "their laptop" });
+
+        using var viaMine = WithSessionToken(mine.Token);
+        var listed = await viaMine.GetJson<List<AuthSessionDto>>("/api/auth/sessions");
+        Assert.Equal(2, listed.Count);
+        Assert.Equal("test client", Assert.Single(listed, s => s.IsCurrent).Description);
+
+        // Metadata only: a token is readable once, when it is minted.
+        var raw = await viaMine.GetStringAsync("/api/auth/sessions");
+        Assert.DoesNotContain(mine.Token, raw, StringComparison.Ordinal);
+        Assert.DoesNotContain(spare.Token, raw, StringComparison.Ordinal);
+
+        var spareId = listed.Single(s => !s.IsCurrent).Id;
+        Assert.Equal(HttpStatusCode.NoContent, (await viaMine.DeleteAsync($"/api/auth/sessions/{spareId}")).StatusCode);
+        using (var viaSpare = WithSessionToken(spare.Token))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await viaSpare.GetAsync("/api/users/me")).StatusCode);
+        }
+
+        // Someone else's session id is not yours to revoke, and says nothing.
+        using var viaTheirs = WithSessionToken(theirs.Token);
+        var theirId = Assert.Single(await viaTheirs.GetJson<List<AuthSessionDto>>("/api/auth/sessions")).Id;
+        Assert.Equal(HttpStatusCode.NotFound, (await viaMine.DeleteAsync($"/api/auth/sessions/{theirId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await viaTheirs.GetAsync("/api/users/me")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task SigningOutOtherDevices_KeepsTheCurrentSession()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var mine = await CreateSessionAsync();
+        var laptop = await CreateSessionAsync();
+        var desktop = await CreateSessionAsync();
+
+        using var viaMine = WithSessionToken(mine.Token);
+        Assert.Equal(HttpStatusCode.NoContent, (await viaMine.DeleteAsync("/api/auth/sessions")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await viaMine.GetAsync("/api/users/me")).StatusCode);
+        foreach (var revoked in new[] { laptop, desktop })
+        {
+            using var client = WithSessionToken(revoked.Token);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/users/me")).StatusCode);
+        }
+
+        // From a browser signed in with the provider there is no current
+        // session, so every device signs out.
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.DeleteAsync("/api/auth/sessions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await viaMine.GetAsync("/api/users/me")).StatusCode);
+    }
+
+    [SkippableFact]
     public async Task SessionToken_CannotMintAnotherSession()
     {
         postgres.SkipUnlessDockerAvailable();

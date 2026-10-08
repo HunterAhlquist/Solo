@@ -35,7 +35,7 @@ A folder beside the solution, its own repository, or alongside core under `src/`
 
   <ItemGroup>
     <!-- The ONLY Solo reference an extension may take. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.6.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.7.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -189,7 +189,7 @@ public sealed class MilestonesController(RoadmapDbContext db, ISoloQuery query) 
 
 - The route carries a `projectId`/`boardId`/`epicId`/`taskId`/`subTaskId` → use `SoloPolicies.ProjectRead` / `ProjectWrite` / `ProjectOwner`. They resolve the project from those route values.
 - The route carries none of them → a project policy **cannot resolve a project and will deny**. Use a plain `[Authorize]` and scope your reads through `ISoloQuery`.
-- Omitting `[Authorize]` entirely still requires an authenticated caller — the fallback policy is fail-closed.
+- A plain `[Authorize]` — and omitting it entirely, since the fallback policy is fail-closed — requires a **provisioned Solo user**, not just a valid sign-in. Anyone with a Google account can get an ID token for the instance from its sign-in page; an identity nobody invited is refused before your action runs.
 
 ## 7. Hooks — intercepting core writes
 
@@ -260,7 +260,7 @@ A Razor Class Library. Its `@page` routes join the app's router automatically, a
     <SupportedPlatform Include="browser" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.11" />
     <PackageReference Include="MudBlazor" Version="9.8.0" />
-    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.6.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.7.0" />
   </ItemGroup>
 </Project>
 ```
@@ -705,3 +705,40 @@ private async Task OnRowMenuAsync(MouseEventArgs e, Milestone milestone)
   your endpoint does. An item that would only fail is worse than no item.
 - **Touchscreens have no right-click.** Open the same menu from a long press, or
   from a visible button, such as a `⋯` on the row.
+
+## Contract 1.7
+
+Declare `"soloApiVersion": ">=1.7 <2.0"` to use this section. It adds nothing
+on the client. MCP 1.6 uses it.
+
+### Credentials you issue: `ISoloCredentialIssuer`
+
+If your extension mints credentials of its own on a user's behalf (API
+tokens, keys), register a revoker for them. A super admin's **Sign out
+everywhere** in Admin settings revokes core's sessions and then calls every
+enabled issuer, so one action cuts off everything that person holds. Without
+one, your tokens survive it.
+
+```csharp
+public sealed class TokenIssuer(MyDbContext db) : ISoloCredentialIssuer
+{
+    public Task<int> RevokeAllAsync(CredentialHolder holder, CancellationToken ct) =>
+        db.Tokens
+            .Where(t => t.Issuer == holder.Issuer && t.Subject == holder.Subject && t.RevokedAt == null)
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow), ct);
+}
+
+// In ConfigureServices:
+services.AddCredentialIssuer<TokenIssuer>();
+```
+
+- **Return how many you revoked.** The count is shown to the admin.
+- **It's awaited, and a failure is reported.** Unlike an event handler, this
+  runs in the admin's request. If it throws, the admin is told your extension
+  couldn't revoke its credentials. Core's sessions stay revoked either way.
+- **Match on issuer and subject**, the pair core keys users on, rather than on a
+  stored email. An email can change; the identity can't.
+- **Put only `iss` and `sub` on a principal your credential produces.** Core's
+  provisioning reads an `email` claim as the provider's current word for it. It
+  activates pending invites to that address and overwrites the user's own. A
+  copy you stored when the token was minted is neither current nor verified.

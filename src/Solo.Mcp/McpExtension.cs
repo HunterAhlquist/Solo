@@ -36,6 +36,8 @@ public sealed class McpExtension : ISoloExtension
 
         services.AddExtensionDbContext<McpDbContext>(context);
         services.AddScoped<ISoloAuditContributor, McpAuditContributor>();
+        // Signing a user out everywhere in Admin settings revokes their token too.
+        services.AddCredentialIssuer<McpCredentialIssuer>();
 
         // The credential. A scheme so the handler is a normal one, plus a
         // startup filter that runs it at the front of the pipeline — core

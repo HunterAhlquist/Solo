@@ -71,6 +71,9 @@ if (!string.IsNullOrEmpty(authority))
         options.MapInboundClaims = false;
         options.TokenValidationParameters.ValidAudience = clientId;
         options.TokenValidationParameters.NameClaimType = "name";
+        // Marks a provider sign-in as such, for the endpoints that mint Solo
+        // credentials and must accept nothing else (see CredentialKind).
+        options.TokenValidationParameters.AuthenticationType = AuthConstants.OidcAuthenticationType;
         // solo_ tokens are Solo sessions, not JWTs — hand them to that scheme.
         options.ForwardDefaultSelector = context =>
             SessionTokens.IsSessionToken(SessionTokens.FromRequest(context.Request))
@@ -101,12 +104,23 @@ builder.Services.AddScoped<SoloDbContextRoleLookup>();
 builder.Services.AddScoped<IExtensionCallerAccessor, ExtensionCallerAccessor>();
 builder.Services.AddScoped<IAuthorizationHandler, ProjectAccessHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, SuperAdminHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, SoloUserHandler>();
+// "Signed in" means a provisioned Solo user, not a valid token: any Google
+// account can get one of those from the sign-in page (see SoloUserRequirement).
+// It has to be both policies. A bare [Authorize] uses the default, and an
+// endpoint with no attribute at all uses the fallback — setting only one left
+// the other open to identities nobody invited. CurrentUserMiddleware runs
+// before UseAuthorization, so the user is resolved by the time this is checked.
+var soloUser = new AuthorizationPolicyBuilder()
+    .RequireAuthenticatedUser()
+    .AddRequirements(new SoloUserRequirement())
+    .Build();
 builder.Services.AddAuthorizationBuilder()
-    // Endpoints carrying no authorization metadata of their own require a
-    // signed-in caller, so an action added without an [Authorize] fails closed
+    .SetDefaultPolicy(soloUser)
+    // Endpoints carrying no authorization metadata of their own fail closed
     // instead of shipping as an anonymous hole. The handful of genuinely public
     // endpoints say so with [AllowAnonymous], which still wins over this.
-    .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+    .SetFallbackPolicy(soloUser)
     .AddPolicy(AuthConstants.SetupPolicy, p => p
         .AddAuthenticationSchemes(AuthConstants.SetupScheme)
         .RequireRole(AuthConstants.SetupAdminRole))

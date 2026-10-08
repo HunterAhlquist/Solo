@@ -18,6 +18,18 @@ public sealed record SessionDto(
     DateTimeOffset ExpiresAt,
     UserDto User);
 
+/// <summary>
+/// One of the caller's sessions, as the signed-in devices list shows it. The
+/// token itself is never readable again after it was minted.
+/// </summary>
+public sealed record AuthSessionDto(
+    Guid Id,
+    string? Description,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset LastUsedAt,
+    DateTimeOffset ExpiresAt,
+    bool IsCurrent);
+
 /// <summary>Opens a PKCE-bound desktop browser sign-in flow.</summary>
 public sealed class DesktopAuthStartRequest
 {

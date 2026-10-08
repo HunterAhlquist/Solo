@@ -25,9 +25,10 @@ public static class McpAuthentication
 /// Authenticates <c>solomcp_</c> tokens against the extension's own table.
 /// </summary>
 /// <remarks>
-/// <para>The principal carries the same raw OIDC claim names a provider token
-/// would — issuer, subject, email, name — because that pair is what core keys
-/// users on. Core's own <c>UserProvisioningService</c> then resolves the row,
+/// <para>The principal carries the raw OIDC issuer and subject claims a provider
+/// token would, because that pair is what core keys users on — and nothing
+/// else, see <see cref="HandleAuthenticateAsync"/>. Core's own
+/// <c>UserProvisioningService</c> then resolves the row,
 /// so project authorization, auditing and the extension query API all behave as
 /// though the user had signed in, with no core code aware that MCP exists.</para>
 ///
@@ -72,21 +73,17 @@ public sealed class McpTokenAuthenticationHandler(
 
         await RecordUseAsync(db, record.Id);
 
-        var claims = new List<Claim>
-        {
+        // Identity only. Provisioning treats an email claim as the provider's
+        // fresh word for it — it activates invites to that address and
+        // overwrites the user's own — but this is a snapshot taken when the
+        // token was minted, with no email_verified beside it. Issuer and
+        // subject are enough to find the user, and the row holds the profile.
+        Claim[] claims =
+        [
             new("iss", record.Issuer),
             new("sub", record.Subject),
             new(McpAuthentication.TokenIdClaim, record.Id.ToString()),
-        };
-        if (record.Email is { Length: > 0 } email)
-        {
-            claims.Add(new Claim("email", email));
-        }
-
-        if (record.DisplayName is { Length: > 0 } name)
-        {
-            claims.Add(new Claim("name", name));
-        }
+        ];
 
         var identity = new ClaimsIdentity(claims, Scheme.Name, nameType: "name", roleType: "role");
         return AuthenticateResult.Success(

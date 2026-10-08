@@ -34,6 +34,9 @@ public sealed class TestAuthHandler(
     public const string EmailHeader = "X-Test-Email";
     public const string NameHeader = "X-Test-Name";
 
+    /// <summary>Emits <c>email_verified</c> with this value, for providers that send it.</summary>
+    public const string EmailVerifiedHeader = "X-Test-Email-Verified";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var sub = Request.Headers[SubHeader].ToString();
@@ -49,13 +52,21 @@ public sealed class TestAuthHandler(
             claims.Add(new Claim("email", email));
         }
 
+        var emailVerified = Request.Headers[EmailVerifiedHeader].ToString();
+        if (!string.IsNullOrEmpty(emailVerified))
+        {
+            claims.Add(new Claim("email_verified", emailVerified));
+        }
+
         var name = Request.Headers[NameHeader].ToString();
         if (!string.IsNullOrEmpty(name))
         {
             claims.Add(new Claim("name", name));
         }
 
-        var identity = new ClaimsIdentity(claims, authenticationType: "Test");
+        // The OIDC scheme's own authentication type, because this stands in for
+        // it: credential-minting endpoints accept only a provider sign-in.
+        var identity = new ClaimsIdentity(claims, authenticationType: Auth.AuthConstants.OidcAuthenticationType);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name);
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }

@@ -39,6 +39,7 @@
                     <MudDivider />
                     <ColorSchemeMenu />
                     <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Filled.Devices" OnClick="@ShowDevicesAsync">Signed-in devices</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@SignOut">Sign out</MudMenuItem>
                 </MudMenu>
             </Authorized>
@@ -181,6 +182,9 @@
                 config => config.RequireInteraction = true);
         }
     }
+
+    private async Task ShowDevicesAsync() =>
+        await Dialogs.ShowAsync<SignedInDevicesDialog>("Signed-in devices");
 
     private Task SignOut() => SignOutTo("signin");
 

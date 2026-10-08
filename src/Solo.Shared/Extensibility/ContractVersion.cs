@@ -36,10 +36,19 @@ namespace Solo.Shared.Extensibility;
 /// client-only, so a package needs 1.5 only in <c>soloClientVersion</c>.</para>
 /// <para>1.6.0 adds the host context menu (<see cref="ISoloContextMenu"/>),
 /// native in the desktop app. It is client-only too.</para>
+/// <para>1.7.0 adds <c>ISoloCredentialIssuer</c>, through which signing a user
+/// out everywhere revokes the credentials an extension issued them as well as
+/// core's sessions. It is server-only, so a package needs 1.7 only in
+/// <c>soloApiVersion</c>.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.6.0";
+    public const string Current = "1.7.0";
 
-    public static readonly Version Parsed = new(1, 6, 0);
+    /// <summary>
+    /// <see cref="Current"/> as the loader compares it. Derived rather than
+    /// written out a second time: a bump that changed only the string left the
+    /// loader refusing a package that asked for exactly this version.
+    /// </summary>
+    public static readonly Version Parsed = Version.Parse(Current);
 }

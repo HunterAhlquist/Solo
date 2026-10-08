@@ -55,6 +55,17 @@ public static class ExtensionServiceCollectionExtensions
         services.AddScoped<ISoloEventHandler, THandler>();
         return services;
     }
+
+    /// <summary>
+    /// Registers the revoker for credentials this extension issues, so signing a
+    /// user out everywhere reaches them too (contract 1.7).
+    /// </summary>
+    public static IServiceCollection AddCredentialIssuer<TIssuer>(this IServiceCollection services)
+        where TIssuer : class, ISoloCredentialIssuer
+    {
+        services.AddScoped<ISoloCredentialIssuer, TIssuer>();
+        return services;
+    }
 }
 
 /// <summary>Records an extension context type so the host can migrate it after Build().</summary>

@@ -1,0 +1,182 @@
+@*
+    The instance's users, for the super admin: who administers it, and a way to
+    sign someone out of every device. The server refuses to remove the last
+    super admin (409); the switch mirrors that rule instead of offering a
+    doomed toggle.
+*@
+@inject ApiClient Api
+@inject UserSession Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudPaper Elevation="1" Class="pa-4 mt-4">
+    <MudText Typo="Typo.h4" Class="mb-1">Users</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Everyone who has signed in to this instance. Super admins change these
+        settings and create projects. Signing someone out everywhere ends every
+        desktop session they hold and revokes any token an extension issued
+        them, such as an MCP token.
+    </MudText>
+
+    @if (_users is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudTable T="AdminUserDto" Items="@_users" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.None">
+            <HeaderContent>
+                <MudTh>User</MudTh>
+                <MudTh>Super admin</MudTh>
+                <MudTh>Devices</MudTh>
+                <MudTh />
+            </HeaderContent>
+            <RowTemplate Context="user">
+                <MudTd DataLabel="User">
+                    <div class="d-flex align-center" style="gap:.6rem">
+                        <UserAvatar UserId="@user.Id" DisplayName="@(user.DisplayName ?? user.Email)"
+                                    AvatarUrl="@user.AvatarUrl" />
+                        <div style="min-width:0">
+                            <MudText Typo="Typo.body2">@(user.DisplayName ?? user.Email)</MudText>
+                            @if (user.DisplayName is not null)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@user.Email</MudText>
+                            }
+                        </div>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Super admin">
+                    <MudTooltip Text="The instance must keep at least one super admin." Disabled="@(!IsLastSuperAdmin(user))">
+                        <MudSwitch T="bool" Value="@user.IsSuperAdmin" Color="Color.Primary"
+                                   Disabled="@(_busy || IsLastSuperAdmin(user))"
+                                   ValueChanged="@(value => SetSuperAdminAsync(user, value))"
+                                   aria-label="@($"Super admin: {user.DisplayName ?? user.Email}")" />
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Devices">
+                    <MudText Typo="Typo.body2">@user.ActiveSessions</MudText>
+                </MudTd>
+                <MudTd Style="text-align:right">
+                    @* Enabled with no sessions too: the devices count is core's
+                       alone, and the user may still hold an extension's token. *@
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                               Disabled="@_busy"
+                               OnClick="@(() => SignOutEverywhereAsync(user))">
+                        Sign out everywhere
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private List<AdminUserDto>? _users;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _users = [.. await Api.GetAdminUsersAsync()];
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't load users.", Severity.Error);
+        }
+    }
+
+    private bool IsLastSuperAdmin(AdminUserDto user) =>
+        user.IsSuperAdmin && _users!.Count(u => u.IsSuperAdmin) == 1;
+
+    private string Name(AdminUserDto user) => user.DisplayName ?? user.Email;
+
+    private async Task SetSuperAdminAsync(AdminUserDto user, bool isSuperAdmin)
+    {
+        var self = user.Id == Session.UserId;
+        var message = isSuperAdmin
+            ? $"{Name(user)} will be able to change instance settings, create projects, and manage users, including you."
+            : self
+                ? "You will lose access to Admin settings. Another super admin can give it back."
+                : $"{Name(user)} will no longer be able to change instance settings, create projects, or manage users.";
+        if (!await ConfirmAsync(
+                isSuperAdmin ? "Make super admin?" : "Remove super admin?",
+                message,
+                isSuperAdmin ? "Make super admin" : "Remove"))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var updated = await Api.SetSuperAdminAsync(user.Id, isSuperAdmin);
+            if (self && !updated.IsSuperAdmin)
+            {
+                // The cached profile still says super admin. Reload so the menu
+                // and this page stop offering what the server now refuses.
+                Navigation.NavigateTo("", forceLoad: true);
+                return;
+            }
+
+            _users![_users.FindIndex(u => u.Id == user.Id)] = updated;
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't change that.", Severity.Error);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SignOutEverywhereAsync(AdminUserDto user)
+    {
+        if (!await ConfirmAsync(
+                "Sign out everywhere?",
+                $"{Name(user)} will be signed out of every device and will need to sign in again. "
+                + "Any token an extension issued them, such as an MCP token, stops working too.",
+                "Sign out"))
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Api.SignOutEverywhereAsync(user.Id);
+            var revoked = result.Sessions + result.Extensions.Sum(e => e.Count);
+            Snackbar.Add(
+                $"Signed {Name(user)} out everywhere: {Plural(revoked, "credential")} revoked.", Severity.Success);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't sign them out.", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        // Either way some sessions are gone, so the devices count is stale.
+        await LoadAsync();
+    }
+
+    private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+    private async Task<bool> ConfirmAsync(string title, string message, string confirmText)
+    {
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(title, new DialogParameters
+        {
+            [nameof(ConfirmDialog.Message)] = message,
+            [nameof(ConfirmDialog.ConfirmText)] = confirmText,
+        });
+        var result = await dialog.Result;
+        return result is { Canceled: false };
+    }
+}
