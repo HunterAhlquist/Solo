@@ -72,10 +72,24 @@ public class RoadmapPageTests : ComponentTestBase
 
     private int TimelineReads => _http.Paths.Count(p => p == $"GET /api/ext/roadmap/projects/{ProjectId}/roadmaps/{RoadmapId}");
 
-    private static List<string> Names(IRenderedComponent<RoadmapPage> page) =>
-        page.FindAll(".roadmap-bar .roadmap-bar__text:not(.roadmap-bar__text--copy) .roadmap-bar__name")
-            .Select(n => n.TextContent.Trim())
+    /// <summary>The bars drawn, the way the grid reads: line by line, left to right on each.</summary>
+    private static List<(int Line, string Name, bool Selected)> Bars(IRenderedComponent<RoadmapPage> page) =>
+        page.FindAll(".roadmap-entry")
+            .Where(e => e.QuerySelector(".roadmap-bar") is not null)
+            .OrderBy(e => int.Parse(e.GetAttribute("data-line")!))
+            .ThenBy(e => int.Parse(e.GetAttribute("data-start")!))
+            .Select(e => (
+                int.Parse(e.GetAttribute("data-line")!),
+                e.QuerySelector(".roadmap-bar__text:not(.roadmap-bar__text--copy) .roadmap-bar__name")!.TextContent.Trim(),
+                e.QuerySelector(".roadmap-bar--selected") is not null))
             .ToList();
+
+    private static List<string> Names(IRenderedComponent<RoadmapPage> page) =>
+        Bars(page).Select(b => b.Name).ToList();
+
+    /// <summary>The names on each line of the grid, top to bottom.</summary>
+    private static List<List<string>> Lines(IRenderedComponent<RoadmapPage> page) =>
+        Bars(page).GroupBy(b => b.Line).OrderBy(l => l.Key).Select(l => l.Select(b => b.Name).ToList()).ToList();
 
     [Fact]
     public void Opening_a_roadmap_joins_its_topic_as_a_viewer()
@@ -209,7 +223,7 @@ public class RoadmapPageTests : ComponentTestBase
         var page = RenderPage();
 
         // The window opens 30 days back (PastDays), so column 32 is two days on.
-        await page.Instance.OnDayMenu(32, 100, 200);
+        await page.Instance.OnDayMenu(32, 20, 100, 200);
 
         Assert.Equal([$"Add a task on {Dates.Day(day)}", $"Add a milestone on {Dates.Day(day)}"], _menu.Labels());
         page.WaitForAssertion(() => Assert.Equal(["Save system", "Photo mode"], Names(page)));
@@ -222,7 +236,7 @@ public class RoadmapPageTests : ComponentTestBase
     {
         var page = RenderPage();
 
-        await page.Instance.OnDayMenu(32, 100, 200);
+        await page.Instance.OnDayMenu(32, 20, 100, 200);
 
         Assert.Single(_menu.Shown);
         Assert.Empty(_picker.Calls);
@@ -364,7 +378,7 @@ public class RoadmapPageTests : ComponentTestBase
         await page.Instance.OnBarSelect(id, range: false);
         await page.Instance.OnMarquee([id], additive: false);
         await page.Instance.OnBarMenu(id, 10, 10);
-        await page.Instance.OnDayMenu(32, 10, 10);
+        await page.Instance.OnDayMenu(32, 20, 10, 10);
 
         Assert.Empty(Selected(page));
         Assert.Equal(["Open task"], _menu.Labels());
@@ -389,7 +403,7 @@ public class RoadmapPageTests : ComponentTestBase
         var page = RenderPage();
 
         int Hints(RoadmapEntryDto entry) =>
-            page.Find($"[data-roadmap-entry='{entry.Id}']").QuerySelectorAll("[data-roadmap-hint]").Length;
+            page.FindAll("[data-roadmap-hint]").Count(h => h.TextContent.Contains(entry.Task.Name));
         Assert.Equal(2, Hints(_entries[0]));
         Assert.Equal(0, Hints(done));
         Assert.Equal(2, Hints(endsToday));
@@ -478,12 +492,12 @@ public class RoadmapPageTests : ComponentTestBase
         var page = RenderPage();
         var (first, third, last) = (_entries[0], _entries[2], _entries[3]);
         await page.Instance.OnMarquee([first.Id.ToString(), third.Id.ToString()], additive: false);
-        // What roadmap.js reads to drag the rows together.
+        // What roadmap.js reads to drag the bars together.
         Assert.Equal([first.Id.ToString(), third.Id.ToString()],
-            page.FindAll(".roadmap-row[data-selected]").Select(r => r.GetAttribute("data-roadmap-entry")));
+            page.FindAll(".roadmap-entry[data-selected]").Select(r => r.GetAttribute("data-roadmap-entry")));
 
-        // The first row dragged below the last: index 3 among the other three.
-        await page.Instance.OnRowDrop(first.Id.ToString(), 3);
+        // The first bar dragged below the last row: row 4 of four.
+        await page.Instance.OnRowDrop(first.Id.ToString(), 4, join: false);
 
         Assert.Equal(["Photo mode", "Credits", "Save system", "Boss fight"], Names(page));
         var body = Assert.Single(Requests("PUT", "/entries/rank"));
@@ -501,9 +515,155 @@ public class RoadmapPageTests : ComponentTestBase
         var page = RenderPage();
         await page.Instance.OnMarquee([_entries[0].Id.ToString(), _entries[1].Id.ToString()], additive: false);
 
-        await page.Instance.OnRowDrop(_entries[0].Id.ToString(), 2);
+        await page.Instance.OnRowDrop(_entries[0].Id.ToString(), 3, join: false);
 
         Assert.Equal(["Save system", "Photo mode", "Boss fight"], Names(page));
+    }
+
+    // -- Rows of more than one task ---------------------------------------------------
+
+    /// <summary>An entry on the row of <paramref name="rank"/>, its bar over the days given, counted from today.</summary>
+    private static RoadmapEntryDto Dated(string name, int number, decimal rank, int from, int to)
+    {
+        var entry = Entry(name, number);
+        return entry with
+        {
+            Rank = rank,
+            Task = entry.Task with { StartAt = Today.AddDays(from), DeadlineAt = Today.AddDays(to) },
+        };
+    }
+
+    [Fact]
+    public void Tasks_sharing_a_row_share_a_line_unless_they_overlap()
+    {
+        _entries =
+        [
+            Dated("Design", 1, 1024m, 0, 4), Dated("Build", 2, 1024m, 5, 9),
+            Dated("Save system", 3, 2048m, 0, 6), Dated("Photo mode", 4, 2048m, 3, 8),
+        ];
+
+        var page = RenderPage();
+
+        Assert.Equal([["Design", "Build"], ["Save system"], ["Photo mode"]], Lines(page));
+        Assert.Equal(["0", "0", "1", "1"],
+            _entries.Select(e => page.Find($"[data-roadmap-entry='{e.Id}']").GetAttribute("data-row")));
+    }
+
+    [Fact]
+    public async Task Dropping_a_bar_on_a_row_it_fits_on_puts_it_beside_the_bars_there()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4), Dated("Save system", 2, 2048m, 0, 2), Dated("Build", 3, 3072m, 5, 9)];
+        var (design, build) = (_entries[0], _entries[2]);
+        _http.Route("/rank", HttpStatusCode.NoContent, (object?)null, HttpMethod.Put);
+        var page = RenderPage();
+
+        await page.Instance.OnRowDrop(build.Id.ToString(), 0, join: true);
+
+        Assert.Equal([["Design", "Build"], ["Save system"]], Lines(page));
+        var body = Assert.Single(Requests("PUT", $"entries/{build.Id}/rank"));
+        Assert.Contains($"\"joinId\":\"{design.Id}\"", body);
+        Assert.Contains("\"precedingId\":null", body);
+    }
+
+    [Fact]
+    public async Task A_bar_that_would_overlap_a_row_is_not_put_on_it()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4), Dated("Build", 2, 2048m, 4, 9)];
+        var page = RenderPage();
+
+        await page.Instance.OnRowDrop(_entries[1].Id.ToString(), 0, join: true);
+
+        Assert.Equal([["Design"], ["Build"]], Lines(page));
+        Assert.Empty(Requests("PUT", "/rank"));
+    }
+
+    [Fact]
+    public async Task Dropping_a_bar_between_rows_takes_it_off_the_row_it_shared()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4), Dated("Build", 2, 1024m, 5, 9), Dated("Save system", 3, 2048m, 0, 2)];
+        var (design, build, save) = (_entries[0], _entries[1], _entries[2]);
+        _http.Route("/rank", HttpStatusCode.NoContent, (object?)null, HttpMethod.Put);
+        var page = RenderPage();
+
+        // Just above row 1: below what's left of its own.
+        await page.Instance.OnRowDrop(build.Id.ToString(), 1, join: false);
+
+        Assert.Equal([["Design"], ["Build"], ["Save system"]], Lines(page));
+        var body = Assert.Single(Requests("PUT", $"entries/{build.Id}/rank"));
+        Assert.Contains($"\"precedingId\":\"{design.Id}\"", body);
+        Assert.Contains($"\"followingId\":\"{save.Id}\"", body);
+        Assert.Contains("\"joinId\":null", body);
+    }
+
+    [Fact]
+    public async Task A_selection_dropped_on_a_row_joins_it_together()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4), Dated("Build", 2, 2048m, 5, 9), Dated("Test", 3, 3072m, 10, 12)];
+        _http.Route("/entries/rank", HttpStatusCode.NoContent, (object?)null, HttpMethod.Put);
+        var page = RenderPage();
+        await page.Instance.OnMarquee([_entries[1].Id.ToString(), _entries[2].Id.ToString()], additive: false);
+
+        await page.Instance.OnRowDrop(_entries[1].Id.ToString(), 0, join: true);
+
+        Assert.Equal([["Design", "Build", "Test"]], Lines(page));
+        Assert.Contains($"\"joinId\":\"{_entries[0].Id}\"", Assert.Single(Requests("PUT", "/entries/rank")));
+    }
+
+    [Fact]
+    public async Task A_failed_join_puts_the_bar_back_on_its_own_row()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4), Dated("Build", 2, 2048m, 5, 9)];
+        _http.Route("/rank", HttpStatusCode.InternalServerError, (object?)null, HttpMethod.Put);
+        var page = RenderPage();
+
+        await page.Instance.OnRowDrop(_entries[1].Id.ToString(), 0, join: true);
+
+        Assert.Equal([["Design"], ["Build"]], Lines(page));
+    }
+
+    [Fact]
+    public async Task A_task_added_from_a_free_day_on_a_row_goes_on_that_row_if_it_fits()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4)];
+        var fits = Dated("Build", 2, 1024m, 5, 9);
+        _http.Route($"roadmaps/{RoadmapId}/entries", HttpStatusCode.OK, fits, HttpMethod.Post);
+        _picker.Next = fits.Task;
+        _menu.Next = "add";
+        var page = RenderPage();
+
+        // Line 0, five days on: Design's row, after it ends.
+        await page.Instance.OnDayMenu(35, 0, 100, 200);
+
+        page.WaitForAssertion(() => Assert.Equal([["Design", "Build"]], Lines(page)));
+        Assert.Contains($"\"joinId\":\"{_entries[0].Id}\"", Body("POST", "/entries"));
+    }
+
+    [Fact]
+    public async Task A_task_that_would_overlap_the_row_it_was_added_from_gets_a_row_of_its_own()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4)];
+        var overlapping = Dated("Build", 2, 2048m, 3, 9);
+        _http.Route($"roadmaps/{RoadmapId}/entries", HttpStatusCode.OK, overlapping, HttpMethod.Post);
+        _picker.Next = overlapping.Task;
+        _menu.Next = "add";
+        var page = RenderPage();
+
+        await page.Instance.OnDayMenu(37, 0, 100, 200);
+
+        page.WaitForAssertion(() => Assert.Equal([["Design"], ["Build"]], Lines(page)));
+        Assert.Contains("\"joinId\":null", Body("POST", "/entries"));
+    }
+
+    [Fact]
+    public async Task Shift_click_selects_the_run_of_bars_the_way_the_grid_reads()
+    {
+        _entries = [Dated("Design", 1, 1024m, 0, 4), Dated("Build", 2, 1024m, 5, 9), Dated("Save system", 3, 2048m, 0, 2)];
+        var page = RenderPage();
+
+        await page.Instance.OnBarSelect(_entries[1].Id.ToString(), range: false);
+        await page.Instance.OnBarSelect(_entries[2].Id.ToString(), range: true);
+
+        Assert.Equal(["Build", "Save system"], Selected(page));
     }
 
     [Fact]
@@ -584,7 +744,7 @@ public class RoadmapPageTests : ComponentTestBase
         var dialogs = Render<MudBlazor.MudDialogProvider>();
         var page = RenderPage();
 
-        var menu = page.InvokeAsync(() => page.Instance.OnDayMenu(32, 100, 200));
+        var menu = page.InvokeAsync(() => page.Instance.OnDayMenu(32, 20, 100, 200));
         dialogs.WaitForAssertion(() => Assert.NotEmpty(dialogs.FindAll("input")));
         dialogs.Find("input").Input("Beta");
         await dialogs.InvokeAsync(() => dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Add").Click());
@@ -686,9 +846,7 @@ public class RoadmapPageTests : ComponentTestBase
         page.FindAll("button").Single(b => b.TextContent.Contains("Add task"));
 
     private static List<string> Selected(IRenderedComponent<RoadmapPage> page) =>
-        page.FindAll(".roadmap-bar--selected .roadmap-bar__text:not(.roadmap-bar__text--copy) .roadmap-bar__name")
-            .Select(n => n.TextContent.Trim())
-            .ToList();
+        Bars(page).Where(b => b.Selected).Select(b => b.Name).ToList();
 
     private string Body(string method, string pathEnd) =>
         _http.Bodies[_http.Paths.FindIndex(p => p.StartsWith($"{method} ") && p.EndsWith(pathEnd))];

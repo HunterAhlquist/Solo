@@ -96,8 +96,8 @@ public sealed class Roadmap
 }
 
 /// <summary>
-/// One task's place on one roadmap. Its order here is the roadmap's own and has
-/// nothing to do with the task's rank on its board.
+/// One task's place on one roadmap: which row it's on. The order of rows is the
+/// roadmap's own and has nothing to do with the task's rank on its board.
 /// </summary>
 public sealed class RoadmapEntry
 {
@@ -110,6 +110,7 @@ public sealed class RoadmapEntry
     /// <summary>Core task, by bare id. It may have been deleted since.</summary>
     public Guid TaskId { get; set; }
 
+    /// <summary>Where its row is in the roadmap's order. Entries sharing a rank share a row.</summary>
     public decimal Rank { get; set; }
 
     /// <summary>The day the task was added on. A task with no deadline is drawn here.</summary>

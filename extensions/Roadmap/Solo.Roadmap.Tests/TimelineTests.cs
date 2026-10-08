@@ -241,10 +241,81 @@ public class TimelineTests
     [Theory]
     [InlineData(0, 9)]
     [InlineData(7, 9)]
-    [InlineData(8, 10)]  // past the minimum, two empty rows stay below the last task
+    [InlineData(8, 10)]  // past the minimum, two empty lines stay below the last bar
     [InlineData(30, 32)]
-    public void The_grid_keeps_nine_rows_at_least_and_two_spare(int entries, int rows) =>
-        Assert.Equal(rows, Timeline.Rows(entries));
+    public void The_grid_keeps_nine_lines_at_least_and_two_spare(int lines, int rows) =>
+        Assert.Equal(rows, Timeline.Rows(lines));
+
+    // -- Rows and lines -------------------------------------------------------------------
+
+    private static readonly TimelineWindow Window = new(Today.AddDays(-30), Today.AddDays(60));
+
+    /// <summary>An entry on the row of <paramref name="rank"/> whose bar runs over the days given, counted from today.</summary>
+    private static RoadmapEntryDto Entry(string name, decimal rank, int from, int to) =>
+        new(Guid.NewGuid(), rank, Today, "FEAT", "Features",
+            Task(start: Today.AddDays(from), deadline: Today.AddDays(to)) with { Name = name });
+
+    private static List<List<string>> Lines(TimelineLayout layout) =>
+        layout.Lines.Select(l => l.Entries.Select(e => e.Task.Name).ToList()).ToList();
+
+    [Fact]
+    public void Entries_sharing_a_rank_share_a_line_left_to_right_and_rows_go_in_rank_order()
+    {
+        var layout = Timeline.Layout(
+        [
+            Entry("Build", 2048m, 11, 20),
+            Entry("Polish", 3072m, 0, 5),
+            Entry("Test", 2048m, 21, 25),
+            Entry("Design", 2048m, 0, 10),
+            Entry("Alpha", 1024m, 0, 3),
+        ], Window);
+
+        Assert.Equal([["Alpha"], ["Design", "Build", "Test"], ["Polish"]], Lines(layout));
+        Assert.Equal([0, 1, 2], layout.Lines.Select(l => l.Row));
+        Assert.Equal(["Alpha", "Design", "Build", "Test", "Polish"], layout.ReadingOrder.Select(e => e.Task.Name));
+    }
+
+    /// <summary>A row whose bars overlap takes as few extra lines as hold them, straight below it.</summary>
+    [Fact]
+    public void A_row_whose_bars_overlap_takes_lines_below_it_and_no_more_than_it_needs()
+    {
+        var design = Entry("Design", 1024m, 0, 15); // stretched into Build
+        var build = Entry("Build", 1024m, 11, 20);
+        var test = Entry("Test", 1024m, 21, 25);
+        var after = Entry("After", 2048m, 0, 1);
+
+        var layout = Timeline.Layout([design, build, test, after], Window);
+
+        Assert.Equal([["Design", "Test"], ["Build"], ["After"]], Lines(layout));
+        Assert.Equal([0, 0, 1], layout.Lines.Select(l => l.Row));
+        Assert.Equal((1, 0), (layout.LineOf(build.Id), layout.RowOf(build.Id)));
+        Assert.Equal((2, 1), (layout.LineOf(after.Id), layout.RowOf(after.Id)));
+        Assert.Equal(-1, layout.LineOf(Guid.NewGuid()));
+        Assert.Equal([3, 1], layout.Rows.Select(r => r.Count));
+    }
+
+    /// <summary>Bars that only touch, one ending the day before the next starts, fit on one line.</summary>
+    [Fact]
+    public void Bars_end_to_end_fit_and_bars_sharing_a_day_do_not()
+    {
+        BarPlacement Bar(int from, int to) => new(from, to, false, false);
+
+        Assert.True(Timeline.Fits([Bar(11, 20)], [Bar(0, 10), Bar(21, 25)]));
+        Assert.False(Timeline.Fits([Bar(10, 20)], [Bar(0, 10)]));
+        // Bars moving together have to fit beside one another, too.
+        Assert.False(Timeline.Fits([Bar(30, 32), Bar(32, 34)], [Bar(0, 10)]));
+        Assert.True(Timeline.Fits([Bar(30, 31), Bar(32, 34)], []));
+    }
+
+    /// <summary>Two bars long gone past the window's edge are both stubs on its first day, and so overlap.</summary>
+    [Fact]
+    public void Overlap_is_judged_on_bars_as_drawn_clipped_to_the_window()
+    {
+        var layout = Timeline.Layout(
+            [Entry("Old", 1024m, -90, -80), Entry("Older", 1024m, -70, -60)], Window);
+
+        Assert.Equal(2, layout.Lines.Count);
+    }
 
     // -- Virtualization -----------------------------------------------------------------
 

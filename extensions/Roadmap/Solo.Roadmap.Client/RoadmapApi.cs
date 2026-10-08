@@ -57,20 +57,26 @@ public sealed class RoadmapApi(ISoloClientApi api)
     public Task<RoadmapTimelineDto> TimelineAsync(Guid projectId, Guid roadmapId, CancellationToken ct = default) =>
         api.GetAsync<RoadmapTimelineDto>($"{Base}/projects/{projectId}/roadmaps/{roadmapId}", ct);
 
-    public Task<RoadmapEntryDto> AddEntryAsync(
-        Guid projectId, Guid roadmapId, Guid taskId, DateOnly anchorDay, CancellationToken ct = default) =>
+    public Task<RoadmapEntryDto> AddEntryAsync(Guid projectId, Guid roadmapId, Guid taskId, DateOnly anchorDay,
+        Guid? joinId = null, CancellationToken ct = default) =>
         api.SendAsync<RoadmapEntryDto>(HttpMethod.Post, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries",
-            new AddRoadmapEntryRequest { TaskId = taskId, AnchorDay = anchorDay }, ct);
+            new AddRoadmapEntryRequest { TaskId = taskId, AnchorDay = anchorDay, JoinId = joinId }, ct);
 
     public Task RerankAsync(Guid projectId, Guid roadmapId, Guid entryId, Guid? precedingId, Guid? followingId,
-        CancellationToken ct = default) =>
+        Guid? joinId = null, CancellationToken ct = default) =>
         api.SendAsync(HttpMethod.Put, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/{entryId}/rank",
-            new RerankRoadmapEntryRequest { PrecedingId = precedingId, FollowingId = followingId }, ct);
+            new RerankRoadmapEntryRequest { PrecedingId = precedingId, FollowingId = followingId, JoinId = joinId }, ct);
 
     public Task RerankManyAsync(Guid projectId, Guid roadmapId, IReadOnlyList<Guid> entryIds,
-        Guid? precedingId, Guid? followingId, CancellationToken ct = default) =>
+        Guid? precedingId, Guid? followingId, Guid? joinId = null, CancellationToken ct = default) =>
         api.SendAsync(HttpMethod.Put, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/entries/rank",
-            new RerankRoadmapEntriesRequest { EntryIds = entryIds, PrecedingId = precedingId, FollowingId = followingId },
+            new RerankRoadmapEntriesRequest
+            {
+                EntryIds = entryIds,
+                PrecedingId = precedingId,
+                FollowingId = followingId,
+                JoinId = joinId,
+            },
             ct);
 
     public Task SetAnchorAsync(Guid projectId, Guid roadmapId, Guid entryId, DateOnly anchorDay,

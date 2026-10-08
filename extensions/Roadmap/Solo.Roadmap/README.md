@@ -1,9 +1,10 @@
 # Solo.Roadmap
 
 Roadmaps, packaged as a Solo extension. A roadmap is a named timeline inside a
-project that gathers tasks from any of its boards into one row each, drawn as
-bars from start date to deadline over a day grid. People reorder the rows
-without touching board order, drag a bar's edges to reschedule the task, and see
+project that gathers tasks from any of its boards into rows, drawn as bars from
+start date to deadline over a day grid. A row holds as many tasks as fit on it
+without overlapping. People rearrange the rows without touching board order,
+drag a bar's edges to reschedule the task, and see
 missed deadlines flash red and listed under the grid. Everyone with the roadmap
 open sees each other's changes as they happen, and who else is there.
 
@@ -39,28 +40,43 @@ and the instance loses roadmaps and nothing else:
     in the host's task picker, which searches by name, serial or
     epic and groups by board and then epic. Tasks already on the roadmap aren't
     offered. Finished tasks and tasks on closed boards are hidden until
-    switched on. The task gets a row of its own at the end, which the view
-    scrolls to.
-  - Dragging a bar up or down reranks it; dragging it sideways moves its start
-    and deadline together. The way the pointer first goes decides which, so a
-    reorder never shifts dates by accident.
+    switched on. Added from a row, the task goes on that row if its bar fits
+    there; otherwise, and from **Add task**, it gets a row of its own at the
+    end. The view scrolls to it.
+  - Dragging a bar up or down changes its row; dragging it sideways moves its
+    start and deadline together. The way the pointer first goes decides which,
+    so a move between rows never shifts dates by accident.
+  - Over the middle of a row the bar fits on, beside the bars already there,
+    the row lights up and the bar joins it on drop. Anywhere else, a line
+    between rows shows where it'll land on a row of its own. That includes the
+    edges of its own row, which takes it off a row it shared.
+  - A row's bars share a line as long as they don't overlap. When dates change
+    so that two do, by a bar dragged or stretched into its neighbour or by an
+    edit on the board, the row takes a second line, directly below, for the
+    later one. The bars go back to one line once they no longer overlap. A new
+    row can't be dropped between a row's own lines.
   - Dragging either edge of a bar (or Shift/Alt+Shift + arrows) moves its start
     or deadline.
   - Hovering a bar whose label is cut off scrolls the label past like a ticker,
     except under reduced motion.
-  - A row whose bar is scrolled out of view shows a hint pinned to that edge,
-    naming the task. Finished tasks whose last day was before today don't.
+  - A line with bars scrolled out of view shows a hint pinned to that edge,
+    naming the nearest one, as long as the bars still in view leave room for
+    it; it's cut short to fit beside them. Finished tasks whose last day was
+    before today don't get one.
   - Clicking a bar opens the same task drawer the board uses.
   - Writers select several bars at once: drag a box around them from an empty
     part of the grid, Cmd-click (Ctrl-click off a Mac) to add or drop one, or
-    Shift-click to select every row from the last one clicked. Holding Cmd,
+    Shift-click to select every bar from the last one clicked, line by line and
+    left to right. Holding Cmd,
     Ctrl or Shift while dragging a box adds to the selection instead of
     replacing it. Clicking the grid or a bar, or pressing Escape, clears it.
   - Dragging a selected bar takes the rest of the selection with it. Sideways,
     every bar moves by the same number of days, and they all stop when the
-    first one reaches the edge of the window. Up or down, the rows land
-    together where they're dropped, in the order they had, in one request.
-    Dragging a bar that isn't selected moves that bar alone.
+    first one reaches the edge of the window. Up or down, they all join the row
+    they're dropped on, if every one fits there, or land together on rows of
+    their own in the order they had, bars that shared a row still sharing one.
+    Either way it's one request. Dragging a bar that isn't selected moves that
+    bar alone.
   - **Delete** (**Cmd-Delete** on a Mac) takes the selection off the roadmap,
     as the menu's Remove does. Like Escape, it applies only while focus is on
     the grid and nothing is open over the page.
@@ -118,11 +134,12 @@ roadmap page loads.
 extension.json      manifest: id "roadmap", schema "ext_roadmap", both
                     assemblies, no nav entries (the sidebar section is the
                     entry point)
-Contracts/          DTOs and limits, linked into the client project too
+Contracts/          DTOs, limits and the rank arithmetic, linked into the
+                    client project too
 Controllers/        roadmaps and entries, a task's roadmaps, the settings
-Data/               RoadmapDbContext, the settings row, ranking, and the
-                    handler that drops a deleted task's entries and tells
-                    open roadmaps when one of their tasks changes
+Data/               RoadmapDbContext, the settings row, and the handler that
+                    drops a deleted task's entries and tells open roadmaps
+                    when one of their tasks changes
 Migrations/         in schema ext_roadmap
 content/            roadmap.js (scroll, drag, resize, select) and roadmap.css, served
                     at /api/extensions/roadmap/content/
@@ -140,12 +157,12 @@ route; any other project answers 404.
 | POST | `projects/{projectId}/roadmaps` | write | `{ title }`. |
 | PUT | `projects/{projectId}/roadmaps/{id}` | write | Rename: `{ title, version }`. 409 on a stale version. |
 | DELETE | `projects/{projectId}/roadmaps/{id}` | write | The roadmap and its entries; the tasks are untouched. |
-| GET | `projects/{projectId}/roadmaps/{id}` | read | The timeline: entries in roadmap order, each with its `TaskDto` and board, its milestones by day, plus the settings. |
-| POST | `projects/{projectId}/roadmaps/{id}/entries` | write | `{ taskId, anchorDay }`. 400 for a task outside the project, 409 if it's already on. |
-| PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`. Roadmap order only. |
+| GET | `projects/{projectId}/roadmaps/{id}` | read | The timeline: entries in roadmap order, each with its `TaskDto` and board, its milestones by day, plus the settings. Entries with the same `rank` share a row. |
+| POST | `projects/{projectId}/roadmaps/{id}/entries` | write | `{ taskId, anchorDay, joinId? }`. On `joinId`'s row, or a row of its own at the end when that's absent or no longer on the roadmap. 400 for a task outside the project, 409 if it's already on. |
+| PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`, each naming a row by any entry on it, for a row of its own between them; or `{ joinId }` for that entry's row. 400 for both at once. Roadmap order only. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/anchor` | write | `{ anchorDay }`: moves a no-deadline pill. A task with dates moves through core's schedule endpoint instead. |
 | DELETE | `projects/{projectId}/roadmaps/{id}/entries/{entryId}` | write | Takes the task off this roadmap; the task is untouched. |
-| PUT | `projects/{projectId}/roadmaps/{id}/entries/rank` | write | `{ entryIds, precedingId, followingId }`, 1 to 500: moves them together between the neighbors, keeping their order. Ids not on this roadmap are skipped; 400 if a neighbor is one of the rows moving. |
+| PUT | `projects/{projectId}/roadmaps/{id}/entries/rank` | write | `{ entryIds, precedingId, followingId }`, 1 to 500: moves them together between the neighbors, keeping their order and which of them shared a row. Or `{ entryIds, joinId }`, onto that entry's row. Ids not on this roadmap are skipped; 400 if a neighbor or `joinId` is one of the entries moving, or for both at once. |
 | POST | `projects/{projectId}/roadmaps/{id}/entries/remove` | write | `{ entryIds }`, 1 to 500: takes them all off in one change. Ids not on this roadmap are skipped. |
 | POST | `projects/{projectId}/roadmaps/{id}/milestones` | write | `{ name, day, color? }`. The colour is `#rrggbb` and defaults to `#e53935`. 400 without a name or day. |
 | PUT | `projects/{projectId}/roadmaps/{id}/milestones/{milestoneId}` | write | `{ name, day, color, version }`. 409 on a stale version. |
@@ -173,6 +190,20 @@ never writes to it.
   a one-day bar. Added on a day already past, it runs from that day through
   today instead, so it doesn't arrive already missed.
 - A task that already has dates keeps them, and the page says so.
+
+**A row is the entries sharing a rank.** There is no row table. Moving a bar
+onto a row gives it that row's rank, and ranking between rows gives each moved
+row a fresh rank, so two rows never share one by accident. `RoadmapRanking` is
+in `Contracts/` because the page runs it too: its own changes aren't echoed
+back to it, so it applies each move exactly as the server will and keeps the
+same ranks without reading them back.
+
+Whether bars overlap is the page's call, not the server's. Dates live on the
+tasks and change under a row from anywhere in Solo, so the server couldn't keep
+a row clear of overlaps even if it checked. Instead the page judges a drop
+against the bars as drawn, and draws a row whose bars overlap on as many lines
+as it needs (`Timeline.Layout`). Each row is packed left to right, so every page
+draws the same row the same way.
 
 **An entry outlives a board move but not a deletion.** Moving a task between
 boards raises a delete event on the board it left. So the delete handler drops
@@ -207,7 +238,7 @@ touches a task's dates, and the same date on two roadmaps is two milestones.
 When it's due is worked out in the browser from the sprint settings
 (`RoadmapSprints.MilestoneDueFrom`), not stored.
 
-**Both content URLs carry the package version** (`roadmap.js?v=1.6.1`). The
+**Both content URLs carry the package version** (`roadmap.js?v=1.7.0`). The
 page and its script change together, and a cache between the app and the
 server, such as a proxy that adds its own headers or the desktop app's disk
 cache, could otherwise pair a new page with an old script.
@@ -262,6 +293,15 @@ dotnet ef migrations add <Name> --project extensions/Roadmap/Solo.Roadmap --star
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.6
+
+1.7 adds no migration and needs nothing new from the host. Existing roadmaps
+look the same as before: every entry already has a rank of its own, so every
+task starts on its own row. Rows of more than one task use the new `joinId`
+fields, so update the server package and the page together. A 1.6 page reading
+a roadmap with shared rows still draws each task on its own row, in roadmap
+order.
 
 ## Upgrading from 1.5
 

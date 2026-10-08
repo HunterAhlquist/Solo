@@ -17,6 +17,7 @@ public sealed partial class RoadmapPage
     /// <summary>Pixels per day column. Also written to --roadmap-day-width, so CSS and layout agree.</summary>
     public const int DayWidth = 40;
 
+    /// <summary>Pixels per line of the grid.</summary>
     public const int RowHeight = 40;
 
     /// <summary>How wide a bar has to be before its assignees' avatars fit beside the name.</summary>
@@ -446,9 +447,13 @@ public sealed partial class RoadmapPage
             ? InvokeAsync(() => ShowBarMenuAsync(entry, clientX, clientY))
             : Task.CompletedTask;
 
-    /// <summary>A right-click (or a long press) on a day no bar covers.</summary>
+    /// <summary>
+    /// A right-click (or a long press) on a day no bar covers, on
+    /// <paramref name="line"/> of the grid: a task added from it goes on that
+    /// line's row if it fits there.
+    /// </summary>
     [JSInvokable]
-    public Task OnDayMenu(int index, double clientX, double clientY) => InvokeAsync(async () =>
+    public Task OnDayMenu(int index, int line, double clientX, double clientY) => InvokeAsync(async () =>
     {
         if (_selected.Count > 0)
         {
@@ -462,6 +467,11 @@ public sealed partial class RoadmapPage
         }
 
         var day = _window.DayAt(Math.Clamp(index, 0, _window.Days - 1));
+
+        // The row by an entry on it rather than its place, which a change heard
+        // while the picker is open could shift.
+        var lines = Layout().Lines;
+        var beside = line >= 0 && line < lines.Count ? lines[line].Entries[0].Id : (Guid?)null;
         switch (await Menu.ShowAsync(clientX, clientY,
                 [
                     new ContextMenuItem(AddItem, $"Add a task on {Dates.Day(day)}") { Icon = Icons.Material.Filled.Add },
@@ -472,7 +482,7 @@ public sealed partial class RoadmapPage
                 ]))
         {
             case AddItem:
-                await PickAsync(day);
+                await PickAsync(day, beside);
                 break;
             case AddMilestoneItem:
                 await AddMilestoneAsync(day);
@@ -540,51 +550,71 @@ public sealed partial class RoadmapPage
     });
 
     /// <summary>
-    /// A row dropped at <paramref name="index"/> among the others, taking the
-    /// rest of the selection with it when it's part of one: those land together
-    /// where it was dropped, in the order they had. Reordered here at once, then
-    /// saved; a failed save puts the rows back.
+    /// A bar dropped up or down, taking the rest of the selection with it when
+    /// it's part of one. With <paramref name="join"/>, they go on row
+    /// <paramref name="row"/> beside its bars, if none overlaps another; without,
+    /// they land together on rows of their own just above row
+    /// <paramref name="row"/> (the row count: below the last), in the order they
+    /// had, bars that shared a row still sharing one. Moved here at once, as the
+    /// server will move them, then saved; a failed save puts them back.
     /// </summary>
     [JSInvokable]
-    public Task OnRowDrop(string entryId, int index) => InvokeAsync(async () =>
+    public Task OnRowDrop(string entryId, int row, bool join) => InvokeAsync(async () =>
     {
         if (!CanWrite || Find(entryId) is not { } dropped)
         {
             return;
         }
 
-        var before = _entries.ToList();
+        var rows = Layout().Rows;
         var moving = Dragged(dropped);
         var movingIds = moving.Select(e => e.Id).ToHashSet();
+        var staying = rows.Select(r => r.Where(e => !movingIds.Contains(e.Id)).ToList()).ToList();
+        var ranked = _entries.Select(e => new Ranked(e)).ToList();
+        Guid? joinId = null, preceding = null, following = null;
+        if (join)
+        {
+            // roadmap.js offers a row only where everything fits; this is the
+            // page's own check of the same, against its own copy.
+            if (row < 0 || row >= rows.Count || staying[row] is not [var beside, ..] ||
+                !Timeline.Fits(moving.Select(Place), staying[row].Select(Place)))
+            {
+                return;
+            }
 
-        // roadmap.js counts the index among every row but the one dragged; the
-        // slot it means in the whole list is the same either way, and the rows
-        // land after however many staying put come before it.
-        var from = before.IndexOf(dropped);
-        var slot = Math.Clamp(index >= from ? index + 1 : index, 0, before.Count);
-        var at = before.Take(slot).Count(e => !movingIds.Contains(e.Id));
+            joinId = beside.Id;
+            RoadmapRanking.TryJoin(ranked, movingIds, beside.Id, r => r.Entry.Id, r => r.Rank, (r, rank) => r.Rank = rank);
+        }
+        else
+        {
+            // Named by rows that stay, as the server finds them: a row whose
+            // every bar is moving is gone from between them.
+            row = Math.Clamp(row, 0, rows.Count);
+            preceding = staying.Take(row).LastOrDefault(r => r.Count > 0)?[0].Id;
+            following = staying.Skip(row).FirstOrDefault(r => r.Count > 0)?[0].Id;
+            RoadmapRanking.TryApplyBlockMove(ranked, movingIds, preceding, following,
+                r => r.Entry.Id, r => r.Rank, (r, rank) => r.Rank = rank);
+        }
 
-        var after = before.Where(e => !movingIds.Contains(e.Id)).ToList();
-        after.InsertRange(at, moving);
-        if (after.SequenceEqual(before))
+        var before = _entries;
+        var after = ranked.Select(r => r.Entry with { Rank = r.Rank }).ToList();
+        if (RowIds(after).SequenceEqual(RowIds(before)))
         {
             return;
         }
 
         await using var saving = Saving();
         _entries = after;
-        var preceding = at > 0 ? after[at - 1].Id : (Guid?)null;
-        var following = at + moving.Count < after.Count ? after[at + moving.Count].Id : (Guid?)null;
         StateHasChanged();
         try
         {
             if (moving.Count == 1)
             {
-                await Api.RerankAsync(_project!.Id, RoadmapId, dropped.Id, preceding, following);
+                await Api.RerankAsync(_project!.Id, RoadmapId, dropped.Id, preceding, following, joinId);
             }
             else
             {
-                await Api.RerankManyAsync(_project!.Id, RoadmapId, [.. movingIds], preceding, following);
+                await Api.RerankManyAsync(_project!.Id, RoadmapId, [.. movingIds], preceding, following, joinId);
             }
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
@@ -944,7 +974,9 @@ public sealed partial class RoadmapPage
 
     // -- Adding and removing ----------------------------------------------------------
 
-    private async Task PickAsync(DateOnly day)
+    /// <param name="day">The day it's added on.</param>
+    /// <param name="beside">An entry on the row it should go on, if it fits there.</param>
+    private async Task PickAsync(DateOnly day, Guid? beside = null)
     {
         if (!CanWrite || _project is null)
         {
@@ -961,23 +993,29 @@ public sealed partial class RoadmapPage
 
         if (picked is not null)
         {
-            await AddAsync(picked, day);
+            await AddAsync(picked, day, beside);
         }
     }
 
     /// <summary>
-    /// Puts the task on the roadmap. A task with no dates gets them from the chosen
-    /// day (see <see cref="Timeline.ScheduleOnAdd"/>); one that has dates keeps
-    /// them — nobody's deadline moves without them seeing it — and the view goes
-    /// to where its bar is.
+    /// Puts the task on the roadmap: beside <paramref name="beside"/> on its
+    /// row when its bar fits there, else on a row of its own at the end. A task
+    /// with no dates gets them from the chosen day (see
+    /// <see cref="Timeline.ScheduleOnAdd"/>); one that has dates keeps them —
+    /// nobody's deadline moves without them seeing it — and the view goes to
+    /// where its bar is.
     /// </summary>
-    private async Task AddAsync(TaskDto picked, DateOnly day)
+    private async Task AddAsync(TaskDto picked, DateOnly day, Guid? beside)
     {
+        // Whether it fits is judged on the dates it's about to have.
+        var span = picked.DeadlineAt is null ? Timeline.ScheduleOnAdd(day, _today) : Timeline.Span(picked, day);
+        var joinId = beside is { } id && FitsBeside(id, span) ? id : (Guid?)null;
+
         await using var saving = Saving();
         RoadmapEntryDto entry;
         try
         {
-            entry = await Api.AddEntryAsync(_project!.Id, RoadmapId, picked.Id, day);
+            entry = await Api.AddEntryAsync(_project!.Id, RoadmapId, picked.Id, day, joinId);
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
@@ -988,26 +1026,43 @@ public sealed partial class RoadmapPage
         _entries.Add(entry);
         await LoadLabelsAsync();
 
+        string? note = null;
         if (entry.Task.DeadlineAt is null)
         {
-            var dates = Timeline.ScheduleOnAdd(day, _today);
-            if (await ScheduleOnAddAsync(entry.Task, dates) is { } scheduled)
+            if (await ScheduleOnAddAsync(entry.Task, span) is { } scheduled)
             {
                 Replace(entry.Id, scheduled);
-                if (dates.End != dates.Start && scheduled.DeadlineAt == dates.End)
+                if (span.End != span.Start && scheduled.DeadlineAt == span.End)
                 {
-                    Snackbar.Add($"Added. {Dates.Day(day)} has passed, so it runs through today.", Severity.Info);
+                    note = $"{Dates.Day(day)} has passed, so it runs through today.";
                 }
             }
         }
         else
         {
-            var span = Timeline.Span(entry.Task, entry.AnchorDay);
-            Snackbar.Add($"Added. It keeps its existing dates ({Dates.Range(span.Start, span.End)}).", Severity.Info);
+            note = $"It keeps its existing dates ({Dates.Range(span.Start, span.End)}).";
+        }
+
+        if (beside is not null && joinId is null)
+        {
+            note = $"{note} It overlaps that row's tasks, so it's on a row of its own.".TrimStart();
+        }
+
+        if (note is not null)
+        {
+            Snackbar.Add($"Added. {note}", Severity.Info);
         }
 
         StateHasChanged();
         await ScrollToAsync(entry.Id);
+    }
+
+    /// <summary>Whether a bar over <paramref name="span"/> fits on the row <paramref name="entryId"/> is on, if it's still on the roadmap.</summary>
+    private bool FitsBeside(Guid entryId, DaySpan span)
+    {
+        var layout = Layout();
+        var row = layout.RowOf(entryId);
+        return row >= 0 && Timeline.Fits([_window.Place(span)], layout.Rows[row].Select(Place));
     }
 
     /// <summary>Gives a dateless task its first dates — retrying once over a stale version.</summary>
@@ -1044,21 +1099,21 @@ public sealed partial class RoadmapPage
     }
 
     /// <summary>
-    /// Brings a row into view both ways: a task added from a gap beside another
-    /// bar lands at the end, which on a long roadmap is below the fold.
+    /// Brings a bar into view both ways: a task added from a gap beside another
+    /// bar can land at the end, which on a long roadmap is below the fold.
     /// </summary>
     private async Task ScrollToAsync(Guid entryId)
     {
-        var index = _entries.FindIndex(e => e.Id == entryId);
-        if (index < 0 || _timelineHandle is null)
+        var line = Layout().LineOf(entryId);
+        if (line < 0 || _timelineHandle is null)
         {
             return;
         }
 
-        var entry = _entries[index];
+        var entry = _entries.First(e => e.Id == entryId);
         var span = Timeline.Span(entry.Task, entry.AnchorDay);
         await ScrollToDayAsync(_window.IndexOf(span.Start) - 2);
-        await _timelineHandle.InvokeVoidAsync("revealRow", index);
+        await _timelineHandle.InvokeVoidAsync("revealLine", line);
     }
 
     /// <summary>
@@ -1152,16 +1207,20 @@ public sealed partial class RoadmapPage
     private const string OpenItem = "open";
     private const string RemoveItem = "remove";
 
+    /// <remarks>
+    /// A Shift-click's run goes the way the grid reads, line by line and left to
+    /// right on each, from the bar last clicked to this one.
+    /// </remarks>
     private void Select(RoadmapEntryDto entry, bool range)
     {
-        var to = _entries.IndexOf(entry);
-        if (range && _anchor is { } anchor && _entries.FindIndex(e => e.Id == anchor) is var from and >= 0)
+        var order = Layout().ReadingOrder.Select(e => e.Id).ToList();
+        var to = order.IndexOf(entry.Id);
+        if (range && _anchor is { } anchor && order.IndexOf(anchor) is var from and >= 0)
         {
             _selected.Clear();
-            _selected.UnionWith(_entries
+            _selected.UnionWith(order
                 .Skip(Math.Min(from, to))
-                .Take(Math.Abs(to - from) + 1)
-                .Select(e => e.Id));
+                .Take(Math.Abs(to - from) + 1));
             return;
         }
 
@@ -1480,6 +1539,24 @@ public sealed partial class RoadmapPage
     private RoadmapEntryDto? Find(string entryId) =>
         Guid.TryParse(entryId, out var id) ? _entries.FirstOrDefault(e => e.Id == id) : null;
 
+    /// <summary>Which line each bar is drawn on, worked out afresh from the entries as they stand.</summary>
+    private TimelineLayout Layout() => Timeline.Layout(_entries, _window);
+
+    /// <summary>Where an entry's bar sits in the window, in columns.</summary>
+    private BarPlacement Place(RoadmapEntryDto entry) => _window.Place(Timeline.Span(entry.Task, entry.AnchorDay));
+
+    /// <summary>The rows the entries make, as their ids: two lists alike say the same rows in the same order.</summary>
+    private static IEnumerable<string> RowIds(IEnumerable<RoadmapEntryDto> entries) =>
+        entries.GroupBy(e => e.Rank).OrderBy(r => r.Key).Select(r => string.Join(',', r.Select(e => e.Id).Order()));
+
+    /// <summary>An entry with a rank <see cref="RoadmapRanking"/> can rewrite, the DTO being a record.</summary>
+    private sealed class Ranked(RoadmapEntryDto entry)
+    {
+        public RoadmapEntryDto Entry { get; } = entry;
+
+        public decimal Rank { get; set; } = entry.Rank;
+    }
+
     private RoadmapMilestoneDto? FindMilestone(string milestoneId) =>
         Guid.TryParse(milestoneId, out var id) ? _milestones.FirstOrDefault(m => m.Id == id) : null;
 
@@ -1504,17 +1581,14 @@ public sealed partial class RoadmapPage
         .OrderByDescending(e => Timeline.DaysOverdue(e.Task, _today))
         .ToList();
 
-    private string BodyStyle
+    private string BodyStyle(TimelineLayout layout)
     {
-        get
-        {
-            var settings = _timeline!.Settings;
-            var sprintDays = settings.SprintLengthWeeks * 7;
-            var period = 2 * sprintDays * DayWidth;
-            var offset = _window.StripeOffset(RoadmapSprints.Anchor(settings.SprintStartDay), sprintDays, DayWidth);
-            return FormattableString.Invariant(
-                $"height:{Timeline.Rows(_entries.Count) * RowHeight}px;--roadmap-stripe-period:{period}px;--roadmap-stripe-offset:{offset}px");
-        }
+        var settings = _timeline!.Settings;
+        var sprintDays = settings.SprintLengthWeeks * 7;
+        var period = 2 * sprintDays * DayWidth;
+        var offset = _window.StripeOffset(RoadmapSprints.Anchor(settings.SprintStartDay), sprintDays, DayWidth);
+        return FormattableString.Invariant(
+            $"height:{Timeline.Rows(layout.Lines.Count) * RowHeight}px;--roadmap-stripe-period:{period}px;--roadmap-stripe-offset:{offset}px");
     }
 
     private string BarClass(RoadmapEntryDto entry) =>

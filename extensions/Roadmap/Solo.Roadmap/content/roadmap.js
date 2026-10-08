@@ -1,7 +1,7 @@
 // The Roadmaps timeline's browser half: scroll reporting for virtualization,
 // and the pointer gestures a Blazor event can't express — dragging a bar up or
-// down to reorder it or sideways to move its dates, dragging its edges to
-// resize it, dragging a milestone's flag or line to another day, selecting
+// down onto another row or between two, or sideways to move its dates, dragging
+// its edges to resize it, dragging a milestone's flag or line to another day, selecting
 // bars with a box or a modifier-click, the right-clicks that open the bar,
 // milestone and day menus, and the ticker that scrolls a label too long for
 // its bar. Self-contained on purpose: core's
@@ -11,7 +11,7 @@
 // covers it on the web and through the desktop shell's proxy alike).
 //
 // Every attribute this module reads is data-roadmap-*, so core's drag engine
-// (which looks for data-drag-item) never mistakes a row for one of its cards.
+// (which looks for data-drag-item) never mistakes a bar for one of its cards.
 
 const MOVE_SLOP_PX = 5;      // a mouse or pen press becomes a drag past this
 const HOLD_MS = 320;         // a finger has to hold still this long first...
@@ -20,6 +20,9 @@ const EDGE_PX = 40;          // auto-scroll zone at each edge of the timeline
 const EDGE_SPEED_PX = 12;
 const TICKER_GAP_PX = 32;    // between the end of a name and its copy
 const TICKER_SPEED_PX = 45;  // per second
+const JOIN_FROM = 0.25;      // a drag joins the row under it from this far into a line to as far from its end
+const HINT_INSET_PX = 8;     // a hint's inset from the edge, plus a gap before the first bar in view
+const HINT_MIN_PX = 48;      // narrower than this, a hint shows nothing worth reading
 
 // A Mac's Control-click is its right-click, so selection there is Command's;
 // everywhere else it's Control's, as in a file manager.
@@ -43,9 +46,9 @@ export function ensureStyles(href) {
 }
 
 /**
- * Wires a timeline. `options`: dayWidth, rowHeight, days, canWrite, firstDay
- * (ISO date of column 0). Returns a handle .NET keeps: scrollToDay, revealRow,
- * refresh, configure, dispose.
+ * Wires a timeline. `options`: dayWidth, rowHeight (a line's), days, canWrite,
+ * firstDay (ISO date of column 0). Returns a handle .NET keeps: scrollToDay,
+ * revealLine, refresh, configure, dispose.
  */
 export function attach(scroller, dotnet, options) {
     attached.get(scroller)?.dispose();
@@ -79,8 +82,14 @@ export function attach(scroller, dotnet, options) {
         }
     };
 
+    // A bar's element is its entry's, and is always there, drawn or not; its
+    // line is where it's drawn and its row is which tasks it shares one with.
     const body = () => scroller.querySelector('[data-roadmap-body]');
-    const rows = () => Array.from(scroller.querySelectorAll('[data-roadmap-entry]'));
+    const entries = () => Array.from(scroller.querySelectorAll('[data-roadmap-entry]'));
+    const lines = () => Array.from(scroller.querySelectorAll('[data-roadmap-line]'));
+    const startOf = element => Number(element.dataset.start);
+    const endOf = element => Number(element.dataset.end);
+    const overlap = (a, b) => startOf(a) <= endOf(b) && startOf(b) <= endOf(a);
 
     // -- Viewport ------------------------------------------------------------
 
@@ -90,26 +99,21 @@ export function attach(scroller, dotnet, options) {
     ];
 
     /**
-     * Which rows' bars are wholly off to one side, for the edge hints, and which
-     * milestones are, for the chips in the month band. A milestone's line is at
-     * the end of its day, so it's in view while that day is.
+     * The edge hints, and which milestones are wholly off to one side, for the
+     * chips in the month band. A milestone's line is at the end of its day, so
+     * it's in view while that day is.
      */
     const updateOffscreen = () => {
         const [first, last] = visibleDays();
-        const mark = (element, start, end) => {
-            const side = end < first ? 'before' : start > last ? 'after' : '';
-            if (element.dataset.offscreen !== side) {
-                element.dataset.offscreen = side;
-            }
-        };
-
-        for (const row of rows()) {
-            mark(row, Number(row.dataset.start), Number(row.dataset.end));
-        }
         for (const hint of scroller.querySelectorAll('[data-roadmap-milestone-hint]')) {
             const day = Number(hint.dataset.day);
-            mark(hint, day, day);
+            const side = day < first ? 'before' : day > last ? 'after' : '';
+            if (hint.dataset.offscreen !== side) {
+                hint.dataset.offscreen = side;
+            }
         }
+
+        updateHints(first, last);
 
         // The month label moves over to make room for the chips on the left: as
         // far as they reach into the view, which is what its sticky offset counts from.
@@ -120,6 +124,46 @@ export function attach(scroller, dotnet, options) {
             : '';
         if (head && head.style.getPropertyValue('--roadmap-hints-before') !== room) {
             head.style.setProperty('--roadmap-hints-before', room);
+        }
+    };
+
+    /**
+     * On each line, the hint for the nearest bar gone off each side — as long
+     * as the bars still in view leave room for it beside them, which is how
+     * wide it's allowed to be.
+     */
+    const updateHints = (first, last) => {
+        const left = scroller.scrollLeft;
+        const right = left + scroller.clientWidth;
+        const inView = new Map();
+        for (const entry of entries()) {
+            if (endOf(entry) >= first && startOf(entry) <= last) {
+                const seen = inView.get(entry.dataset.line);
+                inView.set(entry.dataset.line, seen
+                    ? [Math.min(seen[0], startOf(entry)), Math.max(seen[1], endOf(entry))]
+                    : [startOf(entry), endOf(entry)]);
+            }
+        }
+
+        for (const line of lines()) {
+            const shown = inView.get(line.dataset.roadmapLine);
+            const room = {
+                before: shown ? shown[0] * state.dayWidth - left - HINT_INSET_PX : Infinity,
+                after: shown ? right - (shown[1] + 1) * state.dayWidth - HINT_INSET_PX : Infinity,
+            };
+            const hints = Array.from(line.querySelectorAll('[data-roadmap-hint]'));
+            const nearest = {
+                before: hints.filter(h => h.dataset.roadmapHint === 'before' && endOf(h) < first)
+                    .reduce((a, h) => !a || endOf(h) > endOf(a) ? h : a, null),
+                after: hints.filter(h => h.dataset.roadmapHint === 'after' && startOf(h) > last)
+                    .reduce((a, h) => !a || startOf(h) < startOf(a) ? h : a, null),
+            };
+            for (const hint of hints) {
+                const side = hint.dataset.roadmapHint;
+                const show = hint === nearest[side] && room[side] >= HINT_MIN_PX;
+                hint.toggleAttribute('data-shown', show);
+                hint.style.setProperty('--roadmap-hint-room', show && isFinite(room[side]) ? `${room[side]}px` : '');
+            }
         }
     };
 
@@ -150,9 +194,13 @@ export function attach(scroller, dotnet, options) {
         return Math.min(Math.max(Math.floor((clientX - rect.left) / state.dayWidth), 0), state.days - 1);
     };
 
+    /** The line under a point, counting the empty ones below the last as lines too. */
+    const lineAtClientY = clientY => Math.max(
+        Math.floor((clientY - body().getBoundingClientRect().top) / state.rowHeight), 0);
+
     /**
      * A point in the body's own coordinates, kept inside it. The body scrolls
-     * with the grid, so a point taken here stays on the same day and row
+     * with the grid, so a point taken here stays on the same day and line
      * however far the view scrolls afterwards.
      */
     const toBody = (clientX, clientY) => {
@@ -257,22 +305,22 @@ export function attach(scroller, dotnet, options) {
         }
 
         const bar = target.closest('[data-roadmap-bar]');
-        const row = target.closest('[data-roadmap-entry]');
+        const entry = target.closest('[data-roadmap-entry]');
         const handle = target.closest('[data-roadmap-handle]');
 
-        if (handle && bar && row && state.canWrite) {
-            startResize(e, handle, bar, row);
+        if (handle && bar && entry && state.canWrite) {
+            startResize(e, handle, bar, entry);
             return;
         }
 
-        if (bar && row) {
+        if (bar && entry) {
             press = {
                 mode: 'pending',
                 pointerId: e.pointerId,
                 type: e.pointerType,
                 x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
-                bar, row,
-                entryId: row.dataset.roadmapEntry,
+                bar, entry,
+                entryId: entry.dataset.roadmapEntry,
                 hold: null,
                 lifted: false,
                 toggle: toggles(e),
@@ -386,7 +434,7 @@ export function attach(scroller, dotnet, options) {
                 if (ended.lifted) {
                     // Held without moving: a long press, which on a touchscreen is
                     // the context menu.
-                    ended.row.classList.remove('is-dragging');
+                    ended.entry.classList.remove('is-dragging');
                     await call('OnBarMenu', ended.entryId, ended.x, ended.y);
                 } else if (state.canWrite && (ended.toggle || ended.range)) {
                     await call('OnBarSelect', ended.entryId, !ended.toggle);
@@ -421,7 +469,7 @@ export function attach(scroller, dotnet, options) {
                 // under a finger still down, it would take that finger's lift as
                 // a tap outside it and close again.
                 await (ended.held
-                    ? call('OnDayMenu', dayAtClientX(ended.x), ended.x, ended.y)
+                    ? call('OnDayMenu', dayAtClientX(ended.x), lineAtClientY(ended.y), ended.x, ended.y)
                     : call('OnClearSelection'));
                 break;
             case 'marquee':
@@ -452,8 +500,8 @@ export function attach(scroller, dotnet, options) {
             clearMilestone(press);
         } else if (press.mode === 'marquee') {
             clearMarquee();
-        } else if (press.lifted && press.row) {
-            press.row.classList.remove('is-dragging');
+        } else if (press.lifted && press.entry) {
+            press.entry.classList.remove('is-dragging');
         }
 
         unlisten();
@@ -464,12 +512,12 @@ export function attach(scroller, dotnet, options) {
     /** Touch only: the hold is up, so this press is the timeline's, not the page's. */
     const lift = () => {
         press.lifted = true;
-        press.row.classList.add('is-dragging');
+        press.entry.classList.add('is-dragging');
         navigator.vibrate?.(10);
     };
 
     /**
-     * Refuses the browser's scroll once a finger has taken a row. Non-passive,
+     * Refuses the browser's scroll once a finger has taken a bar. Non-passive,
      * and attached only for the length of a press — a permanent one takes every
      * scroll on the page off the fast path.
      */
@@ -496,7 +544,7 @@ export function attach(scroller, dotnet, options) {
         autoScroll = 0;
     };
 
-    // -- Dragging a bar: up and down reorders, sideways moves its dates -------------
+    // -- Dragging a bar: up and down changes its row, sideways moves its dates ------
 
     // The way the pointer first goes decides which, for the whole gesture: a
     // reorder that drifted half a column sideways would otherwise move someone's
@@ -521,31 +569,32 @@ export function attach(scroller, dotnet, options) {
 
     const indicator = () => scroller.querySelector('[data-roadmap-drop]');
 
-    const barOf = row => row.querySelector('[data-roadmap-bar]');
+    const barOf = entry => entry.querySelector('[data-roadmap-bar]');
 
     /**
-     * The rows a drag of this one takes along: every selected row when it's one
-     * of several selected, else itself. .NET marks the selection on the rows
+     * The bars a drag of this one takes along: every selected bar when it's one
+     * of several selected, else itself. .NET marks the selection on the entries
      * (data-selected) and decides the same way when the drop reaches it.
      */
-    const groupOf = row => {
-        const selected = rows().filter(r => r.dataset.selected !== undefined);
-        return selected.length > 1 && selected.includes(row) ? selected : [row];
+    const groupOf = entry => {
+        const selected = entries().filter(e => e.dataset.selected !== undefined);
+        return selected.length > 1 && selected.includes(entry) ? selected : [entry];
     };
 
-    // Up or down, the group follows the pointer as it stood, gaps and all; the
-    // line shows where they'll land, together and in order, once dropped.
+    // Up or down, the group follows the pointer as it stood, gaps and all. Over
+    // the middle of a row they all fit on, the row lights up and they join it;
+    // anywhere else a line between rows shows where they'll land, on rows of
+    // their own, together and in order.
     const startDrag = () => {
         press.mode = 'drag';
-        press.list = rows();
-        press.from = press.list.indexOf(press.row);
-        press.gap = press.from;
-        press.group = groupOf(press.row);
+        press.rowOfLine = lines().map(line => Number(line.dataset.row));
+        press.group = groupOf(press.entry);
+        press.target = null;
         press.scrollTop0 = scroller.scrollTop;
         capture();
 
-        for (const row of press.group) {
-            row.classList.add('is-dragging');
+        for (const entry of press.group) {
+            entry.classList.add('is-dragging');
         }
         moveDrag();
         autoScroll = requestAnimationFrame(scrollNearEdges);
@@ -553,18 +602,74 @@ export function attach(scroller, dotnet, options) {
 
     const moveDrag = () => {
         const dy = press.y - press.y0 + (scroller.scrollTop - press.scrollTop0);
-        for (const row of press.group) {
-            row.style.setProperty('transform', `translateY(${dy}px)`);
+        for (const entry of press.group) {
+            entry.style.setProperty('transform', `translateY(${dy}px)`);
         }
 
         const rect = body().getBoundingClientRect();
-        const gap = Math.min(Math.max(Math.round((press.y - rect.top) / state.rowHeight), 0), press.list.length);
-        press.gap = gap;
-        const line = indicator();
-        if (line) {
-            line.style.top = `${gap * state.rowHeight}px`;
-            line.classList.toggle('is-visible', gap !== press.from && gap !== press.from + 1);
+        press.target = dropTarget((press.y - rect.top) / state.rowHeight);
+        const marker = indicator();
+        if (marker) {
+            const target = press.target;
+            marker.classList.toggle('is-visible', !!target);
+            marker.classList.toggle('is-join', !!target?.join);
+            if (target) {
+                marker.style.top = `${target.line * state.rowHeight}px`;
+                marker.style.height = target.join ? `${target.lines * state.rowHeight}px` : '';
+            }
         }
+    };
+
+    /** Whether the dragged bars all fit on a row beside the bars staying on it, without overlapping one another. */
+    const fitsOn = row => {
+        const placed = entries().filter(e => Number(e.dataset.row) === row && !press.group.includes(e));
+        if (placed.length === 0) {
+            return false;
+        }
+
+        for (const entry of press.group) {
+            if (placed.some(other => overlap(entry, other))) {
+                return false;
+            }
+            placed.push(entry);
+        }
+        return true;
+    };
+
+    /**
+     * Where the group lands with the pointer `position` lines down the grid:
+     * { join, row, line, lines }, the row to join or the one to land just
+     * above (the row count: below the last), and the lines to mark. Null where
+     * the drop would leave every bar where it is.
+     */
+    const dropTarget = position => {
+        const rowOfLine = press.rowOfLine;
+        const rows = rowOfLine.length ? rowOfLine[rowOfLine.length - 1] + 1 : 0;
+        const linesOf = row => rowOfLine.filter(r => r === row).length;
+        const rowsHere = new Set(press.group.map(e => Number(e.dataset.row)));
+        const fromRow = rowsHere.size === 1 ? [...rowsHere][0] : -1;
+
+        const line = Math.floor(position);
+        const within = position - line;
+        if (line >= 0 && line < rowOfLine.length && within >= JOIN_FROM && within <= 1 - JOIN_FROM) {
+            const row = rowOfLine[line];
+            if (fitsOn(row)) {
+                return row === fromRow ? null : { join: true, row, line: rowOfLine.indexOf(row), lines: linesOf(row) };
+            }
+        }
+
+        // The nearest edge between lines, moved down past the rest of a row
+        // drawn on more than one: a new row can't go between a row's own lines.
+        let edge = Math.min(Math.max(Math.round(position), 0), rowOfLine.length);
+        while (edge > 0 && edge < rowOfLine.length && rowOfLine[edge] === rowOfLine[edge - 1]) {
+            edge++;
+        }
+
+        const row = edge < rowOfLine.length ? rowOfLine[edge] : rows;
+        const wholeRow = fromRow >= 0 && entries().every(e => Number(e.dataset.row) !== fromRow || press.group.includes(e));
+        return wholeRow && (row === fromRow || row === fromRow + 1)
+            ? null
+            : { join: false, row, line: edge, lines: 0 };
     };
 
     const scrollNearEdges = () => {
@@ -589,17 +694,17 @@ export function attach(scroller, dotnet, options) {
     // window's edge stops it where its first bar meets the edge.
     const startMove = () => {
         press.mode = 'move';
-        press.group = groupOf(press.row);
-        press.start = Number(press.row.dataset.start);
-        press.end = Number(press.row.dataset.end);
-        press.first = Math.min(...press.group.map(row => Number(row.dataset.start)));
-        press.last = Math.max(...press.group.map(row => Number(row.dataset.end)));
+        press.group = groupOf(press.entry);
+        press.start = startOf(press.entry);
+        press.end = endOf(press.entry);
+        press.first = Math.min(...press.group.map(startOf));
+        press.last = Math.max(...press.group.map(endOf));
         press.scrollLeft0 = scroller.scrollLeft;
         press.shift = 0;
         capture();
 
-        for (const row of press.group) {
-            row.classList.add('is-dragging');
+        for (const entry of press.group) {
+            entry.classList.add('is-dragging');
         }
         label = document.createElement('div');
         label.className = 'roadmap-resize-label';
@@ -610,17 +715,17 @@ export function attach(scroller, dotnet, options) {
 
     /**
      * Snaps to whole days, and stops at the window's edges. The preview offset
-     * goes on the bar, not the row: when .NET redraws the bar in its new place
+     * goes on the bar, not its entry: when .NET redraws the bar in its new place
      * it rewrites the bar's style, which drops the offset in the same update — on
-     * the row it would outlive the redraw for a frame and add to the new place.
+     * the entry it would outlive the redraw for a frame and add to the new place.
      * Each bar is looked up afresh, since scrolling sideways can draw one of the
      * group's bars that wasn't drawn when the drag began.
      */
     const moveShift = () => {
         const dx = press.x - press.x0 + (scroller.scrollLeft - press.scrollLeft0);
         press.shift = Math.min(Math.max(Math.round(dx / state.dayWidth), -press.first), state.days - 1 - press.last);
-        for (const row of press.group) {
-            barOf(row)?.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
+        for (const entry of press.group) {
+            barOf(entry)?.style.setProperty('transform', `translateX(${press.shift * state.dayWidth}px)`);
         }
 
         const from = press.start + press.shift;
@@ -651,9 +756,9 @@ export function attach(scroller, dotnet, options) {
     };
 
     const clearMove = ended => {
-        for (const row of ended.group) {
-            barOf(row)?.style.removeProperty('transform');
-            row.classList.remove('is-dragging');
+        for (const entry of ended.group) {
+            barOf(entry)?.style.removeProperty('transform');
+            entry.classList.remove('is-dragging');
         }
         label?.remove();
         label = null;
@@ -672,20 +777,19 @@ export function attach(scroller, dotnet, options) {
     };
 
     const clearDrag = ended => {
-        for (const row of ended.group) {
-            row.style.removeProperty('transform');
-            row.classList.remove('is-dragging');
+        for (const entry of ended.group) {
+            entry.style.removeProperty('transform');
+            entry.classList.remove('is-dragging');
         }
-        indicator()?.classList.remove('is-visible');
+        indicator()?.classList.remove('is-visible', 'is-join');
     };
 
     const endDrag = async ended => {
-        // The gap counts slots in the whole list, the moved row included; the
-        // index .NET wants is among the others.
-        const to = ended.gap > ended.from ? ended.gap - 1 : ended.gap;
         try {
-            if (to !== ended.from) {
-                await call('OnRowDrop', ended.entryId, to);
+            if (ended.target) {
+                // .NET redraws the bars on their new lines before this returns,
+                // so dropping the offset doesn't flash them back where they were.
+                await call('OnRowDrop', ended.entryId, ended.target.row, ended.target.join);
             }
         } finally {
             clearDrag(ended);
@@ -759,7 +863,7 @@ export function attach(scroller, dotnet, options) {
 
     // -- Resizing bars -------------------------------------------------------------
 
-    const startResize = (e, handle, bar, row) => {
+    const startResize = (e, handle, bar, entry) => {
         e.preventDefault();
         press = {
             mode: 'resize',
@@ -767,10 +871,10 @@ export function attach(scroller, dotnet, options) {
             type: e.pointerType,
             x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY,
             edge: handle.dataset.roadmapHandle,
-            bar, row,
-            entryId: row.dataset.roadmapEntry,
-            start: Number(row.dataset.start),
-            end: Number(row.dataset.end),
+            bar, entry,
+            entryId: entry.dataset.roadmapEntry,
+            start: startOf(entry),
+            end: endOf(entry),
         };
         press.newStart = press.start;
         press.newEnd = press.end;
@@ -849,7 +953,7 @@ export function attach(scroller, dotnet, options) {
 
     /**
      * Draws the box from where the press started to the pointer, and marks the
-     * rows whose bars it touches. Hits are worked out from each row's columns
+     * bars it touches. Hits are worked out from each entry's line and columns
      * rather than its bar, so a bar scrolled out of view, and so not drawn, is
      * still caught. The marks are the browser's until the box is let go; .NET
      * owns the selection itself.
@@ -871,16 +975,16 @@ export function attach(scroller, dotnet, options) {
         }
 
         press.hits = [];
-        rows().forEach((row, index) => {
-            const rowTop = index * state.rowHeight;
-            const barLeft = Number(row.dataset.start) * state.dayWidth;
-            const barRight = (Number(row.dataset.end) + 1) * state.dayWidth;
-            const hit = left < barRight && right > barLeft && top < rowTop + state.rowHeight && bottom > rowTop;
-            row.classList.toggle('is-marked', hit);
+        for (const entry of entries()) {
+            const lineTop = Number(entry.dataset.line) * state.rowHeight;
+            const barLeft = startOf(entry) * state.dayWidth;
+            const barRight = (endOf(entry) + 1) * state.dayWidth;
+            const hit = left < barRight && right > barLeft && top < lineTop + state.rowHeight && bottom > lineTop;
+            entry.classList.toggle('is-marked', hit);
             if (hit) {
-                press.hits.push(row.dataset.roadmapEntry);
+                press.hits.push(entry.dataset.roadmapEntry);
             }
-        });
+        }
     };
 
     const scrollMarquee = () => {
@@ -904,8 +1008,8 @@ export function attach(scroller, dotnet, options) {
 
     const clearMarquee = () => {
         marquee()?.classList.remove('is-visible');
-        for (const row of rows()) {
-            row.classList.remove('is-marked');
+        for (const entry of entries()) {
+            entry.classList.remove('is-marked');
         }
     };
 
@@ -944,8 +1048,8 @@ export function attach(scroller, dotnet, options) {
             return;
         }
 
-        const row = target.closest('[data-roadmap-entry]');
-        const onBar = !!row && !!target.closest('[data-roadmap-bar]');
+        const entry = target.closest('[data-roadmap-entry]');
+        const onBar = !!entry && !!target.closest('[data-roadmap-bar]');
         if (!onBar && !(state.canWrite && target.closest('[data-roadmap-body]'))) {
             return;
         }
@@ -958,9 +1062,9 @@ export function attach(scroller, dotnet, options) {
 
         abandon();
         if (onBar) {
-            call('OnBarMenu', row.dataset.roadmapEntry, e.clientX, e.clientY);
+            call('OnBarMenu', entry.dataset.roadmapEntry, e.clientX, e.clientY);
         } else {
-            call('OnDayMenu', dayAtClientX(e.clientX), e.clientX, e.clientY);
+            call('OnDayMenu', dayAtClientX(e.clientX), lineAtClientY(e.clientY), e.clientX, e.clientY);
         }
     };
 
@@ -1008,9 +1112,7 @@ export function attach(scroller, dotnet, options) {
             return;
         }
 
-        const row = hint.closest('[data-roadmap-entry]');
-        const start = Number(row.dataset.start);
-        scroller.scrollTo({ left: Math.max(start - 2, 0) * state.dayWidth, behavior: 'smooth' });
+        scroller.scrollTo({ left: Math.max(startOf(hint) - 2, 0) * state.dayWidth, behavior: 'smooth' });
     };
 
     // WebKit runs a long-press drag of its own on anything it thinks is draggable.
@@ -1035,8 +1137,8 @@ export function attach(scroller, dotnet, options) {
             scroller.scrollLeft = Math.max(index, 0) * state.dayWidth;
             report();
         },
-        /** Scrolls the least distance that shows the row whole, below the sticky day header. */
-        revealRow: index => {
+        /** Scrolls the least distance that shows the line whole, below the sticky day header. */
+        revealLine: index => {
             const head = scroller.querySelector('[data-roadmap-head]')?.offsetHeight ?? 0;
             const top = index * state.rowHeight;
             if (top < scroller.scrollTop) {

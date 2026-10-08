@@ -125,6 +125,7 @@ public sealed class RoadmapsController(
         var entries = await db.Entries.AsNoTracking()
             .Where(e => e.RoadmapId == roadmapId)
             .OrderBy(e => e.Rank)
+            .ThenBy(e => e.Id)
             .ToListAsync(ct);
 
         // Every task in the project is readable to anyone who passed the policy,
@@ -155,7 +156,11 @@ public sealed class RoadmapsController(
             milestones.Select(m => m.ToDto()).ToList());
     }
 
-    /// <summary>Puts a task on the roadmap, at the end.</summary>
+    /// <summary>
+    /// Puts a task on the roadmap: on the row the request names, or a row of
+    /// its own at the end — also when that row's entry has gone meanwhile, since
+    /// the task going on the roadmap is what was asked for.
+    /// </summary>
     [HttpPost("{roadmapId:guid}/entries")]
     [Authorize(Policy = SoloPolicies.ProjectWrite)]
     public async Task<ActionResult<RoadmapEntryDto>> AddEntry(
@@ -186,12 +191,19 @@ public sealed class RoadmapsController(
                 detail: "Say which day the task is being added on.");
         }
 
-        var ranks = await db.Entries.Where(e => e.RoadmapId == roadmapId).Select(e => e.Rank).ToListAsync(ct);
+        var rank = request.JoinId is { } joinId
+            ? await db.Entries
+                .Where(e => e.Id == joinId && e.RoadmapId == roadmapId)
+                .Select(e => (decimal?)e.Rank)
+                .FirstOrDefaultAsync(ct)
+            : null;
+        rank ??= RoadmapRanking.ForAppend(
+            await db.Entries.Where(e => e.RoadmapId == roadmapId).Select(e => e.Rank).ToListAsync(ct));
         var entry = new RoadmapEntry
         {
             RoadmapId = roadmapId,
             TaskId = task.Id,
-            Rank = RoadmapRanking.ForAppend(ranks),
+            Rank = rank.Value,
             AnchorDay = request.AnchorDay,
         };
         db.Entries.Add(entry);
@@ -212,7 +224,10 @@ public sealed class RoadmapsController(
         return Created((string?)null, ToDto(entry, (task, board)));
     }
 
-    /// <summary>Reorders a row on this roadmap only; the task's board rank doesn't move.</summary>
+    /// <summary>
+    /// Moves a task to a row of its own between two others, or onto another's
+    /// row, on this roadmap only; the task's board rank doesn't move.
+    /// </summary>
     [HttpPut("{roadmapId:guid}/entries/{entryId:guid}/rank")]
     [Authorize(Policy = SoloPolicies.ProjectWrite)]
     public async Task<IActionResult> Rerank(
@@ -221,6 +236,11 @@ public sealed class RoadmapsController(
         if (!await db.Roadmaps.AnyAsync(r => r.Id == roadmapId && r.ProjectId == projectId, ct))
         {
             return NotFound();
+        }
+
+        if (TwoTargets(request.JoinId, request.PrecedingId, request.FollowingId) is { } twice)
+        {
+            return twice;
         }
 
         var entries = await db.Entries
@@ -232,13 +252,16 @@ public sealed class RoadmapsController(
             return NotFound();
         }
 
-        if (!RoadmapRanking.TryApplyMove(entries, entryId, request.PrecedingId, request.FollowingId,
-                e => e.Id, e => e.Rank, (e, rank) => e.Rank = rank))
+        var moved = request.JoinId is { } joinId
+            ? RoadmapRanking.TryJoin(entries, [entryId], joinId, e => e.Id, e => e.Rank, (e, rank) => e.Rank = rank)
+            : RoadmapRanking.TryApplyMove(entries, entryId, request.PrecedingId, request.FollowingId,
+                e => e.Id, e => e.Rank, (e, rank) => e.Rank = rank);
+        if (!moved)
         {
             return Problem(
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid rank target",
-                detail: "The neighbor ids are not entries on this roadmap.");
+                detail: "The neighbor or row ids are not other entries on this roadmap.");
         }
 
         try
@@ -255,10 +278,11 @@ public sealed class RoadmapsController(
     }
 
     /// <summary>
-    /// Moves several rows to one place on this roadmap, for a selection dragged
-    /// up or down: they land together between the neighbors, in the order they
-    /// already had. Rows already taken off by someone else are passed over, as
-    /// a selection's Remove does.
+    /// Moves several tasks to one place on this roadmap, for a selection dragged
+    /// up or down: they land together between the neighbors, on rows in the
+    /// order they already had, or all on one row beside another task. Entries
+    /// already taken off by someone else are passed over, as a selection's
+    /// Remove does.
     /// </summary>
     [HttpPut("{roadmapId:guid}/entries/rank")]
     [Authorize(Policy = SoloPolicies.ProjectWrite)]
@@ -268,6 +292,11 @@ public sealed class RoadmapsController(
         if (!await db.Roadmaps.AnyAsync(r => r.Id == roadmapId && r.ProjectId == projectId, ct))
         {
             return NotFound();
+        }
+
+        if (TwoTargets(request.JoinId, request.PrecedingId, request.FollowingId) is { } twice)
+        {
+            return twice;
         }
 
         var entries = await db.Entries
@@ -280,13 +309,16 @@ public sealed class RoadmapsController(
             return NotFound();
         }
 
-        if (!RoadmapRanking.TryApplyBlockMove(entries, moving, request.PrecedingId, request.FollowingId,
-                e => e.Id, e => e.Rank, (e, rank) => e.Rank = rank))
+        var moved = request.JoinId is { } joinId
+            ? RoadmapRanking.TryJoin(entries, moving, joinId, e => e.Id, e => e.Rank, (e, rank) => e.Rank = rank)
+            : RoadmapRanking.TryApplyBlockMove(entries, moving, request.PrecedingId, request.FollowingId,
+                e => e.Id, e => e.Rank, (e, rank) => e.Rank = rank);
+        if (!moved)
         {
             return Problem(
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Invalid rank target",
-                detail: "The neighbor ids are not entries on this roadmap outside the ones being moved.");
+                detail: "The neighbor or row ids are not entries on this roadmap outside the ones being moved.");
         }
 
         try
@@ -459,6 +491,13 @@ public sealed class RoadmapsController(
         await MilestonesChangedAsync(projectId, roadmapId, ct);
         return NoContent();
     }
+
+    /// <summary>A row to join and a place between rows can't both be where something goes.</summary>
+    private ObjectResult? TwoTargets(Guid? joinId, Guid? precedingId, Guid? followingId) =>
+        joinId is not null && (precedingId is not null || followingId is not null)
+            ? Problem(statusCode: StatusCodes.Status400BadRequest, title: "Two rank targets",
+                detail: "Name a row to join or neighbors to go between, not both.")
+            : null;
 
     /// <summary>What the attributes can't say: a name of more than spaces, and a day at all.</summary>
     private ObjectResult? MilestoneProblem(string name, DateOnly day) =>

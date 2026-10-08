@@ -5,19 +5,88 @@ using Solo.Shared.Dtos;
 namespace Solo.Roadmap.Client;
 
 /// <summary>
-/// The timeline's rules, in days: where a task's bar runs, which stripe a day
-/// falls in, where the view opens, what counts as missed. Kept apart from the
-/// page so each rule is a plain function a test can pin down.
+/// The timeline's rules, in days: where a task's bar runs, which line it's
+/// drawn on, which stripe a day falls in, where the view opens, what counts as
+/// missed. Kept apart from the page so each rule is a plain function a test can
+/// pin down.
 /// </summary>
 public static class Timeline
 {
-    /// <summary>Rows the grid shows even when the roadmap has fewer, so an empty one still has a surface to click.</summary>
+    /// <summary>Lines the grid shows even when the roadmap has fewer, so an empty one still has a surface to click.</summary>
     public const int MinimumRows = 9;
 
-    /// <summary>Empty rows kept below the last task, however many there are: where a new one is added.</summary>
+    /// <summary>Empty lines kept below the last task, however many there are: where a new row is added.</summary>
     public const int SpareRows = 2;
 
-    public static int Rows(int entries) => Math.Max(MinimumRows, entries + SpareRows);
+    /// <summary>The lines the grid draws for <paramref name="lines"/> with bars on them.</summary>
+    public static int Rows(int lines) => Math.Max(MinimumRows, lines + SpareRows);
+
+    /// <summary>
+    /// Where every entry is drawn. Entries sharing a rank share a row (see
+    /// <see cref="RoadmapRanking"/>), and a row is one line of the grid while
+    /// its bars don't overlap. Bars that do — dates changed on the board, or a
+    /// bar dragged or stretched into its neighbor — take lines below it, as few
+    /// as will hold them, and come back up once they don't. Overlap is judged
+    /// on the bars as drawn, clipped to the window, so two stubs pinned to its
+    /// edge don't share a line either.
+    /// </summary>
+    /// <remarks>
+    /// A row is packed left to right, each bar onto the first of its lines it
+    /// fits on, so which bar goes below follows from the dates alone and every
+    /// page draws the same row the same way.
+    /// </remarks>
+    public static TimelineLayout Layout(IEnumerable<RoadmapEntryDto> entries, TimelineWindow window)
+    {
+        var lines = new List<TimelineLine>();
+        var rows = new List<IReadOnlyList<RoadmapEntryDto>>();
+        foreach (var row in entries.GroupBy(e => e.Rank).OrderBy(r => r.Key))
+        {
+            var ends = new List<int>();
+            var onLines = new List<List<RoadmapEntryDto>>();
+            foreach (var (entry, place) in row
+                         .Select(e => (e, window.Place(Span(e.Task, e.AnchorDay))))
+                         .OrderBy(x => x.Item2.StartIndex)
+                         .ThenBy(x => x.Item2.EndIndex))
+            {
+                var at = ends.FindIndex(end => end < place.StartIndex);
+                if (at < 0)
+                {
+                    ends.Add(place.EndIndex);
+                    onLines.Add([entry]);
+                }
+                else
+                {
+                    ends[at] = place.EndIndex;
+                    onLines[at].Add(entry);
+                }
+            }
+
+            lines.AddRange(onLines.Select(on => new TimelineLine(rows.Count, on)));
+            rows.Add(row.ToList());
+        }
+
+        return new TimelineLayout(lines, rows);
+    }
+
+    /// <summary>
+    /// Whether bars can go on one line: none of <paramref name="moving"/>
+    /// overlaps another of them, or any of <paramref name="staying"/>.
+    /// </summary>
+    public static bool Fits(IEnumerable<BarPlacement> moving, IEnumerable<BarPlacement> staying)
+    {
+        var placed = staying.ToList();
+        foreach (var bar in moving)
+        {
+            if (placed.Any(other => bar.Overlaps(other.StartIndex, other.EndIndex)))
+            {
+                return false;
+            }
+
+            placed.Add(bar);
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// The dates a task with none gets when it's added on <paramref name="day"/>:
@@ -194,6 +263,45 @@ public readonly record struct BarPlacement(int StartIndex, int EndIndex, bool Cl
 
     public bool Overlaps(int firstIndex, int lastIndex) => StartIndex <= lastIndex && EndIndex >= firstIndex;
 }
+
+/// <summary>
+/// The grid's lines, top to bottom, and the roadmap's rows they draw: one line
+/// per row, and more for a row whose bars overlap (see <see cref="Timeline.Layout"/>).
+/// </summary>
+public sealed class TimelineLayout
+{
+    private readonly Dictionary<Guid, (int Line, int Row)> _placed = [];
+
+    public TimelineLayout(IReadOnlyList<TimelineLine> lines, IReadOnlyList<IReadOnlyList<RoadmapEntryDto>> rows)
+    {
+        Lines = lines;
+        Rows = rows;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            foreach (var entry in lines[i].Entries)
+            {
+                _placed[entry.Id] = (i, lines[i].Row);
+            }
+        }
+    }
+
+    public IReadOnlyList<TimelineLine> Lines { get; }
+
+    /// <summary>Each row's entries, the rows in roadmap order.</summary>
+    public IReadOnlyList<IReadOnlyList<RoadmapEntryDto>> Rows { get; }
+
+    /// <summary>Every entry line by line, left to right on each: the order a Shift-click's run follows.</summary>
+    public IEnumerable<RoadmapEntryDto> ReadingOrder => Lines.SelectMany(l => l.Entries);
+
+    /// <summary>The line an entry is drawn on, or -1 when it isn't on the roadmap.</summary>
+    public int LineOf(Guid entryId) => _placed.TryGetValue(entryId, out var at) ? at.Line : -1;
+
+    /// <summary>The row an entry is on, or -1 when it isn't on the roadmap.</summary>
+    public int RowOf(Guid entryId) => _placed.TryGetValue(entryId, out var at) ? at.Row : -1;
+}
+
+/// <summary>One line of the grid: some or all of one row's bars, left to right.</summary>
+public sealed record TimelineLine(int Row, IReadOnlyList<RoadmapEntryDto> Entries);
 
 /// <summary>
 /// The columns worth rendering for a scroll position: what's on screen plus a

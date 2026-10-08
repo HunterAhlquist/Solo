@@ -371,6 +371,53 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             new { entryIds = Array.Empty<Guid>() }, TestClients.Json)).StatusCode);
     }
 
+    /// <summary>
+    /// Tasks sharing a row: moved or added onto one, they come back with its
+    /// rank, and a neighbor stands for the whole of its row.
+    /// </summary>
+    [SkippableFact]
+    public async Task Entries_join_a_row_by_moving_or_being_added_and_share_its_rank()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await ProjectAsync("Rows", "ROWS");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var ids = new Dictionary<string, Guid>();
+        foreach (var name in new[] { "A", "B", "C", "D" })
+        {
+            ids[name] = await AddAsync(project, roadmap, await TaskAsync(board, name));
+        }
+
+        var url = $"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries";
+
+        // One onto another's row, then a selection onto a third's.
+        (await _admin.PutAsJsonAsync($"{url}/{ids["B"]}/rank", new { joinId = ids["A"] }, TestClients.Json))
+            .EnsureSuccessStatusCode();
+        (await _admin.PutAsJsonAsync($"{url}/rank", new { entryIds = new[] { ids["D"] }, joinId = ids["C"] },
+            TestClients.Json)).EnsureSuccessStatusCode();
+        Assert.Equal([["A", "B"], ["C", "D"]], await RowsAsync(project, roadmap));
+
+        // Added beside one; or, with that one gone meanwhile, on a row of its own at the end.
+        ids["E"] = await AddAsync(project, roadmap, await TaskAsync(board, "E"), joinId: ids["B"]);
+        ids["F"] = await AddAsync(project, roadmap, await TaskAsync(board, "F"), joinId: Guid.NewGuid());
+        Assert.Equal([["A", "B", "E"], ["C", "D"], ["F"]], await RowsAsync(project, roadmap));
+
+        // After B's row is after A and E too; and off a shared row, onto one of its own.
+        (await _admin.PutAsJsonAsync($"{url}/{ids["F"]}/rank", new { precedingId = ids["B"] }, TestClients.Json))
+            .EnsureSuccessStatusCode();
+        (await _admin.PutAsJsonAsync($"{url}/{ids["D"]}/rank", new { followingId = ids["A"] }, TestClients.Json))
+            .EnsureSuccessStatusCode();
+        Assert.Equal([["D"], ["A", "B", "E"], ["F"], ["C"]], await RowsAsync(project, roadmap));
+
+        // A row and neighbors at once; a row of one of the entries moving; a row not on the roadmap.
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PutAsJsonAsync($"{url}/{ids["F"]}/rank",
+            new { joinId = ids["A"], precedingId = ids["C"] }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PutAsJsonAsync($"{url}/rank",
+            new { entryIds = new[] { ids["A"], ids["C"] }, joinId = ids["A"] }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.PutAsJsonAsync($"{url}/{ids["F"]}/rank",
+            new { joinId = Guid.NewGuid() }, TestClients.Json)).StatusCode);
+        Assert.Equal([["D"], ["A", "B", "E"], ["F"], ["C"]], await RowsAsync(project, roadmap));
+    }
+
     [SkippableFact]
     public async Task A_remove_naming_no_entries_or_too_many_is_400()
     {
@@ -798,9 +845,10 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         (await _admin.PostJson<JsonObject>($"{Base}/projects/{project.Id}/roadmaps", new { title }))["id"]!
         .GetValue<Guid>();
 
-    private async Task<Guid> AddAsync(ProjectDto project, Guid roadmap, TaskDto task, string day = "2026-10-01") =>
+    private async Task<Guid> AddAsync(
+        ProjectDto project, Guid roadmap, TaskDto task, string day = "2026-10-01", Guid? joinId = null) =>
         (await _admin.PostJson<JsonObject>($"{Base}/projects/{project.Id}/roadmaps/{roadmap}/entries",
-            new { taskId = task.Id, anchorDay = day }))["id"]!.GetValue<Guid>();
+            new { taskId = task.Id, anchorDay = day, joinId }))["id"]!.GetValue<Guid>();
 
     private async Task<List<JsonNode>> EntriesAsync(ProjectDto project, Guid roadmap, HttpClient? client = null) =>
         (await (client ?? _admin).GetJson<JsonObject>($"{Base}/projects/{project.Id}/roadmaps/{roadmap}"))
@@ -808,6 +856,13 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
 
     private async Task<List<string>> OrderAsync(ProjectDto project, Guid roadmap) =>
         (await EntriesAsync(project, roadmap)).Select(e => e["task"]!["name"]!.GetValue<string>()).ToList();
+
+    /// <summary>The roadmap's rows in order, each the names of the tasks sharing its rank.</summary>
+    private async Task<List<List<string>>> RowsAsync(ProjectDto project, Guid roadmap) =>
+        (await EntriesAsync(project, roadmap))
+        .GroupBy(e => e["rank"]!.GetValue<decimal>())
+        .Select(row => row.Select(e => e["task"]!["name"]!.GetValue<string>()).Order().ToList())
+        .ToList();
 
     private async Task<long> EntryCountAsync(Guid taskId)
     {

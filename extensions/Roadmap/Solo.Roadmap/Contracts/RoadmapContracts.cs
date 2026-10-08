@@ -129,8 +129,10 @@ public sealed record RoadmapTimelineDto(
 public sealed record RoadmapMilestoneDto(Guid Id, string Name, DateOnly Day, string Color, uint Version);
 
 /// <summary>
-/// One task on a roadmap, in roadmap rank order. <see cref="AnchorDay"/> is the
-/// day it was added on — where a task with no deadline is drawn.
+/// One task on a roadmap, in roadmap rank order. Entries sharing a
+/// <see cref="Rank"/> share a row (see <see cref="RoadmapRanking"/>).
+/// <see cref="AnchorDay"/> is the day it was added on — where a task with no
+/// deadline is drawn.
 /// </summary>
 public sealed record RoadmapEntryDto(
     Guid Id,
@@ -175,6 +177,12 @@ public sealed class AddRoadmapEntryRequest
 
     /// <summary>The day the task was added on; a task with no deadline is drawn here.</summary>
     public DateOnly AnchorDay { get; init; }
+
+    /// <summary>
+    /// An entry whose row the task goes on, beside it. Null, or an entry no
+    /// longer on the roadmap, puts it on a row of its own at the end.
+    /// </summary>
+    public Guid? JoinId { get; init; }
 }
 
 /// <summary>The day a task with no deadline is drawn on, when its pill is dragged along the timeline.</summary>
@@ -215,17 +223,25 @@ public sealed class RemoveRoadmapEntriesRequest
     public required IReadOnlyList<Guid> EntryIds { get; init; }
 }
 
-/// <summary>Neighbors in roadmap order, like core's rerank. Both null moves to the top.</summary>
+/// <summary>
+/// Where a row goes: onto a row of its own between neighbors in roadmap order,
+/// like core's rerank, each naming a row by any entry on it — both null moves
+/// it to the top — or, with <see cref="JoinId"/>, onto that entry's row.
+/// </summary>
 public sealed class RerankRoadmapEntryRequest
 {
     public Guid? PrecedingId { get; init; }
 
     public Guid? FollowingId { get; init; }
+
+    /// <summary>An entry whose row this one joins. Not with a neighbor.</summary>
+    public Guid? JoinId { get; init; }
 }
 
 /// <summary>
-/// Several rows moved together, as a block, between neighbors that aren't
-/// among them. The rows keep the order they had relative to one another.
+/// Several entries moved together, as a block, between neighbors that aren't
+/// among them, onto rows that keep the order they had relative to one another;
+/// or all onto <see cref="JoinId"/>'s row.
 /// </summary>
 public sealed class RerankRoadmapEntriesRequest
 {
@@ -235,6 +251,9 @@ public sealed class RerankRoadmapEntriesRequest
     public Guid? PrecedingId { get; init; }
 
     public Guid? FollowingId { get; init; }
+
+    /// <summary>An entry, not one of those moving, whose row they all join. Not with a neighbor.</summary>
+    public Guid? JoinId { get; init; }
 }
 
 public sealed class UpdateRoadmapSettingsRequest

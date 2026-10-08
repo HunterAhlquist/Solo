@@ -3,9 +3,10 @@
 
 @*
     A roadmap: its tasks as bars on a day grid that scrolls sideways between the
-    instance's bounds, one task per row in the roadmap's own order. Writers add
-    a task or a milestone by right-clicking any day no bar covers, drag a bar up or down to
-    reorder it or sideways to move its dates, drag its edges to reschedule it,
+    instance's bounds, in rows in the roadmap's own order — a row holds as many
+    tasks as fit on it without overlapping. Writers add a task or a milestone by
+    right-clicking any day no bar covers, drag a bar up or down onto another row
+    or between two, or sideways to move its dates, drag its edges to reschedule it,
     and select several bars (a box dragged around them, or Cmd/Ctrl-click) to
     take them off together from the bar menu; everyone can open a task in the
     board's drawer by clicking its bar. The menus are the host's, so the
@@ -28,6 +29,7 @@ else if (_timeline is null || _project is null)
 }
 else
 {
+    var drawn = Layout();
     <div class="roadmap-page">
         <div class="roadmap-header">
             <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
@@ -131,7 +133,7 @@ else
                     }
                 </div>
 
-                <div class="roadmap-body" data-roadmap-body style="@BodyStyle">
+                <div class="roadmap-body" data-roadmap-body style="@BodyStyle(drawn)">
                     <div class="roadmap-today" style="left:@(_window.IndexOf(_today) * DayWidth)px"></div>
                     <div class="roadmap-drop-indicator" data-roadmap-drop></div>
                     @foreach (var milestone in Placed())
@@ -154,24 +156,48 @@ else
                         </div>
                     }
 
-                    @for (var i = 0; i < _entries.Count; i++)
+                    @* A line per row, or more for a row whose bars overlap, each holding
+                       the hints for its bars scrolled out of view. roadmap.js shows the
+                       nearest on each side, if the bars in view leave it room. *@
+                    @for (var i = 0; i < drawn.Lines.Count; i++)
                     {
-                        var entry = _entries[i];
-                        var span = Timeline.Span(entry.Task, entry.AnchorDay);
-                        var place = _window.Place(span);
-                        var hinted = !Timeline.IsDone(entry.Task, span, _today);
-                        @* data-selected tells roadmap.js which rows a drag takes along. *@
-                        <div class="roadmap-row" @key="entry.Id" data-roadmap-entry="@entry.Id"
-                             data-start="@place.StartIndex" data-end="@place.EndIndex"
-                             data-selected="@(_selected.Contains(entry.Id) ? "" : null)"
+                        var line = drawn.Lines[i];
+                        var hinted = line.Entries.Where(e => !Timeline.IsDone(e.Task, Timeline.Span(e.Task, e.AnchorDay), _today)).ToList();
+                        <div class="roadmap-line" @key="i" data-roadmap-line="@i" data-row="@line.Row"
                              style="top:@(i * RowHeight)px">
-                            @if (hinted)
+                            @foreach (var entry in hinted)
                             {
-                                <span class="roadmap-hint roadmap-hint--before" data-roadmap-hint>
+                                var place = Place(entry);
+                                <span class="roadmap-hint roadmap-hint--before" data-roadmap-hint="before"
+                                      data-start="@place.StartIndex" data-end="@place.EndIndex">
                                     ‹ @Serial(entry) · @entry.Task.Name
                                 </span>
                             }
+                            @foreach (var entry in hinted)
+                            {
+                                var place = Place(entry);
+                                <span class="roadmap-hint roadmap-hint--after" data-roadmap-hint="after"
+                                      data-start="@place.StartIndex" data-end="@place.EndIndex">
+                                    @Serial(entry) · @entry.Task.Name ›
+                                </span>
+                            }
+                        </div>
+                    }
 
+                    @* In the roadmap's order rather than the lines', so a bar that changes
+                       line keeps its element, and with it any focus it had. data-line and
+                       data-row tell roadmap.js where it is; data-selected, which bars a
+                       drag takes along. *@
+                    @foreach (var entry in _entries)
+                    {
+                        var span = Timeline.Span(entry.Task, entry.AnchorDay);
+                        var place = _window.Place(span);
+                        var at = drawn.LineOf(entry.Id);
+                        <div class="roadmap-entry" @key="entry.Id" data-roadmap-entry="@entry.Id"
+                             data-start="@place.StartIndex" data-end="@place.EndIndex"
+                             data-line="@at" data-row="@drawn.RowOf(entry.Id)"
+                             data-selected="@(_selected.Contains(entry.Id) ? "" : null)"
+                             style="top:@(at * RowHeight)px">
                             @if (place.Overlaps(_rendered.First, _rendered.Last))
                             {
                                 <div class="@BarClass(entry)" data-roadmap-bar tabindex="0" role="button"
@@ -228,13 +254,6 @@ else
                                         }
                                     }
                                 </div>
-                            }
-
-                            @if (hinted)
-                            {
-                                <span class="roadmap-hint roadmap-hint--after" data-roadmap-hint>
-                                    @Serial(entry) · @entry.Task.Name ›
-                                </span>
                             }
                         </div>
                     }

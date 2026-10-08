@@ -1,4 +1,4 @@
-using Solo.Roadmap.Data;
+using Solo.Roadmap.Contracts;
 
 namespace Solo.Roadmap.Data.Tests;
 
@@ -152,6 +152,82 @@ public class RoadmapRankingTests
         Assert.False(MoveBlock([a, b, c], [a, b], b, c));
         Assert.False(MoveBlock([a, b, c], [a, new Row(0m)], c, null));
         Assert.Equal((1024m, 2048m, 3072m), (a.Rank, b.Rank, c.Rank));
+    }
+
+    // -- Rows of more than one entry ------------------------------------------
+
+    [Fact]
+    public void Entries_sharing_a_row_move_as_one_and_still_share_it()
+    {
+        var (a, b, c, d) = (new Row(1024m), new Row(2048m), new Row(2048m), new Row(3072m));
+
+        Assert.True(MoveBlock([a, b, c, d], [b, c, a], d, null));
+
+        Assert.Equal(b.Rank, c.Rank);
+        Assert.True(d.Rank < a.Rank && a.Rank < b.Rank);
+    }
+
+    [Fact]
+    public void An_entry_moved_off_a_shared_row_leaves_the_rest_of_it_where_it_was()
+    {
+        var (a, b, c, d) = (new Row(1024m), new Row(2048m), new Row(2048m), new Row(3072m));
+
+        // Below the row it shared, which is still there for it to follow.
+        Assert.True(Move([a, b, c, d], c, b, d));
+
+        Assert.Equal((1024m, 2048m, 3072m), (a.Rank, b.Rank, d.Rank));
+        Assert.InRange(c.Rank, 2049m, 3071m);
+    }
+
+    [Fact]
+    public void A_neighbor_stands_for_its_whole_row()
+    {
+        var (a, b, c, d) = (new Row(1024m), new Row(1024m), new Row(2048m), new Row(3072m));
+
+        // After a's row, so after b too; before b's row, so before a too.
+        Assert.True(Move([a, b, c, d], d, a, null));
+        Assert.InRange(d.Rank, 1025m, 2047m);
+
+        Assert.True(Move(InOrder(a, b, c, d), c, null, b));
+        Assert.True(c.Rank < a.Rank);
+        Assert.Equal(a.Rank, b.Rank);
+    }
+
+    [Fact]
+    public void Rows_rebalance_as_rows()
+    {
+        var (a, b, b2) = (new Row(1.000001m), new Row(1.000002m), new Row(1.000002m));
+        var c = new Row(9999m);
+
+        Assert.True(Move([a, b, b2, c], c, a, b));
+
+        Assert.Equal((1024m, 2048m, 3072m, 3072m), (a.Rank, c.Rank, b.Rank, b2.Rank));
+    }
+
+    private static bool Join(List<Row> rows, IEnumerable<Row> moved, Row target) =>
+        RoadmapRanking.TryJoin(rows, moved.Select(r => r.Id).ToList(), target.Id,
+            r => r.Id, r => r.Rank, (r, rank) => r.Rank = rank);
+
+    [Fact]
+    public void Joining_a_row_takes_its_rank_and_moves_nothing_else()
+    {
+        var (a, b, c, d) = (new Row(1024m), new Row(2048m), new Row(3072m), new Row(4096m));
+
+        Assert.True(Join([a, b, c, d], [a, c], b));
+
+        Assert.Equal((2048m, 2048m, 2048m), (a.Rank, b.Rank, c.Rank));
+        Assert.Equal(4096m, d.Rank);
+    }
+
+    [Fact]
+    public void A_join_onto_a_moving_entry_or_one_not_on_the_roadmap_is_refused()
+    {
+        var (a, b) = (new Row(1024m), new Row(2048m));
+
+        Assert.False(Join([a, b], [a, b], b));
+        Assert.False(Join([a, b], [a], new Row(0m)));
+        Assert.False(Join([a, b], [new Row(0m)], b));
+        Assert.Equal((1024m, 2048m), (a.Rank, b.Rank));
     }
 
     [Fact]
