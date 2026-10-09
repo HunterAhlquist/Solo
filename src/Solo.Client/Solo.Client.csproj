@@ -30,7 +30,11 @@
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.12" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
-    <PackageReference Include="MudBlazor.Markdown" Version="9.10.0" />
+    <!-- Held at 9.0.0. 9.10 drops highlight.js for a C# highlighter covering
+         eight languages (none of C++, GDScript, HLSL, Python, SQL) and no
+         longer injects a colour theme, so every code block in a description
+         would render uncoloured. MarkdownHostPageTests fails on the switch. -->
+    <PackageReference Include="MudBlazor.Markdown" Version="9.0.0" />
   </ItemGroup>
 
 </Project>
