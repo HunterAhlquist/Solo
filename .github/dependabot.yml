@@ -1,0 +1,9 @@
+# Actions are pinned to commit SHAs, so a new release never reaches a workflow
+# on its own. This keeps the pins (and the version comment beside each) current
+# by opening a PR when an action releases.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
