@@ -69,6 +69,11 @@ compose file.
    `.apps.googleusercontent.com`.
 2. **Set up** the docker compose:
 
+   The prebuilt image on GHCR is private for now, so unless you've been given
+   access to it, build the image yourself from a checkout of this repository
+   (`docker build -t solo .` at its root) and use `image: solo` in place of the
+   `ghcr.io` one below.
+
    Here is an example that should get you started, though I recommend you use a secrets manager for the passwords.
    ```yaml
    services:

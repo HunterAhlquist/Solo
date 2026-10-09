@@ -4,10 +4,14 @@
 # TrueNAS SCALE: Apps -> Discover Apps -> ... -> Install via YAML, then paste
 # this file (edit the CHANGE_ME values first).
 #
-# The image is PRIVATE on GHCR. Before installing, register the registry
+# The prebuilt image on GHCR is private for now: only GitHub accounts given
+# access to the package can pull it. With access, register the registry
 # credential once: Apps -> Configuration -> Manage Container Registries ->
 # Add ghcr.io with your GitHub username and a Personal Access Token that has
 # the `read:packages` scope. (Plain docker hosts: `docker login ghcr.io`.)
+#
+# Without access, build the image from a checkout of this repository
+# (`docker build -t solo .` at its root) and set `image: solo` below.
 # ===========================================================================
 
 services:

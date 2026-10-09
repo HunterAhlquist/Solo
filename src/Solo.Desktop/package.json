@@ -6,7 +6,7 @@
   "main": "main.js",
   "private": true,
   "license": "MIT",
-  "author": "Hunter Ahlquist <hunterxahlquist@gmail.com>",
+  "author": "Hunter Ahlquist <36090375+HunterAhlquist@users.noreply.github.com>",
   "scripts": {
     "start": "electron .",
     "build:client": "node scripts/build-client.mjs",

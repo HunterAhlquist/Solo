@@ -73,10 +73,3 @@ src/Solo.Desktop/publish/
 src/Solo.Desktop/dist/
 # Staged from Icons/Solo.icon at build time for the installed actool.
 src/Solo.Desktop/build/Solo.icon/
-
-# Swift / Xcode
-DerivedData/
-.build/
-*.xcuserstate
-xcuserdata/
-*.xcarchive
