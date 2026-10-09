@@ -166,9 +166,9 @@ Two things keep the `.dmg` small:
   anyway.
 
 electron-builder's `latest` dist-tag on npm sits at 26.15.3 while the newest
-published 26.x is 26.15.7 (tagged `v26`), so `npm outdated` reports the pinned
+published 26.x is 26.17.0 (tagged `v26`), so `npm outdated` reports the pinned
 version as *ahead* of latest and a bare `npm install electron-builder@latest`
-would quietly downgrade it. The floor here is `^26.15.7` so the range itself
+would quietly downgrade it. The floor here is `^26.17.0` so the range itself
 refuses the older build; `npm ci` follows the lockfile either way.
 
 CI does this automatically: pushing a `desktop-v*` tag runs
