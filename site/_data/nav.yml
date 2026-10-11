@@ -1,0 +1,61 @@
+# The sidebar, in order. Each item names a page by its path in this folder and
+# an icon from _includes/icon-sprite.html. The page's own front matter supplies
+# the title. The order here is also the order of the Previous / Next links.
+
+- title: Use Solo
+  items:
+    - path: guide/get-started.md
+      icon: rocket-launch
+    - path: guide/projects.md
+      icon: people
+    - path: guide/boards.md
+      icon: view-kanban
+    - path: guide/tasks.md
+      icon: task-alt
+    - path: guide/roadmaps.md
+      icon: timeline
+    - path: guide/mcp.md
+      icon: smart-toy
+    - path: guide/desktop.md
+      icon: computer
+
+- title: Run an instance
+  items:
+    - path: admin/install.md
+      icon: download
+    - path: admin/configuration.md
+      icon: tune
+    - path: admin/admin-settings.md
+      icon: settings
+    - path: admin/packages.md
+      icon: layers
+
+- title: Extension development
+  items:
+    - path: extensions/index.md
+      icon: extension
+    - path: extensions/first-extension.md
+      icon: play-arrow
+    - path: extensions/manifest.md
+      icon: data-object
+    - path: extensions/server.md
+      icon: dns
+    - path: extensions/hooks-and-events.md
+      icon: bolt
+    - path: extensions/client.md
+      icon: web
+    - path: extensions/package.md
+      icon: archive
+    - path: extensions/reference.md
+      icon: list
+    - path: extensions/troubleshooting.md
+      icon: build
+
+- title: Theme development
+  items:
+    - path: themes/index.md
+      icon: palette
+    - path: themes/reference.md
+      icon: data-object
+    - path: themes/fonts-and-css.md
+      icon: text-fields

@@ -15,6 +15,7 @@ tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, plus
 extensions/Mcp          an EXTENSION, not core — the reference example (Solo.Mcp.slnx)
 extensions/Roadmap      an EXTENSION, not core — timelines; uses every 1.3–1.6 seam (Solo.Roadmap.slnx)
 samples/HelloExtension  an EXTENSION built from the NuGet contract packages alone (not in Solo.slnx)
+site/                   the documentation site (Jekyll, published by GitHub Pages); see site/README.md
 ```
 
 `Solo.slnx` is core and nothing else. Each extension under `extensions/` is its own solution, building from the contract packages rather than from `src/`; only the test projects that run the host reference `src/`, for the package to be loaded into. A new extension in this repository goes there too, as `extensions/<Name>/`.

@@ -73,3 +73,10 @@ src/Solo.Desktop/publish/
 src/Solo.Desktop/dist/
 # Staged from Icons/Solo.icon at build time for the installed actool.
 src/Solo.Desktop/build/Solo.icon/
+# Documentation site (site/): the Jekyll output, and the files
+# build/stage-site-assets.sh copies in from docs/ and the client.
+site/_site/
+site/.jekyll-cache/
+site/.jekyll-metadata
+site/assets/screenshots/
+site/assets/favicon.svg

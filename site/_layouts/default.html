@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title and page.url != "/" %}{{ page.title | escape }} · {% endif %}{{ site.title }} docs</title>
+  <meta name="description" content="{{ page.lede | default: site.description | strip_html | strip_newlines | escape }}">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="{{ '/assets/favicon.svg' | relative_url }}" type="image/svg+xml">
+  {%- comment -%}
+    Before the stylesheet, so a reader who chose a scheme never sees the other
+    one first. "Match system" stores nothing and leaves the choice to the media
+    query in docs.css.
+  {%- endcomment %}
+  <script>
+    (function () {
+      try {
+        var scheme = localStorage.getItem('solo-docs.colorScheme');
+        if (scheme === 'light' || scheme === 'dark') {
+          document.documentElement.dataset.colorScheme = scheme;
+        }
+      } catch (e) {
+        // Storage unavailable: the system's scheme applies.
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="{{ '/assets/css/docs.css' | relative_url }}">
+  {%- comment -%}
+    With no script the menu button cannot open the drawer on a narrow screen,
+    so the navigation is laid out in the page there instead.
+  {%- endcomment %}
+  <noscript>
+    <style>
+      @media (max-width: 959.98px) {
+        .drawer { position: static; width: auto; transform: none !important; box-shadow: none; margin-top: var(--appbar-height); }
+        .main { padding-top: 0; }
+      }
+    </style>
+  </noscript>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  {% include icon-sprite.html %}
+
+  <header class="appbar">
+    <button class="icon-button" id="nav-toggle" type="button" aria-label="Toggle navigation" aria-controls="drawer">
+      {% include icon.html name="menu" %}
+    </button>
+    <a class="appbar__title" href="{{ '/' | relative_url }}">
+      {{ site.title }} <span class="appbar__caption">Docs</span>
+    </a>
+    <span class="spacer"></span>
+
+    <details class="menu" id="scheme-menu">
+      <summary class="icon-button" aria-label="Appearance">
+        {% include icon.html name="settings-brightness" %}
+      </summary>
+      <div class="menu__list" role="menu">
+        <span class="menu__caption">Appearance</span>
+        <button class="menu__item" type="button" role="menuitemradio" aria-checked="false" data-scheme="light">
+          {% include icon.html name="light-mode" class="icon--small" %} Light
+          {% include icon.html name="check" class="icon--small menu__check" %}
+        </button>
+        <button class="menu__item" type="button" role="menuitemradio" aria-checked="false" data-scheme="dark">
+          {% include icon.html name="dark-mode" class="icon--small" %} Dark
+          {% include icon.html name="check" class="icon--small menu__check" %}
+        </button>
+        <button class="menu__item" type="button" role="menuitemradio" aria-checked="true" data-scheme="system">
+          {% include icon.html name="settings-brightness" class="icon--small" %} Match system
+          {% include icon.html name="check" class="icon--small menu__check" %}
+        </button>
+      </div>
+    </details>
+
+    <a class="icon-button" href="{{ site.repository_url }}" aria-label="Solo on GitHub">
+      {% include icon.html name="github" %}
+    </a>
+  </header>
+
+  <div class="scrim" id="scrim" hidden></div>
+
+  <nav class="drawer" id="drawer" aria-label="Documentation">
+    <div class="nav-shell">
+      <div class="nav-shell__scroll">
+        <a class="nav-link" href="{{ '/' | relative_url }}"{% if page.url == "/" %} aria-current="page"{% endif %}>
+          {% include icon.html name="dashboard" %} All docs
+        </a>
+        {%- for section in site.data.nav %}
+        <div class="nav-section-header" role="presentation">
+          <span class="nav-section-header__caption">{{ section.title }}</span>
+          <span class="nav-section-header__rule"></span>
+        </div>
+        {%- for item in section.items %}
+        {%- assign target = site.pages | where: "path", item.path | first %}
+        <a class="nav-link nav-link--nested" href="{{ target.url | relative_url }}"{% if target.url == page.url %} aria-current="page"{% endif %}>
+          {% include icon.html name=item.icon %} {{ target.nav_title | default: target.title }}
+        </a>
+        {%- endfor %}
+        {%- endfor %}
+      </div>
+      <div class="nav-shell__footer">
+        <hr class="nav-divider">
+        <a class="nav-link nav-link--muted" href="{{ site.repository_url }}/releases">
+          {% include icon.html name="download" %} Releases
+        </a>
+        <a class="nav-link nav-link--muted" href="{{ site.repository_url }}">
+          {% include icon.html name="github" %} Source on GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <main class="container" id="content">
+      {{ content }}
+    </main>
+    <footer class="app-footer">
+      <div class="app-footer__copyright">
+        Solo, a simple project management app -
+        <a href="{{ site.repository_url }}">View Source on Github</a>
+      </div>
+    </footer>
+  </div>
+
+  <script src="{{ '/assets/js/docs.js' | relative_url }}" defer></script>
+</body>
+</html>

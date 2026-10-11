@@ -6,6 +6,12 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "src/Solo.Api", "--launch-profile", "http"],
       "port": 5144
+    },
+    {
+      "name": "solo-docs",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "site/_site"],
+      "port": 4173
     }
   ]
 }

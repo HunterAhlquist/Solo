@@ -1,0 +1,25 @@
+{%- comment -%}
+  A screenshot from docs/images/screenshots, which the build copies to
+  assets/screenshots (see README.md).
+
+    {% include shot.html src="audit.png" alt="…" caption="…" %}
+    {% include shot.html dark="board-dark.png" light="board-light.png" alt="…" %}
+
+  With `dark` and `light` the picture follows the colour scheme. `width` and
+  `height` default to the 1920 × 1200 most of the screenshots are; pass them
+  for any other size so the page does not move when the image arrives.
+  `phone=true` holds a phone screenshot to phone width.
+{%- endcomment -%}
+{%- assign folder = '/assets/screenshots/' -%}
+{%- assign file = include.light | default: include.src -%}
+<figure class="shot{% if include.phone %} shot--phone{% endif %}">
+  <picture>
+    {%- if include.dark %}
+    <source srcset="{{ folder | append: include.dark | relative_url }}" media="(prefers-color-scheme: dark)" data-scheme-media="(prefers-color-scheme: dark)">
+    {%- endif %}
+    <img src="{{ folder | append: file | relative_url }}" alt="{{ include.alt | escape }}" width="{{ include.width | default: 1920 }}" height="{{ include.height | default: 1200 }}" loading="lazy">
+  </picture>
+  {%- if include.caption %}
+  <figcaption>{{ include.caption }}</figcaption>
+  {%- endif %}
+</figure>

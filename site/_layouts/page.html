@@ -1,0 +1,62 @@
+---
+layout: default
+---
+{%- comment -%}
+  A documentation page: the section it belongs to, its title, the Markdown, and
+  links to the pages before and after it in _data/nav.yml.
+{%- endcomment -%}
+{%- assign paths = "" | split: "" -%}
+{%- for section in site.data.nav -%}
+  {%- for item in section.items -%}
+    {%- assign paths = paths | push: item.path -%}
+    {%- if item.path == page.path -%}{%- assign section_title = section.title -%}{%- endif -%}
+  {%- endfor -%}
+{%- endfor -%}
+{%- for path in paths -%}
+  {%- if path == page.path -%}
+    {%- unless forloop.first -%}
+      {%- assign index = forloop.index0 | minus: 1 -%}
+      {%- assign previous = site.pages | where: "path", paths[index] | first -%}
+    {%- endunless -%}
+    {%- unless forloop.last -%}
+      {%- assign index = forloop.index0 | plus: 1 -%}
+      {%- assign next = site.pages | where: "path", paths[index] | first -%}
+    {%- endunless -%}
+  {%- endif -%}
+{%- endfor -%}
+<div class="page page--with-toc">
+  <article class="page__body">
+    {%- if section_title %}
+    <span class="overline">{{ section_title }}</span>
+    {%- endif %}
+    <h1>{{ page.title }}</h1>
+    {%- if page.lede %}
+    <p class="lede">{{ page.lede }}</p>
+    {%- endif %}
+    <div class="prose">
+      {{ content }}
+    </div>
+  </article>
+  {%- comment %} Filled in by docs.js from the page's headings; hidden until then. {% endcomment %}
+  <aside class="toc" id="toc" aria-label="On this page" hidden>
+    <div class="toc__title">On this page</div>
+  </aside>
+</div>
+{%- if previous or next %}
+<nav class="pager" aria-label="Previous and next page">
+  {%- if previous %}
+  <a class="pager__link" href="{{ previous.url | relative_url }}">
+    {% include icon.html name="arrow-back" %}
+    <span><span class="pager__label">Previous</span>{{ previous.nav_title | default: previous.title }}</span>
+  </a>
+  {%- else %}
+  <span></span>
+  {%- endif %}
+  {%- if next %}
+  <a class="pager__link pager__link--next" href="{{ next.url | relative_url }}">
+    <span><span class="pager__label">Next</span>{{ next.nav_title | default: next.title }}</span>
+    {% include icon.html name="arrow-forward" %}
+  </a>
+  {%- endif %}
+</nav>
+{%- endif %}

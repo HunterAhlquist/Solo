@@ -1,0 +1,52 @@
+---
+layout: default
+---
+{%- comment -%}
+  The front page: the wordmark over the sign-in screen's terminal grid, then
+  one card per section of _data/nav.yml, each listing its pages the way a
+  project card lists its boards.
+{%- endcomment -%}
+<section class="hero">
+  <h1 class="hero__title">{{ site.title }}</h1>
+  <p class="hero__tagline">Project management for <strong>small game-dev teams</strong></p>
+  <div class="hero__chips">
+    <span class="chip">kanban</span>
+    <span class="chip">live editing</span>
+    <span class="chip">audit log</span>
+    <span class="chip">themes</span>
+    <span class="chip">extensions</span>
+  </div>
+  <div class="hero__actions">
+    <a class="button button--filled" href="{{ '/guide/get-started/' | relative_url }}">
+      {% include icon.html name="rocket-launch" %} Use Solo
+    </a>
+    <a class="button" href="{{ '/admin/install/' | relative_url }}">
+      {% include icon.html name="download" %} Run an instance
+    </a>
+  </div>
+</section>
+
+<div class="card-grid">
+  {%- for section in site.data.nav %}
+  {%- assign first_item = section.items | first %}
+  <section class="card">
+    <div class="card__header">
+      <span class="card__avatar">{% include icon.html name=first_item.icon %}</span>
+      <h2 class="card__title">{{ section.title }}</h2>
+    </div>
+    <div class="card__links">
+      {%- for item in section.items %}
+      {%- assign target = site.pages | where: "path", item.path | first %}
+      <a class="card__link" href="{{ target.url | relative_url }}">
+        {% include icon.html name=item.icon class="icon--small" %}
+        <span>{{ target.nav_title | default: target.title }}</span>
+      </a>
+      {%- endfor %}
+    </div>
+  </section>
+  {%- endfor %}
+</div>
+
+<div class="prose">
+  {{ content }}
+</div>

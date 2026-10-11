@@ -1,0 +1,1254 @@
+/* -----------------------------------------------------------------------------
+   Solo docs.
+
+   The look is Solo's default theme, Ahlquist Interactive: a black-and-yellow
+   monospace terminal in the dark scheme, orange on paper in the light one. The
+   tokens below are that theme's palette, typography and layout values, copied
+   from src/Solo.Api/Themes/ahlquist-interactive/theme.json. When the theme
+   changes, change them here too.
+   -------------------------------------------------------------------------- */
+
+:root {
+    color-scheme: dark;
+
+    --primary: #fff600;
+    --primary-contrast: #000000;
+    --secondary: #c9c400;
+    --tertiary: #8a8600;
+    --background: #000000;
+    --background-gray: #080808;
+    --surface: #101010;
+    --appbar-background: #000000;
+    --appbar-text: #fff600;
+    --drawer-background: #080808;
+    --drawer-text: #ffffff;
+    --drawer-icon: #fff600;
+    --text-primary: #ffffff;
+    --text-secondary: #b0b0a0;
+    --text-disabled: #6f6f64;
+    --divider: #fff60040;
+    --divider-light: #fff60026;
+    --lines-default: #fff60040;
+    --lines-inputs: #fff60059;
+    --table-lines: #fff60026;
+    --table-hover: #fff6000f;
+    --success: #5ad469;
+    --warning: #ffb300;
+    --error: #ff5252;
+    --info: #fff600;
+
+    /* Inline code is the theme's pink, --solo-code-color (#c02d76). On black
+       that is 3.9:1, which the app gets away with for the odd word. A page of
+       documentation is mostly code words, so the dark scheme uses a lighter
+       tint of the same hue. The light scheme below uses the theme's own. */
+    --code: #e4609f;
+
+    /* What the theme leaves to MudBlazor, and these pages need. */
+    --link: var(--primary);
+    --grid-line: #fff6000e;
+    --grid-line-coarse: #fff6001a;
+    --shadow: 0 2px 1px -1px rgba(0, 0, 0, 0.2), 0 1px 1px 0 rgba(0, 0, 0, 0.14), 0 1px 3px 0 rgba(0, 0, 0, 0.12);
+
+    --font: "Courier New", monospace;
+    --radius: 8px;
+    --appbar-height: 4.375rem;   /* the theme's 5em at its 0.875rem base */
+    --drawer-width: 17.5rem;     /* the theme's 20em at the same base */
+}
+
+/* The light scheme, twice: once for a reader whose system asks for it and who
+   has not chosen otherwise, once for a reader who chose it from the menu. */
+@media (prefers-color-scheme: light) {
+    :root:not([data-color-scheme="dark"]) {
+        color-scheme: light;
+
+        --primary: #df6610;
+        --primary-contrast: #000000;
+        --secondary: #a8480a;
+        --tertiary: #7a3206;
+        --background: #fdf9f3;
+        --background-gray: #f8f1e8;
+        --surface: #fffdfa;
+        --appbar-background: #17160f;
+        --appbar-text: #ffe000;
+        --drawer-background: #fffdfa;
+        --drawer-text: #231d16;
+        --drawer-icon: #df6610;
+        --text-primary: #231d16;
+        --text-secondary: #5b4f42;
+        --text-disabled: #8f8375;
+        --divider: #e4d9c9;
+        --divider-light: #eee6da;
+        --lines-default: #dccfbb;
+        --lines-inputs: #c3b199;
+        --table-lines: #ebe3d7;
+        --table-hover: #df661014;
+        --success: #1f6f43;
+        --warning: #8a5a00;
+        --error: #b3261e;
+        --info: #2f5d8a;
+        --code: #c02d76;
+
+        /* The accent is 3.3:1 on paper: enough for a heading or an icon, not
+           for a sentence. Links take the darker secondary. */
+        --link: var(--secondary);
+        --grid-line: #df661012;
+        --grid-line-coarse: #df661022;
+    }
+}
+
+:root[data-color-scheme="light"] {
+    color-scheme: light;
+
+    --primary: #df6610;
+    --primary-contrast: #000000;
+    --secondary: #a8480a;
+    --tertiary: #7a3206;
+    --background: #fdf9f3;
+    --background-gray: #f8f1e8;
+    --surface: #fffdfa;
+    --appbar-background: #17160f;
+    --appbar-text: #ffe000;
+    --drawer-background: #fffdfa;
+    --drawer-text: #231d16;
+    --drawer-icon: #df6610;
+    --text-primary: #231d16;
+    --text-secondary: #5b4f42;
+    --text-disabled: #8f8375;
+    --divider: #e4d9c9;
+    --divider-light: #eee6da;
+    --lines-default: #dccfbb;
+    --lines-inputs: #c3b199;
+    --table-lines: #ebe3d7;
+    --table-hover: #df661014;
+    --success: #1f6f43;
+    --warning: #8a5a00;
+    --error: #b3261e;
+    --info: #2f5d8a;
+    --code: #c02d76;
+    --link: var(--secondary);
+    --grid-line: #df661012;
+    --grid-line-coarse: #df661022;
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    background: var(--background);
+    /* Keeps a heading reached by a link clear of the fixed app bar. */
+    scroll-padding-top: calc(var(--appbar-height) + 1rem);
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--text-primary);
+    font-family: var(--font);
+    font-size: 0.875rem;
+    line-height: 1.43;
+}
+
+a {
+    color: var(--link);
+}
+
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+.icon {
+    flex: 0 0 auto;
+    width: 1.5rem;
+    height: 1.5rem;
+    fill: currentColor;
+}
+
+.icon--small {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.icon-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.skip-link {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 40;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius);
+    background: var(--primary);
+    color: var(--primary-contrast);
+    font-weight: 700;
+    transform: translateY(-200%);
+}
+
+.skip-link:focus {
+    transform: none;
+}
+
+/* ---------------------------------------------------------------------------
+   App bar. Black in both schemes, like the app's, with the hairline of brand
+   colour under it that the theme's stylesheet adds.
+   --------------------------------------------------------------------------- */
+.appbar {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: var(--appbar-height);
+    padding: 0 1rem;
+    background: var(--appbar-background);
+    color: var(--appbar-text);
+    border-bottom: 1px solid var(--divider);
+    box-shadow: var(--shadow);
+}
+
+.appbar__title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-left: 0.5rem;
+    color: inherit;
+    font-size: 1rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.appbar__caption {
+    color: color-mix(in srgb, var(--appbar-text) 60%, transparent);
+    font-size: 0.75rem;
+    font-weight: 400;
+}
+
+.spacer {
+    flex: 1;
+}
+
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.icon-button:hover {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   Appearance menu: Light, Dark and Match system as three rows with a check on
+   the current one, as in the app's profile menu.
+   --------------------------------------------------------------------------- */
+.menu {
+    position: relative;
+}
+
+.menu > summary {
+    list-style: none;
+}
+
+.menu > summary::-webkit-details-marker {
+    display: none;
+}
+
+.menu__list {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    z-index: 35;
+    min-width: 13rem;
+    margin: 0;
+    padding: 0.5rem 0;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-primary);
+    box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14);
+}
+
+.menu__caption {
+    display: block;
+    padding: 0.25rem 1rem 0.375rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.menu__item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.menu__item:hover {
+    background: var(--table-hover);
+}
+
+.menu__item .icon:first-child {
+    color: var(--text-secondary);
+}
+
+.menu__check {
+    margin-left: auto;
+    color: var(--primary);
+    visibility: hidden;
+}
+
+.menu__item[aria-checked="true"] .menu__check {
+    visibility: visible;
+}
+
+/* ---------------------------------------------------------------------------
+   Drawer: a scrolling list with a footer pinned to its foot, as the app's
+   sidebar is. Sections carry the sidebar's labelled divider.
+   --------------------------------------------------------------------------- */
+.drawer {
+    position: fixed;
+    inset: var(--appbar-height) auto 0 0;
+    z-index: 20;
+    width: var(--drawer-width);
+    background: var(--drawer-background);
+    color: var(--drawer-text);
+    box-shadow: var(--shadow);
+    transition: transform 225ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.nav-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.nav-shell__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.5rem 0 1rem;
+}
+
+.nav-shell__footer {
+    flex: 0 0 auto;
+}
+
+.nav-divider {
+    margin: 0.5rem 0;
+    border: 0;
+    border-top: 1px solid var(--divider);
+}
+
+.nav-shell__footer .nav-divider {
+    margin: 0;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.nav-link .icon {
+    color: var(--drawer-icon);
+}
+
+.nav-link:hover {
+    background: var(--table-hover);
+}
+
+.nav-link[aria-current="page"] {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    color: var(--primary);
+}
+
+.nav-link--nested {
+    padding-left: 1.75rem;
+}
+
+.nav-link--muted {
+    color: var(--text-secondary);
+}
+
+.nav-link--muted:hover {
+    color: var(--primary);
+}
+
+.nav-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 1rem 0.25rem;
+}
+
+.nav-section-header__caption {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+    white-space: nowrap;
+}
+
+.nav-section-header__rule {
+    flex: 1;
+    border-top: 1px solid var(--divider);
+}
+
+.scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* ---------------------------------------------------------------------------
+   Main column
+   --------------------------------------------------------------------------- */
+.main {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding-top: var(--appbar-height);
+    padding-left: var(--drawer-width);
+    transition: padding-left 225ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.container {
+    flex: 1 0 auto;
+    width: 100%;
+    max-width: 80rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+/* The menu button folds the drawer away on a wide screen and slides it over
+   the page on a narrow one. js/docs.js sets data-nav; with no script the
+   drawer stays where the width puts it. */
+:root[data-nav="closed"] .drawer {
+    transform: translateX(-100%);
+    box-shadow: none;
+}
+
+:root[data-nav="closed"] .main {
+    padding-left: 0;
+}
+
+@media (max-width: 959.98px) {
+    .main {
+        padding-left: 0;
+    }
+
+    :root:not([data-nav="open"]) .drawer {
+        transform: translateX(-100%);
+        box-shadow: none;
+    }
+
+    .drawer {
+        z-index: 25;
+        width: min(var(--drawer-width), 85vw);
+    }
+}
+
+@media (min-width: 960px) {
+    .scrim {
+        display: none;
+    }
+}
+
+.app-footer {
+    padding: 1.5rem 1rem 1rem;
+    text-align: center;
+}
+
+.app-footer__copyright {
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    opacity: 0.7;
+}
+
+/* ---------------------------------------------------------------------------
+   Page: the article beside an "On this page" list.
+   --------------------------------------------------------------------------- */
+.page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+    padding: 0.5rem 0.5rem 0;
+}
+
+@media (min-width: 1280px) {
+    .page--with-toc {
+        grid-template-columns: minmax(0, 1fr) 14rem;
+    }
+}
+
+.page__body {
+    min-width: 0;
+    max-width: 54rem;
+}
+
+.overline {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--primary);
+    font-size: 0.75rem;
+    letter-spacing: 0.08333em;
+}
+
+.toc {
+    display: none;
+}
+
+@media (min-width: 1280px) {
+    .toc:not([hidden]) {
+        position: sticky;
+        top: calc(var(--appbar-height) + 1.5rem);
+        display: block;
+        align-self: start;
+        max-height: calc(100vh - var(--appbar-height) - 3rem);
+        overflow-y: auto;
+        font-size: 0.8125rem;
+    }
+}
+
+.toc__title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.toc__title::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--divider);
+}
+
+.toc ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.toc a {
+    display: block;
+    padding: 0.25rem 0 0.25rem 0.75rem;
+    border-left: 1px solid var(--divider);
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.toc a:hover {
+    color: var(--primary);
+}
+
+.toc a[aria-current="true"] {
+    border-left-color: var(--primary);
+    color: var(--primary);
+}
+
+.toc__nested a {
+    padding-left: 1.5rem;
+}
+
+/* Previous / Next, as two of the app's outlined cards. */
+.pager {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1rem;
+    max-width: 54rem;
+    margin-top: 3rem;
+}
+
+.pager__link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.pager__link:hover {
+    border-color: var(--primary);
+}
+
+.pager__link--next {
+    justify-content: flex-end;
+    text-align: right;
+}
+
+.pager__link .icon {
+    color: var(--primary);
+}
+
+.pager__label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Prose
+   --------------------------------------------------------------------------- */
+.prose {
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    overflow-wrap: break-word;
+}
+
+/* Uppercase, widely tracked: the theme's terminal banner. */
+h1 {
+    margin: 0 0 1rem;
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.lede {
+    margin: 0 0 2rem;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+/* A second-level heading is the app's page section header: a title, then a
+   rule that runs out to the edge. */
+.prose h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 3rem 0 1rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.prose h2::after {
+    content: "";
+    flex: 1;
+    min-width: 1.5rem;
+    border-top: 1px solid var(--divider);
+}
+
+.prose h3 {
+    margin: 2.25rem 0 0.75rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.prose h4 {
+    margin: 1.75rem 0 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.prose > :first-child {
+    margin-top: 0;
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose dl {
+    margin: 0 0 1rem;
+}
+
+.prose ul,
+.prose ol {
+    padding-left: 1.75rem;
+}
+
+.prose li {
+    margin: 0.25rem 0;
+}
+
+.prose li > p {
+    margin-bottom: 0.5rem;
+}
+
+.prose li::marker {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.prose hr {
+    margin: 2.5rem 0;
+    border: 0;
+    border-top: 1px solid var(--divider);
+}
+
+.prose strong {
+    font-weight: 700;
+}
+
+.heading-anchor {
+    flex: 0 0 auto;
+    margin-left: 0.5rem;
+    color: var(--text-disabled);
+    font-weight: 400;
+    text-decoration: none;
+    opacity: 0;
+}
+
+h2:hover .heading-anchor,
+h3:hover .heading-anchor,
+h4:hover .heading-anchor,
+.heading-anchor:focus-visible {
+    opacity: 1;
+}
+
+.heading-anchor:hover {
+    color: var(--primary);
+}
+
+/* Inline code takes the theme's --solo-code-color and nothing else. */
+code {
+    color: var(--code);
+    font-family: var(--font);
+    font-size: 1em;
+}
+
+kbd {
+    padding: 0.05rem 0.35rem;
+    border: 1px solid var(--lines-inputs);
+    border-radius: 4px;
+    background: var(--surface);
+    font-family: var(--font);
+    font-size: 0.875em;
+}
+
+/* ---------------------------------------------------------------------------
+   Code blocks
+   --------------------------------------------------------------------------- */
+/* `div`, because kramdown puts the same class on inline code spans. */
+div.highlighter-rouge {
+    position: relative;
+    margin: 0 0 1.25rem;
+}
+
+.prose pre {
+    margin: 0;
+    padding: 0.875rem 1rem;
+    overflow-x: auto;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background: var(--background-gray);
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    tab-size: 4;
+}
+
+.prose pre code {
+    color: inherit;
+    font-size: inherit;
+}
+
+.copy-button {
+    position: absolute;
+    top: 0.375rem;
+    right: 0.375rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    opacity: 0;
+}
+
+div.highlighter-rouge:hover .copy-button,
+.copy-button:focus-visible,
+.copy-button[data-copied] {
+    opacity: 1;
+}
+
+.copy-button:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.copy-button[data-copied] {
+    border-color: var(--success);
+    color: var(--success);
+}
+
+/* Syntax colours, from the palette: the accent for keywords, the status
+   colours for literals, the secondary text colour for comments. */
+.highlight .c, .highlight .c1, .highlight .cm, .highlight .cs,
+.highlight .cd, .highlight .ch, .highlight .cpf, .highlight .cp {
+    color: var(--text-secondary);
+}
+
+.highlight .k, .highlight .kd, .highlight .kn, .highlight .kp,
+.highlight .kr, .highlight .kt, .highlight .kc, .highlight .kv,
+.highlight .ow, .highlight .nt {
+    color: var(--link);
+    font-weight: 700;
+}
+
+.highlight .s, .highlight .s1, .highlight .s2, .highlight .sb,
+.highlight .sc, .highlight .sd, .highlight .se, .highlight .sh,
+.highlight .si, .highlight .sx, .highlight .sr, .highlight .ss,
+.highlight .dl {
+    color: var(--success);
+}
+
+.highlight .m, .highlight .mi, .highlight .mf, .highlight .mh,
+.highlight .mo, .highlight .mb, .highlight .mx, .highlight .il,
+.highlight .no {
+    color: var(--warning);
+}
+
+.highlight .na, .highlight .nl, .highlight .nb, .highlight .nv,
+.highlight .py {
+    color: var(--secondary);
+}
+
+.highlight .gh, .highlight .gu {
+    font-weight: 700;
+}
+
+.highlight .gi {
+    color: var(--success);
+}
+
+.highlight .gd {
+    color: var(--error);
+}
+
+/* A lexer's "error" token is usually a comment or an ellipsis it did not
+   expect. It is not the reader's error, so it gets no alarm colour. */
+.highlight .err {
+    color: var(--text-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   Tables: the app's dense table on a bordered surface.
+   --------------------------------------------------------------------------- */
+.table-wrap {
+    margin: 0 0 1.25rem;
+    overflow-x: auto;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.prose th,
+.prose td {
+    padding: 0.5rem 0.875rem;
+    border-bottom: 1px solid var(--table-lines);
+    text-align: left;
+    vertical-align: top;
+}
+
+.prose th {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.prose tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.prose tbody tr:hover {
+    background: var(--table-hover);
+}
+
+/* ---------------------------------------------------------------------------
+   Callouts: the app's dense alerts. A blockquote with a class, written in
+   Markdown as `{: .note}` on the line after the quote.
+   --------------------------------------------------------------------------- */
+.prose blockquote {
+    --callout: var(--text-secondary);
+    position: relative;
+    margin: 0 0 1.25rem;
+    padding: 0.625rem 1rem 0.625rem 3rem;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--callout) 12%, transparent);
+}
+
+.prose blockquote > :last-child {
+    margin-bottom: 0;
+}
+
+.prose blockquote::before {
+    content: "";
+    position: absolute;
+    top: 0.75rem;
+    left: 0.875rem;
+    width: 1.375rem;
+    height: 1.375rem;
+    background: var(--callout);
+    -webkit-mask: var(--callout-icon) center / contain no-repeat;
+    mask: var(--callout-icon) center / contain no-repeat;
+}
+
+.prose blockquote,
+.prose blockquote.note {
+    --callout: var(--info);
+    --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z'/%3E%3C/svg%3E");
+}
+
+.prose blockquote.tip {
+    --callout: var(--success);
+    --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z'/%3E%3C/svg%3E");
+}
+
+.prose blockquote.warning {
+    --callout: var(--warning);
+    --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z'/%3E%3C/svg%3E");
+}
+
+.prose blockquote.danger {
+    --callout: var(--error);
+    --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z'/%3E%3C/svg%3E");
+}
+
+/* ---------------------------------------------------------------------------
+   Screenshots
+   --------------------------------------------------------------------------- */
+.shot {
+    margin: 0 0 1.5rem;
+}
+
+.shot img {
+    display: block;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+}
+
+.shot figcaption {
+    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.shot--phone img {
+    max-width: 16.25rem;
+}
+
+.shot-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons and chips
+   --------------------------------------------------------------------------- */
+.button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4375rem 1rem;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--primary);
+    font: inherit;
+    font-weight: 700;
+    letter-spacing: 0.02857em;
+    line-height: 1.5;
+    text-decoration: none;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.button:hover {
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.button--filled {
+    background: var(--primary);
+    color: var(--primary-contrast);
+    box-shadow: var(--shadow);
+}
+
+.button--filled:hover {
+    background: color-mix(in srgb, var(--primary) 88%, #000000);
+}
+
+.button .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.125rem 0.625rem;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+}
+
+.chip::before {
+    content: "";
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Home: the sign-in screen's terminal grid behind the title, then a card per
+   part of the docs, laid out like the project cards on All projects.
+   --------------------------------------------------------------------------- */
+.hero {
+    position: relative;
+    margin: 0.5rem 0 1.5rem;
+    padding: 3rem 2rem;
+    overflow: hidden;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background-color: var(--background);
+    background-image:
+        radial-gradient(60% 90% at 78% 85%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%),
+        linear-gradient(var(--grid-line-coarse) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line-coarse) 1px, transparent 1px),
+        linear-gradient(var(--grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: auto, 200px 200px, 200px 200px, 40px 40px, 40px 40px;
+}
+
+.hero__title {
+    display: flex;
+    align-items: flex-end;
+    margin: 0 0 0.75rem;
+    font-size: clamp(2.75rem, 9vw, 5rem);
+    line-height: 1;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+/* The block cursor after the wordmark. */
+.hero__title::after {
+    content: "";
+    width: 0.55em;
+    height: 0.14em;
+    margin: 0 0 0.08em 0.12em;
+    background: var(--primary);
+}
+
+.hero__tagline {
+    margin: 0 0 1.5rem;
+    color: var(--text-secondary);
+    font-size: clamp(1rem, 2.4vw, 1.375rem);
+    font-weight: 700;
+}
+
+.hero__tagline strong {
+    color: var(--text-primary);
+}
+
+.hero__chips,
+.hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.hero__actions {
+    margin-top: 2rem;
+    gap: 0.75rem;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 1.5rem;
+    margin: 1.5rem 0 2.5rem;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.card__header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.card__avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid var(--primary);
+    border-radius: 50%;
+    color: var(--primary);
+}
+
+.card__title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.card__text {
+    margin: 0.75rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+}
+
+.card__links {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 0.75rem;
+    padding: 0.35rem;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.card__link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.card__link .icon {
+    color: var(--primary);
+}
+
+.card__link:hover {
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Small screens and motion
+   --------------------------------------------------------------------------- */
+@media (max-width: 599.98px) {
+    h1 {
+        font-size: 1.3rem;
+        letter-spacing: 0.12em;
+    }
+
+    .prose h2 {
+        font-size: 1.25rem;
+    }
+
+    .prose h3 {
+        font-size: 1.1rem;
+    }
+
+    .hero {
+        padding: 2rem 1.25rem;
+    }
+
+    .appbar {
+        padding: 0 0.5rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .drawer,
+    .main {
+        transition: none;
+    }
+}
+
+@media print {
+    .appbar,
+    .drawer,
+    .scrim,
+    .toc,
+    .pager,
+    .copy-button {
+        display: none !important;
+    }
+
+    .main {
+        padding: 0;
+    }
+}

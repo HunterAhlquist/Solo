@@ -1,0 +1,46 @@
+# Solo's documentation site, published with GitHub Pages by
+# .github/workflows/pages.yml. See README.md in this folder for the layout and
+# how to preview a change.
+
+title: Solo
+tagline: Project management for small game-dev teams
+description: >-
+  Documentation for Solo: how to use the app, how to run an instance, and how
+  to write extensions and themes for it.
+repository: HunterAhlquist/Solo
+repository_url: https://github.com/HunterAhlquist/Solo
+
+# No `url` or `baseurl` here on purpose. The Pages workflow appends both from
+# the repository's Pages settings, so the same source works at
+# <owner>.github.io/Solo and behind a custom domain. Every link in the layout
+# goes through `relative_url` for that reason.
+
+# The layout in _layouts/ is the whole design. Without this line the Pages
+# build adds its default theme's stylesheet to the output as well.
+theme: null
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  # Heading ids are what the "On this page" list and deep links point at.
+  auto_ids: true
+
+permalink: pretty
+
+# Lets a page link to another as [text](other-page.md), which also works when
+# the Markdown is read on github.com.
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: page
+
+exclude:
+  - README.md

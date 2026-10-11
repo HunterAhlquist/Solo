@@ -1,0 +1,113 @@
+name: Docs
+
+# The documentation site under site/, published with GitHub Pages. The
+# repository's Pages source has to be "GitHub Actions" (Settings -> Pages);
+# until it is, the configure step below fails and nothing is published.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      # Copied into the site at build time; see "Stage the app's own assets".
+      - "docs/images/screenshots/**"
+      - "src/Solo.Client/wwwroot/favicon.svg"
+      - ".github/workflows/pages.yml"
+  # A pull request builds the site and stops: a broken page is caught before
+  # it reaches main, and nothing is uploaded or deployed.
+  pull_request:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Read-only by default. The deploy job asks for what Pages needs.
+permissions:
+  contents: read
+
+# One deployment at a time. A newer run waits for the one in progress rather
+# than cancelling it, so a deployment is never cut off half way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Configure Pages reads the repository's Pages settings.
+      pages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Reads the site's address from the repository's Pages settings. A pull
+      # request has nowhere to publish, so it builds without one.
+      - name: Configure Pages
+        id: pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      # Every link in the layout goes through `relative_url`, which prepends
+      # `baseurl`: "/Solo" on <owner>.github.io, empty behind a custom domain.
+      # The Jekyll action takes no such option, so the address goes into this
+      # checkout's copy of the config. site/_config.yml itself names neither,
+      # which is what lets one source serve both.
+      - name: Set the site address
+        if: github.event_name != 'pull_request'
+        env:
+          ORIGIN: ${{ steps.pages.outputs.origin }}
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          printf '\nurl: "%s"\nbaseurl: "%s"\n' "$ORIGIN" "$BASE_PATH" >> site/_config.yml
+
+      # The screenshots and the icon belong to the app and the README, and
+      # stay where those keep them. The site gets a copy for the build
+      # (both destinations are in .gitignore) instead of a second set to keep
+      # in step.
+      - name: Stage the app's own assets
+        run: build/stage-site-assets.sh
+
+      # GitHub's own Jekyll build: the github-pages gem at the version Pages
+      # runs, with no Gemfile to maintain here.
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
+        with:
+          source: ./site
+          destination: ./_site
+
+      # A page links to another as [text](other.md), and the build rewrites
+      # each one to a site address. One that reaches the output unrewritten is
+      # a dead link on the site, so it fails the build here instead.
+      - name: Check that page links resolved
+        run: |
+          if grep -rnE 'href="[^":]*\.md(#[^"]*)?"' _site --include='*.html'; then
+            echo "::error::A link to a .md file reached the built site unresolved."
+            exit 1
+          fi
+
+      # Kept for a day: Pages serves its own copy once deployed, and artifacts
+      # share the account's storage with the release packages.
+      - name: Upload the site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ./_site
+          retention-days: 1
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
