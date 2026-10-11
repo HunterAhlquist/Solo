@@ -385,6 +385,8 @@ During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start` serves 
 
 The server image, MCP extension, and desktop client version independently — see [Packaging](#packaging) for the `desktop-v*` series. For a `server-v*` tag, CI compares the server inputs (`Dockerfile`, `.dockerignore`, and the server's project-reference closure) and MCP package inputs separately against the previous `server-v*` tag it descends from. It publishes only the artifacts whose inputs changed; test-, documentation-, desktop-, workflow-, and packaging-only changes do not republish the server, and server-only changes do not attach another copy of an unchanged MCP package. If neither artifact changed, CI creates no GitHub release and moves no GHCR tags.
 
+The extension SDK is a third series. Pushing an **`sdk-v<version>`** tag runs [release-sdk.yml](.github/workflows/release-sdk.yml), which publishes `HunterAhlquist.Solo.Shared` and `HunterAhlquist.Solo.Extensibility` to nuget.org. The tag has to name the contract version in `build/contract-package.props` (`sdk-v1.8.0` for `1.8.0`), and the workflow refuses to publish while the repository is private, because nuget.org never deletes a version and each package page links back here. It stores no API key: nuget.org issues a one-hour key through a [trusted-publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) policy that names this repository, `release-sdk.yml` and the `nuget` environment, and the `NUGET_USER` repository variable holds the nuget.org profile name. A manual `workflow_dispatch` run is a rehearsal — it packs and uploads the packages as a workflow artifact and publishes nothing.
+
 ### Packaging
 
 ```sh

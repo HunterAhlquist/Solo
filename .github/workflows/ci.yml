@@ -170,7 +170,8 @@ jobs:
       # The extension contract as NuGet packages, and proof that
       # samples/HelloExtension builds from them with nothing else from this
       # repository. Packed on every run and neither uploaded nor pushed: the
-      # packages go to nuget.org at the public launch, not before. Until then
+      # packages go to nuget.org at the public launch, not before, and from
+      # release-sdk.yml on an `sdk-v*` tag rather than from here. Until then
       # artifacts/nuget, where this leaves them, is also the only source the
       # extensions below can restore the contract from (extensions/nuget.config).
       - name: Package the extension contract
