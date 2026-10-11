@@ -153,8 +153,14 @@ function serveStatic(req, res, clientDir) {
         return;
     }
 
+    // One prefix test, against the root *with* its separator, and nothing
+    // else: every filesystem call below then sits behind it, which is what
+    // lets a reader (and CodeQL) see them as contained. The root needs no
+    // exemption of its own — '/' joins to the root plus a separator and
+    // passes; only a hand-written path like /x/.. collapses to the bare root,
+    // and that is refused rather than served.
     let filePath = path.normalize(path.join(clientDir, pathname));
-    if (!filePath.startsWith(clientDir + path.sep) && filePath !== clientDir) {
+    if (!filePath.startsWith(clientDir + path.sep)) {
         res.writeHead(403).end();
         return;
     }
