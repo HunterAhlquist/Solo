@@ -7,6 +7,8 @@
 
 A simple project management tool for small teams: Kanban boards with epics/tasks/sub-tasks as swim-lanes, single-provider OIDC SSO, live editing over SignalR, full audit logging, themes, and extension support.
 
+**Docs: [hunterahlquist.github.io/Solo](https://hunterahlquist.github.io/Solo/)** for using the app, running an instance, and writing extensions and themes.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshots/board-dark.png">
   <img alt="A Solo board for the fictional game Regulatory Capture Quest: epic groups and epics as swim lanes across Unstarted, In Progress and Finished columns, with labels, deadline rings, sub-task progress and assignee avatars" src="docs/images/screenshots/board-light.png">
