@@ -154,17 +154,22 @@ function serveStatic(req, res, clientDir) {
     }
 
     // One prefix test, against the root *with* its separator, and nothing
-    // else: every filesystem call below then sits behind it, which is what
-    // lets a reader (and CodeQL) see them as contained. The root needs no
-    // exemption of its own — '/' joins to the root plus a separator and
+    // else: every filesystem call below then sits behind it. The root needs
+    // no exemption of its own — '/' joins to the root plus a separator and
     // passes; only a hand-written path like /x/.. collapses to the bare root,
     // and that is refused rather than served.
-    let filePath = path.normalize(path.join(clientDir, pathname));
-    if (!filePath.startsWith(clientDir + path.sep)) {
+    //
+    // `requested` is never reassigned, and that is load-bearing for CodeQL
+    // (js/path-injection): it credits the test only to reads of the binding
+    // that was tested. Folding the fallback below into this variable makes
+    // the later reads a merge of two values, and the check is lost on them.
+    const requested = path.normalize(path.join(clientDir, pathname));
+    if (!requested.startsWith(clientDir + path.sep)) {
         res.writeHead(403).end();
         return;
     }
 
+    let filePath = requested;
     if (!isFile(filePath)) {
         // SPA fallback: any client route (/projects, /board/…) boots index.html.
         filePath = path.join(clientDir, 'index.html');
