@@ -180,7 +180,11 @@ try {
             item.expectedScheme !== item.resolvedScheme),
         ...bootTransitions.filter(item => item.expectedDark !== item.effectiveDark),
     ];
-    if (surfaceEffects.appbar.blur === 'none' || surfaceEffects.boardHeader.blur === 'none' ||
+    // The app bar is the window's title bar and drag strip, so it alone keeps
+    // the theme's opaque background; every surface below it is a material.
+    if (surfaceEffects.appbar.blur !== 'none' ||
+        !/^rgb\(/.test(surfaceEffects.appbar.background) ||
+        surfaceEffects.boardHeader.blur === 'none' ||
         surfaceEffects.kanbanHeader.blur === 'none' ||
         surfaceEffects.boardHeader.background !== 'rgba(0, 0, 0, 0)' ||
         surfaceEffects.kanbanHeader.background !== 'rgba(0, 0, 0, 0)' ||

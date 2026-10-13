@@ -234,6 +234,41 @@
       line-height: 1.45;
     }
 
+    .background-alpha {
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .background-alpha label {
+      display: flex;
+      justify-content: space-between;
+      color: var(--fg);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: normal;
+      text-transform: none;
+    }
+
+    .background-alpha input {
+      margin: 0.6rem 0 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      accent-color: var(--accent);
+    }
+
+    .background-alpha small {
+      display: block;
+      margin-top: 0.3rem;
+      color: var(--dim);
+      font-size: 0.68rem;
+      line-height: 1.45;
+    }
+
+    .background-alpha:has(input:disabled) {
+      opacity: 0.4;
+    }
+
     .buttons {
       display: flex;
       gap: 0.75rem;
@@ -314,6 +349,15 @@
     </label>
   </section>
 
+  <section id="background-alpha-setting" class="background-alpha" hidden>
+    <label for="background-alpha">
+      <span>Background opacity</span>
+      <span id="background-alpha-value"></span>
+    </label>
+    <input id="background-alpha" type="range" min="0" max="100" step="1" />
+    <small>How much of the theme's background is painted over the window effect. 0% leaves only the glass.</small>
+  </section>
+
   <div class="buttons">
     <button id="close" type="button">Close</button>
   </div>
@@ -328,6 +372,9 @@
   const signInActions = document.getElementById('sign-in-actions');
   const nativeEffectsSetting = document.getElementById('native-effects-setting');
   const nativeEffectsInput = document.getElementById('native-effects');
+  const backgroundAlphaSetting = document.getElementById('background-alpha-setting');
+  const backgroundAlphaInput = document.getElementById('background-alpha');
+  const backgroundAlphaValue = document.getElementById('background-alpha-value');
 
   let instances = [];
   let busy = false;
@@ -423,8 +470,25 @@
     if (awaiting) window.soloSettings.openNew(awaiting.id);
   });
 
-  nativeEffectsInput.addEventListener('change', () =>
-    window.soloSettings.setNativeEffects(nativeEffectsInput.checked));
+  // The opacity only means something over the native effect, so it follows
+  // that checkbox — which itself only takes effect after a restart.
+  function syncBackgroundAlpha() {
+    backgroundAlphaInput.disabled = !nativeEffectsInput.checked;
+    backgroundAlphaValue.textContent = `${backgroundAlphaInput.value}%`;
+  }
+
+  nativeEffectsInput.addEventListener('change', () => {
+    syncBackgroundAlpha();
+    window.soloSettings.setNativeEffects(nativeEffectsInput.checked);
+  });
+  // Previewed on the instance windows while it is dragged, saved once it is
+  // let go: this window has no Save button to wait for.
+  backgroundAlphaInput.addEventListener('input', () => {
+    syncBackgroundAlpha();
+    window.soloSettings.previewBackgroundAlpha(backgroundAlphaInput.value / 100);
+  });
+  backgroundAlphaInput.addEventListener('change', () =>
+    window.soloSettings.setBackgroundAlpha(backgroundAlphaInput.value / 100));
 
   closeButton.addEventListener('click', () => window.soloSettings.close());
   document.addEventListener('keydown', e => {
@@ -447,10 +511,13 @@
     }
   });
 
-  window.soloSettings.get().then(({ instances: current, nativeEffects, platform, firstRun }) => {
+  window.soloSettings.get().then(({ instances: current, nativeEffects, backgroundAlpha, platform, firstRun }) => {
     instances = current;
     nativeEffectsInput.checked = nativeEffects;
     nativeEffectsSetting.hidden = platform !== 'darwin';
+    backgroundAlphaInput.value = Math.round(backgroundAlpha * 100);
+    backgroundAlphaSetting.hidden = platform !== 'darwin';
+    syncBackgroundAlpha();
     if (firstRun) {
       setStatus('Welcome. Add your Solo instance to get started.');
     }

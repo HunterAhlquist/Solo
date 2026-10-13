@@ -530,7 +530,16 @@ function createInstanceWindow(instance) {
             }),
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'desktop.js'),
-            ...(useGlassBackdrop ? { additionalArguments: ['--solo-glass-backdrop'] } : {}),
+            // Both as arguments so the first paint is already right; later
+            // changes to the opacity arrive over IPC (sendBackgroundAlpha).
+            ...(useGlassBackdrop
+                ? {
+                    additionalArguments: [
+                        '--solo-glass-backdrop',
+                        `--solo-glass-background-alpha=${settings.backgroundAlpha}`,
+                    ],
+                }
+                : {}),
             ...HARDENED_WEB_PREFERENCES,
         },
     });
@@ -813,7 +822,7 @@ function openSettingsWindow() {
 
     settingsWindow = new BrowserWindow({
         width: 520,
-        height: 720,
+        height: 800,
         resizable: false,
         minimizable: false,
         fullscreenable: false,
@@ -877,6 +886,9 @@ function openSettingsWindow() {
         // A sign-in still open in the browser carries on without it, and
         // lands in the instance's own window like any other.
         settingsSignInId = null;
+        // Drops a slider preview that was never saved; after a save this is
+        // the value the instance windows already have.
+        sendBackgroundAlpha(settings.backgroundAlpha);
     });
     // Pasting an instance URL is most of the job of this window.
     attachContextMenu(settingsWindow.webContents);
@@ -885,6 +897,18 @@ function openSettingsWindow() {
     settingsWindow.webContents.on('will-navigate', event => event.preventDefault());
     settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     settingsWindow.loadFile(path.join(__dirname, 'settings', 'settings.html'));
+}
+
+// How much of the theme's page background the instance windows paint over
+// their glass — every one of them, since the setting is the app's and not an
+// instance's. The renderer only uses it while it has the glass backdrop, so
+// there is nothing to guard here when native effects are off.
+function sendBackgroundAlpha(alpha) {
+    for (const win of windows.keys()) {
+        if (!win.webContents.isDestroyed()) {
+            win.webContents.send('window:glass-background-alpha', alpha);
+        }
+    }
 }
 
 // Asks an address for its anonymous bootstrap config, which is both the test
@@ -1018,6 +1042,7 @@ function registerIpc() {
     handleSettings('settings:get', () => ({
         instances: instanceList(),
         nativeEffects: settings.nativeEffects,
+        backgroundAlpha: settings.backgroundAlpha,
         platform: process.platform,
         firstRun: settings.instances.length === 0,
     }));
@@ -1025,6 +1050,23 @@ function registerIpc() {
     handleSettings('settings:native-effects', enabled => {
         settings.nativeEffects = enabled !== false;
         settingsStore.save(settings);
+    });
+
+    // The slider shows its effect on the instance windows while it is dragged.
+    // Nothing is stored until it is let go (below); closing the window puts
+    // the saved value back (see openSettingsWindow).
+    ipcMain.on('settings:preview-background-alpha', (event, alpha) => {
+        if (settingsWindow && event.sender === settingsWindow.webContents) {
+            sendBackgroundAlpha(settingsStore.normalizeBackgroundAlpha(alpha));
+        }
+    });
+
+    // Applies at once, with no restart: unlike the effect itself, the opacity
+    // is only a custom property the preload sets.
+    handleSettings('settings:background-alpha', alpha => {
+        settings.backgroundAlpha = settingsStore.normalizeBackgroundAlpha(alpha);
+        settingsStore.save(settings);
+        sendBackgroundAlpha(settings.backgroundAlpha);
     });
 
     // With no instance window behind it, closing the settings window quits via

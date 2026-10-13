@@ -49,8 +49,9 @@ Choosing one that isn't open asks whether it gets a **new window** or takes
 over the **current window**, the instance window used last. The app reopens
 the instance used last when it starts, and quits when its last window closes.
 
-Each instance is served on a local port of its own, counting up from `41321`,
-and the port is what keeps them apart: the client stores its session in
+Each instance is served on a local port of its own, counting up from `41321`
+(`41322` for an unpackaged run, so it can start beside the installed app), and
+the port is what keeps them apart: the client stores its session in
 `localStorage`, which the browser scopes to the origin, so a session minted by
 one instance is never sent to another. The port is saved with the instance
 because a different port is a different origin — the sign-in stored under the
@@ -89,6 +90,13 @@ the first paint instead of covering the native backdrop with an opaque splash.
 The Settings window uses the same native treatment. Its macOS native
 window effects checkbox disables both Liquid Glass and the vibrancy fallback
 after the next restart; the choice is stored with the other shell settings.
+
+Under it, **Background opacity** sets how much of the theme's own page
+background is painted over the effect: 0% (the default) is bare glass, 100% is
+the theme's ordinary opaque background. The slider previews on every instance
+window as it moves, and is saved when it is let go, without a restart. It is
+`backgroundAlpha` (0–1) in `settings.json`, and reaches the client as the
+`--solo-glass-background-alpha` custom property the preload sets on `<html>`.
 
 ## Window chrome
 

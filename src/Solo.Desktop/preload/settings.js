@@ -1,11 +1,14 @@
 // The settings page's entire capability surface: list the instances, add one
-// and see it through its first sign-in, open or remove one, and set the one
-// preference. Nothing else crosses the bridge.
+// and see it through its first sign-in, open or remove one, and set the two
+// preferences — previewing a background opacity on the instance windows on
+// the way. Nothing else crosses the bridge.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('soloSettings', {
     get: () => ipcRenderer.invoke('settings:get'),
     setNativeEffects: enabled => ipcRenderer.invoke('settings:native-effects', enabled),
+    previewBackgroundAlpha: alpha => ipcRenderer.send('settings:preview-background-alpha', alpha),
+    setBackgroundAlpha: alpha => ipcRenderer.invoke('settings:background-alpha', alpha),
     close: () => ipcRenderer.invoke('settings:close'),
 
     // Tests the address and saves the instance. Answers { ok, error } or

@@ -1251,15 +1251,33 @@ body.solo-dragging {
 
 /* Electron's native glass view lives underneath the whole Chromium renderer,
    so every opaque root layer would hide it. Only the glass-enabled macOS shell
-   gets transparent roots; the hosted app and the other desktop platforms keep the
+   gets see-through roots; the hosted app and the other desktop platforms keep the
    theme's ordinary background. Cards and lane surfaces remain opaque so their
-   density and text contrast do not depend on whatever is behind the window. */
-html.solo-desktop--glass,
-html.solo-desktop--glass body,
+   density and text contrast do not depend on whatever is behind the window.
+
+   The page background is still the theme's own — its palette colour, at the
+   opacity the shell's Background opacity setting supplies through
+   --solo-glass-background-alpha (a percentage; the preload sets it, and 0%
+   leaves bare glass). Exactly one layer may carry that colour or the alphas
+   would multiply: <html> stays clear so <body>'s background propagates to the
+   canvas, and the layout wrappers lose only their colour, so a background
+   image a theme draws on them still shows. Before MudBlazor has emitted the
+   palette, the cached boot colour stands in for it. */
+html.solo-desktop--glass {
+    background: transparent !important;
+}
+
+html.solo-desktop--glass body {
+    background-color: color-mix(
+        in srgb,
+        var(--mud-palette-background, var(--solo-boot-bg)) var(--solo-glass-background-alpha, 0%),
+        transparent) !important;
+}
+
 html.solo-desktop--glass #app,
 html.solo-desktop--glass .mud-layout,
 html.solo-desktop--glass .mud-main-content {
-    background: transparent !important;
+    background-color: transparent !important;
 }
 
 html.solo-desktop--glass {

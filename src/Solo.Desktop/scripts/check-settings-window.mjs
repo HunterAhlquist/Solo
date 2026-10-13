@@ -59,6 +59,10 @@ try {
         dragRegion: getComputedStyle(document.body).getPropertyValue('-webkit-app-region').trim(),
         inputRegion: getComputedStyle(document.getElementById('url'))
             .getPropertyValue('-webkit-app-region').trim(),
+        opacityHidden: document.getElementById('background-alpha-setting').hidden,
+        opacityDisabled: document.getElementById('background-alpha').disabled,
+        opacityValue: document.getElementById('background-alpha').value,
+        opacityLabel: document.getElementById('background-alpha-value').textContent,
         glassWash: getComputedStyle(document.documentElement)
             .getPropertyValue('--glass-wash').trim(),
         backdrop: getComputedStyle(document.body, '::before').backdropFilter ||
@@ -68,7 +72,9 @@ try {
     if (!appearance.hasBridge || !appearance.firstRun || !appearance.glass || appearance.controlHidden ||
         !appearance.controlChecked || appearance.backdrop === 'none' ||
         appearance.dragRegion !== 'drag' || appearance.inputRegion !== 'no-drag' ||
-        !appearance.glassWash.includes('/ 48%')) {
+        !appearance.glassWash.includes('/ 48%') ||
+        appearance.opacityHidden || appearance.opacityDisabled ||
+        appearance.opacityValue !== '0' || appearance.opacityLabel !== '0%') {
         throw new Error('The settings window did not start with its native appearance, drag regions, and enabled control.');
     }
 
@@ -76,6 +82,13 @@ try {
         `window.soloSettings.add('http://127.0.0.1:9')`);
     if (refused.ok !== false || readSettings()?.instances?.length) {
         throw new Error('An address that failed its connection test was added anyway.');
+    }
+
+    // Out of range on purpose: main clamps whatever the page sends.
+    await evaluate(settingsTarget.webSocketDebuggerUrl,
+        `window.soloSettings.setBackgroundAlpha(1.4).then(() => true)`);
+    if (readSettings()?.backgroundAlpha !== 1) {
+        throw new Error('The background opacity did not persist clamped to its range.');
     }
 
     // Driven through the page, as a person would: the opt-out, then the add.
@@ -92,6 +105,9 @@ try {
     const [instance] = persisted.instances;
     if (persisted.nativeEffects !== false) {
         throw new Error('The native-effects preference did not persist as disabled.');
+    }
+    if (persisted.backgroundAlpha !== 1) {
+        throw new Error('Saving another preference lost the background opacity.');
     }
     if (instance.url !== fixtureUrl || !instance.id || !Number.isInteger(instance.port)) {
         throw new Error('The added instance was not persisted with its address, id and local port.');
