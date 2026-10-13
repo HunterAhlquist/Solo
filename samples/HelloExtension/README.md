@@ -1,6 +1,6 @@
 # Hello — a minimal Solo extension
 
-The smallest extension with both halves, built from the published contract packages and nothing else from the Solo repository. Copy it as a starting point.
+The smallest extension with both halves, built from the published contract packages and nothing else from the Solo repository. Read it to see every part; to start an extension of your own, `dotnet new install HunterAhlquist.Solo.Templates` generates the same thing under your names, from the command line, Visual Studio or Rider.
 
 | | |
 |---|---|

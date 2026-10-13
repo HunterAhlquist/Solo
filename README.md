@@ -211,7 +211,7 @@ The same client, at phone width.
 
 Solo can be extended with packages that add API endpoints, database tables of
 their own, hooks that intercept core write operations, and pages in the client.
-How to write one: [docs/writing-extensions.md](docs/writing-extensions.md). Design and rationale: [docs/extension-plan.md](docs/extension-plan.md).
+How to write one: [docs/writing-extensions.md](docs/writing-extensions.md). To start one, `dotnet new install HunterAhlquist.Solo.Templates` adds a **Solo Extension** project template to `dotnet new`, Visual Studio and Rider. Design and rationale: [docs/extension-plan.md](docs/extension-plan.md).
 
 An extension package is a `.zip` — `extension.json` at the root, plus `server/`,
 `client/` and `content/` — dropped into the extensions directory
@@ -349,6 +349,7 @@ src/Solo.Extensibility the public contract extensions compile against (see Exten
 src/Solo.Extensions    the extension host: package loading, hook dispatch, registry
 tests/                 unit (Solo.Data.Tests) + integration (Solo.Api.Tests) + bUnit (Solo.Client.Tests)
 extensions/            the bundled extensions, each its own solution (not in Solo.slnx)
+templates/             the `dotnet new` template for a new extension (not in Solo.slnx)
 ```
 
 `Solo.slnx` is core only. The bundled extensions build the way a third-party
@@ -390,6 +391,8 @@ During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start` serves 
 The server image, MCP extension, and desktop client version independently — see [Packaging](#packaging) for the `desktop-v*` series. For a `server-v*` tag, CI compares the server inputs (`Dockerfile`, `.dockerignore`, and the server's project-reference closure) and MCP package inputs separately against the previous `server-v*` tag it descends from. It publishes only the artifacts whose inputs changed; test-, documentation-, desktop-, workflow-, and packaging-only changes do not republish the server, and server-only changes do not attach another copy of an unchanged MCP package. If neither artifact changed, CI creates no GitHub release and moves no GHCR tags.
 
 The extension SDK is a third series. Pushing an **`sdk-v<version>`** tag runs [release-sdk.yml](.github/workflows/release-sdk.yml), which publishes `HunterAhlquist.Solo.Shared` and `HunterAhlquist.Solo.Extensibility` to nuget.org. The tag has to name the contract version in `build/contract-package.props` (`sdk-v1.9.0` for `1.9.0`), and the workflow refuses to publish while the repository is private, because nuget.org never deletes a version and each package page links back here. It stores no API key: nuget.org issues a one-hour key through a [trusted-publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) policy that names this repository, `release-sdk.yml` and the `nuget` environment, and the `NUGET_USER` repository variable holds the nuget.org profile name. A manual `workflow_dispatch` run is a rehearsal — it packs and uploads the packages as a workflow artifact and publishes nothing.
+
+The same workflow publishes `HunterAhlquist.Solo.Templates`, the `dotnet new` template that scaffolds an extension, on a **`templates-v<version>`** tag. That version is the one in `templates/Solo.Templates.csproj`: its major and minor follow the contract the generated projects pin, and its patch is the template's own, so a template fix doesn't wait for a contract release. The workflow refuses to publish templates for a contract version nuget.org doesn't have yet.
 
 ### Packaging
 

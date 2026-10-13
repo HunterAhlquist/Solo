@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- The client half: pages the browser downloads after sign-in and hands to
+       the app's router.
+
+       HunterAhlquist.Solo.Shared, never Solo.Extensibility: the server
+       contract's ASP.NET Core and EF Core dependencies don't resolve for
+       browser-wasm. Components.Web and MudBlazor match the versions the
+       instance runs. It supplies both at runtime, so compiling against a newer
+       MudBlazor risks calling members the instance doesn't have. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName Condition="'$(name)' != '$(name{-VALUE-FORMS-}safe_namespace)'">SoloExtension_CSharp.Client</AssemblyName>
+    <!-- Static files ship in the package's own content/ folder, not through
+         the host's static-web-asset pipeline. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.9.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
+    <PackageReference Include="MudBlazor" Version="9.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The API's request and response records, compiled into this assembly
+         too. -->
+    <Compile Include="..\SoloExtension-CSharp\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

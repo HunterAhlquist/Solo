@@ -94,10 +94,11 @@ dotnet nuget add source "$PWD/artifacts/nuget" --name solo-contract
 ## In this section
 
 1. [Your first extension](first-extension.md): build, package and install a small extension.
-2. [Manifest](manifest.md): each field of `extension.json`.
-3. [Server half](server.md): endpoints, access to core data, and your own data.
-4. [Hooks and events](hooks-and-events.md): hooks, events, live updates and background work.
-5. [Client half](client.md): pages, the API client, and contributions to core pages.
-6. [Package and install](package.md): the package layout and the development loop.
-7. [Reference](reference.md): contract versions, operations, policies and limits.
-8. [Troubleshooting](troubleshooting.md): symptoms and their causes.
+2. [Project template](template.md): create the projects from Visual Studio, Rider or `dotnet new`.
+3. [Manifest](manifest.md): each field of `extension.json`.
+4. [Server half](server.md): endpoints, access to core data, and your own data.
+5. [Hooks and events](hooks-and-events.md): hooks, events, live updates and background work.
+6. [Client half](client.md): pages, the API client, and contributions to core pages.
+7. [Package and install](package.md): the package layout and the development loop.
+8. [Reference](reference.md): contract versions, operations, policies and limits.
+9. [Troubleshooting](troubleshooting.md): symptoms and their causes.

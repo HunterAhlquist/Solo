@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The server half. Its only Solo reference is the contract package, and
+       the instance supplies that assembly at runtime: the package this project
+       ships in carries SoloExtension_CSharp.dll and nothing of Solo's. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName Condition="'$(name)' != '$(name{-VALUE-FORMS-}safe_namespace)'">SoloExtension_CSharp</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The version is the contract version this compiles against. The manifest
+         declares the lowest one the code needs, which can be older. -->
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.9.0" />
+  </ItemGroup>
+
+  <!--#if (Database) -->
+  <ItemGroup>
+    <!-- For `dotnet ef migrations add`. Build-time only: the instance applies
+         the migrations, so none of this ships. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--#endif -->
+</Project>

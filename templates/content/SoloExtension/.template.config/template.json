@@ -1,0 +1,245 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Hunter Ahlquist",
+  "classifications": ["Solo", "Extension", "Web", "Blazor"],
+  "identity": "HunterAhlquist.Solo.Templates.Extension",
+  "groupIdentity": "HunterAhlquist.Solo.Templates.Extension",
+  "name": "Solo Extension",
+  "shortName": "solo-extension",
+  "description": "An extension for Solo, the self-hosted project management app: a server half with an endpoint, an optional Blazor page, and optionally its own database schema, an operation hook and an event handler.",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "SoloExtension-CSharp",
+  "defaultName": "SoloExtension1",
+  "preferNameDirectory": true,
+  "forms": {
+    "lastSegment": {
+      "identifier": "replace",
+      "pattern": "^.*\\.(?=[^.]+$)",
+      "replacement": ""
+    },
+    "identifierOnly": {
+      "identifier": "replace",
+      "pattern": "[^A-Za-z0-9_]",
+      "replacement": ""
+    },
+    "classPrefix": {
+      "identifier": "chain",
+      "steps": ["lastSegment", "identifierOnly"]
+    },
+    "wordBreaks": {
+      "identifier": "replace",
+      "pattern": "(?<=[a-z0-9])(?=[A-Z])",
+      "replacement": "-"
+    },
+    "lower": {
+      "identifier": "lowerCase"
+    },
+    "idCharacters": {
+      "identifier": "replace",
+      "pattern": "[^a-z0-9]+",
+      "replacement": "-"
+    },
+    "idTrim": {
+      "identifier": "replace",
+      "pattern": "^-+|-+$",
+      "replacement": ""
+    },
+    "extensionId": {
+      "identifier": "chain",
+      "steps": ["wordBreaks", "lower", "idCharacters", "idTrim"]
+    }
+  },
+  "symbols": {
+    "ExtensionId": {
+      "type": "parameter",
+      "datatype": "text",
+      "displayName": "Extension id",
+      "description": "Lowercase letters, digits and hyphens. It becomes the route segment (/api/ext/<id>/) and the database schema (ext_<id>). Leave empty to derive it from the project name.",
+      "defaultValue": ""
+    },
+    "DisplayName": {
+      "type": "parameter",
+      "datatype": "text",
+      "displayName": "Display name",
+      "description": "The name Admin settings and the sidebar show. Leave empty to use the project name.",
+      "defaultValue": ""
+    },
+    "Client": {
+      "type": "parameter",
+      "datatype": "bool",
+      "displayName": "Client page",
+      "description": "Add the client half: a Razor class library with a page, and a sidebar entry that opens it.",
+      "defaultValue": "true"
+    },
+    "NavScope": {
+      "type": "parameter",
+      "datatype": "choice",
+      "displayName": "Sidebar entry",
+      "description": "Where the page's sidebar entry appears.",
+      "isEnabled": "Client",
+      "defaultValue": "instance",
+      "choices": [
+        {
+          "choice": "instance",
+          "displayName": "Once, in the sidebar footer",
+          "description": "One entry for the whole instance, in the sidebar footer."
+        },
+        {
+          "choice": "project",
+          "displayName": "Under each project",
+          "description": "One entry under each project. The page receives the project's alias."
+        }
+      ]
+    },
+    "Database": {
+      "type": "parameter",
+      "datatype": "bool",
+      "displayName": "Database schema",
+      "description": "Add a DbContext in the extension's own Postgres schema, with a first migration and endpoints that use it.",
+      "defaultValue": "false"
+    },
+    "OperationHook": {
+      "type": "parameter",
+      "datatype": "bool",
+      "displayName": "Operation hook",
+      "description": "Add a hook that runs before a core write and can reject it.",
+      "defaultValue": "false"
+    },
+    "EventHandler": {
+      "type": "parameter",
+      "datatype": "bool",
+      "displayName": "Event handler",
+      "description": "Add a handler that runs after a core change is saved.",
+      "defaultValue": "false"
+    },
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "description": "If specified, skips the automatic restore of the projects on create.",
+      "defaultValue": "false"
+    },
+    "HostIdentifier": {
+      "type": "bind",
+      "binding": "HostIdentifier"
+    },
+    "projectScope": {
+      "type": "computed",
+      "value": "(Client && NavScope == \"project\")"
+    },
+    "classPrefix": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "classPrefix",
+      "replaces": "Starter",
+      "fileRename": "Starter"
+    },
+    "derivedExtensionId": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "extensionId"
+    },
+    "givenExtensionId": {
+      "type": "derived",
+      "valueSource": "ExtensionId",
+      "valueTransform": "extensionId"
+    },
+    "extensionId": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "givenExtensionId",
+        "fallbackVariableName": "derivedExtensionId"
+      },
+      "replaces": "solo-extension-id"
+    },
+    "schemaSuffix": {
+      "type": "generated",
+      "generator": "regex",
+      "datatype": "string",
+      "parameters": {
+        "source": "extensionId",
+        "steps": [
+          {
+            "regex": "-",
+            "replacement": "_"
+          }
+        ]
+      },
+      "replaces": "solo_extension_id"
+    },
+    "derivedDisplayName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "lastSegment"
+    },
+    "displayName": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "DisplayName",
+        "fallbackVariableName": "derivedDisplayName"
+      },
+      "replaces": "Solo Extension Name"
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "exclude": ["**/bin/**", "**/obj/**"]
+        },
+        {
+          "condition": "(!Client)",
+          "exclude": ["SoloExtension-CSharp.Client/**"]
+        },
+        {
+          "condition": "(!Database)",
+          "exclude": [
+            "SoloExtension-CSharp/Data/**",
+            "SoloExtension-CSharp/Migrations/**",
+            "SoloExtension-CSharp/NotesController.cs",
+            "SoloExtension-CSharp/Contracts/NoteDto.cs"
+          ]
+        },
+        {
+          "condition": "(!OperationHook)",
+          "exclude": ["SoloExtension-CSharp/TaskStatusHook.cs"]
+        },
+        {
+          "condition": "(!EventHandler)",
+          "exclude": ["SoloExtension-CSharp/TaskEventsHandler.cs"]
+        },
+        {
+          "condition": "(HostIdentifier != \"dotnetcli\" && HostIdentifier != \"dotnetcli-preview\")",
+          "exclude": ["*.slnx"]
+        }
+      ]
+    }
+  ],
+  "primaryOutputs": [
+    {
+      "path": "SoloExtension-CSharp/SoloExtension-CSharp.csproj"
+    },
+    {
+      "condition": "(Client)",
+      "path": "SoloExtension-CSharp.Client/SoloExtension-CSharp.Client.csproj"
+    }
+  ],
+  "postActions": [
+    {
+      "id": "restore",
+      "condition": "(!skipRestore)",
+      "description": "Restore the NuGet packages the projects need.",
+      "manualInstructions": [
+        {
+          "text": "Run 'dotnet restore'"
+        }
+      ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true
+    }
+  ]
+}

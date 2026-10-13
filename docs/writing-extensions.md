@@ -50,6 +50,8 @@ The contract ships on nuget.org as two packages: `HunterAhlquist.Solo.Extensibil
 
 The bundled extensions under `extensions/` reference the same packages, but not from nuget.org: `extensions/nuget.config` names what `build/pack-contract.sh` packs into `artifacts/nuget` as their one source, so they build against the contract in this checkout rather than a published one — run the script before building one, and again after changing the contract. Only their test projects reference `src/`, for the host they load the package into.
 
+To start outside this repository without typing any of this, `dotnet new install HunterAhlquist.Solo.Templates` adds a **Solo Extension** template to `dotnet new`, Visual Studio and Rider. It generates both projects, the manifest and a `pack.proj` that builds the package, with options for a schema of its own, a hook and an event handler. Its source is [`templates/`](../templates); `build/pack-templates.sh` packs it and builds an extension from each combination of options.
+
 If you need something the contract doesn't offer, that's a finding about the contract — raise it rather than reaching into `Solo.Data` or `Solo.Api`.
 
 ## 2. Write the manifest

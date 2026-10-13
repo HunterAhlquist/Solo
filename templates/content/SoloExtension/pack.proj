@@ -1,0 +1,65 @@
+<Project DefaultTargets="Pack">
+
+  <!-- Builds the extension and lays it out as a Solo package:
+
+         dotnet build pack.proj
+
+       artifacts/solo-extension-id/        the package as a folder, for the development loop
+       artifacts/solo-extension-id-<version>.zip   the package to install
+
+       The id and the version come from the manifest, so it is the one place to
+       change either. The version is stamped on the assemblies too. -->
+
+  <PropertyGroup>
+    <Root>$(MSBuildThisFileDirectory)</Root>
+    <ServerProject>SoloExtension-CSharp</ServerProject>
+    <ServerAssembly>SoloExtension_CSharp</ServerAssembly>
+    <!--#if (Client) -->
+    <ClientProject>SoloExtension-CSharp.Client</ClientProject>
+    <ClientAssembly>SoloExtension_CSharp.Client</ClientAssembly>
+    <!--#endif -->
+    <Manifest>$(Root)$(ServerProject)/extension.json</Manifest>
+    <ManifestText>$([System.IO.File]::ReadAllText('$(Manifest)'))</ManifestText>
+    <ManifestId>$([System.Text.RegularExpressions.Regex]::Match($(ManifestText), '&quot;id&quot;\s*:\s*&quot;([^&quot;]+)&quot;').Groups[1].Value)</ManifestId>
+    <ManifestVersion>$([System.Text.RegularExpressions.Regex]::Match($(ManifestText), '&quot;version&quot;\s*:\s*&quot;([^&quot;]+)&quot;').Groups[1].Value)</ManifestVersion>
+    <Artifacts>$(Root)artifacts/</Artifacts>
+    <Package>$(Artifacts)$(ManifestId)/</Package>
+    <Build>dotnet build -c Release -p:Version=$(ManifestVersion) --nologo</Build>
+  </PropertyGroup>
+
+  <Target Name="Pack">
+    <Error Condition="'$(ManifestId)' == '' Or '$(ManifestVersion)' == ''"
+           Text="$(Manifest) needs an &quot;id&quot; and a &quot;version&quot;." />
+
+    <RemoveDir Directories="$(Package)" />
+
+    <Exec Command="$(Build) &quot;$(ServerProject)/$(ServerProject).csproj&quot;" WorkingDirectory="$(Root)" />
+    <!--#if (Client) -->
+    <Exec Command="$(Build) &quot;$(ClientProject)/$(ClientProject).csproj&quot;" WorkingDirectory="$(Root)" />
+    <!--#endif -->
+
+    <!-- Only this extension's own assemblies. The instance supplies
+         Solo.Shared, Solo.Extensibility, MudBlazor, ASP.NET Core, EF Core and
+         Npgsql, and a package's copy of any of them is never the one that
+         runs. A library that only this extension uses goes beside the assembly
+         that needs it: add it to the matching Copy. -->
+    <Copy SourceFiles="$(Root)$(ServerProject)/extension.json" DestinationFolder="$(Package)" />
+    <Copy SourceFiles="$(Root)$(ServerProject)/bin/Release/net10.0/$(ServerAssembly).dll" DestinationFolder="$(Package)server" />
+    <!--#if (Client) -->
+    <Copy SourceFiles="$(Root)$(ClientProject)/bin/Release/net10.0/$(ClientAssembly).dll" DestinationFolder="$(Package)client" />
+    <!--#endif -->
+
+    <!-- Optional static files, in a content/ folder beside the manifest. Solo
+         serves them without sign-in, so nothing secret belongs there. -->
+    <ItemGroup>
+      <StaticContent Include="$(Root)$(ServerProject)/content/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(StaticContent)" DestinationFolder="$(Package)content/%(RecursiveDir)" />
+
+    <ZipDirectory SourceDirectory="$(Package)"
+                  DestinationFile="$(Artifacts)$(ManifestId)-$(ManifestVersion).zip"
+                  Overwrite="true" />
+    <Message Importance="high" Text="Packaged $(Artifacts)$(ManifestId)-$(ManifestVersion).zip" />
+  </Target>
+
+</Project>

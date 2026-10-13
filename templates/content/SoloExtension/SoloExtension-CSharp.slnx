@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="SoloExtension-CSharp/SoloExtension-CSharp.csproj" />
+  <!--#if (Client) -->
+  <Project Path="SoloExtension-CSharp.Client/SoloExtension-CSharp.Client.csproj" />
+  <!--#endif -->
+</Solution>

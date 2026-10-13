@@ -50,6 +50,8 @@ cp content/* pkg/content/
 (cd pkg && zip -r ../roadmap.zip .)
 ```
 
+An extension from the [project template](template.md#make-the-package) has a `pack.proj` file that does these steps: `dotnet build pack.proj`.
+
 Keep the version in the manifest equal to the version of your two projects. The scripts for the bundled extensions, such as [`build/pack-mcp-extension.sh`](https://github.com/HunterAhlquist/Solo/blob/main/build/pack-mcp-extension.sh), stop when these versions are different.
 
 ## Install
