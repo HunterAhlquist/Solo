@@ -13,6 +13,9 @@ The name of the extension is **Hello**. It adds:
 
 The finished code is in the repository: [`samples/HelloExtension`](https://github.com/HunterAhlquist/Solo/tree/main/samples/HelloExtension).
 
+> This page builds the extension by hand, to show each part. To get the same projects from Visual Studio, Rider or `dotnet new`, use the [project template](template.md).
+{: .tip}
+
 ## What you need
 
 - The .NET 10 SDK.

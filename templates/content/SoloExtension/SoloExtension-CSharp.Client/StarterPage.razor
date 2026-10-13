@@ -1,0 +1,63 @@
+@*#if (projectScope)
+@page "/solo-extension-id/{ProjectAlias}"
+#else
+@page "/solo-extension-id"
+#endif*@
+@attribute [Authorize]
+@inject ISoloClientApi Api
+
+@*#if (projectScope)
+@*
+    The manifest's nav entry points here. Its route has a {projectAlias}, so the
+    sidebar draws the entry under each project the person can read, and the
+    alias of the one they chose arrives as a parameter.
+
+    ISoloClientApi is the host's own API client, so these requests carry the
+    signed-in user's credential and go to the instance's base address.
+*@
+#else
+@*
+    The manifest's nav entry points here. Its route has no {projectAlias}, so
+    the entry is instance-level: drawn once in the sidebar footer rather than
+    under each project.
+
+    ISoloClientApi is the host's own API client, so this request carries the
+    signed-in user's credential and goes to the instance's base address.
+*@
+#endif*@
+
+<PageTitle>Solo Extension Name</PageTitle>
+
+@*#if (projectScope)
+<MudText Typo="Typo.h4">@(_project?.Name ?? ProjectAlias)</MudText>
+<MudText>@(_greeting?.Message ?? "…")</MudText>
+#else
+<MudText Typo="Typo.h4">@(_greeting?.Message ?? "…")</MudText>
+#endif*@
+
+@code {
+@*#if (projectScope)
+    [Parameter] public string ProjectAlias { get; set; } = "";
+
+    private ProjectSummaryDto? _project;
+#endif*@
+    private Greeting? _greeting;
+
+@*#if (projectScope)
+    protected override async Task OnInitializedAsync() =>
+        _greeting = await Api.GetAsync<Greeting>("api/ext/solo-extension-id/greeting");
+
+    // Not OnInitialized: moving between two projects' entries keeps this
+    // component and only changes the parameter.
+    protected override async Task OnParametersSetAsync()
+    {
+        // Core's own endpoint, which returns only the caller's projects.
+        var projects = await Api.GetAsync<List<ProjectSummaryDto>>("api/projects");
+        _project = projects.FirstOrDefault(p =>
+            string.Equals(p.Alias, ProjectAlias, StringComparison.OrdinalIgnoreCase));
+    }
+#else
+    protected override async Task OnInitializedAsync() =>
+        _greeting = await Api.GetAsync<Greeting>("api/ext/solo-extension-id/greeting");
+#endif*@
+}

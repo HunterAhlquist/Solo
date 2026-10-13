@@ -15,12 +15,15 @@ tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, plus
 extensions/Mcp          an EXTENSION, not core — the reference example (Solo.Mcp.slnx)
 extensions/Roadmap      an EXTENSION, not core — timelines; uses every 1.3–1.6 seam (Solo.Roadmap.slnx)
 samples/HelloExtension  an EXTENSION built from the NuGet contract packages alone (not in Solo.slnx)
+templates/              the `dotnet new` template package that scaffolds an extension (not in Solo.slnx)
 site/                   the documentation site (Jekyll, published by GitHub Pages); see site/README.md
 ```
 
 `Solo.slnx` is core and nothing else. Each extension under `extensions/` is its own solution, building from the contract packages rather than from `src/`; only the test projects that run the host reference `src/`, for the package to be loaded into. A new extension in this repository goes there too, as `extensions/<Name>/`.
 
-`Solo.Extensibility` and `Solo.Shared` are also published as the NuGet packages `HunterAhlquist.Solo.Extensibility` / `HunterAhlquist.Solo.Shared`. Their version is the contract version: bump `build/contract-package.props` together with `ContractVersion.Current` (a test enforces it) and the `HunterAhlquist.Solo.*` references in the sample and in `extensions/` (`build/pack-contract.sh` enforces that). Pushing an `sdk-v<version>` tag publishes them to nuget.org (`.github/workflows/release-sdk.yml`); that is permanent, so never push one unasked.
+`Solo.Extensibility` and `Solo.Shared` are also published as the NuGet packages `HunterAhlquist.Solo.Extensibility` / `HunterAhlquist.Solo.Shared`. Their version is the contract version: bump `build/contract-package.props` together with `ContractVersion.Current` (a test enforces it) and the `HunterAhlquist.Solo.*` references in the sample, in `extensions/` and in `templates/content/` (`build/pack-contract.sh` enforces that). Pushing an `sdk-v<version>` tag publishes them to nuget.org (`.github/workflows/release-sdk.yml`); that is permanent, so never push one unasked.
+
+`templates/` is published as `HunterAhlquist.Solo.Templates`, the `dotnet new` / Visual Studio / Rider template for a new extension. Its version is its own, in `templates/Solo.Templates.csproj`, but its major.minor has to be the contract's. `build/pack-templates.sh` (after `build/pack-contract.sh`) packs it and builds an extension from each combination of its options; run it after changing anything under `templates/`. The template's sources use `SoloExtension-CSharp` where a project name goes and `SoloExtension_CSharp` where a namespace goes — the engine replaces them separately, so don't "fix" one into the other. A `templates-v<version>` tag publishes it through the same workflow, and is just as permanent.
 
 Build and test core: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. An extension: `build/pack-contract.sh` first — its output in `artifacts/nuget` is the only source `extensions/nuget.config` allows for the contract packages, published copies on nuget.org included — then `dotnet test extensions/Mcp/Solo.Mcp.slnx`. Run the script again after changing the contract. Integration tests need Docker (Testcontainers Postgres). To run and drive the app locally, use the `verify` skill.
 

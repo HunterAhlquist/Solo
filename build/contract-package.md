@@ -20,5 +20,6 @@ The package version is the extension contract version. Compiling against a newer
 ## Getting started
 
 - [Writing a Solo extension](https://github.com/HunterAhlquist/Solo/blob/main/docs/writing-extensions.md) — the authoring guide.
+- `dotnet new install HunterAhlquist.Solo.Templates` — a **Solo Extension** project template for `dotnet new`, Visual Studio and Rider.
 - [samples/HelloExtension](https://github.com/HunterAhlquist/Solo/tree/main/samples/HelloExtension) — a minimal extension built from these packages alone.
 - [extensions/Mcp](https://github.com/HunterAhlquist/Solo/tree/main/extensions/Mcp) — a complete one, with its own schema, migrations, authentication scheme and client page.

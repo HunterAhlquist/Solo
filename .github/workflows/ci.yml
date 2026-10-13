@@ -177,6 +177,15 @@ jobs:
       - name: Package the extension contract
         run: build/pack-contract.sh
 
+      # The `dotnet new` template for extensions. Packed, installed into a
+      # throwaway template hive, and an extension generated from it for each
+      # combination of its options — each one built and packaged against the
+      # contract packages above, and its first migration checked against its
+      # model. Not pushed from here either: a `templates-v*` tag does that, in
+      # release-sdk.yml.
+      - name: Package the extension templates
+        run: build/pack-templates.sh
+
       # Each extension is its own solution under extensions/, outside
       # Solo.slnx. Its tests load the package into the real host, so they run
       # whenever this job does: a change to core can break an extension that

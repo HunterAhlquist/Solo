@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The `dotnet new` template package for Solo extensions: what
+       `dotnet new install HunterAhlquist.Solo.Templates` downloads, and what
+       Visual Studio and Rider then list in their new-project dialogs.
+
+       It compiles nothing. Everything under content/ is packed as it is, and
+       each folder there holding a .template.config is one template.
+       build/pack-templates.sh packs it and proves the templates generate
+       projects that build; nothing here pushes anything. -->
+
+  <PropertyGroup>
+    <!-- Its own version, because a template can be fixed without the contract
+         moving. The major and minor are the contract's, though: the generated
+         projects pin that contract version, so `1.9.x` of this package always
+         scaffolds against contract 1.9. build/pack-templates.sh fails when the
+         two disagree. -->
+    <Version>1.9.0</Version>
+
+    <PackageId>HunterAhlquist.Solo.Templates</PackageId>
+    <PackageType>Template</PackageType>
+    <Title>Solo extension templates</Title>
+    <Description>Project templates for extensions to Solo, the self-hosted project management app. Adds "Solo Extension" to dotnet new, Visual Studio and Rider.</Description>
+    <Authors>Hunter Ahlquist</Authors>
+    <Copyright>Copyright (c) 2026 Hunter Ahlquist</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/HunterAhlquist/Solo</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/HunterAhlquist/Solo</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>solo;extension;plugin;dotnet-new;templates;aspnetcore;blazor</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+
+    <TargetFramework>net10.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <!-- Content keeps its path from this folder, which already starts with
+         content/, the folder a template package's templates live under. -->
+    <ContentTargetFolders>.</ContentTargetFolders>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <!-- .template.config would be dropped with the other dot-folders. -->
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <!-- No lib/ folder is the point of a template package, not an oversight. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- A template's sources build where they stand, so a stray bin/ or obj/
+         from opening one would otherwise ship inside every generated project. -->
+    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**;content\**\artifacts\**;content\**\.DS_Store" />
+    <None Include="README.md" Pack="true" PackagePath="README.md" />
+    <None Include="content\SoloExtension\.template.config\icon.png" Pack="true" PackagePath="icon.png" Visible="false" />
+  </ItemGroup>
+
+</Project>

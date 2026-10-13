@@ -36,7 +36,9 @@ fi
 # so it has to be bumped with the contract or it would quietly prove an older one.
 # The extensions under extensions/ pin it too, and restore it from the folder
 # this script writes — their one source for it, which holds no other version.
-for project in "$sample"/*/*.csproj "$root"/extensions/*/*/*.csproj; do
+# So do the projects the `dotnet new` template generates, which
+# build/pack-templates.sh builds from the same folder.
+for project in "$sample"/*/*.csproj "$root"/extensions/*/*/*.csproj "$root"/templates/content/*/*/*.csproj; do
     pins=$(sed -n 's/.*Include="HunterAhlquist\.Solo\.[A-Za-z]*" Version="\([^"]*\)".*/\1/p' "$project")
     case "$project" in
         "$sample"/*) pins=${pins:-(none)} ;;

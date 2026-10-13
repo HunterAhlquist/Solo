@@ -36,6 +36,8 @@
       icon: extension
     - path: extensions/first-extension.md
       icon: play-arrow
+    - path: extensions/template.md
+      icon: content-copy
     - path: extensions/manifest.md
       icon: data-object
     - path: extensions/server.md

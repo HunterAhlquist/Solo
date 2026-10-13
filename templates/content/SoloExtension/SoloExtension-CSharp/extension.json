@@ -1,0 +1,31 @@
+{
+  "id": "solo-extension-id",
+  "name": "Solo Extension Name",
+  "version": "1.0.0",
+  "soloApiVersion": ">=1.3 <2.0",
+//#if (Client)
+  "soloClientVersion": ">=1.1 <2.0",
+//#endif
+  "server": "server/SoloExtension_CSharp.dll",
+//#if (Client)
+  "client": "client/SoloExtension_CSharp.Client.dll",
+//#endif
+//#if (Database)
+  "schema": "ext_solo_extension_id",
+//#endif
+//#if (projectScope)
+  "nav": [
+    { "route": "/solo-extension-id/{projectAlias}", "label": "Solo Extension Name", "icon": "Puzzle", "requires": "Read" }
+  ],
+//#elseif (Client)
+  "nav": [
+    { "route": "/solo-extension-id", "label": "Solo Extension Name", "icon": "Puzzle" }
+  ],
+//#endif
+//#if (OperationHook)
+  "hooks": ["task.setStatus"],
+//#else
+  "hooks": [],
+//#endif
+  "failOpen": false
+}
