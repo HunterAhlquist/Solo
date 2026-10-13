@@ -22,7 +22,7 @@ site/                   the documentation site (Jekyll, published by GitHub Page
 
 `Solo.Extensibility` and `Solo.Shared` are also published as the NuGet packages `HunterAhlquist.Solo.Extensibility` / `HunterAhlquist.Solo.Shared`. Their version is the contract version: bump `build/contract-package.props` together with `ContractVersion.Current` (a test enforces it) and the `HunterAhlquist.Solo.*` references in the sample and in `extensions/` (`build/pack-contract.sh` enforces that). Pushing an `sdk-v<version>` tag publishes them to nuget.org (`.github/workflows/release-sdk.yml`); that is permanent, so never push one unasked.
 
-Build and test core: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. An extension: `build/pack-contract.sh` first — until the public launch its output in `artifacts/nuget` is the only place the contract packages exist — then `dotnet test extensions/Mcp/Solo.Mcp.slnx`. Run the script again after changing the contract. Integration tests need Docker (Testcontainers Postgres). To run and drive the app locally, use the `verify` skill.
+Build and test core: `dotnet build Solo.slnx` / `dotnet test Solo.slnx`. An extension: `build/pack-contract.sh` first — its output in `artifacts/nuget` is the only source `extensions/nuget.config` allows for the contract packages, published copies on nuget.org included — then `dotnet test extensions/Mcp/Solo.Mcp.slnx`. Run the script again after changing the contract. Integration tests need Docker (Testcontainers Postgres). To run and drive the app locally, use the `verify` skill.
 
 ---
 

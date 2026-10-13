@@ -67,7 +67,9 @@ An instance refuses a package that needs a newer contract than it has, and gives
 
 The packages are `HunterAhlquist.Solo.Extensibility` and `HunterAhlquist.Solo.Shared`.
 
-If nuget.org does not have them, build them from the Solo repository:
+nuget.org has them, so a `PackageReference` restores them with no other package source.
+
+To compile against a contract version that nuget.org does not have yet, build the packages from the Solo repository:
 
 ```bash
 git clone https://github.com/HunterAhlquist/Solo.git

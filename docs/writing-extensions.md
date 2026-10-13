@@ -48,7 +48,7 @@ A folder beside the solution, its own repository, or alongside core under `src/`
 
 The contract ships on nuget.org as two packages: `HunterAhlquist.Solo.Extensibility` for the server half, and `HunterAhlquist.Solo.Shared` for the client half (§9). The package version is the contract version. Compile against the newest one and declare the lowest you actually use in the manifest (§2). [`samples/HelloExtension`](../samples/HelloExtension) is the smallest complete extension built from the packages alone.
 
-The bundled extensions under `extensions/` reference the same packages. Until the public launch those exist only as what `build/pack-contract.sh` packs into `artifacts/nuget`, which `extensions/nuget.config` names as their one source — so run the script before building one, and again after changing the contract. Only their test projects reference `src/`, for the host they load the package into.
+The bundled extensions under `extensions/` reference the same packages, but not from nuget.org: `extensions/nuget.config` names what `build/pack-contract.sh` packs into `artifacts/nuget` as their one source, so they build against the contract in this checkout rather than a published one — run the script before building one, and again after changing the contract. Only their test projects reference `src/`, for the host they load the package into.
 
 If you need something the contract doesn't offer, that's a finding about the contract — raise it rather than reaching into `Solo.Data` or `Solo.Api`.
 

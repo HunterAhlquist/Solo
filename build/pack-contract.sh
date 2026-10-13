@@ -35,8 +35,7 @@ fi
 # The sample pins the contract version literally, as an author's project would,
 # so it has to be bumped with the contract or it would quietly prove an older one.
 # The extensions under extensions/ pin it too, and restore it from the folder
-# this script writes — which, until the packages are on nuget.org, holds no
-# other version.
+# this script writes — their one source for it, which holds no other version.
 for project in "$sample"/*/*.csproj "$root"/extensions/*/*/*.csproj; do
     pins=$(sed -n 's/.*Include="HunterAhlquist\.Solo\.[A-Za-z]*" Version="\([^"]*\)".*/\1/p' "$project")
     case "$project" in

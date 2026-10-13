@@ -93,10 +93,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
-    # A backstop, not a budget: macOS minutes bill at 10x on a private repo,
-    # and before notarization had its own time limit a slow Apple queue held
-    # the runner for as long as Apple took. A healthy mac run is ~8 minutes
-    # plus however long notarization takes, which is capped below.
+    # A backstop, not a budget: before notarization had its own time limit a
+    # slow Apple queue held the runner for as long as Apple took. A healthy
+    # mac run is ~8 minutes plus however long notarization takes, which is
+    # capped below.
     timeout-minutes: 60
     strategy:
       fail-fast: false

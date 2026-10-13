@@ -79,10 +79,10 @@ misbehaves on an `X-Fixture-Hook` header. Copy its structure, not its behavior.
 
 ## Building one here
 
-The extensions build from the contract packages, not from `src/`. Until the
-public launch those exist only as what `build/pack-contract.sh` writes to
-`artifacts/nuget` — the one source `extensions/nuget.config` allows for them — so
-run it first, and again after changing the contract, then
+The extensions build from the contract packages, not from `src/`. The packages
+are on nuget.org, but `extensions/nuget.config` allows one source for them: what
+`build/pack-contract.sh` writes to `artifacts/nuget`, packed from this checkout —
+so run it first, and again after changing the contract, then
 `dotnet test extensions/<Name>/Solo.<Name>.slnx`.
 
 ## Development loop

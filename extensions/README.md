@@ -11,9 +11,10 @@ that is the point.
 
 Both build the way a third-party extension does: the server half against the
 `HunterAhlquist.Solo.Extensibility` package, the client half against
-`HunterAhlquist.Solo.Shared`, never a project in `src/`. Until those packages
-are on nuget.org they exist only as what `build/pack-contract.sh` writes to
-`artifacts/nuget`, which [nuget.config](nuget.config) makes their one source:
+`HunterAhlquist.Solo.Shared`, never a project in `src/`. Those packages are on
+nuget.org, but [nuget.config](nuget.config) makes what `build/pack-contract.sh`
+writes to `artifacts/nuget` their one source here, so an extension in this
+repository builds against the contract beside it and not a published one:
 
 ```sh
 build/pack-contract.sh                      # again after changing the contract

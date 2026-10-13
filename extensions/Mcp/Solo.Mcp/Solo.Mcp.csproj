@@ -24,8 +24,8 @@
   <ItemGroup>
     <!-- The package, not a ProjectReference into src/, resolved through
          extensions/nuget.config. The version must be the contract version
-         build/pack-contract.sh packs, which checks it: until the public launch
-         that feed holds no other.
+         build/pack-contract.sh packs, which checks it: that feed is the one
+         source the config allows for it, and holds no other version.
 
          PrivateAssets keeps it out of Solo.Mcp.Tests, which must get the host's
          own Solo.Extensibility through Solo.Api — the copy this binds to at

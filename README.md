@@ -18,7 +18,7 @@ First-party extensions, included in the server release downloads:
 - MCP
 - Roadmaps
 
-**Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host — one container + Postgres is the whole deployment.
+**Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host; one container + Postgres is the whole deployment.
 
 No issue reporting, or public pull requesting. I tailored this to my own needs and just wanted to share it with the world if someone else can get use out of it. 
 If you REALLY need to tell me about a problem security related, you can reach me on Bluesky: hunter.ahlquist.me
@@ -71,10 +71,10 @@ compose file.
    `.apps.googleusercontent.com`.
 2. **Set up** the docker compose:
 
-   The prebuilt image on GHCR is private for now, so unless you've been given
-   access to it, build the image yourself from a checkout of this repository
-   (`docker build -t solo .` at its root) and use `image: solo` in place of the
-   `ghcr.io` one below.
+   The prebuilt image on GHCR is public, so the host pulls it without signing
+   in to the registry. To run your own build instead, build the image from a
+   checkout of this repository (`docker build -t solo .` at its root) and use
+   `image: solo` in place of the `ghcr.io` one below.
 
    Here is an example that should get you started, though I recommend you use a secrets manager for the passwords.
    ```yaml
@@ -352,8 +352,10 @@ extensions/            the bundled extensions, each its own solution (not in Sol
 ```
 
 `Solo.slnx` is core only. The bundled extensions build the way a third-party
-one does, from the contract's NuGet packages, which until they are published
-exist only as what `build/pack-contract.sh` writes to `artifacts/nuget`:
+one does, from the contract's NuGet packages — but from the ones
+`build/pack-contract.sh` packs out of `src/` into `artifacts/nuget`, never the
+copies published on nuget.org, so they always build against this checkout's
+contract:
 
 ```sh
 build/pack-contract.sh
