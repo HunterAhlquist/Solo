@@ -33,7 +33,7 @@
     <PackageReference Include="MudBlazor" Version="9.11.0" />
     <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj: here it is
          Solo.Client, through Solo.Mcp.Tests, that supplies the host's copy. -->
-    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.8.0" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.9.0" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

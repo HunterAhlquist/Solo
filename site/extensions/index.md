@@ -56,7 +56,7 @@ Write an extension with this in mind:
 
 ## The contract and its version
 
-The two contract packages have one version: the **contract version**. This documentation describes contract `1.8`.
+The two contract packages have one version: the **contract version**. This documentation describes contract `1.9`.
 
 - Compile against the newest package.
 - In the manifest, declare the lowest contract version that your code needs. See [Version ranges](manifest.md#version-ranges).
