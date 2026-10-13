@@ -1,12 +1,14 @@
 // The settings page's entire capability surface: read the current settings,
-// test a candidate URL, save it, or close the window. Nothing else crosses
-// the bridge.
+// test a candidate URL, preview a background opacity on the app window, save,
+// or close the window. Nothing else crosses the bridge.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('soloSettings', {
     get: () => ipcRenderer.invoke('settings:get'),
     test: url => ipcRenderer.invoke('settings:test', url),
-    save: (url, nativeEffects) => ipcRenderer.invoke('settings:save', url, nativeEffects),
+    previewBackgroundAlpha: alpha => ipcRenderer.send('settings:preview-background-alpha', alpha),
+    save: (url, nativeEffects, backgroundAlpha) =>
+        ipcRenderer.invoke('settings:save', url, nativeEffects, backgroundAlpha),
     close: () => ipcRenderer.invoke('settings:close'),
 });
 

@@ -21,7 +21,8 @@ On first launch a settings window asks for the instance address
 `/api/config/auth` to confirm the address is a Solo instance before you save.
 Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live in
 `settings.json` under Electron's `userData` directory; the local port
-(default `41321`) can be changed there if it clashes.
+(default `41321`; `41322` for an unpackaged run, so it can start beside the
+installed app) can be changed there if it clashes.
 
 During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start`
 serves client assets from anywhere without re-copying.
@@ -48,6 +49,13 @@ the first paint instead of covering the native backdrop with an opaque splash.
 The Server Settings window uses the same native treatment. Its macOS native
 window effects checkbox disables both Liquid Glass and the vibrancy fallback
 after the next restart; the choice is stored with the other shell settings.
+
+Under it, **Background opacity** sets how much of the theme's own page
+background is painted over the effect: 0% (the default) is bare glass, 100% is
+the theme's ordinary opaque background. The slider previews on the app window
+as it moves and applies on save without a restart. It is `backgroundAlpha`
+(0–1) in `settings.json`, and reaches the client as the
+`--solo-glass-background-alpha` custom property the preload sets on `<html>`.
 
 ## Window chrome
 
