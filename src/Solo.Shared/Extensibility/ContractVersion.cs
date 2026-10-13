@@ -54,10 +54,16 @@ namespace Solo.Shared.Extensibility;
 /// <see cref="ISoloLiveTopics.SubscribeUserAsync"/>. Both halves changed, so a
 /// package using any of it needs 1.8 in whichever range covers the half that
 /// uses it.</para>
+/// <para>1.9.0 adds no seam. It carries the instance's branding on the shared
+/// DTOs — <c>DisplayName</c> and <c>Tagline</c> on <c>AuthConfigDto</c> and the
+/// instance settings DTOs, with <c>InstanceBranding</c> for their limits and
+/// defaults — which core's own client and API use. They are members of a
+/// published assembly all the same, so the number moves with them: a package
+/// reading one needs 1.9 in the range covering the half that does.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.8.0";
+    public const string Current = "1.9.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

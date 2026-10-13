@@ -68,6 +68,7 @@ async function runChild({ connectionReset }) {
         isMinimized() { return false; }
         loadURL() {}
         setMenuBarVisibility() {}
+        setTitle() {}
         setWindowButtonVisibility() {}
         show() {}
     }
@@ -101,7 +102,13 @@ async function runChild({ connectionReset }) {
         if (request === './main/settings') {
             return {
                 load: () => ({
-                    instanceUrl: 'http://127.0.0.1:9',
+                    instances: [{
+                        id: 'recovery-check',
+                        name: '127.0.0.1:9',
+                        url: 'http://127.0.0.1:9',
+                        port: 41321,
+                    }],
+                    lastInstanceId: 'recovery-check',
                     nativeEffects: false,
                     port: 41321,
                 }),

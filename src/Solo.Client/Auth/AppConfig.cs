@@ -23,6 +23,23 @@ public sealed class AppConfig
     public string? LoadError { get; init; }
 
     /// <summary>
+    /// What the instance calls itself, where its operator gave it a name. Read
+    /// once at bootstrap, like the theme: changing it reloads the page.
+    /// </summary>
+    public bool HasOwnName => !string.IsNullOrWhiteSpace(Auth?.DisplayName);
+
+    /// <summary>
+    /// The name to put wherever the app names itself — the app bar, the sign-in
+    /// page, page titles. The instance's own where it has one, and otherwise
+    /// the product's.
+    /// </summary>
+    public string SiteName => HasOwnName ? Auth!.DisplayName! : InstanceBranding.ProductName;
+
+    /// <summary>The line under the name on the sign-in page: the instance's own, or the product's.</summary>
+    public string Tagline =>
+        string.IsNullOrWhiteSpace(Auth?.Tagline) ? InstanceBranding.DefaultTagline : Auth.Tagline;
+
+    /// <summary>
     /// Mutable: the setup wizard flips this the moment handoff succeeds, so the
     /// router stops forcing every route to <c>/setup</c> without a page reload.
     /// </summary>

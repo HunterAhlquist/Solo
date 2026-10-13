@@ -6,7 +6,14 @@ public sealed record InstanceSettingsDto(
     int AuditRetentionDays,
     bool SetupCompleted,
     string? ThemeId,
-    uint Version);
+    uint Version)
+{
+    /// <summary>The instance's own name, or null when it goes by "Solo".</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>The instance's own sign-in tagline, or null when it shows the default.</summary>
+    public string? Tagline { get; init; }
+}
 
 public sealed class UpdateInstanceSettingsRequest
 {
@@ -19,6 +26,25 @@ public sealed class UpdateInstanceSettingsRequest
     /// </summary>
     [StringLength(64)]
     public string? ThemeId { get; init; }
+
+    /// <summary>
+    /// The instance's display name. Empty clears it; null leaves it as it is.
+    /// </summary>
+    /// <remarks>
+    /// Null cannot mean "clear" here the way it does for the theme. The
+    /// desktop app bundles its own client, which can be older than the
+    /// instance, and a client from before this field existed sends nothing for
+    /// it — saving an unrelated setting there would otherwise wipe the name.
+    /// </remarks>
+    [StringLength(InstanceBranding.MaxDisplayNameLength)]
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// The sign-in page's tagline, on the same terms as the name: empty clears
+    /// it back to the default, null leaves it as it is.
+    /// </summary>
+    [StringLength(InstanceBranding.MaxTaglineLength)]
+    public string? Tagline { get; init; }
 
     public uint Version { get; init; }
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using MudBlazor;
 using MudBlazor.Services;
+using Solo.Client.Auth;
 using Solo.Client.Components;
 using Solo.Client.Realtime;
 using Solo.Client.State;
@@ -53,6 +54,11 @@ public abstract class ComponentTestBase : SoloBunitContext
         // components see the built-in fallback — which is what a test asserting
         // markup wants anyway.
         Services.AddScoped(sp => new ThemeState(sp.GetRequiredService<IJSRuntime>()));
+
+        // Every page titles itself with the instance's name, which is on the
+        // bootstrap config. Empty, as an instance that goes by "Solo"; a test
+        // about sign-in or naming registers its own after this, which wins.
+        Services.AddSingleton(new AppConfig());
 
         // Every component that saves injects it, so it belongs here rather than
         // in each test class that happens to render one.

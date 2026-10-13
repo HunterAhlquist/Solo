@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Solo.Data.Entities;
+using Solo.Shared.Dtos;
 
 namespace Solo.Data;
 
@@ -219,6 +220,8 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
         {
             e.Property(s => s.Id).ValueGeneratedNever();
             e.Property(s => s.ThemeId).HasMaxLength(64);
+            e.Property(s => s.DisplayName).HasMaxLength(InstanceBranding.MaxDisplayNameLength);
+            e.Property(s => s.Tagline).HasMaxLength(InstanceBranding.MaxTaglineLength);
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_InstanceSettings_Singleton", $"\"Id\" = {Entities.InstanceSettings.SingletonId}"));
         });

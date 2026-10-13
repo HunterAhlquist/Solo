@@ -24,6 +24,7 @@ The contract version is the version of the two contract packages. Declare the lo
 | 1.7 | Server | `ISoloCredentialIssuer`. |
 | 1.8 | Server | `ISoloBackground`, `ISoloQuery.MembersAsync`, `CommentAsync` and `TaskCommentsAsync`, `ISoloLiveUpdates.PublishToUserAsync`, and the operations `task.setBoard`, `task.setAssignees` and `epic.setAssignees`. |
 | 1.8 | Client | `[TaskCardExtension]`, `[BoardColumnExtension]`, `[ProjectSettingsSection]`, `[BoardSettingsSection]`, `[AppBarExtension]`, `ISoloTaskMenuContributor`, `ISoloLiveTopics.SubscribeUserAsync`. |
+| 1.9 | Server, client | No new interface. `AuthConfigDto` and `InstanceSettingsDto` have the display name and the tagline of the instance, and `InstanceBranding` has their limits and defaults. |
 
 `ContractVersion.Current` in `Solo.Shared.Extensibility` holds the contract version of an instance.
 

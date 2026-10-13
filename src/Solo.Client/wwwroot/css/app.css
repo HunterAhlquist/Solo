@@ -59,6 +59,20 @@ code {
     gap: 1.25rem;
 }
 
+/* "Solo", or the instance's own name once a visit has learned it: theme-boot.js
+   sets the property from what the app left in localStorage. A long name wraps
+   rather than running off a phone. */
+.boot-splash__mark {
+    max-width: 90vw;
+    line-height: 1.4;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.boot-splash__mark::before {
+    content: var(--solo-boot-name, "Solo");
+}
+
 .boot-splash__bar {
     width: 12rem;
     height: 2px;
@@ -1196,6 +1210,18 @@ body.solo-dragging {
 /* ---------------------------------------------------------------------------
    Footer — small and subtle
    --------------------------------------------------------------------------- */
+/* The app bar's name is the instance's own, so it can be long: it gives way to
+   the icons beside it rather than pushing them off a narrow screen. */
+.app-brand {
+    min-width: 0;
+}
+
+.app-brand .mud-typography {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .app-footer {
     padding: 1.5rem 1rem 1rem;
     text-align: center;

@@ -39,4 +39,19 @@
     } catch {
         // Storage unavailable or holding junk: the CSS defaults are correct enough.
     }
+
+    // The instance's own name, where the last visit found it had one (see
+    // solo.branding in solo-interop.js). The splash draws its mark from this
+    // custom property, as a CSS string, so it is already right on first paint.
+    try {
+        var name = localStorage.getItem('solo.displayName');
+        // A control character would end the CSS string early; the API refuses
+        // them, so one here means the entry is not what the app wrote.
+        if (name && !/[\u0000-\u001f\u007f]/.test(name)) {
+            root.style.setProperty('--solo-boot-name', '"' + name.replace(/[\\"]/g, '\\$&') + '"');
+            document.title = name;
+        }
+    } catch {
+        // Storage unavailable: the splash says "Solo" until the app has loaded.
+    }
 })();

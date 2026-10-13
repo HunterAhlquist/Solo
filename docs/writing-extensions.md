@@ -934,3 +934,16 @@ which makes it the place for state that changes while the person is elsewhere:
 an unread count, a running timer. Keep it to an icon button with a badge. The
 bar is narrow on a phone and every extension shares it. A manifest nav entry is
 still the way to a page. Pair it with a user topic to keep the count live.
+
+## Contract 1.9
+
+No new seam. The version moved because `Solo.Shared` gained members, and a
+member of a published assembly is part of the contract whether or not an
+extension was meant to use it: `AuthConfigDto` and the instance settings DTOs
+carry the instance's `DisplayName` and `Tagline`, and `InstanceBranding` holds
+their limits and defaults. Core's own client and API are what use them.
+
+Nothing an extension does today needs 1.9, so leave your ranges where they
+are. There is still no seam for reading the instance's name from a client
+page — an extension's `<PageTitle>` that ends in "Solo" stays that way on a
+named instance.

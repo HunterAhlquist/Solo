@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +13,19 @@ if (process.platform !== 'darwin') {
 const desktopDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const electron = process.env.SOLO_GLASS_APP ?? path.join(desktopDir, 'node_modules', '.bin', 'electron');
 const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'solo-settings-check-'));
+// Stands in for a Solo instance: enough of one to pass the connection test.
+// Still in setup, so adding it opens its window without a browser sign-in.
+const fixture = createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url === '/api/config/auth') {
+        response.end('{"authority":"","clientId":"","provider":"generic","setupCompleted":false}');
+        return;
+    }
+
+    response.statusCode = 401;
+    response.end('{"error":"unauthorized fixture request"}');
+});
+const fixtureUrl = `http://127.0.0.1:${await listen(fixture)}`;
 const env = { ...process.env, SOLO_USER_DATA_DIR: userDataDir };
 delete env.SOLO_DISABLE_LIQUID_GLASS;
 delete env.SOLO_GLASS_APP;
@@ -36,7 +50,9 @@ try {
     await new Promise(resolve => setTimeout(resolve, 250));
 
     const appearance = await evaluate(settingsTarget.webSocketDebuggerUrl, `({
-        hasBridge: typeof window.soloSettings?.save === 'function',
+        hasBridge: typeof window.soloSettings?.add === 'function',
+        firstRun: document.getElementById('instances').children.length === 0 &&
+            document.getElementById('close').textContent === 'Quit',
         glass: document.documentElement.classList.contains('solo-settings--glass'),
         controlHidden: document.getElementById('native-effects-setting').hidden,
         controlChecked: document.getElementById('native-effects').checked,
@@ -53,7 +69,7 @@ try {
             getComputedStyle(document.body, '::before').webkitBackdropFilter
     })`);
     console.log(JSON.stringify({ settingsAppearance: appearance }, null, 2));
-    if (!appearance.hasBridge || !appearance.glass || appearance.controlHidden ||
+    if (!appearance.hasBridge || !appearance.firstRun || !appearance.glass || appearance.controlHidden ||
         !appearance.controlChecked || appearance.backdrop === 'none' ||
         appearance.dragRegion !== 'drag' || appearance.inputRegion !== 'no-drag' ||
         !appearance.glassWash.includes('/ 48%') ||
@@ -62,30 +78,61 @@ try {
         throw new Error('The settings window did not start with its native appearance, drag regions, and enabled control.');
     }
 
+    const refused = await evaluate(settingsTarget.webSocketDebuggerUrl,
+        `window.soloSettings.add('http://127.0.0.1:9')`);
+    if (refused.ok !== false || readSettings()?.instances?.length) {
+        throw new Error('An address that failed its connection test was added anyway.');
+    }
+
+    // Out of range on purpose: main clamps whatever the page sends.
     await evaluate(settingsTarget.webSocketDebuggerUrl,
-        `window.soloSettings.save('http://127.0.0.1:9', false, 1.4); true`);
+        `window.soloSettings.setBackgroundAlpha(1.4).then(() => true)`);
+    if (readSettings()?.backgroundAlpha !== 1) {
+        throw new Error('The background opacity did not persist clamped to its range.');
+    }
+
+    // Driven through the page, as a person would: the opt-out, then the add.
+    await evaluate(settingsTarget.webSocketDebuggerUrl, `(() => {
+        document.getElementById('native-effects').click();
+        document.getElementById('url').value = ${JSON.stringify(fixtureUrl)};
+        document.getElementById('add').click();
+        return true;
+    })()`);
     const persisted = await waitFor(() => {
-        try {
-            return JSON.parse(readFileSync(path.join(userDataDir, 'settings.json'), 'utf8'));
-        } catch {
-            return null;
-        }
-    }, 3000, 'The native-effects preference was not persisted.');
+        const settings = readSettings();
+        return settings?.instances?.length === 1 ? settings : null;
+    }, 3000, 'The added instance was not persisted.');
+    const [instance] = persisted.instances;
     if (persisted.nativeEffects !== false) {
         throw new Error('The native-effects preference did not persist as disabled.');
     }
     if (persisted.backgroundAlpha !== 1) {
-        throw new Error('The background opacity did not persist clamped to its range.');
+        throw new Error('Saving another preference lost the background opacity.');
+    }
+    if (instance.url !== fixtureUrl || !instance.id || !Number.isInteger(instance.port)) {
+        throw new Error('The added instance was not persisted with its address, id and local port.');
     }
 
-    const mainUsesGlass = await inspectMatching(browserOrigin,
-        target => target.type === 'page' && target.url.startsWith('http://localhost:41322/'),
-        `document.documentElement.classList.contains('solo-desktop--glass')`);
-    if (mainUsesGlass) {
-        throw new Error('The main window still enabled native effects after the saved opt-out.');
+    const instanceWindow = await inspectMatching(browserOrigin,
+        target => target.type === 'page' && target.url.startsWith(`http://localhost:${instance.port}/`),
+        `(async () => ({
+            glass: document.documentElement.classList.contains('solo-desktop--glass'),
+            instanceUrl: await window.soloDesktop.instanceUrl(),
+        }))()`);
+    if (instanceWindow.glass) {
+        throw new Error('The instance window still enabled native effects after the saved opt-out.');
+    }
+    if (instanceWindow.instanceUrl !== fixtureUrl) {
+        throw new Error('The instance window was not told which instance it is showing.');
     }
 
-    console.log('PASS: settings uses native effects by default and persists the opt-out.');
+    // Once the instance has its window, the settings window closes itself.
+    await waitFor(async () => {
+        const response = await fetch(`${browserOrigin}/json/list`);
+        return !(await response.json()).some(target => target.url.endsWith('/settings/settings.html'));
+    }, 3000, 'The settings window stayed open after the added instance opened.');
+
+    console.log('PASS: settings uses native effects by default, persists the opt-out, and adds an instance into its own window.');
 } catch (error) {
     if (output.trim()) console.error(output.trim());
     console.error(`FAIL: ${error.message}`);
@@ -96,7 +143,23 @@ try {
         child.kill('SIGINT');
         await closed;
     }
+    fixture.close();
     rmSync(userDataDir, { recursive: true, force: true });
+}
+
+function readSettings() {
+    try {
+        return JSON.parse(readFileSync(path.join(userDataDir, 'settings.json'), 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+function listen(server) {
+    return new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+    });
 }
 
 async function targetMatching(origin, predicate) {

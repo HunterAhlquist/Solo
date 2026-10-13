@@ -49,5 +49,16 @@ public class InstanceSettings : IVersioned
     /// removing a theme package must not leave the instance unrenderable.
     /// </summary>
     public string? ThemeId { get; set; }
+    /// <summary>
+    /// What this instance calls itself: the name in the app bar, on the
+    /// sign-in page and in page titles, and what the desktop app lists it
+    /// under. Null means it has none of its own and goes by "Solo".
+    /// </summary>
+    public string? DisplayName { get; set; }
+    /// <summary>
+    /// The line under the name on the sign-in page. Null means the instance
+    /// has none of its own and shows the product's.
+    /// </summary>
+    public string? Tagline { get; set; }
     public uint Version { get; set; }
 }

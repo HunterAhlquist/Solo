@@ -23,8 +23,8 @@
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                        OnClick="@(() => _drawerOpen = !_drawerOpen)" aria-label="Toggle navigation" />
-        <MudLink Href="" Underline="Underline.None" Color="Color.Inherit" Class="ml-2">
-            <MudText Typo="Typo.h5">Solo</MudText>
+        <MudLink Href="" Underline="Underline.None" Color="Color.Inherit" Class="ml-2 app-brand">
+            <MudText Typo="Typo.h5">@Config.SiteName</MudText>
         </MudLink>
         <MudSpacer />
 
@@ -79,7 +79,11 @@
         </MudContainer>
 
         <footer class="app-footer">
-            <div class="app-footer__copyright">Solo, a simple project management app - 
+            @* The one place that always says Solo: an instance with a name of
+               its own is still running it. *@
+            <div class="app-footer__copyright">@(Config.HasOwnName
+                    ? $"{Config.SiteName}, powered by Solo."
+                    : "Solo, a simple project management app") - 
                 <MudLink Target="_blank" Href="https://github.com/HunterAhlquist/Solo">View Source on Github</MudLink></div>
         </footer>
     </MudMainContent>

@@ -17,7 +17,7 @@ namespace Solo.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -398,8 +398,16 @@ namespace Solo.Data.Migrations
                     b.Property<int>("AuditRetentionDays")
                         .HasColumnType("integer");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<bool>("SetupCompleted")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Tagline")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
 
                     b.Property<string>("ThemeId")
                         .HasMaxLength(64)

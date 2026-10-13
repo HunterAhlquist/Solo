@@ -3,9 +3,10 @@
 An Electron shell around the unmodified Solo web client. The shell serves the
 published Blazor WASM build from a local origin (`http://localhost:41321`) and
 reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to
-whichever Solo instance is configured in **Server Settings** — so the client
-runs byte-for-byte identical to the hosted build, same-origin, with no CORS
-anywhere and no changes to the API.
+a Solo instance added in **Settings** — so the client runs byte-for-byte
+identical to the hosted build, same-origin, with no CORS anywhere and no
+changes to the API. It can hold several instances, each in a window of its
+own.
 
 ## Running
 
@@ -16,13 +17,53 @@ npm run build:client   # dotnet publish Solo.Client → ./wwwroot
 npm start
 ```
 
-On first launch a settings window asks for the instance address
-(e.g. `https://solo.example.com`). **Test** performs an anonymous fetch of
-`/api/config/auth` to confirm the address is a Solo instance before you save.
-Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live in
-`settings.json` under Electron's `userData` directory; the local port
-(default `41321`; `41322` for an unpackaged run, so it can start beside the
-installed app) can be changed there if it clashes.
+On first launch a settings window asks for an instance address
+(e.g. `https://solo.example.com`). Settings live in `settings.json` under
+Electron's `userData` directory.
+
+## Instances
+
+*Solo → Settings…* (`Cmd/Ctrl+,`; under *File* on Windows and Linux) lists the
+instances the app knows. **Add** takes one through three steps:
+
+1. **Test.** An anonymous fetch of `/api/config/auth` confirms the address is
+   a Solo instance. One that fails is not added.
+2. **Sign in.** The instance is saved and the browser sign-in below starts.
+3. **Open.** When the sign-in lands, the instance opens in a new window,
+   already signed in, and the settings window closes.
+
+An instance that doesn't sign in with Google, or hasn't finished its setup,
+has no browser sign-in to run, so it skips step 2 and you sign in (or set it
+up) in its window.
+
+An instance is listed under the display name its own operator gave it (Admin
+settings, served with `/api/config/auth`), and under its address until it has
+one. The shell asks again on every page load, and the client reloads when the
+name is changed, so a rename shows up in the menu at once. Two instances going
+by the same name get their addresses added.
+
+*Solo → Open Instance* lists them all. An instance has at most one window, so
+one that is already open is greyed out there — the *Window* menu brings it
+forward, and its title says which instance it is once there are two.
+Choosing one that isn't open asks whether it gets a **new window** or takes
+over the **current window**, the instance window used last. The app reopens
+the instance used last when it starts, and quits when its last window closes.
+
+Each instance is served on a local port of its own, counting up from `41321`
+(`41322` for an unpackaged run, so it can start beside the installed app), and
+the port is what keeps them apart: the client stores its session in
+`localStorage`, which the browser scopes to the origin, so a session minted by
+one instance is never sent to another. The port is saved with the instance
+because a different port is a different origin — the sign-in stored under the
+old one would be gone. Removing an instance clears what was stored under its
+origin, since the port is reused. It does not sign the session out on the
+server; do that from the app first, or from *Signed-in devices* on the web.
+
+`settings.json` holds `instances` (`id`, `name`, `url`, `port`); `port` can be
+edited there while the app is closed, and `name` is only the last name the
+instance gave. A file from before the
+shell knew more than one instance, with a lone `instanceUrl`, is read as that
+one instance on its old port, so it stays signed in.
 
 During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start`
 serves client assets from anywhere without re-copying.
@@ -46,15 +87,15 @@ independently inheriting macOS. Changes apply to the native material while the
 app is running. The Blazor loading view uses the same theme-tinted material from
 the first paint instead of covering the native backdrop with an opaque splash.
 
-The Server Settings window uses the same native treatment. Its macOS native
+The Settings window uses the same native treatment. Its macOS native
 window effects checkbox disables both Liquid Glass and the vibrancy fallback
 after the next restart; the choice is stored with the other shell settings.
 
 Under it, **Background opacity** sets how much of the theme's own page
 background is painted over the effect: 0% (the default) is bare glass, 100% is
-the theme's ordinary opaque background. The slider previews on the app window
-as it moves and applies on save without a restart. It is `backgroundAlpha`
-(0–1) in `settings.json`, and reaches the client as the
+the theme's ordinary opaque background. The slider previews on every instance
+window as it moves, and is saved when it is let go, without a restart. It is
+`backgroundAlpha` (0–1) in `settings.json`, and reaches the client as the
 `--solo-glass-background-alpha` custom property the preload sets on `<html>`.
 
 ## Window chrome
@@ -120,7 +161,9 @@ and swaps the GIS widget for the plain button — Google's widget never loads
 inside the app.)
 
 For **other OIDC providers** (code + PKCE redirect) the flow runs in-app:
-add `http://localhost:41321/authentication/login-callback` as a redirect URI.
+add the instance's local address — Settings shows it under each instance,
+`http://localhost:41321` for the first — plus `/authentication/login-callback`
+as a redirect URI.
 These providers redirect the whole window rather than a popup; whether that
 works depends on the provider's webview policy.
 

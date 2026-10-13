@@ -7,7 +7,7 @@
 @inject GoogleIdentityService Google
 @inject ThemeState Theme
 
-<PageTitle>Sign in · Solo</PageTitle>
+<PageTitle>Sign in · @Config.SiteName</PageTitle>
 
 @* Fixed backdrop behind the card. Redraws when the colour scheme changes, so a
    theme shipping a per-scheme image swaps with the toggle. *@
@@ -18,14 +18,14 @@
     <MudPaper Elevation="2" Class="pa-8 width-100 d-flex flex-column align-center" Style="gap:1.5rem">
         @if (Theme.LoginLogo is { Length: > 0 } logo)
         {
-            <img src="@logo" alt="Solo" class="signin-logo" />
+            <img src="@logo" alt="@Config.SiteName" class="signin-logo" />
         }
         else
         {
-            <MudText Typo="Typo.h1">Solo</MudText>
+            <MudText Typo="Typo.h1" Align="Align.Center">@Config.SiteName</MudText>
         }
         <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
-            Project management for game development.
+            @Config.Tagline
         </MudText>
 
         @if (Unauthorized)

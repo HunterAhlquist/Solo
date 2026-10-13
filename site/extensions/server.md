@@ -14,7 +14,7 @@ lede: The server half is a .NET class library that runs in the Solo process. It 
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.8.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.9.0" />
   </ItemGroup>
 </Project>
 ```

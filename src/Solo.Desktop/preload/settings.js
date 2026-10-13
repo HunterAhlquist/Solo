@@ -1,15 +1,31 @@
-// The settings page's entire capability surface: read the current settings,
-// test a candidate URL, preview a background opacity on the app window, save,
-// or close the window. Nothing else crosses the bridge.
+// The settings page's entire capability surface: list the instances, add one
+// and see it through its first sign-in, open or remove one, and set the two
+// preferences — previewing a background opacity on the instance windows on
+// the way. Nothing else crosses the bridge.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('soloSettings', {
     get: () => ipcRenderer.invoke('settings:get'),
-    test: url => ipcRenderer.invoke('settings:test', url),
+    setNativeEffects: enabled => ipcRenderer.invoke('settings:native-effects', enabled),
     previewBackgroundAlpha: alpha => ipcRenderer.send('settings:preview-background-alpha', alpha),
-    save: (url, nativeEffects, backgroundAlpha) =>
-        ipcRenderer.invoke('settings:save', url, nativeEffects, backgroundAlpha),
+    setBackgroundAlpha: alpha => ipcRenderer.invoke('settings:background-alpha', alpha),
     close: () => ipcRenderer.invoke('settings:close'),
+
+    // Tests the address and saves the instance. Answers { ok, error } or
+    // { ok, id, name, signIn }: with signIn the browser is now open and main
+    // closes this window once the sign-in lands; without it main has already
+    // opened the instance.
+    add: url => ipcRenderer.invoke('instances:add', url),
+    signIn: id => ipcRenderer.invoke('instances:sign-in', id),
+    openNew: id => ipcRenderer.invoke('instances:open-new', id),
+    open: id => ipcRenderer.invoke('instances:open', id),
+    remove: id => ipcRenderer.invoke('instances:remove', id),
+
+    // Instances are opened and closed from outside this window too.
+    onInstancesChanged: listener =>
+        ipcRenderer.on('instances:changed', (_event, instances) => listener(instances)),
+    onSignInFailed: listener =>
+        ipcRenderer.on('sign-in:failed', (_event, failure) => listener(failure)),
 });
 
 let glassBackdrop = process.argv.includes('--solo-glass-backdrop');

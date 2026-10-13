@@ -316,7 +316,7 @@ full feature list is in [its README](extensions/Roadmap/Solo.Roadmap/README.md).
 
 ## Desktop app
 
-[src/Solo.Desktop](src/Solo.Desktop) is an Electron shell around the unmodified Solo web client. The shell serves the published Blazor WASM build from a local origin (`http://localhost:41321`) and reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to whichever Solo instance is configured in **Server Settings** — so the client runs byte-for-byte identical to the hosted build, same-origin, with no CORS anywhere and no changes to the API.
+[src/Solo.Desktop](src/Solo.Desktop) is an Electron shell around the unmodified Solo web client. The shell serves the published Blazor WASM build from a local origin (`http://localhost:41321`) and reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to a Solo instance added in **Settings** — so the client runs byte-for-byte identical to the hosted build, same-origin, with no CORS anywhere and no changes to the API. It can hold several instances, each in a window of its own on a local port of its own; see [its README](src/Solo.Desktop/README.md#instances).
 
 ### Desktop Sign-in
 
@@ -377,7 +377,7 @@ npm run build:client   # dotnet publish Solo.Client → ./wwwroot
 npm start
 ```
 
-On first launch a settings window asks for the instance address (e.g. `https://solo.example.com`). **Test** performs an anonymous fetch of `/api/config/auth` to confirm the address is a Solo instance before you save. Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live in `settings.json` under Electron's `userData` directory; the local port (default `41321`) can be changed there if it clashes.
+On first launch a settings window asks for an instance address (e.g. `https://solo.example.com`). **Add** performs an anonymous fetch of `/api/config/auth` to confirm the address is a Solo instance, signs you in to it in the browser, and then opens it. Add more, or remove one, via *Solo → Settings…* (`Cmd/Ctrl+,`), and open them from *Solo → Open Instance*. Settings live in `settings.json` under Electron's `userData` directory; each instance's local port (counting up from `41321`) can be changed there if it clashes.
 
 During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start` serves client assets from anywhere without re-copying.
 
@@ -387,7 +387,7 @@ During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start` serves 
 
 The server image, MCP extension, and desktop client version independently — see [Packaging](#packaging) for the `desktop-v*` series. For a `server-v*` tag, CI compares the server inputs (`Dockerfile`, `.dockerignore`, and the server's project-reference closure) and MCP package inputs separately against the previous `server-v*` tag it descends from. It publishes only the artifacts whose inputs changed; test-, documentation-, desktop-, workflow-, and packaging-only changes do not republish the server, and server-only changes do not attach another copy of an unchanged MCP package. If neither artifact changed, CI creates no GitHub release and moves no GHCR tags.
 
-The extension SDK is a third series. Pushing an **`sdk-v<version>`** tag runs [release-sdk.yml](.github/workflows/release-sdk.yml), which publishes `HunterAhlquist.Solo.Shared` and `HunterAhlquist.Solo.Extensibility` to nuget.org. The tag has to name the contract version in `build/contract-package.props` (`sdk-v1.8.0` for `1.8.0`), and the workflow refuses to publish while the repository is private, because nuget.org never deletes a version and each package page links back here. It stores no API key: nuget.org issues a one-hour key through a [trusted-publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) policy that names this repository, `release-sdk.yml` and the `nuget` environment, and the `NUGET_USER` repository variable holds the nuget.org profile name. A manual `workflow_dispatch` run is a rehearsal — it packs and uploads the packages as a workflow artifact and publishes nothing.
+The extension SDK is a third series. Pushing an **`sdk-v<version>`** tag runs [release-sdk.yml](.github/workflows/release-sdk.yml), which publishes `HunterAhlquist.Solo.Shared` and `HunterAhlquist.Solo.Extensibility` to nuget.org. The tag has to name the contract version in `build/contract-package.props` (`sdk-v1.9.0` for `1.9.0`), and the workflow refuses to publish while the repository is private, because nuget.org never deletes a version and each package page links back here. It stores no API key: nuget.org issues a one-hour key through a [trusted-publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) policy that names this repository, `release-sdk.yml` and the `nuget` environment, and the `NUGET_USER` repository variable holds the nuget.org profile name. A manual `workflow_dispatch` run is a rehearsal — it packs and uploads the packages as a workflow artifact and publishes nothing.
 
 ### Packaging
 

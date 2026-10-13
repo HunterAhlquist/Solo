@@ -1,3 +1,5 @@
+@inject AppConfig Config
+
 <MudContainer MaxWidth="MaxWidth.Small" Class="d-flex flex-column align-center justify-center" Style="height:100vh;gap:1rem">
     <MudAlert Severity="Severity.Error" Class="width-100">
         <MudText Typo="Typo.subtitle1">@Title</MudText>
@@ -6,7 +8,7 @@
             <MudText Typo="Typo.body2">@Detail</MudText>
         }
     </MudAlert>
-    <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary">Back to Solo</MudButton>
+    <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary">Back to @Config.SiteName</MudButton>
 </MudContainer>
 
 @code {
