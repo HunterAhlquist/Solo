@@ -10,8 +10,9 @@
 @inject NavigationManager Navigation
 @inject ThemeState Theme
 @inject IDialogService Dialogs
+@inject AppConfig Config
 
-<PageTitle>Admin settings · Solo</PageTitle>
+<PageTitle>Admin settings · @Config.SiteName</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium" Gutters="false">
 <MudText Typo="Typo.h1" Class="mb-4">Admin settings</MudText>
@@ -26,6 +27,34 @@ else if (_settings is null)
 }
 else
 {
+    <MudPaper Elevation="1" Class="pa-4 mb-4">
+        <MudText Typo="Typo.h4" Class="mb-1">Branding</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+            What this instance is called: in the app bar, on the sign-in page and
+            in page titles, and in the desktop app's list of instances. The
+            tagline is the line under the name on the sign-in page. Leave either
+            empty for the default.
+        </MudText>
+
+        @* Saved by the button rather than on blur, unlike the fields below: a
+           new name reloads the page for everyone looking at it to take, which
+           is not something to set off by tabbing out of a half-typed word.
+           Immediate, so the button knows there is something to save. *@
+        <MudTextField T="string" @bind-Value="_displayName" Label="Name" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" MaxLength="@InstanceBranding.MaxDisplayNameLength"
+                      Placeholder="@InstanceBranding.ProductName" Immediate="true" Class="mb-3" />
+        <MudTextField T="string" @bind-Value="_tagline" Label="Tagline" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" MaxLength="@InstanceBranding.MaxTaglineLength"
+                      Placeholder="@InstanceBranding.DefaultTagline" Immediate="true" />
+
+        <div class="d-flex justify-end mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(!BrandingChanged || _savingBranding)" OnClick="@SaveBrandingAsync">
+                Save changes
+            </MudButton>
+        </div>
+    </MudPaper>
+
     <MudPaper Elevation="1" Class="pa-4 mb-4">
         <MudText Typo="Typo.h4" Class="mb-1">Audit retention</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
@@ -215,6 +244,9 @@ else
     private ExtensionAdminDto? _extensions;
     private int _retentionDays;
     private string? _themeId;
+    private string? _displayName;
+    private string? _tagline;
+    private bool _savingBranding;
     private bool _rescanning;
     private string? _error;
 
@@ -253,6 +285,8 @@ else
         {
             _settings = await Api.GetInstanceSettingsAsync();
             _retentionDays = _settings.AuditRetentionDays;
+            _displayName = _settings.DisplayName;
+            _tagline = _settings.Tagline;
             _themes = await Api.GetThemesAsync();
             // Null means "the default": show which theme that resolved to rather
             // than an empty radio group.
@@ -290,6 +324,62 @@ else
         Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
     }
 
+    /// <summary>A branding field as it would be stored: trimmed, and empty for none.</summary>
+    private static string Stored(string? text) => text?.Trim() ?? string.Empty;
+
+    private bool DisplayNameChanged => Stored(_displayName) != (_settings?.DisplayName ?? string.Empty);
+
+    private bool BrandingChanged =>
+        DisplayNameChanged || Stored(_tagline) != (_settings?.Tagline ?? string.Empty);
+
+    private async Task SaveBrandingAsync()
+    {
+        if (_settings is null || !BrandingChanged)
+        {
+            return;
+        }
+
+        var nameChanged = DisplayNameChanged;
+        _savingBranding = true;
+        try
+        {
+            // The other settings go as they were last saved, not as the fields
+            // above them currently read: this button saves the branding.
+            var saved = await PutAsync(new UpdateInstanceSettingsRequest
+            {
+                AuditRetentionDays = _settings.AuditRetentionDays,
+                ThemeId = _settings.ThemeId,
+                // Empty rather than null to clear one: null is what a client
+                // from before these fields existed sends, and leaves them be.
+                DisplayName = Stored(_displayName),
+                Tagline = Stored(_tagline),
+                Version = _settings.Version,
+            });
+            if (!saved)
+            {
+                return;
+            }
+
+            _displayName = _settings.DisplayName;
+            _tagline = _settings.Tagline;
+        }
+        finally
+        {
+            _savingBranding = false;
+        }
+
+        if (nameChanged)
+        {
+            // Read once during bootstrap, like the theme: reload rather than
+            // leave the admin looking at an app bar that still has the old
+            // name. In the desktop app the reload is also what tells the shell
+            // to look again. The tagline is only on the sign-in page, which
+            // fetches it fresh, so a change to it alone needs no reload.
+            Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        }
+    }
+
+    /// <summary>Audit retention and the theme, which commit as they are changed.</summary>
     private async Task<bool> SaveAsync()
     {
         if (_settings is null)
@@ -302,16 +392,26 @@ else
             return false;
         }
 
+        // No branding: whatever is typed there waits for its own button.
+        var saved = await PutAsync(new UpdateInstanceSettingsRequest
+        {
+            AuditRetentionDays = _retentionDays,
+            ThemeId = _themeId,
+            Version = _settings.Version,
+        });
+        if (saved)
+        {
+            _retentionDays = _settings!.AuditRetentionDays;
+            _themeId = _settings.ThemeId ?? _themeId;
+        }
+        return saved;
+    }
+
+    private async Task<bool> PutAsync(UpdateInstanceSettingsRequest request)
+    {
         try
         {
-            _settings = await Api.UpdateInstanceSettingsAsync(new UpdateInstanceSettingsRequest
-            {
-                AuditRetentionDays = _retentionDays,
-                ThemeId = _themeId,
-                Version = _settings.Version,
-            });
-            _retentionDays = _settings.AuditRetentionDays;
-            _themeId = _settings.ThemeId ?? _themeId;
+            _settings = await Api.UpdateInstanceSettingsAsync(request);
             Snackbar.Add("Saved.", Severity.Success);
             return true;
         }
@@ -387,6 +487,8 @@ else
     {
         _settings = await Api.GetInstanceSettingsAsync();
         _retentionDays = _settings.AuditRetentionDays;
+        _displayName = _settings.DisplayName;
+        _tagline = _settings.Tagline;
         _themeId = _settings.ThemeId ?? _themes?.Themes.FirstOrDefault(t => t.IsActive)?.Id;
     }
 

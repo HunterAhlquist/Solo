@@ -11,6 +11,21 @@ window.solo = {
         removeSession: key => sessionStorage.removeItem(key),
     },
 
+    // The instance's display name, kept for js/theme-boot.js to put on the boot
+    // splash and the tab before the next load has reached the API. Null when
+    // the instance has no name of its own, which clears it.
+    branding: {
+        key: 'solo.displayName',
+
+        remember(name) {
+            if (name) {
+                localStorage.setItem(this.key, name);
+            } else {
+                localStorage.removeItem(this.key);
+            }
+        },
+    },
+
     // Keeps a keyboard-highlighted row in view, as the task picker's arrow keys
     // move it. MudBlazor's helper centres the row, which jumps the list each press.
     scrollIntoView: selector => document.querySelector(selector)?.scrollIntoView({ block: 'nearest' }),

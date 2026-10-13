@@ -316,7 +316,7 @@ full feature list is in [its README](extensions/Roadmap/Solo.Roadmap/README.md).
 
 ## Desktop app
 
-[src/Solo.Desktop](src/Solo.Desktop) is an Electron shell around the unmodified Solo web client. The shell serves the published Blazor WASM build from a local origin (`http://localhost:41321`) and reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to whichever Solo instance is configured in **Server Settings** — so the client runs byte-for-byte identical to the hosted build, same-origin, with no CORS anywhere and no changes to the API.
+[src/Solo.Desktop](src/Solo.Desktop) is an Electron shell around the unmodified Solo web client. The shell serves the published Blazor WASM build from a local origin (`http://localhost:41321`) and reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to a Solo instance added in **Settings** — so the client runs byte-for-byte identical to the hosted build, same-origin, with no CORS anywhere and no changes to the API. It can hold several instances, each in a window of its own on a local port of its own; see [its README](src/Solo.Desktop/README.md#instances).
 
 ### Desktop Sign-in
 
@@ -377,7 +377,7 @@ npm run build:client   # dotnet publish Solo.Client → ./wwwroot
 npm start
 ```
 
-On first launch a settings window asks for the instance address (e.g. `https://solo.example.com`). **Test** performs an anonymous fetch of `/api/config/auth` to confirm the address is a Solo instance before you save. Change it later via *Solo → Server Settings…* (`Cmd/Ctrl+,`). Settings live in `settings.json` under Electron's `userData` directory; the local port (default `41321`) can be changed there if it clashes.
+On first launch a settings window asks for an instance address (e.g. `https://solo.example.com`). **Add** performs an anonymous fetch of `/api/config/auth` to confirm the address is a Solo instance, signs you in to it in the browser, and then opens it. Add more, or remove one, via *Solo → Settings…* (`Cmd/Ctrl+,`), and open them from *Solo → Open Instance*. Settings live in `settings.json` under Electron's `userData` directory; each instance's local port (counting up from `41321`) can be changed there if it clashes.
 
 During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start` serves client assets from anywhere without re-copying.
 

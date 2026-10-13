@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Solo — Server Settings</title>
+  <title>Solo — Settings</title>
   <style>
     /* Matches the client's boot-splash aesthetic while following the native
        appearance Electron resolved from Solo's theme preference. */
@@ -34,6 +34,9 @@
 
     * { box-sizing: border-box; }
 
+    /* The attribute alone loses to any rule that sets display, .buttons among them. */
+    [hidden] { display: none !important; }
+
     html, body {
       margin: 0;
       height: 100%;
@@ -52,7 +55,7 @@
       -webkit-app-region: drag;
     }
 
-    html.solo-settings--glass :is(input, button, label, a, [role="button"]) {
+    html.solo-settings--glass :is(input, button, label, a, ul, [role="button"]) {
       -webkit-app-region: no-drag;
     }
 
@@ -120,9 +123,70 @@
       border-color: var(--accent);
     }
 
-    #status {
+    #instances {
       flex: 1;
-      min-height: 3.5rem;
+      min-height: 4rem;
+      margin: 0;
+      padding: 0;
+      overflow-y: auto;
+      list-style: none;
+      border-top: 1px solid var(--line);
+    }
+
+    #instances li {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    #instances .about {
+      flex: 1;
+      min-width: 0;
+    }
+
+    #instances strong,
+    #instances small {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #instances strong {
+      font-size: 0.8rem;
+    }
+
+    #instances small {
+      margin-top: 0.2rem;
+      color: var(--dim);
+      font-size: 0.68rem;
+      user-select: text;
+    }
+
+    #instances .open-mark {
+      margin-left: 0.5rem;
+      color: var(--ok);
+      font-size: 0.62rem;
+      font-weight: 400;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    #instances button {
+      padding: 0.35rem 0.7rem;
+      font-size: 0.7rem;
+    }
+
+    .add {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.35rem;
+    }
+
+    #status {
+      min-height: 2.75rem;
       font-size: 0.75rem;
       line-height: 1.5;
       white-space: pre-wrap;
@@ -216,23 +280,29 @@
 </head>
 <body>
 <main>
-  <h1>Server</h1>
+  <h1>Instances</h1>
   <p class="hint">
-    The address of the Solo instance this app connects to,
-    e.g. <span class="origin">https://solo.example.com</span>.
+    The Solo instances this app connects to. Each one opens in a window of its
+    own; open them from here or from the <span class="origin">Open Instance</span> menu.
   </p>
+
+  <ul id="instances"></ul>
 
   <div>
-    <label for="url">Instance address</label>
-    <input id="url" type="text" spellcheck="false" autocomplete="off"
-           placeholder="https://solo.example.com" />
+    <label for="url">Add an instance</label>
+    <div class="add">
+      <input id="url" type="text" spellcheck="false" autocomplete="off"
+             placeholder="https://solo.example.com" />
+      <button id="add" type="button" class="primary">Add</button>
+    </div>
   </div>
 
-  <p class="hint">
-    Sign-in note: the instance's OAuth client must list
-    <span class="origin" id="origin">http://localhost:41321</span>
-    as an authorized JavaScript origin.
-  </p>
+  <div id="status"></div>
+
+  <div id="sign-in-actions" class="buttons" hidden>
+    <button id="open-new" type="button">Open without signing in</button>
+    <button id="sign-in" type="button">Sign in again</button>
+  </div>
 
   <section id="native-effects-setting" class="native-effects" hidden>
     <label for="native-effects">
@@ -244,85 +314,147 @@
     </label>
   </section>
 
-  <div id="status"></div>
-
   <div class="buttons">
-    <button id="cancel" type="button">Cancel</button>
-    <button id="test" type="button">Test</button>
-    <button id="save" type="button" class="primary">Save &amp; Connect</button>
+    <button id="close" type="button">Close</button>
   </div>
 </main>
 
 <script>
+  const list = document.getElementById('instances');
   const urlInput = document.getElementById('url');
   const status = document.getElementById('status');
-  const testButton = document.getElementById('test');
-  const saveButton = document.getElementById('save');
-  const cancelButton = document.getElementById('cancel');
+  const addButton = document.getElementById('add');
+  const closeButton = document.getElementById('close');
+  const signInActions = document.getElementById('sign-in-actions');
   const nativeEffectsSetting = document.getElementById('native-effects-setting');
   const nativeEffectsInput = document.getElementById('native-effects');
+
+  let instances = [];
+  let busy = false;
+  // { id, name } of an instance just added, while its first sign-in is open in
+  // the browser. Main closes this window when that sign-in lands.
+  let awaiting = null;
 
   function setStatus(text, kind) {
     status.textContent = text;
     status.className = kind ?? '';
   }
 
-  function setBusy(busy) {
-    for (const b of [testButton, saveButton, cancelButton]) {
-      b.disabled = busy;
-    }
-    nativeEffectsInput.disabled = busy;
+  function element(tag, text, className) {
+    const node = document.createElement(tag);
+    node.textContent = text;
+    if (className) node.className = className;
+    return node;
   }
 
-  async function test() {
-    setBusy(true);
-    setStatus('Testing…');
-    const result = await window.soloSettings.test(urlInput.value);
-    setBusy(false);
-    if (result.ok) {
-      const provider = result.provider
-          ? `Sign-in provider: ${result.provider}.`
-          : 'No sign-in provider configured yet.';
-      const setup = result.setupCompleted ? '' : ' Instance setup is not finished.';
-      setStatus(`Connected to ${result.url}\n${provider}${setup}`, 'ok');
-    } else {
-      setStatus(result.error, 'error');
-    }
-    return result.ok;
+  function render() {
+    list.replaceChildren(...instances.map(instance => {
+      const name = element('strong', instance.name);
+      if (instance.open) {
+        name.append(element('span', 'Open', 'open-mark'));
+      }
+
+      // The local address is the origin a provider other than Google has to
+      // be told about, so it is shown rather than left for settings.json.
+      const about = element('div', '', 'about');
+      about.append(name, element('small', instance.url), element('small', `Local address ${instance.origin}`));
+
+      const open = element('button', instance.open ? 'Show' : 'Open');
+      open.type = 'button';
+      open.disabled = busy;
+      open.addEventListener('click', () => window.soloSettings.open(instance.id));
+
+      const remove = element('button', 'Remove');
+      remove.type = 'button';
+      remove.disabled = busy;
+      remove.addEventListener('click', () => window.soloSettings.remove(instance.id));
+
+      const row = document.createElement('li');
+      row.append(about, open, remove);
+      return row;
+    }));
+
+    addButton.disabled = busy || awaiting !== null;
+    urlInput.disabled = busy || awaiting !== null;
+    signInActions.hidden = awaiting === null;
+    // With no instance window open, this window is the last one: closing it
+    // ends the app, and the button should say so.
+    closeButton.textContent = instances.some(instance => instance.open) ? 'Close' : 'Quit';
   }
 
-  async function save() {
-    setBusy(true);
-    setStatus('Saving…');
-    const result = await window.soloSettings.save(urlInput.value, nativeEffectsInput.checked);
+  async function add() {
+    if (busy || awaiting) return;
+
+    busy = true;
+    render();
+    setStatus('Testing the connection…');
+    const result = await window.soloSettings.add(urlInput.value);
+    busy = false;
+
     if (!result.ok) {
-      setBusy(false);
       setStatus(result.error, 'error');
+      render();
+      urlInput.focus();
+      return;
     }
-    // On success the main process closes this window.
+
+    urlInput.value = '';
+    if (result.signIn) {
+      awaiting = { id: result.id, name: result.name };
+      setStatus(`Connected to ${result.name}.\nFinish signing in in your browser — it opens here once you have.`, 'ok');
+    } else {
+      // Nothing to sign in to yet from here; main is opening its window.
+      setStatus(`Connected to ${result.name}. Opening…`, 'ok');
+    }
+    render();
   }
 
-  testButton.addEventListener('click', test);
-  saveButton.addEventListener('click', save);
-  cancelButton.addEventListener('click', () => window.soloSettings.close());
+  addButton.addEventListener('click', add);
   urlInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') save();
+    if (e.key === 'Enter') add();
   });
+
+  document.getElementById('sign-in').addEventListener('click', () => {
+    if (!awaiting) return;
+    setStatus(`Finish signing in to ${awaiting.name} in your browser — it opens here once you have.`, 'ok');
+    window.soloSettings.signIn(awaiting.id);
+  });
+  document.getElementById('open-new').addEventListener('click', () => {
+    if (awaiting) window.soloSettings.openNew(awaiting.id);
+  });
+
+  nativeEffectsInput.addEventListener('change', () =>
+    window.soloSettings.setNativeEffects(nativeEffectsInput.checked));
+
+  closeButton.addEventListener('click', () => window.soloSettings.close());
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') window.soloSettings.close();
   });
 
-  window.soloSettings.get().then(({ instanceUrl, port, nativeEffects, platform, firstRun }) => {
-    if (instanceUrl) {
-      urlInput.value = instanceUrl;
+  window.soloSettings.onInstancesChanged(current => {
+    instances = current;
+    if (awaiting && !instances.some(instance => instance.id === awaiting.id)) {
+      // Removed while its sign-in was still open.
+      awaiting = null;
+      setStatus('');
     }
-    document.getElementById('origin').textContent = `http://localhost:${port}`;
+    render();
+  });
+
+  window.soloSettings.onSignInFailed(({ id, message }) => {
+    if (awaiting?.id === id) {
+      setStatus(message, 'error');
+    }
+  });
+
+  window.soloSettings.get().then(({ instances: current, nativeEffects, platform, firstRun }) => {
+    instances = current;
     nativeEffectsInput.checked = nativeEffects;
     nativeEffectsSetting.hidden = platform !== 'darwin';
     if (firstRun) {
-      cancelButton.textContent = 'Quit';
-      setStatus('Welcome. Point Solo at your instance to get started.');
+      setStatus('Welcome. Add your Solo instance to get started.');
     }
+    render();
     urlInput.focus();
   });
 </script>

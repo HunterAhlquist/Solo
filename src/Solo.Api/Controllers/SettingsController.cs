@@ -39,10 +39,32 @@ public sealed class SettingsController(SoloDbContext db, ThemeCatalog themes) : 
                 detail: $"No theme with id '{themeId}' is installed on this instance.");
         }
 
+        // The name is drawn in page titles and native menus, where a line
+        // break or other control character has no good outcome; the tagline is
+        // one line on the sign-in card.
+        var displayName = request.DisplayName?.Trim();
+        var tagline = request.Tagline?.Trim();
+        if (new[] { displayName, tagline }.Any(text => text is not null && text.Any(char.IsControl)))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid branding",
+                detail: "The display name and tagline can't contain control characters.");
+        }
+
         var settings = await db.InstanceSettings
             .FirstAsync(s => s.Id == InstanceSettings.SingletonId, ct);
         settings.AuditRetentionDays = request.AuditRetentionDays;
         settings.ThemeId = string.IsNullOrWhiteSpace(request.ThemeId) ? null : request.ThemeId;
+        // Null is "not sent", which leaves each alone; see the request.
+        if (displayName is not null)
+        {
+            settings.DisplayName = displayName.Length == 0 ? null : displayName;
+        }
+        if (tagline is not null)
+        {
+            settings.Tagline = tagline.Length == 0 ? null : tagline;
+        }
         UseClientVersion(db, settings, request.Version);
         var conflict = await SaveOrConflictAsync(db, ct);
         if (conflict is not null)

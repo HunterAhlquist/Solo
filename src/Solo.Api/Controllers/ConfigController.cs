@@ -23,15 +23,19 @@ public sealed class ConfigController(IConfiguration config, SoloDbContext db) : 
     [AllowAnonymous]
     public async Task<ActionResult<AuthConfigDto>> GetAuthConfig(CancellationToken ct)
     {
-        var setupCompleted = await db.InstanceSettings.AsNoTracking()
+        var settings = await db.InstanceSettings.AsNoTracking()
             .Where(s => s.Id == InstanceSettings.SingletonId)
-            .Select(s => s.SetupCompleted)
+            .Select(s => new { s.SetupCompleted, s.DisplayName, s.Tagline })
             .FirstOrDefaultAsync(ct);
         return new AuthConfigDto(
             config["Auth:Authority"] ?? string.Empty,
             config["Auth:ClientId"] ?? string.Empty,
             config["Auth:Provider"] ?? OidcClaimMapper.Generic,
-            setupCompleted);
+            settings?.SetupCompleted ?? false)
+        {
+            DisplayName = settings?.DisplayName,
+            Tagline = settings?.Tagline,
+        };
     }
 
     /// <summary>

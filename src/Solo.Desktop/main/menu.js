@@ -1,16 +1,36 @@
-// Standard menus plus the one entry Solo actually adds: Server Settings.
-// Edit/View/Window are role-based — copy/paste shortcuts on macOS stop
-// working without a real Edit menu, and reload/devtools stay useful in a
-// tool like this.
+// Standard menus plus the entries Solo actually adds: Settings and the list of
+// instances to open. Edit/View/Window are role-based — copy/paste shortcuts on
+// macOS stop working without a real Edit menu, and reload/devtools stay useful
+// in a tool like this.
+//
+// A menu is a snapshot: Electron has no way to grey out an item after the
+// fact, so main rebuilds the whole thing whenever an instance is added,
+// removed, opened or closed.
 const { Menu } = require('electron');
 
-function buildMenu({ openSettingsWindow }) {
+// `instances` is [{ id, label, open }]. An instance that already has a window
+// is listed but disabled: each gets one window at most, and the Window menu is
+// what brings an open one forward.
+function buildMenu({ openSettingsWindow, instances, openInstance }) {
     const isMac = process.platform === 'darwin';
 
     const settingsItem = {
-        label: 'Server Settings…',
+        label: 'Settings…',
         accelerator: 'CmdOrCtrl+,',
         click: () => openSettingsWindow(),
+    };
+
+    const openInstanceItem = {
+        label: 'Open Instance',
+        submenu: instances.length > 0
+            ? instances.map(instance => ({
+                // The label is the instance's own display name, and a lone &
+                // in a menu label marks a keyboard mnemonic instead of showing.
+                label: instance.label.replace(/&/g, '&&'),
+                enabled: !instance.open,
+                click: () => openInstance(instance.id),
+            }))
+            : [{ label: 'No Instances', enabled: false }],
     };
 
     const template = [
@@ -21,6 +41,7 @@ function buildMenu({ openSettingsWindow }) {
                     { role: 'about' },
                     { type: 'separator' },
                     settingsItem,
+                    openInstanceItem,
                     { type: 'separator' },
                     { role: 'hide' },
                     { role: 'hideOthers' },
@@ -33,6 +54,7 @@ function buildMenu({ openSettingsWindow }) {
                 label: 'File',
                 submenu: [
                     settingsItem,
+                    openInstanceItem,
                     { type: 'separator' },
                     { role: 'quit' },
                 ],

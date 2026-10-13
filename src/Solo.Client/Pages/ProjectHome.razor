@@ -7,8 +7,9 @@
 @inject UserSession Session
 @inject RecentProjectsStore Recent
 @inject ISnackbar Snackbar
+@inject AppConfig Config
 
-<PageTitle>@(_project?.Name ?? "Project") · Solo</PageTitle>
+<PageTitle>@(_project?.Name ?? "Project") · @Config.SiteName</PageTitle>
 
 @if (_project is null)
 {

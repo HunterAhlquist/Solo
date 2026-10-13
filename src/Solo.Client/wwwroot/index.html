@@ -22,7 +22,9 @@
 <div id="app">
   <div class="boot-splash">
     <div class="boot-splash__panel" role="status" aria-label="Loading Solo">
-      <div class="boot-splash__mark">Solo</div>
+      <!-- Its text is in app.css, so that theme-boot.js can swap in the
+           instance's own name before the first paint. -->
+      <div class="boot-splash__mark"></div>
       <div class="boot-splash__bar"><span></span></div>
     </div>
   </div>

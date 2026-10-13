@@ -1,13 +1,30 @@
 ---
 title: Admin settings
-lede: The page where a super admin sets the audit retention and the theme, and manages the extensions and users of the instance.
+lede: The page where a super admin sets the branding, the audit retention and the theme, and manages the extensions and users of the instance.
 ---
 
 ## Open the Admin settings
 
 Select **Admin settings** at the bottom of the sidebar. Only a super admin sees this entry.
 
-The page has four parts: **Audit retention**, **Theme**, **Extensions** and **Users**.
+The page has five parts: **Branding**, **Audit retention**, **Theme**, **Extensions** and **Users**.
+
+## Branding
+
+The branding is the display name and the tagline of your instance.
+
+- **Name.** Solo shows the display name in the app bar, on the sign-in page and in the title of each page. The [desktop app](../guide/desktop.md) shows it in its list of instances.
+- **Tagline.** Solo shows the tagline below the name on the sign-in page.
+
+1. Enter a name of 40 characters or fewer in **Name**.
+2. Enter a tagline of 120 characters or fewer in **Tagline**.
+3. Select **Save changes**. If you changed the name, Solo loads the page again.
+
+Solo does not save these two fields when you leave them. You must select **Save changes**.
+
+To remove the name or the tagline, clear the field and save. An instance with no display name shows the name Solo. An instance with no tagline shows the tagline of Solo.
+
+The footer of each page always tells that the instance runs Solo.
 
 ## Audit retention
 

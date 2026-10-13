@@ -57,6 +57,13 @@ async function run() {
 
   const config = await fetch('api/config/auth').then(r => r.json())
       .catch(() => null);
+
+  // The instance's own name, where it has one. Somebody adding a second
+  // instance to the desktop app lands here, and should see which one it is.
+  if (typeof config?.displayName === 'string' && config.displayName) {
+    document.querySelector('h1').textContent = config.displayName;
+    document.title = `Sign in to ${config.displayName}`;
+  }
   if (!config?.clientId || config.provider?.toLowerCase() !== 'google') {
     fail('This Solo instance is not configured for Google sign-in.');
     return;

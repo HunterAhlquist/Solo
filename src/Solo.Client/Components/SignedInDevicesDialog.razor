@@ -6,6 +6,7 @@
 *@
 @inject ApiClient Api
 @inject ISnackbar Snackbar
+@inject AppConfig Config
 
 <MudDialog>
     <DialogContent>
@@ -28,7 +29,7 @@
         {
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
                 Desktop apps signed in to your account. A device you sign out has
-                to sign in again before it can reach Solo.
+                to sign in again before it can reach @(Config.SiteName).
             </MudText>
 
             @foreach (var session in _sessions)

@@ -122,6 +122,14 @@ class DesktopAuth {
         }
     }
 
+    /**
+     * Abandons a sign-in that is still waiting on the browser, without calling
+     * either callback. A callback arriving afterwards is told it expired.
+     */
+    cancel() {
+        this._closePending(this._pending);
+    }
+
     async _handleCallback(request, response, pending) {
         if (this._pending !== pending || !pending.flow) {
             sendPage(response, 410, 'Sign-in expired', 'Start sign-in again from Solo Desktop.');

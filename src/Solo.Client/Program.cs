@@ -96,6 +96,22 @@ var host = builder.Build();
 await host.Services.GetRequiredService<InstanceConnection>()
     .ResolveExternalAddressAsync(host.Services.GetRequiredService<IJSRuntime>());
 
+// The boot splash and the tab title are plain HTML, on screen before the API
+// has said what this instance is called. Leave the name behind for the next
+// boot's js/theme-boot.js, the same way the theme leaves its colours.
+if (config.LoadError is null)
+{
+    try
+    {
+        await host.Services.GetRequiredService<IJSRuntime>()
+            .InvokeVoidAsync("solo.branding.remember", config.HasOwnName ? config.SiteName : null);
+    }
+    catch (JSException)
+    {
+        // Cosmetic only — the next boot says "Solo" until the app has loaded.
+    }
+}
+
 await host.RunAsync();
 
 // ---------------------------------------------------------------------------

@@ -13,10 +13,11 @@
 @inject DragBridge Drag
 @inject ExtensionCatalog Extensions
 @inject TaskMenuService TaskMenu
+@inject AppConfig Config
 @using Solo.Client.Extensions
 @using Solo.Shared.Extensibility
 
-<PageTitle>@(Store.Board?.Name ?? "Board") · Solo</PageTitle>
+<PageTitle>@(Store.Board?.Name ?? "Board") · @Config.SiteName</PageTitle>
 
 @if (Store.Board is null)
 {

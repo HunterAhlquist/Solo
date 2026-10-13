@@ -48,5 +48,8 @@ public static class DtoMapper
         new(i.Id, i.ContentType);
 
     public static InstanceSettingsDto ToDto(this InstanceSettings s) =>
-        new(s.AuditRetentionDays, s.SetupCompleted, s.ThemeId, s.Version);
+        new(s.AuditRetentionDays, s.SetupCompleted, s.ThemeId, s.Version) {
+            DisplayName = s.DisplayName,
+            Tagline = s.Tagline,
+        };
 }
