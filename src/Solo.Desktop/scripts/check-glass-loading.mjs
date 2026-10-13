@@ -31,6 +31,7 @@ copyFileSync(path.join(clientDir, 'js', 'theme-boot.js'), path.join(fixtureDir, 
 writeFileSync(path.join(userDataDir, 'settings.json'), JSON.stringify({
     instanceUrl: 'http://127.0.0.1:9',
     port: localPort,
+    backgroundAlpha: 0.35,
 }));
 
 const env = {
@@ -103,6 +104,10 @@ try {
                 panelRadius: panelStyle ? parseFloat(panelStyle.borderRadius) : 0,
                 barAlpha: alpha(barStyle.backgroundColor),
                 markShadow: getComputedStyle(mark).textShadow,
+                rootAlpha: alpha(getComputedStyle(document.documentElement).backgroundColor),
+                pageAlpha: alpha(getComputedStyle(document.body).backgroundColor),
+                pageAlphaSetting: document.documentElement.style
+                    .getPropertyValue('--solo-glass-background-alpha'),
             };
         })()`);
         return value?.glass ? value : null;
@@ -114,6 +119,13 @@ try {
         appearance.panelBackdrop === 'none' || appearance.panelRadius < 20 ||
         appearance.barAlpha >= 0.8 || appearance.markShadow === 'none') {
         throw new Error('The loading view did not render its translucent glass material.');
+    }
+
+    // The saved opacity reaches the first paint, on <body> alone: a second
+    // tinted root layer would multiply with it.
+    if (appearance.pageAlphaSetting !== '35%' || appearance.rootAlpha !== 0 ||
+        Math.abs(appearance.pageAlpha - 0.35) > 0.01) {
+        throw new Error('The loading view did not paint the theme background at the saved opacity.');
     }
 
     const browserFallback = await evaluate(target.webSocketDebuggerUrl, `(() => {

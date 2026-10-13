@@ -39,6 +39,19 @@ const platformClass = process.platform === 'darwin'
 let fullScreen = false;
 let glassBackdrop = process.argv.includes('--solo-glass-backdrop');
 
+// How opaque the theme's page background is over the glass, as the percentage
+// app.css mixes with. Main has already clamped the number to [0, 1].
+const BACKGROUND_ALPHA_ARGUMENT = '--solo-glass-background-alpha=';
+let backgroundAlpha = toPercentage(Number(process.argv
+    .find(argument => argument.startsWith(BACKGROUND_ALPHA_ARGUMENT))
+    ?.slice(BACKGROUND_ALPHA_ARGUMENT.length)));
+
+function toPercentage(alpha) {
+    return Number.isFinite(alpha)
+        ? `${Math.round(Math.min(1, Math.max(0, alpha)) * 100)}%`
+        : '0%';
+}
+
 function applyChrome() {
     const root = document.documentElement;
     if (!root) {
@@ -48,6 +61,7 @@ function applyChrome() {
     root.classList.add('solo-desktop', platformClass);
     root.classList.toggle('solo-desktop--fullscreen', fullScreen);
     root.classList.toggle('solo-desktop--glass', glassBackdrop);
+    root.style.setProperty('--solo-glass-background-alpha', backgroundAlpha);
 }
 
 ipcRenderer.on('window:full-screen', (_event, value) => {
@@ -59,6 +73,13 @@ ipcRenderer.on('window:full-screen', (_event, value) => {
 // Main turns it back off only if both the native and vibrancy paths fail.
 ipcRenderer.on('window:glass-backdrop', (_event, value) => {
     glassBackdrop = value === true;
+    applyChrome();
+});
+
+// Live from the settings window: the slider previews on this window as it
+// moves, and main sends the saved value again if the change is abandoned.
+ipcRenderer.on('window:glass-background-alpha', (_event, value) => {
+    backgroundAlpha = toPercentage(value);
     applyChrome();
 });
 

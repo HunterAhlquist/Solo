@@ -43,6 +43,10 @@ try {
         dragRegion: getComputedStyle(document.body).getPropertyValue('-webkit-app-region').trim(),
         inputRegion: getComputedStyle(document.getElementById('url'))
             .getPropertyValue('-webkit-app-region').trim(),
+        opacityHidden: document.getElementById('background-alpha-setting').hidden,
+        opacityDisabled: document.getElementById('background-alpha').disabled,
+        opacityValue: document.getElementById('background-alpha').value,
+        opacityLabel: document.getElementById('background-alpha-value').textContent,
         glassWash: getComputedStyle(document.documentElement)
             .getPropertyValue('--glass-wash').trim(),
         backdrop: getComputedStyle(document.body, '::before').backdropFilter ||
@@ -52,12 +56,14 @@ try {
     if (!appearance.hasBridge || !appearance.glass || appearance.controlHidden ||
         !appearance.controlChecked || appearance.backdrop === 'none' ||
         appearance.dragRegion !== 'drag' || appearance.inputRegion !== 'no-drag' ||
-        !appearance.glassWash.includes('/ 48%')) {
+        !appearance.glassWash.includes('/ 48%') ||
+        appearance.opacityHidden || appearance.opacityDisabled ||
+        appearance.opacityValue !== '0' || appearance.opacityLabel !== '0%') {
         throw new Error('The settings window did not start with its native appearance, drag regions, and enabled control.');
     }
 
     await evaluate(settingsTarget.webSocketDebuggerUrl,
-        `window.soloSettings.save('http://127.0.0.1:9', false); true`);
+        `window.soloSettings.save('http://127.0.0.1:9', false, 1.4); true`);
     const persisted = await waitFor(() => {
         try {
             return JSON.parse(readFileSync(path.join(userDataDir, 'settings.json'), 'utf8'));
@@ -68,9 +74,12 @@ try {
     if (persisted.nativeEffects !== false) {
         throw new Error('The native-effects preference did not persist as disabled.');
     }
+    if (persisted.backgroundAlpha !== 1) {
+        throw new Error('The background opacity did not persist clamped to its range.');
+    }
 
     const mainUsesGlass = await inspectMatching(browserOrigin,
-        target => target.type === 'page' && target.url.startsWith('http://localhost:41321/'),
+        target => target.type === 'page' && target.url.startsWith('http://localhost:41322/'),
         `document.documentElement.classList.contains('solo-desktop--glass')`);
     if (mainUsesGlass) {
         throw new Error('The main window still enabled native effects after the saved opt-out.');

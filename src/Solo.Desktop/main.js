@@ -266,7 +266,16 @@ function createMainWindow() {
             }),
         webPreferences: {
             preload: path.join(__dirname, 'preload', 'desktop.js'),
-            ...(useGlassBackdrop ? { additionalArguments: ['--solo-glass-backdrop'] } : {}),
+            // Both as arguments so the first paint is already right; later
+            // changes to the opacity arrive over IPC (sendBackgroundAlpha).
+            ...(useGlassBackdrop
+                ? {
+                    additionalArguments: [
+                        '--solo-glass-backdrop',
+                        `--solo-glass-background-alpha=${settings.backgroundAlpha}`,
+                    ],
+                }
+                : {}),
             ...HARDENED_WEB_PREFERENCES,
         },
     });
@@ -466,7 +475,7 @@ function openSettingsWindow() {
 
     settingsWindow = new BrowserWindow({
         width: 520,
-        height: 650,
+        height: 740,
         resizable: false,
         minimizable: false,
         fullscreenable: false,
@@ -523,7 +532,12 @@ function openSettingsWindow() {
     }
 
     settingsWindow.once('ready-to-show', () => settingsWindow.show());
-    settingsWindow.on('closed', () => { settingsWindow = null; });
+    settingsWindow.on('closed', () => {
+        settingsWindow = null;
+        // Drops a slider preview that was never saved; after a save this is
+        // the value the app window already has.
+        sendBackgroundAlpha(settings.backgroundAlpha);
+    });
     // Pasting an instance URL is the whole job of this window.
     attachContextMenu(settingsWindow.webContents);
     settingsWindow.setMenuBarVisibility(false);
@@ -533,11 +547,22 @@ function openSettingsWindow() {
     settingsWindow.loadFile(path.join(__dirname, 'settings', 'settings.html'));
 }
 
+// How much of the theme's page background the app window paints over its
+// glass. The renderer only uses it while it has the glass backdrop, so there
+// is nothing to guard here when native effects are off.
+function sendBackgroundAlpha(alpha) {
+    const contents = mainWindow?.webContents;
+    if (contents && !contents.isDestroyed()) {
+        contents.send('window:glass-background-alpha', alpha);
+    }
+}
+
 function registerIpc() {
     ipcMain.handle('settings:get', () => ({
         instanceUrl: settings.instanceUrl,
         port: settings.port,
         nativeEffects: settings.nativeEffects,
+        backgroundAlpha: settings.backgroundAlpha,
         platform: process.platform,
         firstRun: !settings.instanceUrl,
     }));
@@ -576,7 +601,16 @@ function registerIpc() {
         }
     });
 
-    ipcMain.handle('settings:save', async (_event, rawUrl, nativeEffects) => {
+    // The slider shows its effect on the app window while it is dragged.
+    // Nothing is stored until save; closing the window puts the saved value
+    // back (see openSettingsWindow).
+    ipcMain.on('settings:preview-background-alpha', (event, alpha) => {
+        if (event.sender === settingsWindow?.webContents) {
+            sendBackgroundAlpha(settingsStore.normalizeBackgroundAlpha(alpha));
+        }
+    });
+
+    ipcMain.handle('settings:save', async (_event, rawUrl, nativeEffects, backgroundAlpha) => {
         const url = settingsStore.normalizeInstanceUrl(rawUrl);
         if (!url) {
             return { ok: false, error: 'Enter a valid http(s) address.' };
@@ -585,7 +619,12 @@ function registerIpc() {
         const urlChanged = url !== settings.instanceUrl;
         settings.instanceUrl = url;
         settings.nativeEffects = nativeEffects !== false;
+        // A caller that sends no opacity keeps the stored one.
+        if (backgroundAlpha !== undefined) {
+            settings.backgroundAlpha = settingsStore.normalizeBackgroundAlpha(backgroundAlpha);
+        }
         settingsStore.save(settings);
+        sendBackgroundAlpha(settings.backgroundAlpha);
 
         // Main window before closing settings: with quit-on-all-closed, the
         // reverse order would briefly leave zero windows and end the app.
