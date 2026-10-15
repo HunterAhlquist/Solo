@@ -73,5 +73,9 @@ public abstract class ComponentTestBase : SoloBunitContext
         // extensions registers its own catalog after this, which wins.
         Services.AddSingleton<Solo.Client.Extensions.ExtensionCatalog>();
         Services.AddScoped<TaskMenuService>();
+
+        // MainLayout's DayRollover reads the day from it. A test about the day
+        // changing registers its own clock after this, which wins.
+        Services.AddSingleton(TimeProvider.System);
     }
 }

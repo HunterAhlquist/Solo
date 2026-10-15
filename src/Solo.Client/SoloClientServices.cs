@@ -23,6 +23,8 @@ public static class SoloClientServices
     {
         services.AddSingleton(instance);
         services.AddSingleton(config);
+        // The clock DayRollover reads "today" from, so a test can move it.
+        services.AddSingleton(TimeProvider.System);
 
         // Empty at boot. The endpoints serving extension client halves are
         // authenticated, so App.razor fills this once there is a signed-in user

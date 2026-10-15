@@ -1,0 +1,84 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject TimeProvider Time
+
+@*
+    Pages read "today" when they draw — a deadline ring's days left, the
+    roadmap's today column — and a page left open overnight keeps yesterday's.
+    Coming back to it on a later day redraws it from scratch: the key change
+    disposes the page and builds a fresh one, which reloads and re-reads the
+    date. A remount rather than a re-render because pages, the roadmap among
+    them, compute their date-dependent state once on load, and an extension's
+    page is out of core's reach otherwise.
+
+    A CascadingValue only because it is a wrapper that draws no element of its
+    own; nothing consumes it, and the name keeps anything from doing so by type.
+*@
+<CascadingValue Name="DayRollover" Value="_day" IsFixed="true" @key="_day">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private DateOnly _day;
+    private DotNetObjectReference<DayRollover>? _self;
+    private int? _watchId;
+
+    private DateOnly Today => DateOnly.FromDateTime(Time.GetLocalNow().DateTime);
+
+    protected override void OnInitialized() => _day = Today;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            _watchId = await JS.InvokeAsync<int?>("solo.dayRollover.watch", _self);
+        }
+        catch (JSException)
+        {
+            // Without the listener the page just keeps the day it opened on.
+        }
+    }
+
+    /// <summary>
+    /// The window got focus or the tab became visible again, and nothing on
+    /// the page was mid-edit — solo-interop skips the call while a dialog, a
+    /// markdown draft or a focused field could lose work, and the next return
+    /// asks again.
+    /// </summary>
+    [JSInvokable]
+    public Task OnPageReturned() => InvokeAsync(() =>
+    {
+        if (Today == _day)
+        {
+            return;
+        }
+
+        _day = Today;
+        StateHasChanged();
+    });
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_watchId is { } watchId)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("solo.dayRollover.stop", watchId);
+            }
+            catch (Exception e) when (e is JSDisconnectedException or JSException)
+            {
+                // The page is going away anyway.
+            }
+        }
+
+        _self?.Dispose();
+    }
+}

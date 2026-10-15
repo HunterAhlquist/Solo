@@ -75,6 +75,50 @@ window.solo = {
         },
     },
 
+    // Tells DayRollover when the person comes back to the page — window focus,
+    // or the tab showing again — so a page left open overnight can redraw
+    // around the new day. Focus and visibility both fire on a tab switch; the
+    // second call finds the day already caught up.
+    dayRollover: {
+        _listener: null,
+        _watchId: 0,
+
+        // Remounting the page would drop an open dialog's page underneath it, a
+        // held markdown draft (.markdown-locked, see SoloMarkdown.razor) or
+        // whatever is half-typed in a focused field. Skip the call; the next
+        // return asks again.
+        _busy: () =>
+            document.querySelector('.mud-dialog-container, .markdown-locked') !== null ||
+            document.activeElement?.matches?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])') === true,
+
+        watch(dotnetRef) {
+            const rollover = window.solo.dayRollover;
+            rollover._remove();
+
+            const watchId = ++rollover._watchId;
+            rollover._listener = () => {
+                if (document.visibilityState !== 'visible' || rollover._busy()) return;
+                dotnetRef.invokeMethodAsync('OnPageReturned');
+            };
+            window.addEventListener('focus', rollover._listener);
+            document.addEventListener('visibilitychange', rollover._listener);
+            return watchId;
+        },
+
+        stop(watchId) {
+            const rollover = window.solo.dayRollover;
+            if (watchId === rollover._watchId) rollover._remove();
+        },
+
+        _remove() {
+            const rollover = window.solo.dayRollover;
+            if (!rollover._listener) return;
+            window.removeEventListener('focus', rollover._listener);
+            document.removeEventListener('visibilitychange', rollover._listener);
+            rollover._listener = null;
+        },
+    },
+
     // Rendered markdown link plumbing (see SoloMarkdown.razor). A capture-phase
     // listener at the bottom of this file records link clicks inside
     // .markdown-clickable containers, so click-to-edit hosts can tell a link
