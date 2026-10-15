@@ -21,7 +21,7 @@ First-party extensions, included in the server release downloads:
 **Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host; one container + Postgres is the whole deployment.
 
 No issue reporting, or public pull requesting. I tailored this to my own needs and just wanted to share it with the world if someone else can get use out of it. 
-If you REALLY need to tell me about a problem security related, you can reach me on Bluesky: hunter.ahlquist.me
+If you REALLY need to tell me about a problem security related, you can report a security issue in the "Security and quality" page of this repo.
 Otherwise you can fork it and make it infinitely better than I could ever.
 
 <details>
