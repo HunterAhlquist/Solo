@@ -9,15 +9,27 @@ namespace Solo.Roadmap.Data.Tests;
 public sealed class PostgresFixture : IAsyncLifetime
 {
     private PostgreSqlContainer? _container;
+    private string? _adminConnectionString;
 
     public bool DockerAvailable { get; private set; }
 
     public async Task InitializeAsync()
     {
+        // An already-running server where there is no Docker, as in the host's
+        // fixture (tests/Solo.Api.Testing/PostgresFixture.cs).
+        var external = Environment.GetEnvironmentVariable("SOLO_TEST_POSTGRES");
+        if (!string.IsNullOrEmpty(external))
+        {
+            _adminConnectionString = external;
+            DockerAvailable = true;
+            return;
+        }
+
         try
         {
             _container = new PostgreSqlBuilder("postgres:17-alpine").Build();
             await _container.StartAsync();
+            _adminConnectionString = _container.GetConnectionString();
             DockerAvailable = true;
         }
         catch (Exception)
@@ -40,12 +52,12 @@ public sealed class PostgresFixture : IAsyncLifetime
     public async Task<string> CreateDatabaseAsync()
     {
         var name = $"roadmap_{Guid.NewGuid():N}";
-        await using var connection = new NpgsqlConnection(_container!.GetConnectionString());
+        await using var connection = new NpgsqlConnection(_adminConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = $"CREATE DATABASE \"{name}\"";
         await command.ExecuteNonQueryAsync();
-        return new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
+        return new NpgsqlConnectionStringBuilder(_adminConnectionString)
         {
             Database = name,
             MaxPoolSize = 8,
