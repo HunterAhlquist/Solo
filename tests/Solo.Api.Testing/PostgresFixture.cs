@@ -30,29 +30,15 @@ namespace Solo.Api.Testing;
 public sealed class PostgresFixture : IAsyncLifetime
 {
     private PostgreSqlContainer? _container;
-    private string? _adminConnectionString;
 
     public bool DockerAvailable { get; private set; }
 
     public async Task InitializeAsync()
     {
-        // A server that is already running, for environments with no Docker to
-        // start one in: the OSS Scanner's image (projects/solo in
-        // anthropics/oss-scanner) runs offline and starts a local Postgres instead. The tests only need a role that can
-        // CREATE DATABASE, which is what they would get from the container.
-        var external = Environment.GetEnvironmentVariable("SOLO_TEST_POSTGRES");
-        if (!string.IsNullOrEmpty(external))
-        {
-            _adminConnectionString = external;
-            DockerAvailable = true;
-            return;
-        }
-
         try
         {
             _container = new PostgreSqlBuilder("postgres:17-alpine").Build();
             await _container.StartAsync();
-            _adminConnectionString = _container.GetConnectionString();
             DockerAvailable = true;
         }
         catch (Exception)
@@ -79,7 +65,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public async Task<string> CreateDatabaseAsync(string prefix)
     {
         var name = $"{prefix}_{Guid.NewGuid():N}";
-        var adminConnectionString = _adminConnectionString!;
+        var adminConnectionString = _container!.GetConnectionString();
         await using var connection = new NpgsqlConnection(adminConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
