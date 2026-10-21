@@ -59,12 +59,14 @@ function openAboutWindow(webPreferences) {
 }
 
 // What electron-builder writes into the mac bundle by default, which is what
-// the native panel used to show.
+// the native panel used to show. npm's author is "Name <email> (url)" or an
+// object with a name; only the name is wanted. The page sets it as text.
 function copyright() {
-    const author = String(require('../package.json').author ?? '')
-        .replace(/<[^>]*>/g, '')
+    const { author } = require('../package.json');
+    const name = (typeof author === 'object' ? author?.name ?? '' : String(author ?? ''))
+        .split(/[<(]/)[0]
         .trim();
-    return author ? `Copyright © ${new Date().getFullYear()} ${author}` : '';
+    return name ? `Copyright © ${new Date().getFullYear()} ${name}` : '';
 }
 
 function registerAboutIpc() {
