@@ -2,6 +2,7 @@
 // Run with `npm run build:icon` after re-exporting Solo.icon.
 //
 //   src/Solo.Desktop/build/icon.png            1024px, for the win/linux targets
+//   src/Solo.Desktop/about/logo.png            256px, the About window's logo
 //   src/Solo.Client/wwwroot/apple-touch-icon.png   180px, iOS/Safari home screen
 //   src/Solo.Client/wwwroot/favicon.svg        64px light + dark, swapped by media query
 //
@@ -28,6 +29,7 @@ const clientWwwroot = path.join(repoRoot, 'src', 'Solo.Client', 'wwwroot');
 const FAVICON_PX = 64;
 const APPLE_TOUCH_PX = 180;
 const MASTER_PX = 1024;
+const ABOUT_PX = 256;
 
 // actool reports its diagnostics on stdout, so keep it quiet on success but
 // replay it when the command fails — otherwise the reason is swallowed.
@@ -88,7 +90,10 @@ try {
     // The win/linux master keeps the macOS canvas — neither platform adds a
     // shadow of its own, and a margin is unremarkable there. The web icons are
     // cropped to the shape: see render-icon.swift.
-    render('light', 'fit', [[MASTER_PX, 'light-master.png']]);
+    render('light', 'fit', [
+        [MASTER_PX, 'light-master.png'],
+        [ABOUT_PX, 'light-about.png'],
+    ]);
     render('light', 'fill', [
         [APPLE_TOUCH_PX, 'light-apple-touch.png'],
         [FAVICON_PX, 'light-favicon.png'],
@@ -109,6 +114,7 @@ try {
     // 4. Write the assets.
     fs.mkdirSync(desktopBuildDir, { recursive: true });
     fs.copyFileSync(out('light-master.png'), path.join(desktopBuildDir, 'icon.png'));
+    fs.copyFileSync(out('light-about.png'), path.join(desktopDir, 'about', 'logo.png'));
     fs.copyFileSync(out('light-apple-touch.png'), path.join(clientWwwroot, 'apple-touch-icon.png'));
 
     const faviconPath = path.join(clientWwwroot, 'favicon.svg');
@@ -122,6 +128,7 @@ try {
 
     console.log([
         path.join(desktopBuildDir, 'icon.png'),
+        path.join(desktopDir, 'about', 'logo.png'),
         path.join(clientWwwroot, 'apple-touch-icon.png'),
         faviconPath,
     ].map((p) => `Wrote ${path.relative(repoRoot, p)}`).join('\n'));

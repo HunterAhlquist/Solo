@@ -11,7 +11,7 @@ const { Menu } = require('electron');
 // `instances` is [{ id, label, open }]. An instance that already has a window
 // is listed but disabled: each gets one window at most, and the Window menu is
 // what brings an open one forward.
-function buildMenu({ openSettingsWindow, instances, openInstance }) {
+function buildMenu({ openAboutWindow, openSettingsWindow, instances, openInstance }) {
     const isMac = process.platform === 'darwin';
 
     const settingsItem = {
@@ -38,7 +38,9 @@ function buildMenu({ openSettingsWindow, instances, openInstance }) {
             ? [{
                 label: 'Solo',
                 submenu: [
-                    { role: 'about' },
+                    // Not the `about` role: that is the native panel, and
+                    // Solo's has a page in it (main/about.js).
+                    { label: 'About Solo', click: () => openAboutWindow() },
                     { type: 'separator' },
                     settingsItem,
                     openInstanceItem,
