@@ -392,6 +392,9 @@ window.solo = {
 
         async renderButton(element, theme) {
             await this._load();
+            // Cleared first: this also redraws an existing button when the
+            // scheme changes.
+            element.replaceChildren();
             window.google.accounts.id.renderButton(element, {
                 type: 'standard',
                 theme,

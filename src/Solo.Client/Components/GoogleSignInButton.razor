@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject GoogleIdentityService Google
+@inject ThemeState Theme
 
 @*
     Two renderings of the same sign-in. On the web, Google renders the button
@@ -27,7 +28,13 @@
     }
     else
     {
-        <div @ref="_container"></div>
+        @* color-scheme: light whatever the app's scheme, because Google's
+           personalized "Continue as …" iframe declares light: when an iframe's
+           scheme differs from its embedder's, the browser paints it on an
+           opaque canvas, which showed as a white box around the pill. Matched,
+           the iframe stays transparent and any card tint shows around it. The
+           pill's own colors come from the GIS theme, not the scheme. *@
+        <div @ref="_container" style="color-scheme:light"></div>
     }
 
     @if (_error is not null)
@@ -42,6 +49,9 @@
     private bool _desktop;
     private bool _browserOpened;
 
+    // The scheme the GIS button was last drawn for; null until it is drawn.
+    private bool? _renderedDark;
+
     /// <summary>Fires once a credential has been received and stored.</summary>
     [Parameter]
     public EventCallback OnSignedIn { get; set; }
@@ -50,6 +60,7 @@
     {
         Google.SignedInChanged += OnSignedInChanged;
         Google.SignInFailed += OnSignInFailed;
+        Theme.Changed += OnThemeChanged;
 
         _desktop = await Google.IsDesktopAsync();
         if (_desktop)
@@ -70,7 +81,7 @@
         try
         {
             await Google.InitializeAsync();
-            await Google.RenderButtonAsync(_container, darkMode: true);
+            await RenderButtonAsync();
         }
         catch (JSException)
         {
@@ -79,6 +90,31 @@
             StateHasChanged();
         }
     }
+
+    // GIS offers a black or a white pill and nothing in between, so the
+    // scheme picks one; the surrounding tint is whatever the card is.
+    private async Task RenderButtonAsync()
+    {
+        _renderedDark = Theme.IsDarkMode;
+        await Google.RenderButtonAsync(_container, _renderedDark.Value);
+    }
+
+    // Google draws the button once, so a scheme change (the system flipping
+    // while the page is open) has to redraw it.
+    private void OnThemeChanged() => _ = InvokeAsync(async () =>
+    {
+        if (_renderedDark is { } dark && dark != Theme.IsDarkMode)
+        {
+            try
+            {
+                await RenderButtonAsync();
+            }
+            catch (JSException)
+            {
+                // Keep the button already drawn.
+            }
+        }
+    });
 
     private async Task BeginBrowserSignIn()
     {
@@ -108,5 +144,6 @@
     {
         Google.SignedInChanged -= OnSignedInChanged;
         Google.SignInFailed -= OnSignInFailed;
+        Theme.Changed -= OnThemeChanged;
     }
 }
