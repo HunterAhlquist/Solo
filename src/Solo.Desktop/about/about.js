@@ -184,8 +184,11 @@ function spawn() {
     const cells = PIECES[type].cells;
     // The I's cells sit on the second row of its box; up one puts them on top.
     piece = { type, cells, x: Math.floor((COLS - cells.length) / 2), y: type === 'I' ? -1 : 0 };
-    if (collides(cells, piece.x, piece.y)) {
-        setState('over');
+    // A stack in the way only pushes the piece up into the open air above the
+    // board, where it can still be moved; the game is lost when a piece locks
+    // with any of it up there (lock), not because it had nowhere to appear.
+    while (collides(cells, piece.x, piece.y)) {
+        piece.y--;
     }
 }
 
