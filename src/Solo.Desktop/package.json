@@ -11,6 +11,7 @@
     "start": "electron .",
     "build:client": "node scripts/build-client.mjs",
     "build:icon": "node scripts/build-icon.mjs",
+    "build:installer-art": "electron scripts/build-installer-art.mjs",
     "stage:icon": "node scripts/stage-icon.mjs",
     "test:glass-theme": "node scripts/check-glass-theme-sync.mjs",
     "test:glass-loading": "node scripts/check-glass-loading.mjs",
@@ -75,12 +76,35 @@
       "notarize": false
     },
     "dmg": {
+      "background": "build/background.png",
+      "iconSize": 112,
+      "iconTextSize": 12,
+      "contents": [
+        {
+          "x": 180,
+          "y": 210,
+          "type": "file"
+        },
+        {
+          "x": 480,
+          "y": 210,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
       "writeUpdateInfo": false
     },
     "win": {
       "target": [
         "nsis"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerSidebar": "build/installerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp"
     },
     "linux": {
       "target": [

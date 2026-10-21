@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>NSIS header</title>
+  <link rel="stylesheet" href="art.css" />
+  <style>
+    /* The Windows installer's page header, right-aligned in the white band
+       above each step at NSIS's fixed 150 × 57. It sits on that band, so the
+       background is the band's own white rather than paper. */
+    body {
+      width: 150px;
+      height: 57px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      padding-right: 12px;
+      color: var(--paper-text);
+      background: #ffffff;
+    }
+
+    img {
+      width: 46px;
+      height: 46px;
+    }
+
+    .title {
+      font-size: 16px;
+      /* No trailing space after the last letter against the right edge. */
+      margin-right: -0.32em;
+    }
+  </style>
+</head>
+<body>
+  <img src="../../build/icon.png" alt="" />
+  <h1 class="title">Solo</h1>
+</body>
+</html>
