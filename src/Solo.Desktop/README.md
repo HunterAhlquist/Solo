@@ -216,6 +216,23 @@ Two things keep the `.dmg` small:
   no auto-updater to read a blockmap, and converting would invalidate it
   anyway.
 
+The installers carry the brand rather than electron-builder's defaults. The
+disk image opens on a two-column Solo board (drag the app from Unstarted to
+Finished, i.e. into Applications), and Windows uses the guided NSIS installer
+(`nsis.oneClick: false`) because the one-click one has nowhere to show any art.
+Its sidebar and header are the dark and light schemes. The artwork is HTML in
+`scripts/installer-art/`, rendered by Electron into `build/` with:
+
+```sh
+npm run build:installer-art   # background.png/@2x, installerSidebar.bmp, installerHeader.bmp
+```
+
+The outputs are committed, so CI never renders them. The disk image's icon
+positions in `dmg.contents` must line up with the layout in `dmg.html`. Run the
+command after changing either, or after `build:icon`, since it draws
+`build/icon.png`. Electron can't start inside a sandboxed shell, so run it from
+an ordinary terminal.
+
 electron-builder's `latest` dist-tag on npm sits at 26.15.3 while the newest
 published 26.x is 26.17.0 (tagged `v26`), so `npm outdated` reports the pinned
 version as *ahead* of latest and a bare `npm install electron-builder@latest`

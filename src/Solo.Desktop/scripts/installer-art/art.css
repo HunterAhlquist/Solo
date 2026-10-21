@@ -1,0 +1,59 @@
+/* Shared by every installer artwork page. The tokens are Solo's default theme
+   (src/Solo.Api/Themes/ahlquist-interactive/theme.json), the same values the
+   docs site copies into site/assets/css/docs.css — so the installers, the app
+   and the docs read as one product. */
+:root {
+  --font: "Courier New", monospace;
+
+  /* Light scheme: orange on paper. */
+  --paper: #fdf9f3;
+  --paper-surface: #fffdfa;
+  --paper-text: #231d16;
+  --paper-text-dim: #5b4f42;
+  --paper-divider: #e4d9c9;
+  --orange: #df6610;
+  --grid-orange: #df661012;
+  --grid-orange-coarse: #df661022;
+
+  /* Dark scheme: a black-and-yellow terminal. */
+  --black: #000000;
+  --yellow: #fff600;
+  --dark-text-dim: #b0b0a0;
+  --grid-yellow: #fff6000e;
+  --grid-yellow-coarse: #fff6001a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The docs hero: graph paper with a glow of the primary colour. The page sets
+   --glow, --grid and --grid-coarse. */
+.graph-paper {
+  background-image:
+    var(--glow, linear-gradient(transparent, transparent)),
+    linear-gradient(var(--grid-coarse) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-coarse) 1px, transparent 1px),
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: auto, 200px 200px, 200px 200px, 40px 40px, 40px 40px;
+}
+
+/* The page-title treatment the board uses ("VERTICAL SLICE"). */
+.title {
+  margin: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.32em;
+}
+
+/* Pixel art is drawn on whole pixels or not at all. */
+svg.pixels { shape-rendering: crispEdges; }

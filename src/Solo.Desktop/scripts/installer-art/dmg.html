@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DMG background</title>
+  <link rel="stylesheet" href="art.css" />
+  <style>
+    /* The Finder window of the macOS disk image. Finder draws the two icons
+       and their labels on top of this, at the positions package.json's
+       dmg.contents gives — keep the two in step (icon centres at x 180 and
+       480, y 210). Laid out as a two-column Solo board: the app starts in
+       Unstarted and is dragged across to Finished. */
+    body {
+      width: 660px;
+      height: 400px;
+      position: relative;
+      color: var(--paper-text);
+      background-color: var(--paper);
+      --grid: var(--grid-orange);
+      --grid-coarse: var(--grid-orange-coarse);
+      --glow: radial-gradient(60% 80% at 82% 92%, color-mix(in srgb, var(--orange) 14%, transparent), transparent 70%);
+    }
+
+    .title {
+      position: absolute;
+      top: 34px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 22px;
+      /* Letter-spacing trails the last letter; pull it back so the word
+         centres on its glyphs. */
+      text-indent: 0.32em;
+    }
+
+    .column {
+      position: absolute;
+      top: 96px;
+      width: 300px;
+      text-align: center;
+      font-size: 12px;
+      letter-spacing: 0.14em;
+      color: var(--orange);
+    }
+    .column.left { left: 30px; }
+    .column.right { left: 330px; }
+
+    /* The board's column rule, between the two headers. */
+    .rule {
+      position: absolute;
+      left: 330px;
+      top: 90px;
+      width: 1px;
+      height: 26px;
+      background: color-mix(in srgb, var(--orange) 40%, transparent);
+    }
+
+    /* A task-card outline under each icon, as the board draws one. */
+    .card {
+      position: absolute;
+      top: 132px;
+      width: 190px;
+      height: 166px;
+      border: 1px solid var(--paper-divider);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--paper-surface) 70%, transparent);
+      box-shadow: 0 2px 1px -1px rgb(0 0 0 / 6%), 0 1px 3px 0 rgb(0 0 0 / 5%);
+    }
+    .card.left { left: 85px; }
+    .card.right { left: 385px; border-color: color-mix(in srgb, var(--orange) 55%, transparent); }
+
+    #arrow {
+      position: absolute;
+      /* Centred on the icons' centre line. */
+      left: 285px;
+      top: 183px;
+    }
+
+    .hint {
+      position: absolute;
+      bottom: 38px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 13px;
+      color: var(--paper-text-dim);
+    }
+    .hint b { color: var(--orange); }
+  </style>
+</head>
+<body class="graph-paper">
+  <h1 class="title">Solo</h1>
+
+  <div class="column left">Unstarted</div>
+  <div class="rule"></div>
+  <div class="column right">Finished</div>
+
+  <div class="card left"></div>
+  <div class="card right"></div>
+
+  <svg id="arrow" class="pixels" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <p class="hint">Drag <b>Solo</b> into Applications</p>
+
+  <script src="pixel-arrow.js"></script>
+  <script>
+    drawPixelArrow(document.getElementById('arrow'), {
+      pixel: 6,
+      // Light to dark along the drag, the About window's shades of Solo orange.
+      shades: ['#f4b77f', '#ef9a52', '#e8802f', '#df6610'],
+    });
+  </script>
+</body>
+</html>

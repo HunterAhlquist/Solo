@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>NSIS sidebar</title>
+  <link rel="stylesheet" href="art.css" />
+  <style>
+    /* The Windows installer's Finish page and the uninstaller's Welcome page
+       draw this down their left edge, at NSIS's fixed 164 × 314. The rest of
+       those pages is the system dialog colour, so the art is the dark scheme
+       and makes its own panel. */
+    body {
+      width: 164px;
+      height: 314px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: var(--yellow);
+      background-color: var(--black);
+      --grid: var(--grid-yellow);
+      --grid-coarse: var(--grid-yellow-coarse);
+      --glow: radial-gradient(90% 60% at 50% 30%, color-mix(in srgb, var(--yellow) 12%, transparent), transparent 70%);
+      /* Half the docs' grid: the coarse lines would fall off this narrow a page. */
+      background-size: auto, 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+    }
+
+    img {
+      width: 112px;
+      height: 112px;
+      margin-top: 36px;
+    }
+
+    .title {
+      margin-top: 10px;
+      font-size: 22px;
+      text-indent: 0.32em;
+    }
+
+    /* The hairline of brand colour the app bar sits on. */
+    hr {
+      width: 64px;
+      margin: 14px 0 12px;
+      border: 0;
+      border-top: 1px solid color-mix(in srgb, var(--yellow) 45%, transparent);
+    }
+
+    p {
+      margin: 0;
+      padding: 0 16px;
+      text-align: center;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--dark-text-dim);
+    }
+  </style>
+</head>
+<body class="graph-paper">
+  <img src="../../build/icon.png" alt="" />
+  <h1 class="title">Solo</h1>
+  <hr />
+  <p>Project management for small game-dev teams</p>
+</body>
+</html>
