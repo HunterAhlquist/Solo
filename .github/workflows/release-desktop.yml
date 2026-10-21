@@ -145,6 +145,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Electron 44 stopped fetching its binary on install and fetches it on
+      # first launch instead — which would be the check below, whose
+      # five-second wait for the debugger the download alone outlasts. The
+      # packaging step brings its own copy, so only the mac runner needs it.
+      - name: Fetch the Electron binary
+        if: runner.os == 'macOS'
+        run: node node_modules/electron/install.js
+
       - name: Verify glass loading view
         if: runner.os == 'macOS'
         run: npm run test:glass-loading
