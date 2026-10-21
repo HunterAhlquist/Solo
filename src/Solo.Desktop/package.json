@@ -47,6 +47,7 @@
       "main/**",
       "preload/**",
       "settings/**",
+      "about/**",
       "wwwroot/**",
       "package.json",
       "!node_modules/electron-liquid-glass/prebuilds/darwin-x64/**"

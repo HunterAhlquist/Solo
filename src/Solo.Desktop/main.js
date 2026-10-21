@@ -11,6 +11,7 @@ const { createSoloServer } = require('./main/server');
 const { buildMenu } = require('./main/menu');
 const { attachContextMenu, popupClientMenu } = require('./main/context-menu');
 const { DesktopAuth } = require('./main/desktop-auth');
+const { openAboutWindow, registerAboutIpc } = require('./main/about');
 
 let settings = null;
 let settingsWindow = null;
@@ -182,6 +183,7 @@ function instanceList() {
 // rebuilt rather than patched: Electron cannot disable an item once built.
 function refreshInstanceViews() {
     Menu.setApplicationMenu(buildMenu({
+        openAboutWindow: () => openAboutWindow(HARDENED_WEB_PREFERENCES),
         openSettingsWindow,
         instances: instanceList(),
         openInstance: requestOpenInstance,
@@ -1022,6 +1024,8 @@ async function removeInstance(instance) {
 }
 
 function registerIpc() {
+    registerAboutIpc();
+
     // The settings page's handlers change what the app is connected to and
     // signed in to, so they answer the settings window and nothing else — an
     // instance window renders other people's markdown.

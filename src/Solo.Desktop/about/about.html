@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'self'" />
+  <title>About Solo</title>
+  <style>
+    /* Laid out after macOS's own About panel, which this window replaces. */
+    :root {
+      --bg: #f2f2f4;
+      --fg: #1d1d1f;
+      --dim: #6e6e73;
+      --board: rgb(0 0 0 / 6%);
+      --cell: rgb(0 0 0 / 4%);
+      --veil: rgb(242 242 244 / 82%);
+      /* Shades of Solo orange (the light theme's primary, #df6610), light to
+         dark, one per piece. */
+      --piece-O: #f4b77f;
+      --piece-S: #ef9a52;
+      --piece-L: #e8802f;
+      --piece-I: #df6610;
+      --piece-Z: #c4570c;
+      --piece-T: #a8480a;
+      --piece-J: #7a3206;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #262628;
+        --fg: #f5f5f7;
+        --dim: #98989d;
+        --board: rgb(255 255 255 / 6%);
+        --cell: rgb(255 255 255 / 4%);
+        --veil: rgb(38 38 40 / 82%);
+        /* Shades of Solo yellow (the dark theme's primary, #fff600). */
+        --piece-O: #fffcc2;
+        --piece-S: #fffa8a;
+        --piece-L: #fff84a;
+        --piece-I: #fff600;
+        --piece-Z: #dcd400;
+        --piece-T: #b5af00;
+        --piece-J: #8a8600;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    /* No height: 100% — the body's height is what the window is sized to. */
+    html { background: var(--bg); }
+
+    body {
+      margin: 0;
+      padding: 30px 20px 18px;
+      color: var(--fg);
+      font: 11px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      text-align: center;
+      user-select: none;
+      cursor: default;
+      /* The native panel moves by its background. */
+      -webkit-app-region: drag;
+    }
+
+    #stage {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+
+    #logo {
+      display: block;
+      width: 96px;
+      height: 96px;
+      -webkit-app-region: no-drag;
+    }
+
+    #game {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      -webkit-app-region: no-drag;
+      animation: arrive 180ms ease-out;
+    }
+
+    @keyframes arrive {
+      from { opacity: 0; transform: scale(0.92); }
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      /* The board's width (about.js), not the keys line under it. */
+      width: 81px;
+      font: 600 9px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      letter-spacing: 0.04em;
+      color: var(--dim);
+    }
+
+    .stats { display: flex; flex-direction: column; gap: 3px; }
+
+    .hud output { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+    #board {
+      display: block;
+      background: var(--board);
+      border-radius: 3px;
+    }
+
+    .well { position: relative; }
+
+    /* Beside the board rather than beside it in the flow, so the board stays
+       centred where the logo was. */
+    .next {
+      position: absolute;
+      top: 0;
+      left: calc(100% + 8px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font: 600 9px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      letter-spacing: 0.04em;
+      color: var(--dim);
+    }
+
+    #next { display: block; }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      background: var(--veil);
+      border-radius: 3px;
+      font-size: 9px;
+      line-height: 1.25;
+    }
+
+    #overlay strong { font-size: 10px; }
+    #overlay span { color: var(--dim); }
+
+    .keys {
+      margin: 0;
+      font-size: 9px;
+      color: var(--dim);
+    }
+
+    h1 {
+      margin: 0 0 2px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    p { margin: 0; }
+    #version { margin-bottom: 10px; }
+    #copyright { font-size: 10px; color: var(--dim); }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <img id="logo" src="logo.png" alt="Solo" draggable="false" />
+    <div id="game" hidden>
+      <div class="stats">
+        <div class="hud"><span>SCORE</span><output id="score">0</output></div>
+        <div class="hud"><span>LINES</span><output id="lines">0</output></div>
+      </div>
+      <div class="well">
+        <div class="next"><span>NEXT</span><canvas id="next" aria-label="Next piece"></canvas></div>
+        <canvas id="board" aria-label="Game board"></canvas>
+        <div id="overlay"><strong id="overlay-title"></strong><span id="overlay-hint"></span></div>
+      </div>
+      <p class="keys">← → ↓ move · ↑ drop · space turn</p>
+    </div>
+  </div>
+  <h1>Solo</h1>
+  <p id="version"></p>
+  <p id="copyright"></p>
+  <script src="about.js"></script>
+</body>
+</html>
