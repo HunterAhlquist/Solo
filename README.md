@@ -330,6 +330,10 @@ Signing out revokes the session server-side. Both the desktop app and instance m
 
 For **other OIDC providers** (code + PKCE redirect) the flow runs in-app: add `http://localhost:41321/authentication/login-callback` as a redirect URI. These providers redirect the whole window rather than a popup; whether that works depends on the provider's webview policy.
 
+## Mobile apps
+
+[src/Solo.Mobile](src/Solo.Mobile) builds iOS and Android apps with Capacitor. Each build opens one instance, set with `SOLO_INSTANCE_URL`, in its web view, so the client runs as it does in a phone's browser. Google sign-in goes through the system browser like the desktop app's, returning through the app's URL scheme instead of a loopback port. Its [README](src/Solo.Mobile/README.md) has the macOS build steps.
+
 ## Development
 
 Requires the .NET 10 SDK. Docker is needed for the integration tests (Testcontainers Postgres) — without it they are skipped.

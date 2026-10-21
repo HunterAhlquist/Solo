@@ -1,0 +1,26 @@
+{
+  "name": "solo-mobile",
+  "productName": "Solo",
+  "version": "0.1.0",
+  "description": "iOS and Android shell for a Solo instance, built with Capacitor.",
+  "private": true,
+  "license": "MIT",
+  "author": "Hunter Ahlquist <36090375+HunterAhlquist@users.noreply.github.com>",
+  "scripts": {
+    "sync": "cap sync",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android",
+    "run:ios": "cap run ios",
+    "run:android": "cap run android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}

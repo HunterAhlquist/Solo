@@ -13,3 +13,4 @@ LICENSE
 Dockerfile
 .dockerignore
 .DS_Store
+src/Solo.Mobile/

@@ -170,12 +170,15 @@ window.solo = {
     desktop: {
         _dotnet: null,
 
-        available: () => !!window.soloDesktop,
+        // The mobile app signs in the same way, so it counts as a shell here.
+        available: () => !!window.soloDesktop || window.solo.mobile.available(),
 
         // Registers the .NET receiver the shell's delivery notifies.
         init: dotnetRef => { window.solo.desktop._dotnet = dotnetRef; },
 
-        beginSignIn: () => window.soloDesktop.beginSignIn(),
+        beginSignIn: () => window.soloDesktop
+            ? window.soloDesktop.beginSignIn()
+            : window.solo.mobile.beginSignIn(),
 
         // The instance this shell is pointed at, or null on the web build where
         // the page origin already is the instance. Defensive about the bridge
@@ -200,6 +203,107 @@ window.solo = {
         signInFailed(message) {
             window.solo.desktop._dotnet?.invokeMethodAsync('OnSignInFailed', message);
         },
+    },
+
+    // -----------------------------------------------------------------------
+    // Mobile app (Solo.Mobile). The iOS and Android apps load the instance
+    // itself, and Capacitor injects window.Capacitor into it. Google refuses
+    // to sign in inside an app's web view as it does inside Electron, so this
+    // runs the desktop flow in the system browser, which returns through the
+    // app's URL scheme rather than a loopback port. The verifier never leaves
+    // this page, so a code delivered to another app claiming the scheme is
+    // useless to it.
+    // -----------------------------------------------------------------------
+    mobile: {
+        callbackScheme: 'io.github.hunterahlquist.solo:',
+        _pending: null,
+        _listening: false,
+
+        available: () => window.Capacitor?.isNativePlatform?.() === true,
+
+        async beginSignIn() {
+            const mobile = window.solo.mobile;
+            const { App, Browser } = window.Capacitor.Plugins;
+            if (!mobile._listening) {
+                mobile._listening = true;
+                await App.addListener('appUrlOpen', event => mobile._onAppUrl(event.url));
+            }
+
+            const verifier = mobile._base64Url(crypto.getRandomValues(new Uint8Array(32)));
+            const challenge = mobile._base64Url(new Uint8Array(
+                await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+            const platform = window.Capacitor.getPlatform() === 'ios' ? 'iOS' : 'Android';
+
+            let flow;
+            try {
+                const response = await fetch('api/auth/desktop/start-app', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description: `Solo for ${platform}`, codeChallenge: challenge }),
+                    cache: 'no-store',
+                });
+                if (!response.ok) {
+                    window.solo.desktop.signInFailed(response.status === 404 || response.status === 405
+                        ? 'This Solo server does not support app sign-in — update the server and try again.'
+                        : `The server refused to start the sign-in (HTTP ${response.status}).`);
+                    return;
+                }
+                flow = await response.json();
+            } catch (error) {
+                window.solo.desktop.signInFailed(`Could not reach the server: ${error.message}`);
+                return;
+            }
+
+            mobile._pending = { state: flow.state, verifier };
+            await Browser.open({
+                url: new URL(`desktop-auth?state=${encodeURIComponent(flow.state)}`, document.baseURI).href,
+            });
+        },
+
+        async _onAppUrl(url) {
+            const mobile = window.solo.mobile;
+            let callback;
+            try {
+                callback = new URL(url);
+            } catch {
+                return;
+            }
+
+            const pending = mobile._pending;
+            if (callback.protocol !== mobile.callbackScheme || callback.pathname !== '/auth/callback' ||
+                !pending || callback.searchParams.get('state') !== pending.state) {
+                return;
+            }
+            mobile._pending = null;
+
+            // Android's Custom Tabs can't be closed from the app; returning to
+            // the app already put it behind.
+            window.Capacitor.Plugins.Browser.close().catch(() => {});
+
+            try {
+                const response = await fetch('api/auth/desktop/redeem', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        state: pending.state,
+                        authorizationCode: callback.searchParams.get('code'),
+                        codeVerifier: pending.verifier,
+                    }),
+                    cache: 'no-store',
+                });
+                const session = response.ok ? await response.json() : null;
+                if (typeof session?.token !== 'string') {
+                    window.solo.desktop.signInFailed('The browser sign-in could not be redeemed. Try again.');
+                    return;
+                }
+                window.solo.desktop.deliverSession(session.token, session.user ?? null);
+            } catch (error) {
+                window.solo.desktop.signInFailed(`Could not reach the server: ${error.message}`);
+            }
+        },
+
+        _base64Url: bytes => btoa(String.fromCharCode(...bytes))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
     },
 
     // -----------------------------------------------------------------------

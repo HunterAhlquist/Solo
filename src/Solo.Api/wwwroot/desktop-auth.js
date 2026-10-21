@@ -2,7 +2,8 @@
 // for the desktop shell's browser sign-in. Runs the ordinary GIS flow on this
 // instance's own origin, then hands the credential to the complete endpoint.
 // The endpoint returns a one-time authorization code to the desktop process's
-// loopback listener; PKCE binds its redemption to that process.
+// loopback listener, or to the mobile app's URL scheme; PKCE binds its
+// redemption to the process that started the flow.
 //
 // A file rather than an inline <script> because the instance's CSP allows
 // script-src 'self' with no 'unsafe-inline' (see SecurityHeaders.cs) — inline
@@ -31,12 +32,17 @@ async function complete(credential) {
     const result = await response.json().catch(() => null);
     try {
       const callback = new URL(result?.callbackUri);
-      if (callback.protocol !== 'http:' || callback.hostname !== '127.0.0.1' ||
-          callback.pathname !== '/desktop-auth/callback') {
-        throw new Error('Invalid loopback callback.');
+      const loopback = callback.protocol === 'http:' && callback.hostname === '127.0.0.1' &&
+          callback.pathname === '/desktop-auth/callback';
+      const mobileApp = callback.protocol === 'io.github.hunterahlquist.solo:' &&
+          callback.pathname === '/auth/callback';
+      if (!loopback && !mobileApp) {
+        throw new Error('Invalid app callback.');
       }
 
-      lead.textContent = 'You’re signed in. Returning to Solo Desktop…';
+      lead.textContent = mobileApp
+          ? 'You’re signed in. Returning to the Solo app…'
+          : 'You’re signed in. Returning to Solo Desktop…';
       document.getElementById('button').remove();
       location.replace(callback.href);
     } catch {

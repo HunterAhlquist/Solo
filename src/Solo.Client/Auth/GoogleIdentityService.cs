@@ -38,8 +38,9 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     public event Action<string>? SignInFailed;
 
     /// <summary>
-    /// True inside the Solo.Desktop Electron shell. Google refuses to host its
-    /// sign-in pages there, so the desktop path never loads the GIS script:
+    /// True inside the Solo.Desktop Electron shell or the Solo.Mobile app.
+    /// Google refuses to host its sign-in pages in either, so this path never
+    /// loads the GIS script:
     /// sign-in happens in the system browser on the instance's own origin,
     /// and the shell delivers back a ready-made Solo session.
     /// </summary>

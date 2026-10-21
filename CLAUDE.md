@@ -10,6 +10,7 @@ src/Solo.Extensibility  the public contract EXTENSIONS compile against
 src/Solo.Extensions     the extension host (loader, hook dispatch, registry)
 src/Solo.Client         Blazor WASM client
 src/Solo.Desktop        Electron shell (serves the published client, proxies /api)
+src/Solo.Mobile         Capacitor iOS/Android apps (load one instance in a web view)
 tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, plus the harnesses
                         (Solo.Api.Testing, Solo.Client.Testing) and the fixture extension
 extensions/Mcp          an EXTENSION, not core — the reference example (Solo.Mcp.slnx)

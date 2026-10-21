@@ -117,6 +117,44 @@ public sealed class DesktopAuthApiTests(PostgresFixture postgres) : IAsyncLifeti
     }
 
     [SkippableFact]
+    public async Task AppFlow_ReturnsThroughTheAppSchemeAndMintsASession()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var flow = await _anon.PostJson<DesktopAuthFlowDto>("/api/auth/desktop/start-app", new
+        {
+            description = "Solo for iOS",
+            codeChallenge = Challenge,
+        });
+
+        var complete = await CompleteAsync(_admin, flow.State);
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+        var (callback, code) = await CallbackAsync(complete);
+        Assert.StartsWith(DesktopSignInFlows.AppCallbackUri + "?", callback.OriginalString);
+        Assert.Equal(flow.State, QueryHelpers.ParseQuery(callback.Query)["state"].ToString());
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await RedeemAsync(flow.State, code, verifier: new string('x', 43))).StatusCode);
+
+        var redeemed = await RedeemAsync(flow.State, code);
+        Assert.Equal(HttpStatusCode.OK, redeemed.StatusCode);
+        var session = (await redeemed.Content.ReadFromJsonAsync<SessionDto>(TestClients.Json))!;
+        Assert.StartsWith("solo_", session.Token);
+    }
+
+    [SkippableTheory]
+    [InlineData("short")]
+    [InlineData("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw+cM")]
+    public async Task AppFlow_ValidatesThePkceChallenge(string challenge)
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var response = await _anon.PostAsJsonAsync("/api/auth/desktop/start-app",
+            new { codeChallenge = challenge }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [SkippableFact]
     public async Task CompletingAFlowCannotHandTheSessionToAnAnonymousPoller()
     {
         postgres.SkipUnlessDockerAvailable();

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -43,6 +44,28 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
                 request.CodeChallenge,
                 request.LoopbackPort,
                 clientKey) is not { } flow)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                title: "Too many pending sign-ins",
+                detail: "Try again in a few minutes.");
+        }
+
+        return flow;
+    }
+
+    /// <summary>
+    /// As <see cref="Start"/>, for the iOS and Android apps: the browser
+    /// returns to <see cref="DesktopSignInFlows.AppCallbackUri"/> rather than
+    /// to a loopback port.
+    /// </summary>
+    [HttpPost("start-app")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public ActionResult<DesktopAuthFlowDto> StartApp([FromBody] AppAuthStartRequest request)
+    {
+        var clientKey = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (flows.Start(request.Description, request.CodeChallenge, loopbackPort: null, clientKey) is not { } flow)
         {
             return Problem(
                 statusCode: StatusCodes.Status429TooManyRequests,
@@ -134,4 +157,19 @@ public sealed class DesktopAuthController(DesktopSignInFlows flows) : ApiControl
         await db.SaveChangesAsync(ct);
         return new SessionDto(token, session.ExpiresAt, user.ToDto());
     }
+}
+
+/// <summary>
+/// Opens a mobile app's browser sign-in. Only the app's JavaScript sends it,
+/// so it lives here rather than in Solo.Shared, where any change moves the
+/// published extension contract.
+/// </summary>
+public sealed class AppAuthStartRequest
+{
+    [StringLength(200)]
+    public string? Description { get; init; }
+
+    [Required, StringLength(43, MinimumLength = 43)]
+    [RegularExpression("^[A-Za-z0-9_-]+$")]
+    public required string CodeChallenge { get; init; }
 }
