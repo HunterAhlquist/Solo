@@ -18,7 +18,7 @@ export function mountEditor(root, bridge, options) {
         unseeded:markdown=>{fallback.textContent=markdown;editorRoot.hidden=true;},
     });
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
-        markdown(),keymap.of([...defaultKeymap,...yUndoManagerKeymap]),EditorView.lineWrapping,livePreview,
+        markdown(),keymap.of([...defaultKeymap,...yUndoManagerKeymap]),EditorView.lineWrapping,livePreview(bridge),
         yCollab(provider.doc.getText('markdown'),provider.awareness),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
         EditorView.domEventHandlers({focus:()=>{bridge.invokeMethodAsync('Focus',true);},blur:()=>{bridge.invokeMethodAsync('Focus',false);}}),

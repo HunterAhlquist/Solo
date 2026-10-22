@@ -24,3 +24,4 @@
 .design-docs-emphasis { font-style:italic; }
 .design-docs-editor .cm-ySelectionCaret { outline:1px solid var(--mud-palette-surface); }
 .design-docs-editor .cm-ySelectionInfo { color:white; text-shadow:0 1px 2px black; }
+.design-docs-task-chip { display:inline-block; border:1px solid var(--mud-palette-lines-default); border-radius:4px; padding:0 6px; font-size:.9em; }

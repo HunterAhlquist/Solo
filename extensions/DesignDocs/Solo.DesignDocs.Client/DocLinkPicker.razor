@@ -1,0 +1,31 @@
+@inject ISoloClientApi Api
+<MudDialog>
+    <DialogContent>
+        @if(_error is not null){<MudAlert Severity="Severity.Error">@_error</MudAlert>}
+        <MudSelect T="Guid" Label="Design doc" Value="_vault" ValueChanged="LoadVault">
+            @foreach(var v in _vaults){<MudSelectItem T="Guid" Value="v.Id">@v.Name</MudSelectItem>}
+        </MudSelect>
+        <MudTextField @bind-Value="_search" Label="Find a note" Immediate="true" />
+        <MudList T="Guid" SelectionMode="SelectionMode.SingleSelection" @bind-SelectedValue="_note">
+            @foreach(var n in _notes.Where(n=>n.Name.Contains(_search,StringComparison.OrdinalIgnoreCase))){<MudListItem T="Guid" Value="n.Id">@n.Name</MudListItem>}
+        </MudList>
+        @if(Selected is {} selected){
+            <MudSelect T="string" @bind-Value="_heading" Label="Heading (optional)">
+                <MudSelectItem T="string" Value="@string.Empty">Whole note</MudSelectItem>
+                @foreach(var h in selected.Headings){<MudSelectItem T="string" Value="h.Slug">@h.Text</MudSelectItem>}
+            </MudSelect>
+        }
+    </DialogContent>
+    <DialogActions><MudButton OnClick="Dialog.Cancel">Cancel</MudButton><MudButton Disabled="@(Selected is null)" Color="Color.Primary" OnClick="Choose">Insert link</MudButton></DialogActions>
+</MudDialog>
+@code{
+    [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
+    [Parameter] public Guid ProjectId {get;set;}
+    private IReadOnlyList<VaultDto> _vaults=[];private IReadOnlyList<NoteDto> _notes=[];
+    private Guid _vault,_note;private string _search="",_heading="";private string? _error;
+    private NoteDto? Selected=>_notes.FirstOrDefault(n=>n.Id==_note);
+    protected override async Task OnInitializedAsync(){try{_vaults=(await Api.GetAsync<VaultListDto>($"api/ext/design-docs/projects/{ProjectId}/vaults")).Vaults.Where(v=>!v.IsClosed).ToList();if(_vaults.Count>0)await LoadVault(_vaults[0].Id);}catch(SoloApiException e){_error=e.Message;}}
+    private async Task LoadVault(Guid id){_vault=id;_note=Guid.Empty;_heading="";try{_notes=(await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{ProjectId}/vaults/{id}")).Notes;}catch(SoloApiException e){_error=e.Message;}}
+    private void Choose(){if(Selected is not {} n)return;var h=n.Headings.FirstOrDefault(h=>h.Slug==_heading);var label=h is null?n.Name:n.Name+" › "+h.Text;Dialog.Close(DialogResult.Ok($"[{Escape(label)}](/docs/note/{n.Id:N}{(h is null?"":"#"+h.Slug)})"));}
+    private static string Escape(string text)=>text.Replace("\\","\\\\").Replace("[","\\[").Replace("]","\\]");
+}
