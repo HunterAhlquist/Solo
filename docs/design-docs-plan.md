@@ -1,0 +1,683 @@
+# Design Docs: build plan
+
+> **Status (2026-10-22):** plan only, nothing built. Written for a coding agent to follow phase by phase. Grounded in the code at commit `d6357e1`.
+>
+> **Where the decisions come from:** the feasibility review, [Design Docs extension: feasibility review](https://claude.ai/artifact/RxZ5kdcCkJZN7LZunHY1CL), and Hunter's answers in its comment threads (2026-10-22). Treat the decisions in §1 as settled. Anything this plan had to decide on its own is listed in §5, so Hunter can overrule it before or during the build.
+
+Design Docs is an **extension**: Obsidian-style markdown vaults per project, live co-editing, task links, images, and pixel-style sketches. It needs four general-purpose additions to core first, shipped together as **contract 1.10**. Core still won't know Design Docs exists after those additions: each one is a seam any extension could use.
+
+## How to use this plan
+
+1. Read `CLAUDE.md`, then [writing-extensions.md](writing-extensions.md). Read `extensions/Roadmap` alongside it. It is the closest existing extension: own schema, project nav and home sections, live topics, a JS module in `content/`, a CI-built package.
+2. Build **Part A (core, contract 1.10)** first, as one PR. Part B can't compile against a contract that doesn't exist yet.
+3. Build **Part B (the extension)** in the PR order in §3. Start with the prototype in B0. It proves the risky parts before the rest is built on them.
+4. Each step ends with **Done when**. Don't move on until it holds. Where this plan says *verify*, it is a claim not yet checked against the running code or the library. Check it, and if it's wrong, change the design here rather than working around it in silence.
+
+The rule from `CLAUDE.md` still applies to Part B: **the extension modifies no core project.** Part A is the only place core changes. If Part B seems to need anything else from core, that's a contract gap. Stop and raise it.
+
+---
+
+## 1. Settled decisions
+
+From the review and its comment threads. Don't reopen these.
+
+| Area | Decision |
+|---|---|
+| Shape | One project can have several **vaults** (the user-facing name is "design doc"). A vault holds folders and markdown notes, like an Obsidian vault. |
+| Editor | CodeMirror 6 with live preview: one view for reading and editing, with no Write/Preview switch. Markdown symbols (a heading's `#`, `**`) show only on the lines under **your own** cursor. Each editor works this out from its own cursor, so another person's cursor never reveals symbols on your screen. |
+| Sync | **Relay.** The server stores and relays Yjs updates without interpreting them, and clients send a plain-markdown copy. No YDotNet, no native libraries. |
+| Contract | Approved for 1.10: a markdown link seam plus an insert-at-cursor seam in core's description editor, and client-sent live messages on core's hub. Also the core CSP change that allows `blob:` images. |
+| Access | Permissions come from the project. Non-members get nothing, raw files included. Images are fetched with the sign-in credential and shown through `blob:` URLs. |
+| Read members | Read-only editor. They send no edits and have no cursor, but they see writers' cursors and show as "viewing". |
+| Vault lifecycle | Only **super admins** create, close, reopen and delete vaults. A closed vault is read-only and can be reopened. A vault can be deleted only after it's closed. |
+| Editing | Online only. A read-only offline cache is a nice-to-have, not part of this plan's scope. |
+| History | No version history, just "last edited by" with a time. |
+| Comments | None in Design Docs for now. |
+| Cursors | Text cursors and selections in markdown. Mouse pointers in sketches only. |
+| Colors | Per project, assigned by join order (golden-angle steps, see B5). |
+| Task → doc links | Each note has a GUID. A picker in core's description editor inserts a link at the cursor. |
+| Search | Stretch goal, not in the first version. |
+| Obsidian import v1 | `.md` notes and the images they embed only. Dataview, Canvas and Excalidraw content is dropped. Dataview queries live inside notes as code blocks, so they come through as plain code. |
+| Sketch ownership | A sketch belongs to one note and can move within it. Moving it to another note is a nice-to-have. |
+| Sketch look | WigglyPaint style: a pixel texture stamped along each vector stroke. Starts at **72 paint pixels per inch** (A4 = 595 × 842), to be tuned when Hunter tests it. |
+| Boil | Animated but subtle. Each stamp shifts by about one paint pixel at most. |
+| Thickness | Five levels. With a stylus the selected level is the minimum and pressure ramps up toward the thickest. A mouse ignores pressure. |
+| Tools | Pen, eraser, rectangle and ellipse (a modifier constrains them to squares and circles), select/move, text with a pixel font. Shapes are drawn as ordinary strokes. |
+| Eraser | Visually cuts strokes rather than deleting whole ones. Stored as eraser strokes, so two people erasing at once merge cleanly. |
+| Select/move | Picks up a group of strokes that touch each other, or a text box. Moving one piece of a cut stroke splits that stroke at that moment. |
+| Shrinking a page | Warns that line work will be clipped. Clipped strokes are hidden, not deleted, so enlarging the page brings them back. |
+| Page | A size from common paper sizes and an orientation. A background pattern (empty, grid, notebook, dots) is chosen with the size, sits on the pixel grid, and exports in light gray. In the app the page contrasts with the ink. |
+| Inks | Black/white (follows the color scheme), red, blue, green. |
+| Sketch export | Rasterized PNG, black lines on white, one still frame. |
+
+**Dependency, built elsewhere:** boards and roadmaps are moving to the same super-admin-only lifecycle in a separate thread and PR ("Super-admin-only board and roadmap lifecycle"). Don't re-plan or redo it here. When B2 is built, copy that PR's pattern for the lifecycle endpoints and the client's hiding of those actions, so all three behave the same way. If it hasn't merged by then, use the pattern in B2 and say so in the PR.
+
+---
+
+## 2. Architecture at a glance
+
+```
+Browser (Blazor WASM)                                   Server (one container)
+┌───────────────────────────────────────────┐          ┌───────────────────────────────────────┐
+│ Solo.DesignDocs.Client (Razor, MudBlazor) │          │ Solo.Api                               │
+│  vault tree, dialogs, presence bar,       │  REST    │  BoardHub ── SendTopicMessage (A2) ──┐ │
+│  nav/home sections, link picker (A3)      │─────────▶│  /api/ext/design-docs/... ──────┐    │ │
+│        │ JS interop (DotNetObjectReference)│          │                                │    │ │
+│        ▼                                  │          │ Solo.DesignDocs (extension)    ▼    ▼ │
+│ content/design-docs.js (esbuild bundle)   │  hub     │  controllers   live handler (relay)  │
+│  CodeMirror 6 + live preview              │◀────────▶│        │              │              │
+│  Yjs doc + awareness + provider           │ (core's  │        ▼              ▼              │
+│  sketch renderer / input / tools          │  hub,A2) │   ext_design_docs schema (Postgres)  │
+│  images (blob: URLs, A1+A4), zip I/O      │          │   vaults, notes, update log, images  │
+└───────────────────────────────────────────┘          └───────────────────────────────────────┘
+```
+
+- **Yjs** ([docs](https://docs.yjs.dev/)) holds each note's text (`Y.Text`) and each sketch's strokes. It runs only in the browser. The server stores Yjs updates as opaque bytes and relays them.
+- **Core's hub carries the sync traffic** through the new client-sent messages (A2). The extension opens no WebSocket of its own, so it needs no ticket scheme or startup filter. Core already handles reconnects and the desktop proxy.
+- **.NET sits in the middle of every message** (JS → .NET → hub → .NET → JS), because core's hub connection lives in .NET (`src/Solo.Client/Realtime/BoardHubClient.cs`). That's fine at typing rates if the JS side batches (B3). Measure it in B0.
+- **The server never parses markdown or Yjs.** What it knows about a note's content (headings, text for export or later search) comes from the markdown copy that writer clients send.
+
+---
+
+## Part A: core changes (contract 1.10)
+
+One PR. It changes `Solo.Api`, `Solo.Client`, `Solo.Shared`, `Solo.Extensibility`, `Solo.Extensions`, `src/Solo.Desktop`, tests and docs. Nothing in it mentions Design Docs.
+
+### A1. Allow `blob:` images in the content security policy
+
+`img-src` today is `'self' data: https:`. It's set in **two** places that must stay in step:
+
+- `src/Solo.Api/SecurityHeaders.cs` (`ContentSecurityPolicy`)
+- `src/Solo.Desktop/main/server.js` (`CONTENT_SECURITY_POLICY`). The desktop shell serves the client from its own origin with its own copy of the policy. Change only one and images break in the desktop app alone.
+
+Change both to `img-src 'self' data: https: blob:`. Add a sentence to the doc comment in `SecurityHeaders.cs` on why: a page fetches a members-only image with the sign-in credential and shows it from an object URL, and only script already running on the page can mint a `blob:` URL. Don't touch `IsolationPolicy`.
+
+**Done when:** `tests/Solo.Api.Tests/Integration/SecurityHeaderTests.cs` asserts that `img-src` contains `blob:` (nothing checks `img-src` today), and the desktop file matches.
+
+### A2. Client-sent live messages on core's hub
+
+Today a topic message only goes from server to clients (`ISoloLiveUpdates.PublishAsync`, `src/Solo.Api/Realtime/LiveUpdates.cs`). A2 lets a client send one on a topic it holds. Core passes it to **the extension that owns the topic**, and that extension's handler decides what happens: drop it, reply to the sender, or relay it to everyone else on the topic.
+
+#### Server contract (`src/Solo.Extensibility/`)
+
+New file `ISoloLiveMessageHandler.cs`, in the same voice as `ISoloLiveUpdates.cs`:
+
+```csharp
+public interface ISoloLiveMessageHandler
+{
+    /// Runs once per client-sent message on one of this extension's topics.
+    /// Not calling a method on reply drops the message.
+    ValueTask HandleAsync(LiveMessage message, ILiveMessageReply reply, CancellationToken ct);
+}
+
+public sealed record LiveMessage(Guid ProjectId, string Topic, string Kind, string? Data, LiveSender Sender);
+
+/// Who sent it. Core resolves this when the topic is subscribed and refreshes it when
+/// the member's role changes, so a handler never has to look it up per message.
+public sealed record LiveSender(Guid UserId, string? DisplayName, ProjectRole Role, bool IsProjectOwner);
+
+public interface ILiveMessageReply
+{
+    /// Only to the connection that sent the message.
+    Task ToSenderAsync(string kind, string? data = null, CancellationToken ct = default);
+
+    /// To every other connection on the topic, the sender's own other tabs included.
+    Task ToOthersAsync(string kind, string? data = null, CancellationToken ct = default);
+}
+```
+
+Registration in `ExtensionServiceCollectionExtensions.cs`: `services.AddLiveMessageHandler<THandler>()`, scoped like hooks and event handlers. One handler per extension. Registering a second one is a load failure.
+
+Messages reach the client as the existing `TopicMessage` (`src/Solo.Shared/Hubs/BoardHubContract.cs`), with `ActorUserId` set to the sender. That way the client's dispatch in `LiveTopics.cs` doesn't change.
+
+#### Routing and ownership
+
+- **A topic belongs to the extension whose id comes before its first `:`.** Roadmap already names its topics this way (`roadmap:list`, `roadmap:{id}` in `RoadmapContracts.cs`). Find the handler's owner from its assembly, as `HookCatalog.OwnerOf` does (`src/Solo.Extensions/HookCatalog.cs`). Put the lookup in a small `LiveHandlerCatalog` in `Solo.Extensions`.
+- A message on a topic with no handler, or whose extension is disabled (`ExtensionState.IsDisabled`), is refused. Client-sent messages are opt-in per extension.
+- User topics (`TopicRegistry.UserScope`) don't accept client messages in 1.10. Nobody has needed it.
+
+#### The hub method
+
+Add to `IBoardHubServer` and `BoardHub`:
+
+```csharp
+Task<LiveSendResult> SendTopicMessage(Guid projectId, string topic, string kind, string? data);
+```
+
+`LiveSendResult` is a new enum in `Solo.Shared.Hubs`: `Accepted`, `NotSubscribed`, `NoHandler`, `TooLarge`, `RateLimited`, `Failed`. Return a result rather than throwing a `HubException`. A Yjs client has to know when an update didn't land so it can resend (B3), and an exception per rejected message would be noisy.
+
+Checks, in this order:
+
+1. `RequireTopic(topic)`. `kind` is 1–64 characters. `data` is at most `BoardHubConstants.ClientMessageMaxLength` characters. Add that constant at **48,000**.
+2. The connection holds `(projectId, topic)` in `TopicRegistry`. Subscribing is where read access was checked, so holding the topic is the access check. Otherwise `NotSubscribed`.
+3. A per-connection token bucket (`System.Threading.RateLimiting.TokenBucketRateLimiter`). Default burst 200, 50 per second, read from `RateLimiting:Live:Burst` / `RateLimiting:Live:TokensPerSecond` next to the existing `/api` settings in `Program.cs`. Dispose the connection's limiter in `OnDisconnectedAsync`. This bucket is separate from the `/api` one, so live traffic can't starve a board's REST calls.
+4. Find the handler (see Routing). Run it in the invocation's scope, with a timeout of about 5 seconds linked to `Context.ConnectionAborted`. Exceptions and timeouts are logged naming the extension, and return `Failed`.
+
+`ILiveMessageReply` is implemented in `Solo.Api` over `IHubContext<BoardHub, IBoardClient>`: `Clients.Client(connectionId)` for the sender, and `Clients.GroupExcept(TopicGroup(...), [connectionId])` for the others.
+
+#### Message size
+
+SignalR's hub default `MaximumReceiveMessageSize` is 32 KB ([Microsoft: SignalR configuration](https://learn.microsoft.com/en-us/aspnet/core/signalr/configuration?view=aspnetcore-10.0)). Raise it for `BoardHub` only, to 64 KB (`AddSignalR().AddHubOptions<BoardHub>(...)`), so a 48,000-character `data` plus its JSON envelope fits. Anything bigger is the extension's job to split (B3). Core uses SignalR's JSON protocol, so binary payloads travel as base64 strings, about a third larger.
+
+#### Role freshness
+
+`TopicRegistry.Subscription` gains `ProjectRole Role` and `bool IsOwner`, filled in by `SubscribeTopic` from the membership row it already reads through `ProjectAccessHandler`. Then `LiveSender` costs nothing per message. To keep it current:
+
+- Extend `LiveAccess.RevalidateAsync` (`src/Solo.Api/Realtime/LiveAccess.cs`) so it also refreshes the cached role on the topics a user still holds.
+- Call it from the member update endpoint (`PUT api/projects/{projectId}/members/{memberId}`, `ProjectsController.cs` around line 204), not only from member removal (line 257). Otherwise someone demoted to Read keeps sending edits until they reconnect.
+
+#### Client contract (`src/Solo.Shared/Extensibility/ISoloLiveTopics.cs`)
+
+```csharp
+/// Sends a message on a subscribed project topic, for its extension's server
+/// handler to drop, answer or relay (contract 1.10).
+Task<LiveSendResult> SendAsync(Guid projectId, string topic, string kind, string? data = null,
+    CancellationToken ct = default);
+
+/// True while the live connection is up.
+bool IsConnected { get; }
+
+/// The connection went down, or came back with held topics already resubscribed.
+/// After a gap, refetch or resync: anything sent in it was missed.
+event Func<Task>? ConnectionChanged;
+```
+
+Implement them in `src/Solo.Client/Realtime/LiveTopics.cs` over `IBoardHubClient`, which already raises `ConnectionStateChanged` after it resubscribes topics on reconnect (`BoardHubClient.cs`, the `Reconnected` handler). When not connected, `SendAsync` returns a result without throwing. Add `NotConnected` to the enum for that case.
+
+These are new members on a published interface. `extensions/Roadmap/Solo.Roadmap.Tests/FakeLiveTopics.cs` and the core test fakes have to implement them, as they did for `SubscribeUserAsync` in 1.8.
+
+#### Tests
+
+- `tests/Solo.Api.Tests/Integration/SignalRTests.cs`: not subscribed → `NotSubscribed`. A topic with no handler, or another extension's prefix → `NoHandler`. Oversized → `TooLarge`. Burst exceeded → `RateLimited`. A relayed message reaches the others and not the sender. `LiveSender.Role` is `Read` for a Read member, and turns `Read` after a demotion without reconnecting.
+- Give the fixture extension (`tests/Solo.Extension.Fixture`) an echo handler. Nothing else in core registers one, so it is the only way to test routing end to end.
+- `tests/Solo.Client.Tests/LiveTopicsTests.cs`: `SendAsync` forwards to the hub, `NotConnected` while down, `ConnectionChanged` fires after a reconnect.
+
+**Done when:** an extension can send on its own topic and nobody else's, a Read member's messages arrive at the handler labeled Read, and the tests above pass.
+
+### A3. Markdown seams in core's editor and renderer
+
+Core renders descriptions and comments with `SoloMarkdown.razor` (Markdig through `SoloMarkdownPipeline`), and edits them with `MarkdownEditor.razor`, a MudBlazor text field with Write and Preview tabs. Neither has an extension point today. Discover both new seams the way core finds task menu contributors: `ContributedSections.Implementations<TAttribute, TContract>` (`src/Solo.Client/Extensions/ContributedSections.cs`), and instantiate them the way `src/Solo.Client/State/TaskMenuService.cs` does.
+
+#### (a) Editor actions: insert at the cursor
+
+```csharp
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class MarkdownEditorActionAttribute : Attribute { public int Order { get; set; } }
+
+public interface ISoloMarkdownEditorAction
+{
+    /// Buttons for this editor, from what the action already holds. Awaited before the
+    /// toolbar renders: one that throws or takes over a second is left out.
+    ValueTask<IReadOnlyList<MarkdownEditorButton>> ButtonsAsync(MarkdownEditorContext context, CancellationToken ct);
+
+    /// Text to insert at the cursor, replacing any selection, or null to insert nothing.
+    Task<string?> OnChosenAsync(string buttonId, MarkdownEditorContext context, CancellationToken ct);
+}
+
+public sealed record MarkdownEditorButton(string Id, string Label) { public string? Icon { get; init; } }
+public sealed record MarkdownEditorContext(Guid ProjectId, MarkdownSurface Surface, Guid EntityId, string? SelectedText);
+public enum MarkdownSurface { TaskDescription, EpicDescription, Comment }
+```
+
+Wiring:
+
+- `MarkdownEditor.razor` gains `ProjectId`, `Surface` and `EntityId` parameters. `DetailDrawer.razor` (line 114) and `CommentThread.razor` (lines 46 and 67) pass them. Render the buttons in a compact row at the top of the Write tab, and above the comment composer, which is always in edit mode.
+- Insert with a new `solo.markdown.insertAtCursor(root, text)` in `src/Solo.Client/wwwroot/js/solo-interop.js`. Find the `textarea` inside the editor's root element, call `setRangeText(text, start, end, 'end')`, then dispatch an `input` event so the `Immediate` binding updates `_draft`. A textarea keeps `selectionStart`/`selectionEnd` after losing focus to a dialog, so no extra bookkeeping is needed. *Verify on Safari.*
+- If the insert would go past `MaxLength`, refuse it with a snackbar.
+- Button ids are prefixed per extension, as `TaskMenuService` prefixes menu ids.
+
+#### (b) Link rendering: live labels for claimed links
+
+```csharp
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class MarkdownLinkProviderAttribute : Attribute { public int Order { get; set; } }
+
+public interface ISoloMarkdownLinkProvider
+{
+    /// Cheap and synchronous: does this provider own the link? No I/O.
+    bool Claims(string url);
+
+    /// Labels for the claimed links, keyed by URL. A URL left out keeps its label as written.
+    ValueTask<IReadOnlyDictionary<string, string>> LabelsAsync(IReadOnlyList<string> urls, CancellationToken ct);
+}
+```
+
+Behavior in `SoloMarkdown.razor`:
+
+1. Render the markdown as written, straight away, as today.
+2. Parse it with the same pipeline plus `UsePreciseSourceLocation()`. Collect the URLs of `LinkInline`s (not images) that pass `SoloMarkdownPipeline.IsSafeUrl` and that some provider `Claims`.
+3. Call each provider once per render with its URLs, with a one-second timeout. A failure or timeout is logged, and those links stay as written.
+4. Replace each claimed link's label text by its `LabelSpan`, working from the end of the string backwards so earlier offsets stay valid. Escape markdown characters in the new label. Then render again. *Verify that `LinkInline.LabelSpan` is populated with precise source locations in the Markdig version the client ships.*
+5. Leave caching to providers. Core calls them on every render, and the contract doc says so.
+
+`||SERIAL||` linkification (`LinkifySerials`) runs first and is unaffected. If the extension is uninstalled, its links render with the label they were written with. That keeps the extension removable.
+
+Out of scope: `[[...]]` syntax in task descriptions, hover previews, `[[` autocomplete. The GUID-link decision made them unnecessary for now.
+
+**Tests (`tests/Solo.Client.Tests`, bUnit):** a contributed action's text lands at the cursor and replaces a selection. Over-length inserts are refused. A provider's label replaces a claimed link's label. Unclaimed links, images and unsafe URLs are untouched. A throwing or slow provider leaves the text as written.
+
+**Done when:** a test extension can add a button to the task description editor that inserts text at the cursor, and can relabel its own links in a rendered description or comment.
+
+### A4. Binary calls on `ISoloClientApi`
+
+**This one wasn't in the review's list.** Grounding the plan turned it up: `ISoloClientApi` (`src/Solo.Shared/Extensibility/ISoloClientApi.cs`) only sends and receives JSON. Design Docs has to download image bytes with the credential (to make `blob:` URLs) and upload images and zipped vaults. The only binary call today is core's own `GetExtensionAssemblyAsync` in `ApiClient.cs`.
+
+```csharp
+/// GET, as bytes. Throws SoloApiException on a non-success status.
+Task<SoloBinary> GetBytesAsync(string path, CancellationToken ct = default);
+
+/// A call whose body is raw bytes, such as an image upload, with a JSON response.
+Task<T> SendBytesAsync<T>(HttpMethod method, string path, byte[] content, string contentType,
+    CancellationToken ct = default);
+
+public sealed record SoloBinary(byte[] Content, string? ContentType);
+```
+
+Implement them explicitly in `ApiClient`, beside the other extension-seam members, so they share its credential and ProblemDetails handling.
+
+*Fallback if Hunter declines A4:* send images as base64 inside JSON through the existing `GetAsync`/`SendAsync`. It works with no contract change, but it's about a third bigger and costs more memory in WASM.
+
+### A5. Version bump and documentation
+
+Per `CLAUDE.md`:
+
+- `build/contract-package.props` `<Version>` → `1.10.0`, with `ContractVersion.Current` in `src/Solo.Shared/Extensibility/ContractVersion.cs` to match (`ContractPackageTests` enforces it). Add a `<para>1.10.0 ...</para>` to its remarks: both halves changed.
+- Every `HunterAhlquist.Solo.*` reference → `1.10.0`: `samples/HelloExtension`, `extensions/Mcp`, `extensions/Roadmap` and `templates/content/`. `build/pack-contract.sh` enforces it.
+- `templates/Solo.Templates.csproj` `<Version>` → `1.10.0`, because the template's major.minor has to match the contract's. Run `build/pack-templates.sh`.
+- `docs/writing-extensions.md`: a "Contract 1.10" section in the style of the 1.8 one, covering client-sent messages, editor actions, link providers, binary calls and `blob:` images.
+- `site/extensions/reference.md` (the version table), `site/extensions/index.md` ("describes contract 1.10"), and the package versions in `site/extensions/client.md`, `server.md` and `first-extension.md`.
+- `docs/extension-plan.md`: a short dated "Update: contract 1.10" note recording why client-sent messages go through a per-extension handler, rather than letting extensions map their own WebSocket or hub. That alternative is in the review's contract table: every live extension would then solve sign-in and reconnects again.
+- **Don't push an `sdk-v1.10.0` or `templates-v1.10.0` tag.** Publishing to nuget.org is permanent. Only Hunter does that.
+
+**Done when:** `dotnet test Solo.slnx` is green, `build/pack-contract.sh` and `build/pack-templates.sh` succeed, and `dotnet test` passes for `extensions/Mcp/Solo.Mcp.slnx` and `extensions/Roadmap/Solo.Roadmap.slnx` on 1.10.
+
+---
+
+## Part B: the extension, `extensions/DesignDocs`
+
+Extension id **`design-docs`**. That gives schema `ext_design_docs`, API base `/api/ext/design-docs/`, content base `/api/extensions/design-docs/content/`, and live topics prefixed `design-docs:`.
+
+### B0. Scaffold, build pipeline and a prototype
+
+Layout, mirroring Roadmap:
+
+```
+extensions/DesignDocs/
+  Solo.DesignDocs.slnx
+  Solo.DesignDocs/              server half: controllers, DbContext, migrations, live handler, extension.json, content/
+  Solo.DesignDocs.Client/       client half: Razor pages and components, JS interop wrappers
+  Solo.DesignDocs.Client/js/    JS sources, package.json, package-lock.json, esbuild config, node --test tests
+  Solo.DesignDocs.Data.Tests/   Testcontainers tests against the schema, no host
+  Solo.DesignDocs.Tests/        host tests (references src/ to load the package, like Solo.Roadmap.Tests)
+build/pack-design-docs-extension.sh
+```
+
+`extension.json`:
+
+```json
+{
+  "id": "design-docs",
+  "name": "Design Docs",
+  "version": "1.0.0",
+  "soloApiVersion": ">=1.10 <2.0",
+  "soloClientVersion": ">=1.10 <2.0",
+  "server": "server/Solo.DesignDocs.dll",
+  "client": "client/Solo.DesignDocs.Client.dll",
+  "schema": "ext_design_docs",
+  "nav": [],
+  "hooks": [],
+  "failOpen": false
+}
+```
+
+Copy from Roadmap: the csproj comments and package references (contract `1.10.0`, `PrivateAssets="all"`), the schema-equals-manifest check in the entry point (`RoadmapExtension.cs`), the design-time factory, and the content URL with `?v=` plus the package version (`RoadmapApi.Content`).
+
+**JS build.** This is the first extension that bundles JS. Roadmap's `content/roadmap.js` is hand-written. Use esbuild to produce one ES module, `content/design-docs.js`, plus `content/design-docs.css`, loaded with `import()` the way `RoadmapAssets.cs` loads Roadmap's module.
+
+- Dependencies, all MIT (re-check each license when pinning): `@codemirror/*` and `@lezer/markdown` ([CodeMirror](https://codemirror.net/)), `yjs`, `y-protocols`, `y-codemirror.next` ([Yjs docs](https://docs.yjs.dev/)), `fflate` for zip files.
+- Pin exact versions in `package-lock.json`. Pick the current stable release of each when starting, rather than versions named here.
+- The bundle is a build output: gitignore it. `npm ci && npm run build` runs in the pack script and in a dev script that writes into the development package directory (`Extensions__DevelopmentDirectories__0`, writing-extensions.md §11).
+- CI: add a Design Docs block to `.github/workflows/ci.yml` copied from the Roadmap one (change filter, test, package, upload), with `actions/setup-node` before the pack step.
+
+**CSP check.** The bundle must run under core's policy as it is, with no script relaxation. CodeMirror injects styles at runtime, which `style-src 'unsafe-inline'` already allows. No `eval`, no inline scripts, no workers. Fonts come from `content/` (`font-src 'self'`).
+
+**Prototype before building anything else.** Throwaway code on a branch, not merged. Prove:
+
+1. Yjs over A2: three browser tabs typing in one `Y.Text` through a stub handler that only relays. Measure the delay between tabs and the hub's load. If .NET in the middle is too slow, batch harder in JS before changing the design.
+2. CodeMirror inside a Razor component. The JS editor owns its DOM element and Blazor never re-renders inside it. Check navigation away and back, hot reload, and disposal.
+3. The stamp renderer on an iPad with an Apple Pencil, at 72 paint pixels per inch: pressure, latency, and whether `getCoalescedEvents()` helps. An [Apple forum report](https://developer.apple.com/forums/thread/689375) found plain `pointermove` already delivers 240 Hz from the Pencil on an iPad Pro.
+4. iPadOS backgrounding: lock the screen mid-edit, come back, and check the resync (B3).
+
+**Done when:** the package builds and loads with an empty page, CI packages it, and the prototype's findings are written into this plan (change any section they contradict).
+
+### B1. Data model (`ext_design_docs`)
+
+Own `DbContext`. Bare `Guid`s for core ids, no foreign keys into core (writing-extensions.md §4). `Version` is `xmin` for optimistic concurrency, as in core. All timestamps are `DateTimeOffset` in UTC.
+
+| Table | Columns | Notes |
+|---|---|---|
+| `Vaults` | `Id`, `ProjectId`, `Name`, `IsClosed`, `ClosedAt?`, `CreatedAt`, `CreatedBy`, `Version` | Index `(ProjectId)`. Unique `(ProjectId, Name)`. |
+| `Folders` | `Id`, `VaultId`, `ParentId?`, `Name`, `Version` | Unique `(VaultId, ParentId, Name)`. Sorted by name, like Obsidian. |
+| `Notes` | `Id` (the GUID in links), `VaultId`, `FolderId?`, `Name`, `Markdown`, `MarkdownSeq`, `Headings` (jsonb), `SeedMarkdown?`, `LastEditedBy?`, `LastEditedAt?`, `CreatedAt`, `Version` | Unique `(VaultId, FolderId, Name)`. `Name` is the file name without `.md`. |
+| `Sketches` | `Id`, `NoteId`, `Name`, `PageSize`, `Orientation`, `Pattern`, `LastEditedBy?`, `LastEditedAt?`, `CreatedAt`, `Version` | `Name` is unique per vault (embeds refer to it). |
+| `DocUpdates` | `Seq` (bigint identity), `DocumentId`, `IsSnapshot`, `Data` (bytea), `UserId`, `At` | One log for notes and sketches. Index `(DocumentId, Seq)`. |
+| `Images` | `Id`, `VaultId`, `Path`, `ContentType`, `Data` (bytea), `Width`, `Height`, `Bytes`, `UploadedBy`, `UploadedAt`, `Version` | Unique `(VaultId, Path)`. `Path` is vault-relative, as in Obsidian. |
+| `MemberColors` | `ProjectId`, `UserId`, `Slot` | Primary key `(ProjectId, UserId)`. Unique `(ProjectId, Slot)`. |
+
+- Deleting a vault cascades inside the schema: folders, notes, sketches, update log, images.
+- Deleting a note deletes its sketches and their logs.
+- Images are kept until their vault is deleted, even when no note embeds them any more. That keeps undo working and makes "replace" safe. A cleanup of unreferenced images can come later.
+
+**Done when:** the migration applies through the host at startup, and `Solo.DesignDocs.Data.Tests` covers the unique constraints and the cascades.
+
+### B2. REST API: vaults, folders, notes
+
+Every route carries the project id, so the project policies resolve it: `/api/ext/design-docs/projects/{projectId}/...` (writing-extensions.md §6). **Every handler also checks that the vault, note or image it loads belongs to that `projectId`.** Without that check, a member of project A could pass project B's ids under A's route.
+
+| Action | Policy | Notes |
+|---|---|---|
+| List vaults, read the tree, read a note's metadata, markdown copy and headings | `ProjectRead` | The vault list includes `canManage`, from `ISoloQuery.CallerAsync().IsSuperAdmin`, so the client knows whether to show lifecycle actions. |
+| Create, rename, close, reopen, delete a vault | `SuperAdmin` **and** `ProjectRead` (two `[Authorize]` attributes are both required) | Super admin alone grants no project access (`ProjectAccessHandler` / `LiveAccess`), so without `ProjectRead` a super admin could create vaults in projects they can't see. Match whatever the board/roadmap lifecycle PR does here. Delete only a closed vault (409 otherwise). |
+| Create, rename, move, delete folders and notes | `ProjectWrite`, and the vault is open (409 if closed) | Moving or renaming a note keeps its `Id`, so GUID links survive. |
+| Store the markdown copy: `PUT notes/{id}/copy` `{ markdown, headings, seq }` | `ProjectWrite`, vault open | Kept only if `seq >= MarkdownSeq`. Sets `LastEditedBy` (the caller) and `LastEditedAt`. Cap the markdown at 1 MB. |
+| Resolve a note for a link: `GET notes/{id}/locate` | plain `[Authorize]` | The one route without a project id, because links carry only the note GUID. Check membership through `ISoloQuery.ProjectsAsync`. Return 404, not 403, for a note the caller can't read, so its existence isn't revealed. |
+| Resolve link labels: `POST links/labels` `{ urls }` | plain `[Authorize]` | For the link provider (B6). The same membership rule. Unreadable notes are left out of the answer. |
+| Read and claim per-project colors: `GET`/`POST projects/{projectId}/colors` | `ProjectRead` | `POST` gives the caller the next free slot, idempotently (retry on a unique violation). |
+
+After each change, publish on live topics with `ISoloLiveUpdates`, as Roadmap does after its saves:
+
+- `design-docs:vaults` (the project's vault list): `changed`
+- `design-docs:vault:{vaultId:N}` (a vault's tree): `tree`, `closed`, `reopened`, `deleted`
+- `design-docs:doc:{documentId:N}` (one note or sketch): `deleted`, `renamed`
+
+**Done when:** host tests (`Solo.DesignDocs.Tests`) cover each policy: a Read member can't write, a ReadWrite member can't create or close a vault, a super admin who isn't a member can't do either, writes to a closed vault get 409, and cross-project ids get 404.
+
+### B3. Live sync: the relay protocol
+
+One topic per open document: `design-docs:doc:{documentId:N}`, subscribed with the vault's project id. One `ISoloLiveMessageHandler` serves all of them. The server never decodes Yjs. It only checks who sent what kind of message.
+
+**Every message is `kind` + `data`.** Binary Yjs payloads are base64 strings. Sequence numbers are decimal strings or a small JSON envelope. Keep the envelope minimal and documented in one C# file and one JS file that mirror each other, with a test that pins the shared examples.
+
+| Kind (client → server) | Who | Server does |
+|---|---|---|
+| `sync` `{ afterSeq }` | anyone | Replies to the sender, in order: `state` chunks (the latest snapshot plus every update after `afterSeq`, each chunk ≤ 48,000 characters), then `synced { seq }`. If the note has `SeedMarkdown` and an empty log, see seeding below. |
+| `update` `{ id, data }` | writers, vault open | Appends to `DocUpdates`. Replies `ack { id, seq }` to the sender, and relays `update { seq, data }` to the others. Refused (`refused { id, reason }`) for a Read member or a closed vault. |
+| `update-part` `{ id, index, count, data }` | writers | For an update over the size cap. Reassemble per connection in memory, with a short expiry, then treat it as `update`. |
+| `awareness` `{ data }` | writers | Relayed to the others, not stored. Dropped silently from a Read member. |
+| `compact` `{ uptoSeq, data }` | writers | Replaces the snapshot and every update with `Seq <= uptoSeq` with one snapshot row, in one transaction. Ignored if `uptoSeq` is older than the current snapshot. |
+
+**Client provider** (`js/sync/provider.js`):
+
+- Wraps a `Y.Doc` and a y-protocols `Awareness`. Talks to .NET through a `DotNetObjectReference`: `send(kind, data)` out, `receive(kind, data)` in. The Razor component forwards to `ISoloLiveTopics.SendAsync` and from its topic subscription.
+- **Batches local updates** for about 50 ms with `Y.mergeUpdates` before sending. Throttles awareness to about 15–20 messages a second, the review's number for pointers.
+- **Keeps every unacked update** and resends it after a reconnect, on `ConnectionChanged` when `IsConnected` turns true. Yjs ignores updates it has already applied, so a duplicate is harmless.
+- **Resyncs after any gap:** sends `sync { afterSeq: lastSeenSeq }` on reconnect. Anything relayed while disconnected was missed.
+- **Online only:** while disconnected, the editor turns read-only and shows a banner. Unacked updates stay in memory. If there are any, warn on `beforeunload`.
+- **Compaction:** after `synced`, a writer whose log has grown past a threshold (say 500 updates since the snapshot) sends `compact` with `Y.encodeStateAsUpdate(doc)` and the seq it has seen through. Don't elect a client centrally. If two writers compact at once, the server keeps whichever arrives with the higher `uptoSeq`, and both snapshots are valid.
+- **Awareness cleanup:** when core's topic presence (`onPresence`) shows a user has gone, remove their awareness states, rather than waiting for y-protocols' own timeout.
+
+**Seeding imported notes.** Imported notes arrive as markdown (B9), and the server can't turn markdown into Yjs. So:
+
+- `SeedMarkdown` holds the imported text until a client converts it.
+- The first **writer** to `sync` a note with `SeedMarkdown` and an empty log gets `seed { markdown }` and a lease of about 30 seconds, held per document in server memory. It builds the `Y.Text` and sends it as a normal `update`.
+- The first stored update from the lease holder clears `SeedMarkdown`.
+- Anyone else who syncs during the lease gets `seeding`, and retries `sync` after a moment.
+- A Read member who opens an unseeded note sees the stored markdown, read-only, until a writer has seeded it.
+
+**Last edited.** Each client sends its markdown copy (B2) about 2 seconds after its own last local edit, never for remote ones. That updates "last edited by", the headings and the text, with no extra write per keystroke.
+
+**Handler notes.**
+
+- Cache document → (project, vault, closed) in memory for a short time, and refresh it on the lifecycle events B2 publishes.
+- A message whose document isn't in the given project is dropped. Same reason as B2's project check.
+- Don't use `ISoloQuery` or anything request-scoped inside the handler. Everything it needs about the sender is in `LiveSender`. *Verify what `IHttpContextAccessor` returns inside a hub invocation before relying on anything request-shaped.*
+
+**Done when:** two writers and a Read member converge on the same text through the real hub, in a host test with a JS-free C# fake client that replays recorded Yjs updates as opaque bytes. Also: a dropped connection resyncs without loss, a Read member's `update` is refused, a closed vault refuses writes, and seeding happens exactly once with two writers racing for it.
+
+### B4. Pages, navigation and the vault tree
+
+- `[ProjectNavSection("Design Docs")]`: the project's open vaults as links, with closed ones behind a toggle. "New design doc" only when `canManage`. Refreshes from the `design-docs:vaults` topic. `RoadmapNavSection.razor` is the model.
+- `[ProjectHomeSection("Design Docs")]`: the same list as cards. `RoadmapHomeSection.razor` is the model.
+- Routes:
+  - `/docs/{ProjectAlias}`: the project's vaults.
+  - `/docs/{ProjectAlias}/{VaultId:guid}`: a vault, with the tree on the left and the open note on the right. The note is `?note={noteId}`.
+  - `/docs/note/{NoteId:guid}`: resolves through `locate`, then replaces the URL with the vault route, keeping the `#heading` fragment. This is the route task links use (B6).
+- The tree is a `MudTreeView` of folders and notes. Create, rename, move (drag, plus a "Move to…" dialog for touch) and delete, through `ISoloContextMenu` on right-click and long-press. On a phone the tree is a drawer.
+- Vault lifecycle actions (rename, close, reopen, delete) sit in the vault page's ⋯ menu, only for super admins. Delete asks for confirmation and is only offered when the vault is closed.
+- Renaming a note that `[[wiki links]]` in other notes point at: v1 warns with a count, and leaves the links unresolved, shown in Obsidian's unresolved-link style. The count comes from searching the stored markdown copies. Rewriting the links automatically is a later phase (B10), because with the relay design it's a client-side edit of every referencing note.
+
+**Done when:** a super admin can create a vault, a writer can build a tree in it, a Read member sees it read-only, and all of it updates live in a second tab.
+
+### B5. The editor: CodeMirror live preview and presence
+
+`js/editor/` mounts CodeMirror 6 with:
+
+- **`@codemirror/lang-markdown`** and a **live-preview plugin**: a `ViewPlugin` that builds decorations from the syntax tree, hiding markup (`#`, `**`, `_`, link brackets and URLs, embed syntax) **except on lines that hold the local selection**. Decorations are per view, so other people's cursors never reveal anything, which is the decided behavior ([CodeMirror guide: decorating the document](https://codemirror.net/docs/guide/#decorating-the-document); [Obsidian: views and editing mode](https://obsidian.md/help/edit-and-read)).
+- **Widgets** replace embeds when the cursor isn't on them: `![[image.ext]]` and `![](path)` become images (B7), `![[Name.sketch]]` becomes a sketch (B8), and task links become chips (B6).
+- **`yCollab`** from y-codemirror.next, for the shared `Y.Text`, remote cursors and selections, and per-user undo.
+- **Read-only** through a compartment holding `EditorState.readOnly` and `EditorView.editable`. On for Read members, closed vaults and while disconnected.
+- **No raw HTML, ever.** Inline HTML in a note (common in imported Obsidian notes) shows as text. Never set `innerHTML` from note content. Links are allowed only when they pass the same rule as core's `SoloMarkdownPipeline.IsSafeUrl` (relative, `http`, `https`, `mailto`). Port it to JS and pin both with a shared table of cases. Core's reason holds here too: the session credential is readable by any script on the page.
+- **Clicks:** an in-app link (`/...`) goes through Blazor's navigation, so it stays in the app and in the desktop shell. An external link opens a new tab, which the desktop shell sends to the system browser. A task chip opens `ISoloTaskDrawer.OpenAsync(taskId)` without leaving the page.
+- **Headings** carry slugs (lowercase; spaces to `-`; drop everything but letters, digits, `-` and `_`; add `-2`, `-3` for repeats). The slug function lives only in JS. The client sends headings with each markdown copy (B2), so the server never needs its own copy of the rule. A `#fragment` that matches no heading opens the note at the top with a "heading not found" note.
+
+**Presence bar** (Blazor, above the note): everyone on the document's topic, from `ISoloLiveTopics` presence. Writers report `Editing` while the editor is focused and `Viewing` otherwise. Read members always report `Viewing`.
+
+**Colors:**
+
+- Slot `n` (join order per project, from `MemberColors`) maps to hue `(n × 137.508°) mod 360` in OKLCH, with lightness fixed per color scheme and a moderate chroma. Golden-angle steps keep existing colors still when someone joins, and OKLCH spaces them more evenly than HSL (see the review's "Editor colors").
+- Draw text cursors and selection highlights with a contrasting outline, so they stay visible over colored text and inks.
+- Past about seven people, colors stop being easy to tell apart ([Healey 1996](https://www.cs.ubc.ca/tr/1996/tr-96-10)), so cursor labels always show the name.
+- CSS `oklch()` needs Safari 15.4 or Chrome 111 ([MDN: oklch()](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/oklch)). Convert to `rgb()` in JS if an older target matters.
+
+**Last edited by** shows under the note title, from the note's metadata, refreshed when the topic says it changed.
+
+**Done when:** two writers see each other's cursors in their colors, markup appears only under each person's own cursor, a Read member sees both cursors and can't type, and a note with `<img onerror=...>` in it shows that as text.
+
+### B6. Links between tasks and docs
+
+1. **Picker in core's editor (A3a).**
+   - A `[MarkdownEditorAction]` class in the client half offers "Link a doc" for `TaskDescription`, `EpicDescription` and `Comment`.
+   - It opens the extension's own MudBlazor dialog: choose a vault (open ones) → search or browse notes → optionally a heading (from the stored `Headings`).
+   - It returns `[Note › Heading](/docs/note/{noteId:N}#{slug})`, or `[Note](/docs/note/{noteId:N})`.
+   - The URL has no project alias on purpose. A note's GUID is unique on its own, and a link without the alias survives a project alias change, as well as note renames and moves.
+2. **Live labels (A3b).**
+   - A `[MarkdownLinkProvider]` claims URLs starting with `/docs/note/`. It batches them to `POST links/labels` and caches answers for about 30 seconds.
+   - The label it returns is the note's current title and heading text, so a renamed note shows its new name.
+   - A note the reader can't open, or that was deleted, keeps the label as written. Don't reveal whether it exists.
+   - The provider always replaces the label. Custom link text is not kept (see §5).
+3. **Task chips inside docs.**
+   - A toolbar button calls `ISoloTaskPicker.PickAsync` and inserts `[{SERIAL}](/docs/task/{taskId:N})`. The editor renders it as a chip with the task's current serial and title, fetched from core's task API (`api/tasks/{id}`).
+   - Use the task's id rather than `||SERIAL||`. A serial changes when a task moves boards, and core only re-points serials inside its own descriptions and comments (`TaskReferences.Retarget`), never inside an extension's notes.
+   - Add a small page at `/docs/task/{TaskId:guid}` that opens the task drawer, for when such a link is followed from outside the editor.
+4. **"Linked docs" on a task.**
+   - A `[TaskDetailExtension]` component parses `/docs/note/` links out of `Task.Description` on the client, and lists them with their resolved labels.
+   - No server index is needed for this direction.
+   - The reverse direction ("which tasks link to this note") is B10.
+
+**Done when:** a writer inserts a doc link into a task description at the cursor, the rendered task shows the note's current title, renaming the note updates that label, and following the link opens the note at the heading.
+
+### B7. Images
+
+- **Upload** by paste, drop, or a file button.
+  - In the browser, decode the image and re-encode it with a canvas to WebP (JPEG where WebP encoding isn't available), with the long edge at most 2,560 px. That avoids Safari's inconsistent HEIC handling ([WebKit bug 292350](https://bugs.webkit.org/show_bug.cgi?id=292350)) and strips location data.
+  - Reject SVG in v1. An SVG opened directly can run script.
+  - Upload with `SendBytesAsync` (A4) to `POST projects/{projectId}/vaults/{vaultId}/images?path=...`. The server caps the body at 10 MB with `[RequestSizeLimit]`, sniffs the bytes, and stores them.
+  - Insert the embed at the cursor: Obsidian form `![[attachments/name.webp]]`, so export stays Obsidian-compatible.
+- **Download** with `GetBytesAsync`, then `URL.createObjectURL(new Blob(...))`. Needs A1 for `blob:`.
+  - Keep a per-page cache of object URLs keyed by image id and version.
+  - Revoke them when evicted and when the page is disposed.
+  - Serve image responses with core's isolation headers: `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, the same string as `SecurityHeaders.IsolationPolicy`, written out in the extension because it can't reference `Solo.Api`. Also `X-Content-Type-Options: nosniff`.
+- **Look:** a small paper card, slightly rotated with a seeded angle per image, so it doesn't change between renders. Clicking it expands the image full screen over a darkened page.
+- **The "same line" rule:**
+  - Two or more image embeds in one paragraph, with nothing but whitespace between them, render as a fanned stack. Clicking the stack opens a full-screen carousel.
+  - An image in a paragraph that also has text renders as its own small card, inline. No stacking.
+- **Replace** (writers, from the image's context menu) uploads new bytes into the same row. Every embed updates, and a live `image` message on the vault topic tells open pages to refetch.
+- **Resolving embeds** follows Obsidian's rules ([Obsidian: links](https://obsidian.md/help/links)): an exact vault-relative path first, then a unique file name anywhere in the vault. Decode `%20` in markdown-style paths.
+
+**Done when:** a pasted iPad photo uploads as WebP, a non-member gets 404 for the image URL, and the stack, full-screen view and carousel work by mouse and touch.
+
+### B8. Sketches
+
+Each sketch is its own Yjs document on its own topic (`design-docs:doc:{sketchId:N}`), with its own row in `Sketches`. A note embeds it as `![[Name.sketch]]`. Moving that line moves the sketch within the note. Deleting the line keeps the sketch until the note is deleted, so undo brings it back.
+
+**Model (`Y.Doc`):**
+
+- `ops`: a `Y.Array` of finished operations in drawing order. Each is a stroke `{ id, tool: pen|eraser, ink, level, seed, points: [x, y, pressure, ...] }`, with points in paint pixels and pressure 0–1. A move is `{ id, kind: 'move', strokeIds, dx, dy }`, or rewrite the moved strokes' points in one transaction. Choose whichever keeps the eraser semantics below simpler, and note the choice here.
+- `texts`: a `Y.Map` of text boxes `{ x, y, ink, scale, text: Y.Text }`.
+- `meta`: page size, orientation and pattern. These mirror the `Sketches` row, which is what the REST API serves to lists.
+
+**Rendering (`js/sketch/render.js`):**
+
+- An offscreen canvas at the page's paint-pixel size: 72 per inch, so A4 is 595 × 842, A5 420 × 595, A3 842 × 1191 and Letter 612 × 792, swapped for landscape. It is shown scaled up with `image-rendering: pixelated`.
+- Zoom in whole-number steps of screen pixels per paint pixel, so pixels stay even.
+- Draw each pen stroke by stamping a small pixel brush at even spacing along the path, at whole-pixel positions, with `imageSmoothingEnabled = false`. No rotated stamps: use a few pre-drawn angles.
+- Draw eraser strokes the same way with `globalCompositeOperation = 'destination-out'`, so they clear pixels from everything drawn before them. Draw the background pattern on its own layer underneath, so erasing never removes the grid.
+- **Thickness:** five levels, each a brush width in paint pixels, starting at 1, 2, 3, 5 and 8 (to tune). With a stylus, width = the selected level's width rising toward level 5's as pressure rises, rounded to whole paint pixels. With `pointerType === 'mouse'`, ignore pressure: a pressed mouse reports 0.5 ([MDN: PointerEvent.pressure](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/pressure)).
+- **Boil:** each stamp's offset is a function of `(stroke.seed, stampIndex, frame)` in {−1, 0, 1} paint pixels. Cycle three frames a few times a second. Stop the loop when the sketch is off screen or the tab is hidden. Hold still on frame 0 when `prefers-reduced-motion` is set. That last point isn't from Hunter, but it's cheap and kind.
+- **Inks:** theme ink (black in light schemes, white in dark), and red, blue and green, each with a light-scheme and a dark-scheme shade. The page background contrasts with the ink in each scheme.
+- **Text:** a bitmap pixel-font atlas in `content/`, drawn glyph by glyph at whole pixels. Pick a font licensed OFL or CC0 and record its license in the package. While a box is being edited, an overlaid `<textarea>` bound to its `Y.Text` takes the input.
+
+**Input (`js/sketch/input.js`):**
+
+- Pointer events with `touch-action: none` on the canvas.
+- Read `getCoalescedEvents()` where present.
+- Palm rejection: ignore `touch` pointers while a `pen` is down.
+- Suppress the long-press menu and selection on the canvas.
+- Two-finger pan, zoom and rotate of the **view**, plus 90° rotate buttons. The rotation is a display transform, and pointer positions are rotated back into page coordinates.
+- An Apple forum report says Scribble can swallow `pointerdown` events (same link as B0), so test with Scribble on.
+
+**Tools:**
+
+- **Pen.**
+- **Eraser.**
+- **Rectangle and ellipse:** generate a stroke. Shift constrains to a square or circle. iPads often have no keyboard, so add a "constrain" toggle on the toolbar too.
+- **Select/move:**
+  - Tap a stroke: flood-fill the visible pixels from that point, collect the strokes whose stamps landed in that region, and move them as a group.
+  - When a stroke is only partly in the region because an eraser cut it, split it at the cut into separate strokes in the same transaction, then move the piece. This is the hardest tool. Build it last.
+- **Text tool.**
+- **Undo/redo:** `Y.UndoManager` scoped to the local user.
+- **Clear:** with a confirmation.
+
+**Live drawing:**
+
+- Finished operations go into the Yjs doc (stored, via B3).
+- A stroke in progress travels as awareness state (relayed, not stored), so others watch it being drawn.
+- Pointer cursors in sketches travel as awareness too, throttled to 15–20 updates a second, drawn in the person's color, and only for writers.
+- An Apple Pencil hovering on models that support it can show a pointer. A finger can't.
+
+**Page changes:** changing the size or orientation to one that would clip line work shows a warning first. Clipped strokes stay stored and are hidden by the page bounds, so enlarging the page brings them back.
+
+**Export PNG:** render frame 0 at 1× paint pixels, with the theme ink as black on white, colored inks in their light-scheme shade, and the pattern in light gray. Download as a `blob:` URL.
+
+**Done when:** two people draw on one sketch at once and see each other's strokes and pointers. An eraser stroke cuts a line visibly, and two simultaneous erasers merge. Pressure ramps from the selected level on a Pencil and does nothing with a mouse. Export matches the screen pixel for pixel at 1×.
+
+### B9. Obsidian import and export
+
+**Import** (super admins and writers into an open vault; a new vault can be created from a zip by a super admin):
+
+- Read the zip **in the browser** with fflate. Skip `.obsidian/` and anything that is neither a `.md` note nor an image embedded by one. Show a summary of what was skipped, and why, before importing.
+- Create folders and notes in batches (`POST projects/{projectId}/vaults/{vaultId}/import/notes`, up to about 100 notes or 5 MB per call). Each note's markdown goes into `SeedMarkdown` unchanged, including front matter. B3 seeds it on first open.
+- Upload images one by one with A4. The `/api` bucket allows a burst of 300 and then 100 requests per 10 seconds per user (`Program.cs`), so pace uploads and honor `Retry-After` on a 429. A vault with hundreds of images takes a minute or two, so show progress.
+- Keep links as Obsidian wrote them (`[[Note]]`, `[[Folder/Note]]`, `[[Note#Heading]]`, `[[Note|text]]`, `![[...]]`, markdown links with `%20`). The editor resolves them with Obsidian's rules.
+- Large bodies are the reason for batching rather than one upload of the whole zip. ASP.NET Core rejects bodies over 30,000,000 bytes by default ([Microsoft: Kestrel limits](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel/options?view=aspnetcore-5.0)).
+
+**Export** (anyone who can read the vault):
+
+- Build the zip **in the browser**.
+- For each note, fetch its update log (a `GET` that returns the snapshot and updates), apply it to a fresh `Y.Doc`, and take the text. That's exact, unlike the stored markdown copy, which can lag.
+- Add the image files at their paths.
+- Render each sketch to PNG (B8) as `Name.sketch.png`, and rewrite its embeds to `![[Name.sketch.png]]` in the exported copy only. Obsidian can show a PNG but can't open a `.sketch`.
+- Notes nobody edited since import come out byte for byte as they went in, because the seed is stored unchanged.
+- Download as a `blob:` URL. *Verify the desktop shell saves a `blob:` download (Electron's `will-download`), and fix it in the shell if not. That would be a core change, so raise it first.*
+
+**Done when:** importing a sample vault and exporting it again gives identical `.md` files for the notes nobody touched, and images resolve both ways.
+
+### B10. Later, not in the first release
+
+Listed so they aren't built by accident, and so the data model leaves room for them:
+
+- **Search** across a project's notes: Postgres full-text over `Notes.Markdown`. The stretch goal.
+- **Backlinks** ("tasks that link to this note"): an `ISoloEventHandler` on task changes parses descriptions into a table in the schema. Event delivery is best-effort, so add a reconcile endpoint that rescans a project's tasks through `ISoloQuery` as the caller.
+- **Move a sketch to another note:** the nice-to-have. Re-parent the row, and move the embed line in the same user action.
+- **Rewrite `[[links]]` on rename,** as Obsidian does ([Obsidian: links](https://obsidian.md/help/links)). The renaming client loads each referencing note's Yjs doc and edits it.
+- **Read-only offline cache:** `y-indexeddb` ([Yjs: offline editing](https://docs.yjs.dev/getting-started/allowing-offline-editing)). Easy in the desktop app. In a browser it needs a service worker in core first, which Solo doesn't have. Wipe the cache on sign-out.
+
+---
+
+## 3. PR order
+
+| # | PR | Contains | Depends on |
+|---|---|---|---|
+| 1 | Core: contract 1.10 | A1–A5 | — |
+| 2 | Design Docs: scaffold, data, vaults and tree | B0 (minus the throwaway prototype), B1, B2, B4 | 1, and the board/roadmap lifecycle PR for its pattern |
+| 3 | Design Docs: live editing | B3, B5 | 2 |
+| 4 | Design Docs: task links | B6 | 3 |
+| 5 | Design Docs: images | B7 | 3 |
+| 6 | Design Docs: sketches | B8 (split into rendering and tools if it grows past review size) | 3 |
+| 7 | Design Docs: Obsidian import and export | B9 | 5, 6 |
+
+Bump the extension's version in `extension.json` and both csproj files together whenever its package changes. The pack script refuses a mismatch, as Roadmap's does.
+
+## 4. Testing
+
+- **Core (Part A):** the tests listed in each step. `dotnet test Solo.slnx` (integration tests need Docker for Testcontainers Postgres).
+- **Extension, C#:**
+  - `Solo.DesignDocs.Data.Tests`: the update log (append, compact, seed lease), cascades and constraints.
+  - `Solo.DesignDocs.Tests` (host loaded): every policy in B2, cross-project ids, the live handler through the real hub (B3), and bUnit tests for the Razor components, as `Solo.Roadmap.Tests` does with its `FakeLiveTopics`.
+- **Extension, JS:** `node --test` in `Solo.DesignDocs.Client/js`, run by the pack script and CI.
+  - Two `Y.Doc`s converging through a fake relay that drops, duplicates and reorders messages.
+  - Slug cases and `IsSafeUrl` parity cases (the shared tables).
+  - The stamp renderer, for deterministic output given a seed.
+  - The pressure-to-width mapping.
+  - Obsidian link resolution cases.
+- **Manual:** the `verify` skill (`.claude/skills/verify`) runs the app locally.
+  - Check with two browsers and a Read member.
+  - Check on an iPad home-screen web app with an Apple Pencil: pressure, Scribble, palm rejection, backgrounding and reconnect.
+  - Check in the desktop app: `blob:` images and export downloads.
+
+## 5. Assumptions this plan made
+
+These weren't decided by Hunter. Each is the most likely reading, and each is cheap to change before its PR.
+
+1. **A4 (binary calls on `ISoloClientApi`) joins contract 1.10.** It wasn't in the review's list. The fallback is base64 in JSON (A4).
+2. **Doc links always show the note's current title.** Custom link text in task descriptions isn't preserved. That matches how `||SERIAL||` renders, and keeps the rule simple.
+3. **Writers create, rename, move and delete notes and folders.** Super admins only control the vault's own lifecycle, which is what the decision named.
+4. **A vault can be deleted only once it's closed.** This is from the original idea ("when closed they can be deleted").
+5. **Doc links use `/docs/note/{guid}` with no project alias,** so they survive alias changes as well as renames.
+6. **Renaming a note warns about `[[links]]` instead of rewriting them** in v1 (rewrite is B10).
+7. **SVG uploads are rejected** in v1.
+8. **Unreferenced images are kept** until the vault is deleted.
+9. **Sketch boil holds still under `prefers-reduced-motion`.**
+10. **Starting values to tune:** the hub size cap (48,000 characters), the live rate limit (burst 200, 50 per second), the five brush widths (1, 2, 3, 5, 8 paint pixels) and the image size cap (2,560 px, 10 MB).
+
+## 6. Sources
+
+Solo repository at `d6357e1`:
+[CLAUDE.md](../CLAUDE.md),
+[writing-extensions.md](writing-extensions.md),
+[extension-plan.md](extension-plan.md),
+`src/Solo.Api/Realtime/BoardHub.cs`, `LiveAccess.cs`, `TopicRegistry.cs`, `LiveUpdates.cs`,
+`src/Solo.Shared/Hubs/BoardHubContract.cs`,
+`src/Solo.Shared/Extensibility/ISoloLiveTopics.cs`, `ISoloClientApi.cs`, `ContractVersion.cs`,
+`src/Solo.Extensibility/ISoloLiveUpdates.cs`, `ExtensionServiceCollectionExtensions.cs`, `SoloPolicies.cs`,
+`src/Solo.Extensions/HookCatalog.cs`,
+`src/Solo.Client/Realtime/LiveTopics.cs`, `BoardHubClient.cs`,
+`src/Solo.Client/Components/SoloMarkdown.razor`, `SoloMarkdownPipeline.cs`, `MarkdownEditor.razor`,
+`src/Solo.Client/Extensions/ContributedSections.cs`,
+`src/Solo.Api/SecurityHeaders.cs`, `src/Solo.Api/Program.cs`,
+`src/Solo.Desktop/main/server.js`,
+`build/contract-package.props`, `build/pack-contract.sh`, `build/pack-roadmap-extension.sh`,
+`extensions/Roadmap/` (as the model extension).
+
+Design record: [Design Docs extension: feasibility review](https://claude.ai/artifact/RxZ5kdcCkJZN7LZunHY1CL) and its comment threads (2026-10-22).
+
+Official documentation:
+- Microsoft: [SignalR configuration](https://learn.microsoft.com/en-us/aspnet/core/signalr/configuration?view=aspnetcore-10.0) (32 KB default receive size), [Kestrel limits](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel/options?view=aspnetcore-5.0)
+- MDN: [PointerEvent.pressure](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent/pressure), [oklch()](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/oklch)
+- CodeMirror: [guide, decorating the document](https://codemirror.net/docs/guide/#decorating-the-document)
+- Obsidian: [links](https://obsidian.md/help/links), [views and editing mode](https://obsidian.md/help/edit-and-read), [editor extensions](https://docs.obsidian.md/Plugins/Editor/Editor+extensions)
+- Yjs: [docs](https://docs.yjs.dev/), [offline editing](https://docs.yjs.dev/getting-started/allowing-offline-editing)
+
+Research: Healey, C. G. (1996). [Choosing Effective Colours for Data Visualization](https://www.cs.ubc.ca/tr/1996/tr-96-10). Proceedings IEEE Visualization '96, 263–270.
+
+Bug reports and forums, for browser behavior with no official page: [Apple Developer Forums: 240 Hz Apple Pencil input in JavaScript](https://developer.apple.com/forums/thread/689375), [WebKit bug 292350: HEIC transcoding on upload](https://bugs.webkit.org/show_bug.cgi?id=292350).
