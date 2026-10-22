@@ -50,7 +50,7 @@ From the review and its comment threads. Don't reopen these.
 | Inks | Black/white (follows the color scheme), red, blue, green. |
 | Sketch export | Rasterized PNG, black lines on white, one still frame. |
 
-**Dependency, built elsewhere:** boards and roadmaps are moving to the same super-admin-only lifecycle in a separate thread and PR ("Super-admin-only board and roadmap lifecycle"). Don't re-plan or redo it here. When B2 is built, copy that PR's pattern for the lifecycle endpoints and the client's hiding of those actions, so all three behave the same way. If it hasn't merged by then, use the pattern in B2 and say so in the PR.
+**Dependency, built elsewhere:** boards and roadmaps are moving to the same super-admin-only lifecycle in a separate thread, [PR #29](https://github.com/HunterAhlquist/Solo/pull/29). Don't re-plan or redo it here. That PR puts create, close/reopen and delete behind `SuperAdmin` with `ProjectOwner` stacked on top, so the project still resolves from the route. B2 copies that pattern, and the way the client hides those actions, so boards, roadmaps and vaults all behave the same way. If #29 changes before it merges, follow what it merges with.
 
 ---
 
@@ -377,7 +377,7 @@ Every route carries the project id, so the project policies resolve it: `/api/ex
 | Action | Policy | Notes |
 |---|---|---|
 | List vaults, read the tree, read a note's metadata, markdown copy and headings | `ProjectRead` | The vault list includes `canManage`, from `ISoloQuery.CallerAsync().IsSuperAdmin`, so the client knows whether to show lifecycle actions. |
-| Create, rename, close, reopen, delete a vault | `SuperAdmin` **and** `ProjectRead` (two `[Authorize]` attributes are both required) | Super admin alone grants no project access (`ProjectAccessHandler` / `LiveAccess`), so without `ProjectRead` a super admin could create vaults in projects they can't see. Match whatever the board/roadmap lifecycle PR does here. Delete only a closed vault (409 otherwise). |
+| Create, rename, close, reopen, delete a vault | `SuperAdmin` **and** `ProjectOwner` (two `[Authorize]` attributes, both required), as PR #29 does for boards | `ProjectOwner` is there so the project resolves from the route. `AccessPolicy.Allows` lets any super admin pass it, member or not (`src/Solo.Data/Domain/AccessPolicy.cs`), so the effective rule is "super admins only", as decided. Delete only a closed vault (409 otherwise). |
 | Create, rename, move, delete folders and notes | `ProjectWrite`, and the vault is open (409 if closed) | Moving or renaming a note keeps its `Id`, so GUID links survive. |
 | Store the markdown copy: `PUT notes/{id}/copy` `{ markdown, headings, seq }` | `ProjectWrite`, vault open | Kept only if `seq >= MarkdownSeq`. Sets `LastEditedBy` (the caller) and `LastEditedAt`. Cap the markdown at 1 MB. |
 | Resolve a note for a link: `GET notes/{id}/locate` | plain `[Authorize]` | The one route without a project id, because links carry only the note GUID. Check membership through `ISoloQuery.ProjectsAsync`. Return 404, not 403, for a note the caller can't read, so its existence isn't revealed. |
