@@ -320,11 +320,18 @@ full feature list is in [its README](extensions/Roadmap/Solo.Roadmap/README.md).
 
 ### Desktop Sign-in
 
-Google refuses to run its sign-in pages inside Electron ("this browser or app may not be secure"), so the shell signs in through the **system browser** on the **instance's own origin**, then returns through a PKCE-bound loopback callback:
+Google refuses to run its sign-in pages inside Electron ("this browser or app may not be secure"), so the shell signs in outside the app on the **instance's own origin** — on macOS in a **sign-in window** over the app, elsewhere in the **default browser** — then returns through a PKCE-bound loopback callback:
 
 1. The in-app **Authorize in browser** button opens an ephemeral `127.0.0.1` listener, generates a PKCE verifier, and asks the instance to open a flow (`POST api/auth/desktop/start`) with that port and the verifier's challenge.
-2. The shell opens `https://<instance>/desktop-auth?state=…` in your default browser. That page runs the ordinary Google Identity Services flow — on the origin the operator already registered for the web client, so **no extra provider registration is needed** — and sends a short-lived, one-time authorization code to the loopback listener.
+2. The shell opens `https://<instance>/desktop-auth?state=…`. On macOS that is Apple's web authentication window (`ASWebAuthenticationSession`, through a small native add-on in `src/Solo.Desktop/native/auth-session`): it is Safari, or a default browser that supports it, so an existing Google sign-in carries over. Elsewhere — or if the add-on isn't built — it is the default browser. The page wears the instance's theme, signs in with Google, and sends a short-lived, one-time authorization code to the loopback listener. On macOS the listener then redirects to `com.solo.desktop://…`, which closes the sign-in window.
 3. The shell redeems that code with its verifier (`POST api/auth/desktop/redeem`) and receives a **long-lived Solo session token** (sliding expiry, default 30 days via `Auth__SessionDays`), exactly once. A remote client that started the flow never receives the loopback code, and an intercepted code is useless without the verifier.
+
+The page reaches Google one of two ways:
+
+- **By default, Google's button.** Its sign-in opens in a popup — a second window — after a click, on the origin the operator already registered for the web client, so **no extra provider registration is needed**.
+- **Redirect mode** (`Auth__DesktopRedirect=true`). The page goes straight to Google's OpenID Connect sign-in in the same window, with no click; Google posts the ID token back to `/desktop-auth`. Register `https://<instance>/desktop-auth` as an authorized redirect URI first — see [Desktop sign-in with Google](site/admin/configuration.md#desktop-sign-in-with-google). Only the desktop sign-in changes; the web sign-in keeps Google's button.
+
+Either way the ID token's `nonce` must be the flow's state, so a token from any other sign-in cannot complete this one.
 
 Signing out revokes the session server-side. Both the desktop app and instance must support the secure loopback flow; incompatible versions fail closed, and the current desktop app identifies an old server response and asks for an update. (The client detects the shell via `window.soloDesktop`, exposed by the preload, and swaps the GIS widget for the plain button — Google's widget never loads inside the app.)
 

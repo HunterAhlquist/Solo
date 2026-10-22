@@ -98,6 +98,8 @@ All paths are relative to the root of the package, for example `content/theme.cs
 
 ## Sign-in screen
 
+The background and the logo apply to the sign-in screen of the web app and to the sign-in page of the desktop app. The desktop sign-in page also uses the palette, the fonts and the corner radius of the theme. It uses the scheme of the computer, dark or light. It does not use the stylesheet of the theme.
+
 ### Background
 
 | Field | Content | Default |

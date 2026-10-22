@@ -5,14 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign in to Solo</title>
   <style>
-    /* Matches the client's boot-splash aesthetic: black, #fff600, Courier. */
+    /* The instance's theme fills these in (desktop-auth.js, applyTheme) so the
+       page matches the web sign-in: palette, fonts, corner radius, the login
+       backdrop and logo. These defaults are the client's boot-splash look,
+       for a theme that can't be loaded. */
     :root {
+      color-scheme: light dark;
       --bg: #000000;
+      --surface: #111111;
       --fg: #ffffff;
       --dim: #9a9a9a;
       --accent: #fff600;
       --error: #ff5252;
       --ok: #6fdc6f;
+      --font: "Courier New", monospace;
+      --heading-font: var(--font);
+      --heading-weight: 700;
+      --radius: 8px;
+      --backdrop-image: none;
+      --backdrop-size: cover;
+      --backdrop-position: center;
+      --backdrop-color: var(--bg);
+      --backdrop-scrim: 0;
     }
 
     html, body {
@@ -20,29 +34,79 @@
       height: 100%;
       background: var(--bg);
       color: var(--fg);
-      font-family: "Courier New", monospace;
+      font-family: var(--font);
+    }
+
+    /* Hidden until the theme is applied (or given up on), so the page doesn't
+       flash the default colours first — on the system's own light or dark
+       canvas meanwhile, not the black of the defaults. */
+    html:not(.ready) main,
+    html:not(.ready) .backdrop {
+      visibility: hidden;
+    }
+
+    html:not(.ready),
+    html:not(.ready) body {
+      background: Canvas;
+    }
+
+    .backdrop {
+      position: fixed;
+      inset: 0;
+      background-color: var(--backdrop-color);
+      background-image: var(--backdrop-image);
+      background-size: var(--backdrop-size);
+      background-position: var(--backdrop-position);
+      background-repeat: no-repeat;
+    }
+
+    .backdrop::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--bg);
+      opacity: var(--backdrop-scrim);
     }
 
     main {
+      position: relative;
       display: grid;
-      place-content: center;
+      place-items: center;
+      min-height: 100vh;
+      padding: 1rem;
+      box-sizing: border-box;
+    }
+
+    .card {
+      display: grid;
+      justify-items: center;
       gap: 1.5rem;
-      height: 100vh;
+      width: min(100%, 26rem);
+      box-sizing: border-box;
+      padding: 2rem;
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
       text-align: center;
     }
 
     h1 {
       margin: 0;
+      font-family: var(--heading-font);
       font-size: 1.5rem;
-      font-weight: 700;
+      font-weight: var(--heading-weight);
       letter-spacing: 0.35em;
       text-transform: uppercase;
-      color: var(--accent);
+      color: var(--fg);
+    }
+
+    #logo {
+      max-width: 14rem;
+      max-height: 5rem;
     }
 
     p {
       margin: 0;
-      max-width: 34rem;
       font-size: 0.85rem;
       line-height: 1.6;
       color: var(--dim);
@@ -54,19 +118,31 @@
       min-height: 44px;
     }
 
+    #button:empty {
+      display: none;
+    }
+
+    #status:empty {
+      display: none;
+    }
+
     #status.ok { color: var(--ok); }
     #status.error { color: var(--error); }
   </style>
 </head>
 <body>
+<div class="backdrop"></div>
 <main>
-  <h1>Solo</h1>
-  <p id="lead">
-    Continue only if you just started sign-in from Solo Desktop on this device.
-    After Google verifies you, this browser will return to the local app.
-  </p>
-  <div id="button"></div>
-  <p id="status"></p>
+  <div class="card">
+    <img id="logo" alt="" hidden />
+    <h1>Solo</h1>
+    <p id="lead">
+      Continue only if you just started sign-in from Solo Desktop on this device.
+      After Google verifies you, this browser will return to the local app.
+    </p>
+    <div id="button"></div>
+    <p id="status"></p>
+  </div>
 </main>
 
 <!-- Relative, so this resolves next to the page on a sub-path instance too.

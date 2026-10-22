@@ -11,7 +11,7 @@ A theme is a `.zip` file with a manifest, `theme.json`, and optional files. It c
 - The palette of the dark scheme and of the light scheme.
 - The fonts, the font sizes and the font weights.
 - Three layout sizes: the corner radius, the height of the app bar and the width of the sidebar.
-- The background and the logo of the sign-in screen.
+- The background and the logo of the sign-in screen, in the web app and in the desktop app.
 - A stylesheet, for details that the manifest cannot set.
 
 A theme contains no code.

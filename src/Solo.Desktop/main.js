@@ -11,6 +11,7 @@ const { createSoloServer } = require('./main/server');
 const { buildMenu } = require('./main/menu');
 const { attachContextMenu, popupClientMenu } = require('./main/context-menu');
 const { DesktopAuth } = require('./main/desktop-auth');
+const { presentAuthSheet } = require('./main/auth-sheet');
 const { openAboutWindow, registerAboutIpc } = require('./main/about');
 
 let settings = null;
@@ -718,6 +719,11 @@ function beginBrowserSignIn(instance) {
         instanceUrl: instance.url,
         onSession: session => deliverSession(instance, session),
         onFailure: message => notifySignInFailed(instance, message),
+        // Over the window the sign-in started from: settings while adding
+        // the instance, the instance's own window otherwise.
+        sheet: (url, onDismissed) => presentAuthSheet(url,
+            settingsSignInId === instance.id ? settingsWindow : windowFor(instance),
+            onDismissed),
     });
 }
 
@@ -790,6 +796,7 @@ async function deliverSession(instance, session) {
 // Surfaces a failed browser flow in the sign-in UI — a silent return would
 // leave the user staring at "finish signing in in your browser" forever.
 async function notifySignInFailed(instance, message) {
+    console.warn(`Sign-in to ${instance.url} failed: ${message}`);
     if (settingsSignInId === instance.id) {
         sendToSettings('sign-in:failed', { id: instance.id, message });
     }

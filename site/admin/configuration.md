@@ -27,6 +27,7 @@ A variable name uses two underscores between its parts, for example `Auth__Clien
 | Variable | Default | Purpose |
 |---|---|---|
 | `Auth__SessionDays` | `30` | The number of days that a desktop session lasts with no use. |
+| `Auth__DesktopRedirect` | `false` | Google only. The desktop app goes directly to Google's sign-in, in one window. See [Desktop sign-in with Google](#desktop-sign-in-with-google). |
 | `Database__AutoMigrate` | `true` | Apply database migrations at startup. |
 | `Themes__Directory` | `/data/themes` | The directory that Solo scans for theme packages. |
 | `Extensions__Directory` | `/data/extensions` | The directory that Solo scans for extension packages. |
@@ -58,6 +59,20 @@ One instance uses one identity provider.
 | A different OIDC issuer | The address of the issuer | `generic` |
 
 Solo identifies a person by the issuer and the subject of the token. A person can sign in only after a project owner invited the email address of the account. The super admin from the setup wizard is the exception.
+
+### Desktop sign-in with Google
+
+The desktop app signs in to a Google instance on the page `https://<your address>/desktop-auth`. On macOS this page opens in a sign-in window above the app. On other systems it opens in the browser. The page uses the theme of the instance.
+
+By default, the page shows Google's button, and the button opens the Google account selection in a second window. With redirect mode, the page goes directly to Google's sign-in, in the same window, with no click. Redirect mode applies to the desktop app only. The web sign-in does not change. To use redirect mode:
+
+1. In the Google Cloud console, open your OAuth client.
+2. Add `https://<your address>/desktop-auth` as an authorized redirect URI. Use the exact address: no slash at the end and no query.
+3. Set `Auth__DesktopRedirect` to `true`, then restart Solo.
+
+Do step 2 before step 3. If the redirect URI is not registered, Google refuses the desktop sign-in.
+
+Use an `https` address. With an `http` address, Safari shows a warning about a non-secure form when Google returns to the page.
 
 ## Reverse proxy
 

@@ -5,7 +5,9 @@
 //
 //   1. Listen on 127.0.0.1:{ephemeral port}; generate a PKCE verifier.
 //   2. POST {instance}/api/auth/desktop/start with the port and challenge.
-//   3. Open {instance}/desktop-auth?state=… in the default browser.
+//   3. Open {instance}/desktop-auth?state=… — in the sign-in sheet over the
+//      app when the caller can show one (macOS, main/auth-sheet.js), in the
+//      default browser otherwise.
 //   4. Receive the authorization code on loopback and redeem it with the
 //      verifier for a ready-made solo_ session.
 const crypto = require('crypto');
@@ -27,8 +29,12 @@ class DesktopAuth {
     /**
      * Starts a browser sign-in against the instance. Resolves once the browser
      * is open; the session arrives later through onSession.
+     *
+     * sheet(url, onDismissed), when given, shows the page in-app instead and
+     * returns a handle ({ completionUrl, cancel }), or null to fall back to the
+     * default browser.
      */
-    async begin({ instanceUrl, onSession, onFailure }) {
+    async begin({ instanceUrl, onSession, onFailure, sheet }) {
         this._closePending(this._pending);
         if (!instanceUrl) {
             onFailure('No Solo instance configured.');
@@ -42,6 +48,7 @@ class DesktopAuth {
             verifier,
             processing: false,
             timer: null,
+            sheet: null,
             onSession,
             onFailure,
         };
@@ -114,9 +121,16 @@ class DesktopAuth {
             this._failPending(pending, 'The sign-in timed out. Try again.');
         }, remaining);
 
+        const pageUrl = `${instanceUrl}/desktop-auth?state=${encodeURIComponent(flow.state)}`;
+        pending.sheet = sheet?.(pageUrl, reason => this._failPending(pending, reason === 'cancelled'
+            ? 'Sign-in was cancelled.'
+            : `The sign-in window closed: ${reason}`)) ?? null;
+        if (pending.sheet) {
+            return;
+        }
+
         try {
-            await this._openExternal(
-                `${instanceUrl}/desktop-auth?state=${encodeURIComponent(flow.state)}`);
+            await this._openExternal(pageUrl);
         } catch (error) {
             this._failPending(pending, `Could not open the system browser: ${error.message}`);
         }
@@ -193,7 +207,18 @@ class DesktopAuth {
             return;
         }
 
-        sendPage(response, 200, 'You’re signed in', 'Return to Solo Desktop. This tab can be closed.');
+        if (pending.sheet) {
+            // The sheet closes itself on reaching its completion URL, so the
+            // user never sees a page here.
+            response.writeHead(302, {
+                Location: pending.sheet.completionUrl,
+                'Cache-Control': 'no-store',
+                'Referrer-Policy': 'no-referrer',
+            });
+            response.end();
+        } else {
+            sendPage(response, 200, 'You’re signed in', 'Return to Solo Desktop. This tab can be closed.');
+        }
         this._closePending(pending);
         try {
             await Promise.resolve(pending.onSession(session));
@@ -228,6 +253,9 @@ class DesktopAuth {
         }
         clearTimeout(pending.timer);
         this._closeServer(pending.server);
+        // A failure is reported in the app, so a sheet still open on the
+        // page has nothing left to show. After success this is a no-op.
+        pending.sheet?.cancel();
     }
 
     _closeServer(server) {
