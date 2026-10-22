@@ -64,6 +64,8 @@ public static class ExtensionLoader
             }
 
             packages.Add(package);
+            logger.LogInformation(
+                "Extension {Id} {Version} loaded from {Source}.", package.Id, package.Manifest.Version, source);
         }
 
         logger.LogInformation(

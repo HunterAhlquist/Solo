@@ -272,6 +272,12 @@ jobs:
             type=match,pattern=server-v(\d+\.\d+)\.\d+$,group=1
             type=sha,prefix=sha-
 
+      # The version the image tags carry, for the app itself to report
+      # (Dockerfile SOLO_VERSION): `server-v1.6.0-rc1` → `1.6.0-rc1`.
+      - name: Release version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#server-v}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -279,6 +285,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SOLO_VERSION=${{ steps.version.outputs.version }}
+            SOLO_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

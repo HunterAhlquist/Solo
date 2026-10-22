@@ -19,7 +19,14 @@ COPY src/Solo.Api/Solo.Api.csproj src/Solo.Api/
 RUN dotnet restore src/Solo.Api/Solo.Api.csproj
 
 COPY src/ src/
-RUN dotnet publish src/Solo.Api/Solo.Api.csproj -c Release -o /app /p:UseAppHost=false
+
+# The release version and commit, from CI (.github/workflows/ci.yml). Without
+# them the server reports the SDK's 1.0.0 and nobody can tell which image is
+# running. Declared after restore so a new version doesn't redo the restore.
+ARG SOLO_VERSION=
+ARG SOLO_REVISION=
+RUN dotnet publish src/Solo.Api/Solo.Api.csproj -c Release -o /app /p:UseAppHost=false \
+    "/p:SoloServerVersion=${SOLO_VERSION}" "/p:SoloSourceRevision=${SOLO_REVISION}"
 
 # ---------------------------------------------------------------------------
 # Runtime stage: non-root, listens on 8080.

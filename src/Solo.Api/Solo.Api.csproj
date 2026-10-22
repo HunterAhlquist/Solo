@@ -27,6 +27,18 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.12" />
   </ItemGroup>
 
+  <!-- The release version and commit, which CI hands the image build
+       (Dockerfile: SOLO_VERSION, SOLO_REVISION). Read by this project alone:
+       a plain /p:Version would restamp Solo.Shared and Solo.Extensibility,
+       whose version is the extension contract's. The server reports the
+       result at startup and from /api/config/version (SoloVersion). -->
+  <PropertyGroup Condition="'$(SoloServerVersion)' != ''">
+    <Version>$(SoloServerVersion)</Version>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(SoloSourceRevision)' != ''">
+    <SourceRevisionId>$(SoloSourceRevision)</SourceRevisionId>
+  </PropertyGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

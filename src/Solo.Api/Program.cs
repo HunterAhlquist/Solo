@@ -19,9 +19,19 @@ using Solo.Data.Domain;
 using Solo.Data.Entities;
 using Solo.Extensibility;
 using Solo.Extensions;
+using Solo.Shared.Extensibility;
 using Solo.Shared.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// The first line of the startup log says which build this is, so "did the new
+// image actually start?" is answered by the log alone. Its own logger because
+// the host's doesn't exist yet, the same way extension loading logs below.
+using (var startupLogging = LoggerFactory.Create(logging => logging.AddConsole()))
+{
+    startupLogging.CreateLogger("Solo.Api").LogInformation(
+        "Solo server {Version}, extension contract {Contract}.", SoloVersion.Server, ContractVersion.Current);
+}
 
 // ---------------------------------------------------------------------------
 // Extensions. First, because MVC application parts and filters cannot be added

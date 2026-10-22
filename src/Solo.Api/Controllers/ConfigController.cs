@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Data;
 using Solo.Data.Entities;
-using System.Reflection;
 using Solo.Extensibility;
 using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
@@ -50,10 +49,6 @@ public sealed class ConfigController(IConfiguration config, SoloDbContext db) : 
     /// </remarks>
     [HttpGet("version")]
     [AllowAnonymous]
-    public ActionResult<InstanceVersionDto> GetVersion() => new InstanceVersionDto(
-        ContractVersion.Current,
-        typeof(ConfigController).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? typeof(ConfigController).Assembly.GetName().Version?.ToString()
-            ?? "0.0.0");
+    public ActionResult<InstanceVersionDto> GetVersion() =>
+        new InstanceVersionDto(ContractVersion.Current, SoloVersion.Server);
 }

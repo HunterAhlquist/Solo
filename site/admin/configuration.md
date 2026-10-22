@@ -139,6 +139,14 @@ The image has these tags:
 
 Themes and extensions in the volumes stay in place across an update.
 
+To check which version runs, read the start of the container log:
+
+```bash
+docker compose logs solo | head
+```
+
+The first line shows the server version and the commit, for example `Solo server 1.15.4+fb976d5…, extension contract 1.9.0.` Each extension that loads has a line with its ID and version. The address `/api/config/version` also shows the server version.
+
 ## Backup
 
 Make a backup of the database. It holds all projects, the audit log, and the data of each extension.
