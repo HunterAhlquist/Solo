@@ -59,7 +59,7 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
                 var rows=await db.DocUpdates.Where(u=>u.DocumentId==id).ToListAsync(ct);
                 var current=rows.Where(u=>u.IsSnapshot).Max(u=>(long?)u.ThroughSeq)??0;
                 if(upto<=current||!rows.Any(u=>u.Seq==upto))return;
-                db.RemoveRange(rows.Where(u=>u.Seq<=upto));
+                db.RemoveRange(rows.Where(u=>u.Seq<=upto || u.IsSnapshot && u.ThroughSeq<=upto));
                 db.Add(new DocUpdate {DocumentId=id,NoteId=note?.Id,SketchId=sketch?.Id,IsSnapshot=true,ThroughSeq=upto,Data=data,UserId=m.Sender.UserId});
                 await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);return;
             }

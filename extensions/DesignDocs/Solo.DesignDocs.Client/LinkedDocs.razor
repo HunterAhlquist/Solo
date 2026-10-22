@@ -1,0 +1,14 @@
+@attribute [TaskDetailExtension]
+@inject ISoloClientApi Api
+@if(_links.Count>0){<div class="mb-3"><MudText Typo="Typo.caption">Linked docs</MudText>@foreach(var pair in _links){<MudChip T="string" Href="@pair.Key" Size="Size.Small">@pair.Value</MudChip>}</div>}
+@code{
+    [Parameter,EditorRequired] public TaskDto Task {get;set;}=null!;
+    [Parameter] public bool CanWrite {get;set;}
+    [Parameter] public EventCallback OnChanged {get;set;}
+    private string? _loaded;private long _generation;private Dictionary<string,string> _links=[];
+    protected override async Task OnParametersSetAsync(){if(_loaded==Task.Description)return;_loaded=Task.Description;var generation=++_generation;
+        var urls=System.Text.RegularExpressions.Regex.Matches(Task.Description??"",@"/docs/note/[0-9a-fA-F-]{32,36}(?:#[\p{L}\p{N}_-]+)?").Select(m=>m.Value).Distinct().Take(200).ToList();
+        if(urls.Count==0){_links=[];return;}
+        try{var labels=await new DocLinkLabels(Api).LabelsAsync(urls,CancellationToken.None);if(generation==_generation)_links=labels.ToDictionary();}catch(SoloApiException){_links=[];}
+    }
+}

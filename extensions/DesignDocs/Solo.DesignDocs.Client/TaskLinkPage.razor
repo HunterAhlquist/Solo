@@ -1,0 +1,10 @@
+@page "/docs/task/{TaskId:guid}"
+@attribute [Authorize]
+@inject ISoloTaskDrawer Drawer
+<MudText Typo="Typo.h5">Linked task</MudText>
+<MudButton OnClick="Open">Open task</MudButton>
+@code{
+    [Parameter]public Guid TaskId {get;set;}
+    protected override Task OnParametersSetAsync()=>Open();
+    private Task Open()=>Drawer.OpenAsync(TaskId);
+}
