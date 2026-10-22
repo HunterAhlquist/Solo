@@ -91,10 +91,11 @@ public sealed class ProjectNavStore(ApiClient api)
     }
 
     /// <summary>
-    /// Whether the signed-in user may add a board to this project. Mirrors the
-    /// API's write rule: owner flag or read/write role — being the instance
-    /// super admin grants no write access.
+    /// Whether the signed-in user may write to this project. Mirrors the API's
+    /// write rule: owner flag or read/write role — being the instance super
+    /// admin grants no write access. A board's lifecycle is the other way
+    /// round: only the super admin creates, closes, reopens or deletes one.
     /// </summary>
-    public static bool CanAddBoard(ProjectSummaryDto project) =>
+    public static bool CanWrite(ProjectSummaryDto project) =>
         project.IsOwner || project.Role == ProjectRole.ReadWrite;
 }

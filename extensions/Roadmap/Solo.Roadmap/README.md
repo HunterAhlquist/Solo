@@ -23,10 +23,10 @@ and the instance loses roadmaps and nothing else:
 ## What it adds
 
 - **A Roadmaps section in each project's sidebar**, under its own header,
-  listing the project's roadmaps with **Add roadmap** for writers.
+  listing the project's roadmaps with **Add roadmap** for super admins.
 - **A Roadmaps section on each project's home**, under the boards in the
   "Boards & Roadmaps" tab. Each roadmap is a card that opens it; writers get
-  **Rename** on each card and a tile to start a new one.
+  **Rename** on each card, and super admins a tile to start a new one.
 - **A Roadmaps surface on each project's card on All projects**, below its
   boards, with a link per roadmap.
 - **The timeline page** at `projects/{alias}/roadmaps/{id}`:
@@ -149,14 +149,16 @@ content/            roadmap.js (scroll, drag, resize, select) and roadmap.css, s
 
 All under `/api/ext/roadmap`. Every route that names a project goes through
 core's project policies. A roadmap id is honoured only under its own project's
-route; any other project answers 404.
+route; any other project answers 404. Creating or deleting a roadmap is reserved
+for super admins, as a board's lifecycle is; everything on a roadmap stays
+with the project's writers.
 
 | Method | Route | Access | |
 |---|---|---|---|
 | GET | `projects/{projectId}/roadmaps` | read | The project's roadmaps. |
-| POST | `projects/{projectId}/roadmaps` | write | `{ title }`. |
+| POST | `projects/{projectId}/roadmaps` | super admin | `{ title }`. |
 | PUT | `projects/{projectId}/roadmaps/{id}` | write | Rename: `{ title, version }`. 409 on a stale version. |
-| DELETE | `projects/{projectId}/roadmaps/{id}` | write | The roadmap and its entries; the tasks are untouched. |
+| DELETE | `projects/{projectId}/roadmaps/{id}` | super admin | The roadmap and its entries; the tasks are untouched. |
 | GET | `projects/{projectId}/roadmaps/{id}` | read | The timeline: entries in roadmap order, each with its `TaskDto` and board, its milestones by day, plus the settings. Entries with the same `rank` share a row. |
 | POST | `projects/{projectId}/roadmaps/{id}/entries` | write | `{ taskId, anchorDay, joinId? }`. On `joinId`'s row, or a row of its own at the end when that's absent or no longer on the roadmap. 400 for a task outside the project, 409 if it's already on. |
 | PUT | `projects/{projectId}/roadmaps/{id}/entries/{entryId}/rank` | write | `{ precedingId, followingId }`, each naming a row by any entry on it, for a row of its own between them; or `{ joinId }` for that entry's row. 400 for both at once. Roadmap order only. |

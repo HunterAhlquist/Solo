@@ -20,10 +20,14 @@ public class RoadmapComponentTests : ComponentTestBase
     private readonly StubHttp _http = new();
     private readonly FakeLiveTopics _live = new();
 
+    private bool _isSuperAdmin;
+
     public RoadmapComponentTests()
     {
         Services.AddSingleton<ISoloClientApi>(_http.CreateClient());
         Services.AddSingleton<ISoloLiveTopics>(_live);
+        _http.Route("api/users/me", HttpStatusCode.OK,
+            () => new UserDto(Guid.NewGuid(), "me@example.com", "Me", null, _isSuperAdmin));
     }
 
     [Fact]
@@ -105,7 +109,6 @@ public class RoadmapComponentTests : ComponentTestBase
 
         section.WaitForAssertion(() => Assert.Contains("2027 Launch", section.Markup));
         Assert.Contains($"href=\"projects/SOLO/roadmaps/{RoadmapId}\"", section.Markup);
-        Assert.Contains("Add roadmap", section.Markup);
     }
 
     [Fact]
@@ -117,6 +120,33 @@ public class RoadmapComponentTests : ComponentTestBase
 
         section.WaitForAssertion(() => Assert.Contains("No roadmaps.", section.Markup));
         Assert.DoesNotContain("Add roadmap", section.Markup);
+    }
+
+    // Creating a roadmap is the super admin's alone, as a board's is: a writer
+    // doesn't get the action, and a super admin does whatever their role.
+    [Theory]
+    [InlineData(false, ProjectRole.ReadWrite, false)]
+    [InlineData(true, ProjectRole.Read, true)]
+    public void Add_roadmap_is_offered_to_a_super_admin_only(bool isSuperAdmin, ProjectRole role, bool offered)
+    {
+        _isSuperAdmin = isSuperAdmin;
+        _http.RouteJson($"projects/{ProjectId}/roadmaps", Array.Empty<RoadmapSummaryDto>());
+
+        var section = RenderSection(role);
+
+        section.WaitForAssertion(() => Assert.Contains("No roadmaps.", section.Markup));
+        section.WaitForAssertion(() => Assert.Equal(offered, section.Markup.Contains("Add roadmap")));
+    }
+
+    [Fact]
+    public void The_project_card_doesnt_ask_who_the_caller_is()
+    {
+        RouteTwoRoadmaps();
+
+        var card = Render<RoadmapCardSection>(p => p.Add(s => s.Project, Project(ProjectRole.Read)));
+
+        card.WaitForAssertion(() => Assert.Equal(2, card.FindAll("a.roadmap-card-link").Count));
+        Assert.DoesNotContain(_http.Paths, path => path.Contains("api/users/me"));
     }
 
     [Fact]
@@ -183,6 +213,7 @@ public class RoadmapComponentTests : ComponentTestBase
     [Fact]
     public void The_home_section_shows_a_card_per_roadmap_and_a_click_opens_it()
     {
+        _isSuperAdmin = true;
         RouteTwoRoadmaps();
 
         var home = RenderHome(ProjectRole.ReadWrite);
@@ -190,7 +221,7 @@ public class RoadmapComponentTests : ComponentTestBase
         home.WaitForAssertion(() => Assert.Equal(2, home.FindAll(".roadmap-home__card").Count));
         Assert.Contains("2027 Launch", home.FindAll(".roadmap-home__card")[0].TextContent);
         Assert.Equal(2, home.FindAll(".roadmap-home__card button").Count(b => b.TextContent.Contains("Rename")));
-        Assert.Single(home.FindAll("[aria-label='New roadmap']"));
+        home.WaitForAssertion(() => Assert.Single(home.FindAll("[aria-label='New roadmap']")));
 
         home.FindAll(".roadmap-home__open")[1].Click();
         Assert.EndsWith($"projects/SOLO/roadmaps/{PolishId}", Services.GetRequiredService<NavigationManager>().Uri);
@@ -209,17 +240,18 @@ public class RoadmapComponentTests : ComponentTestBase
     }
 
     [Fact]
-    public void An_empty_home_section_offers_a_writer_the_first_roadmap()
+    public void An_empty_home_section_offers_a_super_admin_the_first_roadmap()
     {
         _http.RouteJson($"projects/{ProjectId}/roadmaps", Array.Empty<RoadmapSummaryDto>());
 
         var writer = RenderHome(ProjectRole.ReadWrite);
         writer.WaitForAssertion(() => Assert.Contains("No roadmaps yet.", writer.Markup));
-        Assert.Contains("Create one", writer.Markup);
+        Assert.DoesNotContain("Create one", writer.Markup);
+        Assert.Empty(writer.FindAll("[aria-label='New roadmap']"));
 
-        var reader = RenderHome(ProjectRole.Read);
-        reader.WaitForAssertion(() => Assert.Contains("No roadmaps yet.", reader.Markup));
-        Assert.DoesNotContain("Create one", reader.Markup);
+        _isSuperAdmin = true;
+        var admin = RenderHome(ProjectRole.Read);
+        admin.WaitForAssertion(() => Assert.Contains("Create one", admin.Markup));
     }
 
     [Fact]

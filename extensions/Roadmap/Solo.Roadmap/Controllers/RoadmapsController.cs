@@ -40,8 +40,15 @@ public sealed class RoadmapsController(
             .Select(r => new RoadmapSummaryDto(r.Id, r.Title, r.Version))
             .ToListAsync(ct);
 
+    /// <remarks>
+    /// Creating and deleting a roadmap is the super admin's, as a board's is;
+    /// what goes on one stays with the project's writers. The owner policy
+    /// alongside resolves the project from the route, so a super admin can't
+    /// file a roadmap under a project that isn't there.
+    /// </remarks>
     [HttpPost]
-    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    [Authorize(Policy = SoloPolicies.SuperAdmin)]
+    [Authorize(Policy = SoloPolicies.ProjectOwner)]
     public async Task<ActionResult<RoadmapSummaryDto>> Create(
         Guid projectId, CreateRoadmapRequest request, CancellationToken ct)
     {
@@ -87,9 +94,10 @@ public sealed class RoadmapsController(
         return new RoadmapSummaryDto(roadmap.Id, roadmap.Title, roadmap.Version);
     }
 
-    /// <summary>The roadmap and its entries. The tasks themselves are untouched.</summary>
+    /// <summary>The roadmap and its entries. The tasks themselves are untouched. Super admin only, as creation is.</summary>
     [HttpDelete("{roadmapId:guid}")]
-    [Authorize(Policy = SoloPolicies.ProjectWrite)]
+    [Authorize(Policy = SoloPolicies.SuperAdmin)]
+    [Authorize(Policy = SoloPolicies.ProjectOwner)]
     public async Task<IActionResult> Delete(Guid projectId, Guid roadmapId, CancellationToken ct)
     {
         var deleted = await db.Roadmaps

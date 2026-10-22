@@ -94,7 +94,7 @@
                                     </MudText>
                                 }
 
-                                @if (ProjectNavStore.CanAddBoard(project))
+                                @if (Session.IsSuperAdmin)
                                 {
                                     <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__muted"
                                                 OnClick="@(() => AddBoardAsync(project))">
@@ -201,7 +201,7 @@
         Extensions.ProjectNav.Where(entry => entry.Requires switch
         {
             "Owner" => project.IsOwner,
-            "Write" => ProjectNavStore.CanAddBoard(project),
+            "Write" => ProjectNavStore.CanWrite(project),
             _ => true,
         });
 
@@ -230,7 +230,7 @@
         new Dictionary<string, object>
         {
             ["Project"] = project,
-            ["CanWrite"] = ProjectNavStore.CanAddBoard(project),
+            ["CanWrite"] = ProjectNavStore.CanWrite(project),
         };
 
     private IReadOnlyList<Guid> _recent = [];

@@ -247,27 +247,31 @@ public class NavMenuTests : ComponentTestBase
     }
 
     [Fact]
-    public void Add_board_is_offered_inside_a_writable_project()
+    public void Add_board_is_offered_to_a_super_admin_in_every_project()
     {
-        Route(isSuperAdmin: false, role: ProjectRole.ReadWrite);
+        Route(isSuperAdmin: true, role: ProjectRole.ReadWrite);
+        var nav = RenderNav();
+
+        // "Side quest" is Read-only for this user: the lifecycle rule doesn't
+        // look at the project role.
+        Expand(nav, "Solo");
+        Expand(nav, "Side quest");
+
+        Assert.Equal(2, Links(nav).Count(l => l.Contains("Add board")));
+    }
+
+    [Fact]
+    public void Add_board_is_hidden_from_everyone_else_even_an_owner()
+    {
+        // The API reserves board creation for the super admin; don't offer a
+        // button that will 403.
+        Route(isSuperAdmin: false, role: ProjectRole.ReadWrite, isOwner: true);
         var nav = RenderNav();
 
         Expand(nav, "Solo");
 
-        Assert.Contains(Links(nav), l => l.Contains("Add board"));
-    }
-
-    [Fact]
-    public void Add_board_is_hidden_in_a_read_only_project()
-    {
-        Route(isSuperAdmin: false, role: ProjectRole.ReadWrite);
-        var nav = RenderNav();
-
-        // "Side quest" is Read-only for this user.
-        Expand(nav, "Side quest");
-
-        var links = Links(nav);
-        Assert.DoesNotContain(links, l => l.Contains("Add board"));
+        nav.WaitForAssertion(() => Assert.Contains(Links(nav), l => l.Contains("Main")));
+        Assert.DoesNotContain(Links(nav), l => l.Contains("Add board"));
     }
 
     [Fact]

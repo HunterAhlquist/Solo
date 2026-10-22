@@ -62,12 +62,21 @@ else
                            StartIcon="@Icons.Material.Filled.Flag" OnClick="@(() => AddMilestoneAsync(_today))">
                     Add milestone
                 </MudButton>
+            }
+            @if (CanWrite || _canDelete)
+            {
                 <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" aria-label="Roadmap actions"
                          AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                    <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@RenameAsync">Rename</MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error" OnClick="@DeleteAsync">
-                        Delete
-                    </MudMenuItem>
+                    @if (CanWrite)
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@RenameAsync">Rename</MudMenuItem>
+                    }
+                    @if (_canDelete)
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error" OnClick="@DeleteAsync">
+                            Delete
+                        </MudMenuItem>
+                    }
                 </MudMenu>
             }
         </div>

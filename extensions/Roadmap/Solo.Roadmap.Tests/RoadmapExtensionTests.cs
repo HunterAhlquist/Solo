@@ -209,6 +209,42 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         Assert.Single(await EntriesAsync(project, roadmap, reader));
     }
 
+    /// <summary>
+    /// Creating and deleting a roadmap is the super admin's alone, as a board's
+    /// lifecycle is, even against the project's owner; renaming stays with writers.
+    /// </summary>
+    [SkippableFact]
+    public async Task Only_a_super_admin_creates_or_deletes_a_roadmap()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, _) = await ProjectAsync("Lifecycle", "LIFE");
+        var roadmap = await RoadmapAsync(project, "Plan");
+        var invite = await _admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members",
+            new { email = "roadmap-owner@example.com", role = "ReadWrite" });
+        await _admin.PutJson<ProjectMemberDto>($"/api/projects/{project.Id}/members/{invite.Id}",
+            new { role = "ReadWrite", isOwner = true });
+        var owner = _factory.As("roadmap-owner", "roadmap-owner@example.com");
+        Assert.False((await owner.GetJson<UserDto>("/api/users/me")).IsSuperAdmin);
+
+        var url = $"{Base}/projects/{project.Id}/roadmaps";
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await owner.PostAsJsonAsync(url, new { title = "No" }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await owner.DeleteAsync($"{url}/{roadmap}")).StatusCode);
+
+        var current = (await owner.GetJson<List<JsonObject>>(url)).Single();
+        var renamed = await owner.PutJson<JsonObject>($"{url}/{roadmap}",
+            new { title = "Plan, revised", version = current["version"]!.GetValue<uint>() });
+        Assert.Equal("Plan, revised", renamed["title"]!.GetValue<string>());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.DeleteAsync($"{url}/{roadmap}")).StatusCode);
+        Assert.Empty(await owner.GetJson<List<JsonObject>>(url));
+
+        // The owner policy alongside resolves the project, so a super admin can't
+        // file a roadmap under one that isn't there.
+        Assert.Equal(HttpStatusCode.Forbidden, (await _admin.PostAsJsonAsync(
+            $"{Base}/projects/{Guid.NewGuid()}/roadmaps", new { title = "Nowhere" }, TestClients.Json)).StatusCode);
+    }
+
     [SkippableFact]
     public async Task A_roadmap_id_under_another_projects_route_is_404()
     {
