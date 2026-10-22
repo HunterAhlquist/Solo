@@ -80,3 +80,9 @@ site/.jekyll-cache/
 site/.jekyll-metadata
 site/assets/screenshots/
 site/assets/favicon.svg
+
+# Design Docs' bundled module, styles, and dependency installation.
+extensions/DesignDocs/Solo.DesignDocs.Client/js/node_modules/
+extensions/DesignDocs/Solo.DesignDocs/content/design-docs.js
+extensions/DesignDocs/Solo.DesignDocs/content/design-docs.css
+extensions/DesignDocs/Solo.DesignDocs/content/THIRD-PARTY-LICENSES.txt
