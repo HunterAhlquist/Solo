@@ -1343,14 +1343,53 @@ html.solo-desktop--glass .mud-drawer {
     background: color-mix(in srgb, var(--mud-palette-drawer-background) 52%, transparent);
 }
 
-/* The headers visible on a board. They live in page content, not in
-   MudBlazor's global app bar, so they need their own renderer material. */
-html.solo-desktop--glass .board-header,
-html.solo-desktop--glass .epic-group__header,
+/* The board's sticky headers: the column strip and, pinned under it, the
+   header of the group you are scrolling through. They live in page content,
+   not in MudBlazor's global app bar, so they need their own renderer material
+   to defocus the cards passing beneath — and it has to be one material for
+   both. A blur per header samples only its own box, so two stacked ones meet
+   in a hard seam. Instead the strip carries the only layer and stretches it
+   down over the pinned group header by --solo-glass-header-extent, which
+   js/glass-headers.js measures (CSS can't tell when a sticky box is stuck).
+   The strip drops below the group headers so a pinned one draws over that
+   layer rather than being blurred by it; the script clips a departing one at
+   the strip's edge, so it still slides out under the column labels.
+
+   The board's title row is left out: it never pins, so nothing passes under
+   it and a blur there would only re-paint the tint. */
 html.solo-desktop--glass .kanban-header {
+    z-index: 1;
     background: transparent;
+}
+
+html.solo-desktop--glass .kanban-header::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(100% + var(--solo-glass-header-extent, 0px));
+    z-index: -1;
+    pointer-events: none;
     -webkit-backdrop-filter: var(--solo-glass-page-defocus);
     backdrop-filter: var(--solo-glass-page-defocus);
+}
+
+html.solo-desktop--glass .epic-group__header {
+    background: transparent;
+}
+
+/* A backdrop filter samples everything painted behind it up to the nearest
+   backdrop root, and Chromium lays its result over that backdrop rather than
+   in place of it. <body>'s translucent tint would be in that sample, so each
+   header would carry the tint twice and show as a darker slab whenever
+   Background opacity is between 0% and 100% (at 100% the copy matches, at 0%
+   there is nothing to copy). Making the board a backdrop root keeps the tint
+   out: the headers still blur the lanes and cards, which are inside it. Nothing
+   in .kanban is position:fixed (the drag layer is on <body>, the scroll edges
+   are siblings), so the containing block this creates moves nothing. */
+html.solo-desktop--glass .kanban {
+    will-change: filter;
 }
 
 /* Heavier labels keep the shared column header easy to scan without restoring
