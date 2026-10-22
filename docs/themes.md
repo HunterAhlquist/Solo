@@ -140,6 +140,13 @@ on import if you write them anyway.
 `scrim` (0–1) lays a flat wash of the palette background over the image. Use it
 — a busy photo behind the sign-in card is the fastest way to make it unreadable.
 
+The desktop app's sign-in page (`/desktop-auth`, served by the API rather than
+the client) wears the same login background and logo, plus the palette,
+fonts and corner radius. It picks the palette from the system's
+`prefers-color-scheme`, since the app's own scheme choice is stored on another
+origin, and it does not load the theme's stylesheet, whose selectors target
+the client's components.
+
 ### Palette
 
 Both `dark` and `light` take the same keys. Supply both: a theme that defines

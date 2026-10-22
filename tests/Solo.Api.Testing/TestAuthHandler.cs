@@ -37,6 +37,9 @@ public sealed class TestAuthHandler(
     /// <summary>Emits <c>email_verified</c> with this value, for providers that send it.</summary>
     public const string EmailVerifiedHeader = "X-Test-Email-Verified";
 
+    /// <summary>Emits <c>nonce</c> with this value, as an ID token requested with one carries.</summary>
+    public const string NonceHeader = "X-Test-Nonce";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var sub = Request.Headers[SubHeader].ToString();
@@ -56,6 +59,12 @@ public sealed class TestAuthHandler(
         if (!string.IsNullOrEmpty(emailVerified))
         {
             claims.Add(new Claim("email_verified", emailVerified));
+        }
+
+        var nonce = Request.Headers[NonceHeader].ToString();
+        if (!string.IsNullOrEmpty(nonce))
+        {
+            claims.Add(new Claim("nonce", nonce));
         }
 
         var name = Request.Headers[NameHeader].ToString();

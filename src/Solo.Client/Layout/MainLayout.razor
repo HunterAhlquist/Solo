@@ -150,6 +150,22 @@
                 "Session expired",
                 new DialogOptions { BackdropClick = false });
             await dialog.Result;
+
+            // An app that started on an expired session never got its profile
+            // (the first load was refused), so the app bar kept the generic
+            // icon until a reload. Signed in again, fetch it now.
+            if (Session.Current is null)
+            {
+                try
+                {
+                    await Session.LoadAsync();
+                    StateHasChanged();
+                }
+                catch (ApiException)
+                {
+                    // Still refused: the route guards take it from here.
+                }
+            }
         }
         finally
         {

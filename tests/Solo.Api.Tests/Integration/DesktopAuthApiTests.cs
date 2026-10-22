@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.WebUtilities;
+using Solo.Api.Testing;
 using Solo.Api.Auth;
 using Solo.Shared.Dtos;
 using Xunit;
@@ -56,8 +58,17 @@ public sealed class DesktopAuthApiTests(PostgresFixture postgres) : IAsyncLifeti
             loopbackPort,
         });
 
-    private Task<HttpResponseMessage> CompleteAsync(HttpClient client, string state) =>
-        client.PostAsJsonAsync("/api/auth/desktop/complete", new { state }, TestClients.Json);
+    // The sign-in page asks Google for an ID token whose nonce is the flow's
+    // state, so a test credential carries one too unless a test says otherwise.
+    private static Task<HttpResponseMessage> CompleteAsync(HttpClient client, string state, string? nonce = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/desktop/complete")
+        {
+            Content = JsonContent.Create(new { state }, options: TestClients.Json),
+        };
+        request.Headers.Add(TestAuthHandler.NonceHeader, nonce ?? state);
+        return client.SendAsync(request);
+    }
 
     private Task<HttpResponseMessage> RedeemAsync(
         string state,
@@ -203,6 +214,89 @@ public sealed class DesktopAuthApiTests(PostgresFixture postgres) : IAsyncLifeti
         var response = await CompleteAsync(sessionClient, flow.State);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
+
+    [SkippableFact]
+    public async Task Complete_RefusesACredentialIssuedForAnotherFlow()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var flow = await StartFlowAsync();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await CompleteAsync(_admin, flow.State, nonce: "another-flow")).StatusCode);
+
+        // Refused without burning the flow it was aimed at.
+        Assert.Equal(HttpStatusCode.OK, (await CompleteAsync(_admin, flow.State)).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task RedirectReturn_IsOffUnlessEnabled()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var options = await _anon.GetJson<DesktopAuthOptionsBody>("/api/auth/desktop/options");
+        Assert.False(options.Redirect);
+
+        var posted = await _anon.PostAsync("/desktop-auth", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["id_token"] = "aaa.bbb.ccc", ["state"] = "abc123" }));
+        Assert.Equal(HttpStatusCode.NotFound, posted.StatusCode);
+    }
+
+    /// <summary>
+    /// Google's sign-in posts the ID token and the flow's state to the page's
+    /// own address; the page comes back carrying both, for its script to
+    /// finish the flow — or carrying the error, when Google didn't sign in.
+    /// </summary>
+    [SkippableFact]
+    public async Task RedirectReturn_ServesThePageWithTheTokenAndState()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        using var enabled = _factory.WithWebHostBuilder(b => b.UseSetting("Auth:DesktopRedirect", "true"));
+        using var anon = enabled.CreateClient();
+
+        Assert.True((await anon.GetJson<DesktopAuthOptionsBody>("/api/auth/desktop/options")).Redirect);
+
+        var posted = await anon.PostAsync("/desktop-auth", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["id_token"] = "aaa.bbb-_.ccc",
+            ["state"] = "0123456789abcdef",
+            ["authuser"] = "0",
+        }));
+        Assert.Equal(HttpStatusCode.OK, posted.StatusCode);
+        Assert.Equal("text/html", posted.Content.Headers.ContentType?.MediaType);
+        var page = await posted.Content.ReadAsStringAsync();
+        Assert.Contains("<meta name=\"solo-credential\" content=\"aaa.bbb-_.ccc\" />", page);
+        Assert.Contains("<meta name=\"solo-state\" content=\"0123456789abcdef\" />", page);
+        Assert.Contains("src=\"desktop-auth.js\"", page);
+
+        var cancelled = await anon.PostAsync("/desktop-auth", new FormUrlEncodedContent(
+            new Dictionary<string, string> { ["error"] = "access_denied", ["state"] = "0123456789abcdef" }));
+        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+        Assert.Contains("<meta name=\"solo-error\" content=\"access_denied\" />", await cancelled.Content.ReadAsStringAsync());
+    }
+
+    [SkippableTheory]
+    [InlineData("\"><script>x</script>", "0123456789abcdef")]
+    [InlineData("aaa.bbb.ccc", "\"><script>x</script>")]
+    [InlineData("aaa.bbb.ccc", null)]
+    public async Task RedirectReturn_NeverEchoesAnythingElse(string idToken, string? state)
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        using var enabled = _factory.WithWebHostBuilder(b => b.UseSetting("Auth:DesktopRedirect", "true"));
+        using var anon = enabled.CreateClient();
+
+        var form = new Dictionary<string, string> { ["id_token"] = idToken };
+        if (state is not null)
+        {
+            form["state"] = state;
+        }
+
+        var posted = await anon.PostAsync("/desktop-auth", new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.NotFound, posted.StatusCode);
+    }
+
+    private sealed record DesktopAuthOptionsBody(bool Redirect);
 
     [SkippableFact]
     public async Task Redeem_RefusesUnknownAuthorization()

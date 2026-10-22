@@ -14,6 +14,7 @@ own.
 cd src/Solo.Desktop
 npm install
 npm run build:client   # dotnet publish Solo.Client → ./wwwroot
+npm run build:native   # macOS only: the sign-in window add-on (see Sign-in)
 npm start
 ```
 
@@ -133,17 +134,16 @@ two kinds:
 ## Sign-in
 
 Google refuses to run its sign-in pages inside Electron ("this browser or app
-may not be secure"), so the shell signs in through the **system browser** on
-the **instance's own origin**, then returns through a PKCE-bound loopback
-callback:
+may not be secure"), so the shell signs in outside the app on the
+**instance's own origin** — on macOS in a **sign-in window** over the app,
+elsewhere in the **default browser** — then returns through a PKCE-bound
+loopback callback:
 
 1. The in-app **Authorize in browser** button opens an ephemeral `127.0.0.1`
    listener, generates a PKCE verifier, and starts a flow (`POST
    api/auth/desktop/start`) with that port and the verifier's challenge.
-2. The shell opens `https://<instance>/desktop-auth?state=…` in your default
-   browser. That page runs the ordinary Google Identity Services flow — on
-   the origin the operator already registered for the web client, so **no
-   extra provider registration is needed** — and posts the credential back
+2. The shell opens `https://<instance>/desktop-auth?state=…`. The page wears
+   the instance's theme, signs in with Google, and posts the credential back
    to the instance. The instance verifies it and redirects a short-lived,
    one-time authorization code to the loopback listener.
 3. The shell redeems that code with its verifier (`POST
@@ -159,6 +159,38 @@ update. (The
 client detects the shell via `window.soloDesktop`, exposed by the preload,
 and swaps the GIS widget for the plain button — Google's widget never loads
 inside the app.)
+
+### The macOS sign-in window
+
+On macOS, `main/auth-sheet.js` shows the page in Apple's web authentication
+window (`ASWebAuthenticationSession`) instead of a browser tab. The native
+half is `native/auth-session`, a Node-API add-on built by `npm run
+build:native` (macOS only; one build loads in any Electron version). Google
+allows its sign-in there, unlike in an Electron window, and the window shares
+the cookies of Safari — or of a default browser that supports it — so an
+existing Google sign-in carries over.
+
+- The window is the browser's, so opening it brings the browser and its other
+  windows forward. The app comes back to the front once the session is
+  delivered.
+- On success the loopback listener answers with a redirect to
+  `com.solo.desktop://desktop-auth/done`. The window closes itself on that
+  scheme; nothing else registers or handles it.
+- **Cancel** in the window ends the flow with "Sign-in was cancelled." in the
+  app. A failure closes the window and shows the error in the app.
+- Where the add-on is missing — Windows, Linux, or an unbuilt checkout — sign-in
+  falls back to the default browser.
+
+### Popup or redirect
+
+By default the page shows Google's button, whose sign-in opens in a popup: a
+second window, after a click. With `Auth__DesktopRedirect=true` on the
+instance, the page goes straight to Google's OpenID Connect sign-in in the
+same window instead (`response_type=id_token`, `response_mode=form_post`),
+and Google posts the token and state back to `POST /desktop-auth`. That
+address must be an authorized redirect URI of the Google client, which is why
+it is opt-in. Either way `complete` requires the ID token's `nonce` to be the
+flow's state.
 
 For **other OIDC providers** (code + PKCE redirect) the flow runs in-app:
 add the instance's local address — Settings shows it under each instance,

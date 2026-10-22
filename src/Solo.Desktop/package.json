@@ -10,6 +10,7 @@
   "scripts": {
     "start": "electron .",
     "build:client": "node scripts/build-client.mjs",
+    "build:native": "node scripts/build-native.mjs",
     "build:icon": "node scripts/build-icon.mjs",
     "build:installer-art": "electron scripts/build-installer-art.mjs",
     "stage:icon": "node scripts/stage-icon.mjs",

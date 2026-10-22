@@ -72,6 +72,54 @@ try {
     assert.equal(session?.token, 'solo_test-only');
     assert.deepEqual(failures, []);
     console.log('Desktop sign-in returned a PKCE-bound loopback code to the initiating process.');
+
+    // In the macOS sheet: the same flow, but the browser is never opened, the
+    // callback redirects to the sheet's completion URL (which closes it), and
+    // the sheet is let go once the flow ends.
+    const completionUrl = 'com.solo.desktop://desktop-auth/done';
+    let sheetUrl = null;
+    let sheetCancelled = 0;
+    let callbackLocation = null;
+    session = null;
+    redeemRequest = null;
+    const inApp = new DesktopAuth({
+        fetch: globalThis.fetch,
+        openExternal: () => assert.fail('The sheet flow opened the default browser.'),
+    });
+    await inApp.begin({
+        instanceUrl,
+        onSession: value => { session = value; },
+        onFailure: message => failures.push(message),
+        sheet: url => {
+            sheetUrl = new URL(url);
+            return { completionUrl, cancel: () => { sheetCancelled++; } };
+        },
+    });
+    assert.equal(sheetUrl?.pathname, '/desktop-auth');
+    const callback = await fetch(
+        `http://127.0.0.1:${startRequest.loopbackPort}/desktop-auth/callback?code=${authorizationCode}&state=${state}`,
+        { redirect: 'manual' });
+    callbackLocation = callback.headers.get('location');
+    assert.equal(callback.status, 302);
+    assert.equal(callbackLocation, completionUrl);
+    assert.equal(session?.token, 'solo_test-only');
+    assert.equal(sheetCancelled, 1, 'The sheet was not let go after sign-in.');
+    assert.deepEqual(failures, []);
+
+    // Dismissing the sheet ends the flow with a message, not a silent hang.
+    let dismiss = null;
+    await inApp.begin({
+        instanceUrl,
+        onSession: () => assert.fail('A dismissed sheet produced a session.'),
+        onFailure: message => failures.push(message),
+        sheet: (url, onDismissed) => {
+            dismiss = onDismissed;
+            return { completionUrl, cancel: () => {} };
+        },
+    });
+    dismiss('cancelled');
+    assert.deepEqual(failures, ['Sign-in was cancelled.']);
+    console.log('In the sign-in sheet, the callback closes the sheet and Cancel ends the flow.');
 } finally {
     await close(instance);
 }
