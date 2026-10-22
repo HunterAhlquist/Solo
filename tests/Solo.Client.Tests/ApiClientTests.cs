@@ -24,6 +24,35 @@ public class ApiClientTests
         Assert.Equal("Image replaced by someone else.", error.Detail);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Error_contract_preserves_Retry_After_for_json_and_binary(bool binary, bool date)
+    {
+        var instance = new InstanceConnection("https://solo.test/");
+        Solo.Shared.Extensibility.ISoloClientApi api = new ApiClient(new HttpClient(new RetryHandler(date)) { BaseAddress = instance.BaseAddress }, instance);
+        var error = await Assert.ThrowsAsync<ApiException>(async () =>
+        {
+            if (binary) await api.GetBytesAsync("limited");
+            else await api.GetAsync<object>("limited");
+        });
+        Assert.NotNull(error.RetryAfter);
+        Assert.InRange(error.RetryAfter.Value.TotalSeconds, date ? 25 : 12, date ? 30 : 12);
+    }
+
+    private sealed class RetryHandler(bool date) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("{}") };
+            response.Headers.RetryAfter = date
+                ? new System.Net.Http.Headers.RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddSeconds(30))
+                : new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(12));
+            return Task.FromResult(response);
+        }
+    }
+
     [Fact]
     public async Task Conflict_surfaces_as_ApiConflictException_carrying_the_ProblemDetails()
     {

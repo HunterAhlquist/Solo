@@ -175,9 +175,12 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
         }
 
         var (title, detail) = await ReadProblemAsync(response, ct);
+        var retry = response.Headers.RetryAfter;
+        TimeSpan? delay = retry?.Delta ?? (retry?.Date is { } date ? date - DateTimeOffset.UtcNow : null);
+        if (delay < TimeSpan.Zero) delay = TimeSpan.Zero;
         throw response.StatusCode == HttpStatusCode.Conflict
-            ? new ApiConflictException(title, detail)
-            : new ApiException(response.StatusCode, title, detail);
+            ? new ApiConflictException(title, detail) { RetryAfter = delay }
+            : new ApiException(response.StatusCode, title, detail) { RetryAfter = delay };
     }
 
     internal static async Task<(string? Title, string? Detail)> ReadProblemAsync(

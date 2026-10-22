@@ -76,6 +76,9 @@ public sealed record SoloBinary(byte[] Content, string? ContentType);
 public class SoloApiException(HttpStatusCode statusCode, string? title, string? detail)
     : Exception(detail ?? title ?? $"The request failed with status {(int)statusCode}.")
 {
+    /// <summary>The server's Retry-After delay, when supplied (contract 1.10).</summary>
+    public TimeSpan? RetryAfter { get; init; }
+
     public HttpStatusCode StatusCode { get; } = statusCode;
 
     public string? Title { get; } = title;
