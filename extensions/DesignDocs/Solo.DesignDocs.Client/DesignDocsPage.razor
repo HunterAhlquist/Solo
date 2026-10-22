@@ -1,0 +1,9 @@
+@page "/docs/{ProjectAlias}"
+@attribute [Authorize]
+
+<PageTitle>Design Docs</PageTitle>
+<MudText Typo="Typo.h5">Design Docs</MudText>
+
+@code {
+    [Parameter] public string ProjectAlias { get; set; } = string.Empty;
+}

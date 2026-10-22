@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Solo.DesignDocs/Solo.DesignDocs.csproj" />
+  <Project Path="Solo.DesignDocs.Client/Solo.DesignDocs.Client.csproj" />
+  <Project Path="Solo.DesignDocs.Data.Tests/Solo.DesignDocs.Data.Tests.csproj" />
+  <Project Path="Solo.DesignDocs.Tests/Solo.DesignDocs.Tests.csproj" />
+</Solution>

@@ -1,0 +1,13 @@
+{
+  "id": "design-docs",
+  "name": "Design Docs",
+  "version": "1.0.0",
+  "soloApiVersion": ">=1.10 <2.0",
+  "soloClientVersion": ">=1.10 <2.0",
+  "server": "server/Solo.DesignDocs.dll",
+  "client": "client/Solo.DesignDocs.Client.dll",
+  "schema": "ext_design_docs",
+  "nav": [],
+  "hooks": [],
+  "failOpen": false
+}
