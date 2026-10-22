@@ -746,3 +746,15 @@ Bug reports and forums, for browser behavior with no official page: [Apple Devel
   events; LiveTopics now filters by actual transport-state transitions. All
   eight LiveTopics tests pass, and sustained browser typing works with normal
   presence reporting. Temporary focus/status experiments were removed.
+- B6: 19 extension host/client tests passed. In the browser, the core markdown
+  action opened the extension picker, inserted a stable note GUID link into a
+  comment editor, and returned focus to the selection. The linked-task route
+  opened core's own drawer. A literal Razor chip URL found during this check was
+  corrected to a bound URL.
+- B7: four host tests passed for membership, isolated image responses, replacement
+  concurrency, reader restrictions, SVG rejection and invalid paths. Browser
+  upload converted a synthetic PNG to WebP and inserted its embed. Authenticated
+  bytes displayed through a blob URL; a two-image paragraph formed a stack and
+  opened the carousel. iPad photo decoding and touch gestures remain pending.
+  Header checks follow [PNG IHDR](https://www.w3.org/TR/png-3/) and
+  [WebP RIFF](https://developers.google.com/speed/webp/docs/riff_container).

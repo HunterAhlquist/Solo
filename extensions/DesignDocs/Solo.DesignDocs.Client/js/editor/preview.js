@@ -1,4 +1,5 @@
-import { ViewPlugin, Decoration, WidgetType, EditorView } from '@codemirror/view';
+import { StateField } from '@codemirror/state';
+import { Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import { isSafeUrl } from './markdown.js';
 class Link extends WidgetType {
@@ -14,12 +15,30 @@ class Link extends WidgetType {
         } else if (/^https?:/i.test(this.url)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
         return a;
     }
-    ignoreEvent() { return false; }
+    ignoreEvent() { return true; }
 }
-function build(view, bridge) {
+class ImageCard extends WidgetType {
+    constructor(paths,images){super();this.paths=paths;this.images=images;}
+    eq(other){return this.paths.join('\n')===other.paths.join('\n');}
+    toDOM(){return this.images.card(this.paths);}
+    ignoreEvent(){return true;}
+}
+function build(view, bridge, images) {
     const ranges = [], doc = view.state.doc, cursorLines = new Set();
     if (view.state.facet(EditorView.editable)) for (const r of view.state.selection.ranges) for (let n=doc.lineAt(r.from).number;n<=doc.lineAt(r.to).number;n++) cursorLines.add(n);
+    const embedded=[];let offset=0;
+    for(const paragraph of doc.toString().split(/(\n\s*\n)/)) {
+        const start=offset;offset+=paragraph.length;
+        const matches=[...paragraph.matchAll(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g)].filter(m=>!(/\.sketch$/i.test(m[1]??m[2])));
+        if(!matches.length||matches.some(m=>cursorLines.has(doc.lineAt(start+m.index).number)))continue;
+        const onlyImages=paragraph.replace(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g,'').trim()==='';
+        const groups=onlyImages?[matches]:matches.map(m=>[m]);
+        for(const group of groups){const from=start+group[0].index,to=start+group.at(-1).index+group.at(-1)[0].length;
+            const paths=group.map(m=>{try{return decodeURIComponent((m[1]??m[2]).split('|')[0]);}catch{return m[1]??m[2];}});
+            ranges.push(Decoration.replace({widget:new ImageCard(paths,images)}).range(from,to));embedded.push({from,to});}
+    }
     syntaxTree(view.state).iterate({enter(node) {
+        if(embedded.some(e=>node.from>=e.from&&node.to<=e.to))return false;
         const line = doc.lineAt(node.from); if (cursorLines.has(line.number)) return;
         if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark)$/.test(node.name)) ranges.push(Decoration.replace({}).range(node.from,node.to));
         if (/^ATXHeading[1-6]$/.test(node.name)) ranges.push(Decoration.line({class:`design-docs-h${node.name.at(-1)}`}).range(line.from));
@@ -32,7 +51,8 @@ function build(view, bridge) {
     }});
     return Decoration.set(ranges, true);
 }
-export const livePreview = bridge => ViewPlugin.fromClass(class {
-    constructor(view) { this.decorations=build(view,bridge); }
-    update(update) { if(update.docChanged||update.selectionSet||update.viewportChanged) this.decorations=build(update.view,bridge); }
-}, {decorations:v=>v.decorations});
+export const livePreview = (bridge,images) => StateField.define({
+    create:state=>build({state},bridge,images),
+    update:(_,transaction)=>build({state:transaction.state},bridge,images),
+    provide:field=>EditorView.decorations.from(field),
+});
