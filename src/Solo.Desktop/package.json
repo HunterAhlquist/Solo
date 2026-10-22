@@ -51,11 +51,13 @@
       "settings/**",
       "about/**",
       "wwwroot/**",
+      "native/auth-session/build/Release/auth_session.node",
       "package.json",
       "!node_modules/electron-liquid-glass/prebuilds/darwin-x64/**"
     ],
     "asarUnpack": [
-      "node_modules/electron-liquid-glass/prebuilds/**/*.node"
+      "node_modules/electron-liquid-glass/prebuilds/**/*.node",
+      "native/auth-session/build/Release/auth_session.node"
     ],
     "mac": {
       "category": "public.app-category.productivity",

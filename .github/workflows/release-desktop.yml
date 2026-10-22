@@ -182,6 +182,15 @@ jobs:
       - name: Publish Blazor client into shell
         run: npm run build:client
 
+      # The macOS sign-in window (main/auth-sheet.js). Without it the app still
+      # works but signs in through a browser tab, so a build that can't
+      # compile or load it fails here rather than shipping that silently.
+      - name: Build the macOS sign-in window
+        if: runner.os == 'macOS'
+        run: |
+          npm run build:native
+          node -e "const m = require('./native/auth-session/build/Release/auth_session.node'); if (typeof m.start !== 'function') process.exit(1)"
+
       # electron-builder builds its own signing keychain when CSC_LINK is set,
       # and that path is broken: it creates the keychain with a random password
       # but then calls `security set-key-partition-list -k` with the *p12
