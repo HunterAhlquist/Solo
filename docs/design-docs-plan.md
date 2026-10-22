@@ -758,3 +758,19 @@ Bug reports and forums, for browser behavior with no official page: [Apple Devel
   opened the carousel. iPad photo decoding and touch gestures remain pending.
   Header checks follow [PNG IHDR](https://www.w3.org/TR/png-3/) and
   [WebP RIFF](https://developers.google.com/speed/webp/docs/riff_container).
+- B8's move representation rewrites the selected stroke into remaining and moved
+  segments in one local Yjs transaction; eraser operations keep their original
+  order, and moved visible pieces are appended after them. A pixel-level test
+  caught residual jitter fragments at the original location and now verifies
+  they are cleared. Eight-neighbor selection and connected stamp interpolation
+  keep thin diagonals selectable.
+- B8 verification: 13 JS tests passed, including pressure, seeded raster frames,
+  erasing, cut-piece movement and malformed-coordinate bounds; the sketch
+  lifecycle/ownership host test passed. Browser drawing, rectangle, text, eraser,
+  undo, cut-piece move and PNG download were exercised. Two open clients exported
+  byte-identical still PNGs after edits from both. The PNG is 595×842 for A4.
+  Hardware pressure, Scribble, palm rejection and multi-touch remain pending.
+- The bitmap atlas is the original Solo Tiny 5 font, dedicated under CC0; its
+  editable glyph rows and build script ship in source, and the PNG and license
+  ship in the package. Basic ASCII glyphs are supported; other characters stay
+  in the text data and render as a question-mark glyph.

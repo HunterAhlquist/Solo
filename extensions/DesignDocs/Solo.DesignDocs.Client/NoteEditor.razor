@@ -6,11 +6,13 @@
 @inject ISoloTaskPicker TaskPicker
 @inject ISoloTaskDrawer TaskDrawer
 @inject ISoloContextMenu Menus
+@inject IDialogService Dialogs
 <MudText Typo="Typo.caption" role="status">@_status</MudText>
 <div class="design-docs-presence">
     @foreach(var p in _presence){<MudChip T="string" Size="Size.Small">@p.DisplayName · @p.Mode</MudChip>}
 </div>
 @if(CanWrite){<MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.AddLink" OnClick="InsertTask">Link a task</MudButton>}
+@if(CanWrite){<MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Draw" OnClick="NewSketch">New sketch</MudButton>}
 <EditorSurface Ready="Mount" />
 @code {
     [Parameter] public Guid ProjectId {get;set;}
@@ -66,5 +68,14 @@
         else await Api.SendBytesAsync<ImageDto>(HttpMethod.Post,ImageRoot+"?path="+Uri.EscapeDataString(path),bytes,contentType);
     }
     [JSInvokable] public async Task<bool> ImageMenu(string path,double x,double y)=>CanWrite&&await Menus.ShowAsync(x,y,[new("replace","Replace image")])=="replace";
+    private async Task NewSketch(){var name=await DocDialogs.Name(Dialogs,"New sketch");if(name is null||_editor is null)return;
+        try{var sketch=await Api.SendAsync<SketchDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches/notes/{Note.Id}",new NameRequest(name));
+            await _editor.InvokeVoidAsync("insert",$"![[{sketch.Name}.sketch]]");await OpenSketch(sketch.Name);
+        }catch(SoloApiException e){await Status(e.Message);}}
+    [JSInvokable]public async Task OpenSketch(string name){
+        try{var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");
+            var sketch=sketches.SingleOrDefault(s=>s.Name==name&&s.NoteId==Note.Id);if(sketch is null){await Status("Sketch not found in this note.");return;}
+            await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullWidth=true,MaxWidth=MaxWidth.ExtraLarge});
+        }catch(SoloApiException e){await Status(e.Message);}}
     public async ValueTask DisposeAsync(){_disposed=true;Live.ConnectionChanged-=Connection;if(_subscription is not null)await _subscription.DisposeAsync();if(_vaultSubscription is not null)await _vaultSubscription.DisposeAsync();if(_editor is not null){try{await _editor.InvokeVoidAsync("dispose");await _editor.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
 }

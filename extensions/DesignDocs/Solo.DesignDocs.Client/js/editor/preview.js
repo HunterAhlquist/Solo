@@ -23,6 +23,12 @@ class ImageCard extends WidgetType {
     toDOM(){return this.images.card(this.paths);}
     ignoreEvent(){return true;}
 }
+class SketchCard extends WidgetType {
+    constructor(name,bridge){super();this.name=name;this.bridge=bridge;}
+    eq(other){return this.name===other.name;}
+    toDOM(){const button=document.createElement('button');button.type='button';button.className='design-docs-sketch-card';button.textContent=`Open sketch: ${this.name}`;button.onclick=()=>this.bridge.invokeMethodAsync('OpenSketch',this.name);return button;}
+    ignoreEvent(){return true;}
+}
 function build(view, bridge, images) {
     const ranges = [], doc = view.state.doc, cursorLines = new Set();
     if (view.state.facet(EditorView.editable)) for (const r of view.state.selection.ranges) for (let n=doc.lineAt(r.from).number;n<=doc.lineAt(r.to).number;n++) cursorLines.add(n);
@@ -36,6 +42,10 @@ function build(view, bridge, images) {
         for(const group of groups){const from=start+group[0].index,to=start+group.at(-1).index+group.at(-1)[0].length;
             const paths=group.map(m=>{try{return decodeURIComponent((m[1]??m[2]).split('|')[0]);}catch{return m[1]??m[2];}});
             ranges.push(Decoration.replace({widget:new ImageCard(paths,images)}).range(from,to));embedded.push({from,to});}
+    }
+    for(const match of doc.toString().matchAll(/!\[\[([^\]]+)\.sketch\]\]/g)){
+        if(cursorLines.has(doc.lineAt(match.index).number))continue;
+        const from=match.index,to=from+match[0].length;ranges.push(Decoration.replace({widget:new SketchCard(match[1],bridge)}).range(from,to));embedded.push({from,to});
     }
     syntaxTree(view.state).iterate({enter(node) {
         if(embedded.some(e=>node.from>=e.from&&node.to<=e.to))return false;

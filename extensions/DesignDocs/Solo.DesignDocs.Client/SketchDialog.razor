@@ -1,0 +1,36 @@
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject ISoloLiveTopics Live
+@inject IJSRuntime Js
+@inject IDialogService Dialogs
+<MudDialog>
+    <DialogContent><EditorSurface Ready="Mount" /></DialogContent>
+    <DialogActions><MudButton OnClick="@(()=>Dialog.Close())">Close</MudButton></DialogActions>
+</MudDialog>
+@code{
+    [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
+    [Parameter] public Guid ProjectId {get;set;}
+    [Parameter] public Guid VaultId {get;set;}
+    [Parameter,EditorRequired] public SketchDto Sketch {get;set;}=null!;
+    [Parameter] public bool CanWrite {get;set;}
+    private IJSObjectReference? _sketch;private DotNetObjectReference<SketchDialog>? _reference;private IAsyncDisposable? _subscription,_vault;private bool _disposed;
+    private async Task Mount(ElementReference root){
+        var user=await Api.GetAsync<UserDto>("api/users/me");var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
+        var api=new DesignDocsApi(Api);var module=await DesignDocsAssets.ModuleAsync(Js,api);_reference=DotNetObjectReference.Create(this);
+        var hue=(slot.Slot*137.508%360).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,name=Sketch.Name,fontUrl=api.Content("pixel-font.png").ToString(),
+            meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,color=$"oklch(65% .15 {hue})"}});
+        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await _sketch.InvokeVoidAsync("connected",false);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},async people=>{if(_sketch is not null&&!_disposed)await _sketch.InvokeVoidAsync("presence",people);});
+        _vault=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(VaultId),async m=>{if(m.Kind is "closed" or "deleted"&&_sketch is not null)await _sketch.InvokeVoidAsync("connected",false);});
+        Live.ConnectionChanged+=Connection;await Live.SetPresenceAsync(ProjectId,DocTopics.Doc(Sketch.Id),CanWrite?PresenceMode.Editing:PresenceMode.Viewing);await Connection();
+    }
+    private Task Connection()=>_sketch is null?Task.CompletedTask:_sketch.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
+    [JSInvokable]public Task<LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,DocTopics.Doc(Sketch.Id),kind,data);
+    [JSInvokable]public Task<bool> Confirm(string message)=>DocDialogs.Confirm(Dialogs,"Sketch",message,"Continue");
+    [JSInvokable]public async Task Meta(string pageSize,string orientation,string pattern){
+        var root=$"api/ext/design-docs/projects/{ProjectId}/vaults/{VaultId}/sketches";
+        var current=(await Api.GetAsync<List<SketchDto>>(root)).Single(s=>s.Id==Sketch.Id);
+        Sketch=await Api.SendAsync<SketchDto>(HttpMethod.Put,root+"/"+Sketch.Id,new SketchChange(current.Name,pageSize,orientation,pattern,current.Version));
+    }
+    public async ValueTask DisposeAsync(){_disposed=true;Live.ConnectionChanged-=Connection;if(_subscription is not null)await _subscription.DisposeAsync();if(_vault is not null)await _vault.DisposeAsync();if(_sketch is not null){try{await _sketch.InvokeVoidAsync("dispose");await _sketch.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
+}

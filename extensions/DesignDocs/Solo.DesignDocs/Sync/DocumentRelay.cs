@@ -71,6 +71,7 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
             if(note?.SeedMarkdown is not null&&(r.SeedToken is null||!memory.HoldsSeed(id,m.Sender.ConnectionId,r.SeedToken.Value))) {await Refuse("seeding");return;}
             var update=new DocUpdate {DocumentId=id,NoteId=note?.Id,SketchId=sketch?.Id,Data=data,UserId=m.Sender.UserId};db.Add(update);
             if(note?.SeedMarkdown is not null){note.SeedMarkdown=null;note.SeededByToken=r.SeedToken;}
+            if(sketch is not null){sketch.LastEditedBy=m.Sender.UserId;sketch.LastEditedAt=DateTimeOffset.UtcNow;}
             await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);memory.Seeded(id);
             await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=update.Seq.ToString()}),ct);
             await Chunks(reply,"update",update.Seq,data,ct,others:true);
