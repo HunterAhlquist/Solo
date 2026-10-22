@@ -245,7 +245,7 @@ else
         new Dictionary<string, object>
         {
             ["Project"] = project,
-            ["CanWrite"] = ProjectNavStore.CanAddBoard(project),
+            ["CanWrite"] = ProjectNavStore.CanWrite(project),
         };
 
     private void OnExtensionsChanged()

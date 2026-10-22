@@ -60,7 +60,7 @@ Conventions: `Guid` PKs, `xmin` optimistic-concurrency token on all editable ent
 - **Client config:** the WASM app fetches the authority + client ID from an anonymous `/api/config/auth` endpoint at startup, so the provider is configured in exactly one place (the API's environment).
 - **Provisioning:** first valid SSO login creates the `User` row, keyed on the token's `iss` + `sub` pair. Access is invite-based: a project owner adds members by email with `Read` or `ReadWrite`; a pending-invite row activates when that email first signs in.
 - **Bootstrap (first-run setup):** a fresh deployment starts in **setup mode** with a static super admin account whose credentials come from environment config — needed because nothing gates the instance before any SSO user is trusted. A lightweight setup-only auth scheme (alongside JwtBearer) authenticates it. The setup wizard walks through initial configuration (verify SSO sign-in works, set audit retention), and its final step **hands super admin off** to the logged-in SSO user who completed the steps: that `User` gets `IsSuperAdmin = true`, `InstanceSettings.SetupCompleted` flips, and the static account is permanently disabled from then on.
-- **Super admin:** the handed-off SSO user. Can create projects and edit instance settings (audit retention); project-level roles govern everything else.
+- **Super admin:** the handed-off SSO user. Can create projects, create/close/reopen/delete boards (the Roadmaps extension's roadmaps follow suit), and edit instance settings (audit retention); project-level roles govern everything else, including what happens on a board.
 - **Authorization:** resource-based — a single `ProjectAccessHandler` resolving the project from the route and checking membership + role. `Read` can GET and receive SignalR broadcasts; `ReadWrite` required for all mutations. Same check gates hub group joins.
 
 ## 4. API surface
@@ -73,7 +73,7 @@ REST controllers using DTOs from `Solo.Shared` (never entities). Mutations follo
 /api/projects                          CRUD (create: super admin), members (invite/role/remove)
 /api/projects/{id}/labels              project label defaults (template for new boards)
 /api/boards/{id}/labels                the board's own labels, + reset to the project defaults
-/api/projects/{id}/boards              CRUD, open/close
+/api/projects/{id}/boards              CRUD, open/close (create, open/close, delete: super admin)
 /api/boards/{id}/epics                 CRUD, re-rank
 /api/boards/{id}/tasks                 CRUD, re-rank, assign, set status (column move), set/clear epic
 /api/tasks/{id}/subtasks               CRUD, re-rank, toggle finished

@@ -30,6 +30,12 @@ public abstract class RoadmapListComponent : ComponentBase, IAsyncDisposable
     [Parameter]
     public bool CanWrite { get; set; }
 
+    /// <summary>Creating a roadmap: the super admin's, whatever their role in the project.</summary>
+    protected bool CanCreate { get; private set; }
+
+    /// <summary>Whether this list has a create action, and so needs to know who's asking.</summary>
+    protected virtual bool OffersCreate => false;
+
     protected List<RoadmapSummaryDto>? Roadmaps { get; private set; }
 
     protected string? Error { get; private set; }
@@ -42,7 +48,9 @@ public abstract class RoadmapListComponent : ComponentBase, IAsyncDisposable
     {
         RoadmapNavEvents.Changed += OnRoadmapsChanged;
         _ = RoadmapAssets.EnsureStylesAsync(JS, Api);
+        var canCreate = OffersCreate ? Api.IsSuperAdminAsync() : Task.FromResult(false);
         await LoadAsync();
+        CanCreate = await canCreate;
         _live = await Live.SubscribeAsync(Project.Id, RoadmapTopics.List, _ => ReloadAsync());
     }
 

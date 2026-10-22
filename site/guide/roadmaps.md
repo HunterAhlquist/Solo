@@ -22,7 +22,7 @@ The dates on a roadmap are the dates of the tasks. When you move a bar, Solo cha
 
 Each project has a **Roadmaps** section in the sidebar, below its boards. The project home and the Projects page also list the roadmaps.
 
-To create a roadmap, you need the Read/write role.
+Only a super admin can create or delete a roadmap.
 
 1. Select **Add roadmap** in the **Roadmaps** section of the sidebar.
 2. Enter a title.

@@ -57,7 +57,7 @@ A cloud icon appears in the app bar when a board loses its live connection. Chan
 
 The sidebar lists each project that you are a member of. Select a project to show its content:
 
-- **Boards** lists the open boards of the project. **Add board** creates a board.
+- **Boards** lists the open boards of the project. **Add board** creates a board. Only super admins see it.
 - An extension can add a section below the boards. The Roadmaps extension adds **Roadmaps**.
 - **Project settings** opens the project home.
 
@@ -103,10 +103,10 @@ Each member of a project has one role. A member can also be an owner.
 | Role | What the member can do |
 |---|---|
 | Read only | See the boards and tasks of the project. Write comments. |
-| Read/write | All of the above. Create and change boards, epics, tasks, sub-tasks and labels. |
+| Read/write | All of the above. Change boards, and create and change epics, tasks, sub-tasks and labels. |
 | Owner | All of the above. Invite and remove members, change roles, read the audit log, change the project settings, delete the project, and delete the comments of other members. |
 
-**Super admin** is a role on the instance, not on a project. A super admin creates projects and changes the [Admin settings](../admin/admin-settings.md).
+**Super admin** is a role on the instance, not on a project. A super admin creates projects, creates, closes, reopens and deletes boards and roadmaps, and changes the [Admin settings](../admin/admin-settings.md).
 
 ## Light and dark
 

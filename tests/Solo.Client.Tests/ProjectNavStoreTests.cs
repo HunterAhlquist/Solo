@@ -74,11 +74,11 @@ public class ProjectNavStoreTests
     [InlineData(ProjectRole.Read, false, false)]
     [InlineData(ProjectRole.ReadWrite, false, true)]
     [InlineData(ProjectRole.Read, true, true)]   // owner
-    public void Add_board_permission_follows_the_APIs_write_rule(
+    public void Write_permission_follows_the_APIs_write_rule(
         ProjectRole role, bool isOwner, bool expected)
     {
         var project = new ProjectSummaryDto(TestData.ProjectId, "Solo", "SOLO", null, null, role, isOwner);
 
-        Assert.Equal(expected, ProjectNavStore.CanAddBoard(project));
+        Assert.Equal(expected, ProjectNavStore.CanWrite(project));
     }
 }

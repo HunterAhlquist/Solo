@@ -28,6 +28,7 @@ public class RoadmapPageTests : ComponentTestBase
     private List<RoadmapEntryDto> _entries = [Entry("Save system", 1)];
     private List<RoadmapMilestoneDto> _milestones = [];
     private ProjectRole _role = ProjectRole.ReadWrite;
+    private bool _isSuperAdmin;
 
     public RoadmapPageTests()
     {
@@ -46,6 +47,8 @@ public class RoadmapPageTests : ComponentTestBase
         });
         _http.RouteJson("/labels", Array.Empty<LabelDto>());
         _http.Route($"roadmaps/{RoadmapId}", HttpStatusCode.OK, () => Timeline(_entries, _milestones), HttpMethod.Get);
+        _http.Route("api/users/me", HttpStatusCode.OK,
+            () => new UserDto(TestData.MeId, "me@example.com", "Me", null, _isSuperAdmin));
         _http.Route("/api/projects", HttpStatusCode.OK, () => new[]
         {
             new ProjectSummaryDto(ProjectId, "Solo", "SOLO", null, null, _role, false),
@@ -90,6 +93,45 @@ public class RoadmapPageTests : ComponentTestBase
     /// <summary>The names on each line of the grid, top to bottom.</summary>
     private static List<List<string>> Lines(IRenderedComponent<RoadmapPage> page) =>
         Bars(page).GroupBy(b => b.Line).OrderBy(l => l.Key).Select(l => l.Select(b => b.Name).ToList()).ToList();
+
+    /// <summary>
+    /// Renaming is the writers'; deleting is the super admin's alone, as a
+    /// board's lifecycle is. The menu shows for either, with only what applies.
+    /// </summary>
+    [Theory]
+    [InlineData(ProjectRole.ReadWrite, false, new[] { "Rename" })]
+    [InlineData(ProjectRole.ReadWrite, true, new[] { "Rename", "Delete" })]
+    [InlineData(ProjectRole.Read, true, new[] { "Delete" })]
+    [InlineData(ProjectRole.Read, false, new string[0])]
+    public void The_roadmap_menu_offers_rename_to_writers_and_delete_to_a_super_admin(
+        ProjectRole role, bool isSuperAdmin, string[] expected)
+    {
+        _role = role;
+        _isSuperAdmin = isSuperAdmin;
+
+        // MudMenu teleports its items into a MudPopoverProvider, so both share one tree.
+        var host = Render(builder =>
+        {
+            builder.OpenComponent<MudBlazor.MudPopoverProvider>(0);
+            builder.CloseComponent();
+            builder.OpenComponent<RoadmapPage>(1);
+            builder.AddAttribute(2, nameof(RoadmapPage.ProjectAlias), "SOLO");
+            builder.AddAttribute(3, nameof(RoadmapPage.RoadmapId), RoadmapId);
+            builder.CloseComponent();
+        });
+        host.WaitForAssertion(() => Assert.NotEmpty(host.FindAll(".roadmap-header")));
+
+        var menu = host.FindAll(".roadmap-header .mud-menu button");
+        if (expected.Length == 0)
+        {
+            Assert.Empty(menu);
+            return;
+        }
+
+        menu.Single().Click();
+        host.WaitForAssertion(() => Assert.Equal(expected,
+            host.FindAll(".mud-menu-item").Select(i => i.TextContent.Trim()).ToArray()));
+    }
 
     [Fact]
     public void Opening_a_roadmap_joins_its_topic_as_a_viewer()

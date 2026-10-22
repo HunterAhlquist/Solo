@@ -591,6 +591,58 @@ public sealed class BoardApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Forbidden, memberOnlyAudit.StatusCode);
     }
 
+    /// <summary>
+    /// A board's lifecycle — create, close, reopen, delete — is the super
+    /// admin's alone, even against the project's owner; what happens on the
+    /// board stays with its writers.
+    /// </summary>
+    [SkippableFact]
+    public async Task BoardLifecycle_IsSuperAdminOnly_ButSettingsStayWithWriters()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (project, board) = await CreateProjectWithBoard("Lifecycle");
+        var invite = await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "owner@example.com", role = "ReadWrite" });
+        await _admin.PutJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members/{invite.Id}", new { role = "ReadWrite", isOwner = true });
+        await _admin.PostJson<ProjectMemberDto>(
+            $"/api/projects/{project.Id}/members", new { email = "writer@example.com", role = "ReadWrite" });
+
+        var owner = _factory.As("owner", "owner@example.com", "Owner");
+        var writer = _factory.As("writer", "writer@example.com", "Writer");
+        Assert.False((await owner.GetJson<UserDto>("/api/users/me")).IsSuperAdmin);
+        await writer.GetJson<UserDto>("/api/users/me");
+
+        foreach (var member in new[] { owner, writer })
+        {
+            var create = await member.PostAsJsonAsync(
+                $"/api/projects/{project.Id}/boards", new { name = "Denied", alias = "DENIED" }, TestClients.Json);
+            var close = await member.PutAsJsonAsync(
+                $"/api/boards/{board.Id}/open", new { isOpen = false }, TestClients.Json);
+            var delete = await member.DeleteAsync($"/api/boards/{board.Id}");
+
+            Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, close.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
+        }
+
+        var renamed = await writer.PutJson<BoardDto>($"/api/boards/{board.Id}",
+            new { name = "Renamed", alias = board.Alias, version = board.Version });
+        Assert.Equal("Renamed", renamed.Name);
+
+        var closed = await _admin.PutJson<BoardDto>($"/api/boards/{board.Id}/open", new { isOpen = false });
+        Assert.False(closed.IsOpen);
+        var reopened = await _admin.PutJson<BoardDto>($"/api/boards/{board.Id}/open", new { isOpen = true });
+        Assert.True(reopened.IsOpen);
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.DeleteAsync($"/api/boards/{board.Id}")).StatusCode);
+
+        // The owner policy alongside resolves the project, so a project that
+        // isn't there is refused rather than failing on its foreign key.
+        var nowhere = await _admin.PostAsJsonAsync(
+            $"/api/projects/{Guid.NewGuid()}/boards", new { name = "Nowhere", alias = "NOWHERE" }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Forbidden, nowhere.StatusCode);
+    }
+
     [SkippableFact]
     public async Task SaveEvents_ProduceColumnLevelAuditRows()
     {

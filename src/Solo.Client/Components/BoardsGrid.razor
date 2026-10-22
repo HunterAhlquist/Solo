@@ -10,7 +10,8 @@
 
 @*
     Fold, don't hide: closed boards live in a faded foldout with one-click
-    reopen. Everything stays reachable.
+    reopen. Everything stays reachable. Creating, closing and reopening are the
+    super admin's (CanManage); settings and labels are the writers'.
 *@
 
 @if (_boards is null)
@@ -23,7 +24,7 @@ else
     {
         <EmptyState Message="No boards yet."
                     Icon="@Icons.Material.Filled.ViewKanban"
-                    ActionText="@(CanWrite ? "Create one" : null)"
+                    ActionText="@(CanManage ? "Create one" : null)"
                     OnAction="@CreateBoardAsync" />
     }
     else
@@ -39,24 +40,30 @@ else
                             <EntityIcon ImageId="@board.ImageId" Icon="@board.Icon" Color="Color.Primary" />
                             <MudText Typo="Typo.h4" Class="text-truncate flex-grow-1">@board.Name</MudText>
                         </MudCardContent>
-                        @if (CanWrite)
+                        @if (CanWrite || CanManage)
                         {
                             <MudCardActions>
-                                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Settings"
-                                           OnClick="@(() => RenameBoardAsync(board))">Board settings</MudButton>
-                                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Label"
-                                           OnClick="@(() => OpenLabelsAsync(board))">Labels</MudButton>
+                                @if (CanWrite)
+                                {
+                                    <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Settings"
+                                               OnClick="@(() => RenameBoardAsync(board))">Board settings</MudButton>
+                                    <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Label"
+                                               OnClick="@(() => OpenLabelsAsync(board))">Labels</MudButton>
+                                }
                                 <MudSpacer />
-                                <MudButton Size="Size.Small" Color="Color.Default"
-                                           OnClick="@(() => SetOpenAsync(board, false))">
-                                    Close
-                                </MudButton>
+                                @if (CanManage)
+                                {
+                                    <MudButton Size="Size.Small" Color="Color.Default"
+                                               OnClick="@(() => SetOpenAsync(board, false))">
+                                        Close
+                                    </MudButton>
+                                }
                             </MudCardActions>
                         }
                     </MudCard>
                 </MudItem>
             }
-            @if (CanWrite)
+            @if (CanManage)
             {
                 <MudItem xs="12" sm="6" md="4">
                     <AddCard Label="New board" OnClick="@CreateBoardAsync" />
@@ -83,7 +90,7 @@ else
                             <MudListItem T="string" Icon="@SoloIcons.Resolve(board.ImageId, board.Icon)">
                                 <div class="d-flex align-center">
                                     <MudText Typo="Typo.body2" Class="flex-grow-1">@board.Name</MudText>
-                                    @if (CanWrite)
+                                    @if (CanManage)
                                     {
                                         <MudButton Size="Size.Small" Color="Color.Primary"
                                                    OnClick="@(() => SetOpenAsync(board, true))">
@@ -113,6 +120,10 @@ else
 
     [Parameter]
     public bool CanWrite { get; set; }
+
+    /// <summary>Create, close and reopen: the super admin's, whatever their role here.</summary>
+    [Parameter]
+    public bool CanManage { get; set; }
 
     private List<BoardDto> _open = [];
     private List<BoardDto> _closed = [];

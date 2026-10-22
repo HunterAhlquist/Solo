@@ -26,8 +26,16 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         return boards.Select(b => b.ToDto()).ToList();
     }
 
+    /// <remarks>
+    /// A board's lifecycle — create, close, reopen, delete — is the super
+    /// admin's, as a design doc's is; what happens on a board stays with its
+    /// writers. The owner policy alongside resolves the project from the route,
+    /// so a super admin is answered 403 for a project that isn't there rather
+    /// than failing on its foreign key.
+    /// </remarks>
     [HttpPost("api/projects/{projectId:guid}/boards")]
-    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    [Authorize(Policy = AuthConstants.SuperAdminPolicy)]
+    [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
     public async Task<ActionResult<BoardDto>> Create(
         Guid projectId, CreateBoardRequest request, CancellationToken ct)
     {
@@ -150,9 +158,10 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         return board.ToDto();
     }
 
-    /// <summary>Open/Close status per concept.</summary>
+    /// <summary>Open/Close status per concept. Super admin only, as creation is.</summary>
     [HttpPut("api/boards/{boardId:guid}/open")]
-    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    [Authorize(Policy = AuthConstants.SuperAdminPolicy)]
+    [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
     public async Task<ActionResult<BoardDto>> SetOpen(
         Guid boardId, SetBoardOpenRequest request, CancellationToken ct)
     {
@@ -169,8 +178,10 @@ public sealed class BoardsController(SoloDbContext db, IBoardNotifier notifier) 
         return board.ToDto();
     }
 
+    /// <summary>Super admin only, as creation is.</summary>
     [HttpDelete("api/boards/{boardId:guid}")]
-    [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
+    [Authorize(Policy = AuthConstants.SuperAdminPolicy)]
+    [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
     public async Task<IActionResult> Delete(Guid boardId, CancellationToken ct)
     {
         // Loaded rather than left to the cascade so the audit trail sees the

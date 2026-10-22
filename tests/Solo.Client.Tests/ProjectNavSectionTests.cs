@@ -38,7 +38,7 @@ public class ProjectNavSectionTests : ComponentTestBase
     public void Boards_and_Add_board_sit_under_a_Boards_header()
     {
         Services.AddSingleton(new ExtensionCatalog());
-        Seed("Alpha", ProjectRole.ReadWrite);
+        Seed("Alpha", ProjectRole.ReadWrite, isSuperAdmin: true);
 
         var nav = Render<NavMenu>();
         Expand(nav, "Alpha");
@@ -121,8 +121,9 @@ public class ProjectNavSectionTests : ComponentTestBase
         ],
     };
 
-    private void Seed(string name, ProjectRole role)
+    private void Seed(string name, ProjectRole role, bool isSuperAdmin = false)
     {
+        _http.RouteJson("api/users/me", new UserDto(TestData.MeId, "h@x.io", "Hunter", null, isSuperAdmin));
         _http.RouteJson($"api/projects/{ProjectId}/boards",
             new[] { new BoardDto(TestData.BoardId, ProjectId, "Main", "MAIN", "Rocket", null, true, 1) });
         _http.RouteJson("api/projects", new[]

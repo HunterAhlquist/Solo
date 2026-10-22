@@ -78,7 +78,7 @@ All projects
 - **`ProjectNavStore`** holds the tree: projects from `GET /api/projects`, and a project's boards from `GET /api/projects/{id}/boards` **fetched on first expand**. Signing in costs one request, not one per project. No new API surface (see `backend-plan.md` §4).
 - **Only open boards are listed.** Closed ones stay in the project home's faded foldout — "fold, don't hide" (§12) means reachable, not omnipresent. A sidebar listing every closed board buries the boards in play.
 - **Create where the thing lives:** "Add board" sits at the foot of a project's boards; "Add project" is pinned to the foot of the sidebar, below the scrolling tree, so it stays reachable at any project count. Both open the shared `NameIconDialog` and navigate to what they created.
-- **Affordances match the API's rules**, so no button 403s: "Add project" is super-admin only; "Add board" needs super admin, project owner, or `ReadWrite` (`ProjectNavStore.CanAddBoard`). A project's name is a group header rather than a link, so "Project settings" is how the tree reaches the project home.
+- **Affordances match the API's rules**, so no button 403s: "Add project" is super-admin only; "Add board", like a board's Close and Reopen, is super-admin only too, while a board's settings and labels follow the project's write rule (owner or `ReadWrite`, `ProjectNavStore.CanWrite`). A project's name is a group header rather than a link, so "Project settings" is how the tree reaches the project home.
 - Mutations elsewhere keep the tree honest: the projects list, boards grid and project settings tab call `RefreshProjectsAsync`/`RefreshBoardsAsync` after create, rename, delete, close and reopen.
 
 ## 6. Pages

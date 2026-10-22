@@ -36,11 +36,15 @@ public class BoardsGridTests : ComponentTestBase
         _http.RouteJson("/boards", new[] { Board(isOpen) });
     }
 
-    private IRenderedComponent<BoardsGrid> RenderGrid(bool canWrite = true) =>
+    private IRenderedComponent<BoardsGrid> RenderGrid(bool canWrite = true, bool canManage = false) =>
         Render<BoardsGrid>(p => p
             .Add(g => g.ProjectId, TestData.ProjectId)
             .Add(g => g.ProjectAlias, "PROJ")
-            .Add(g => g.CanWrite, canWrite));
+            .Add(g => g.CanWrite, canWrite)
+            .Add(g => g.CanManage, canManage));
+
+    private static List<string> ButtonTexts(IRenderedComponent<BoardsGrid> grid) =>
+        grid.FindAll("button").Select(b => b.TextContent.Trim()).ToList();
 
     private static List<IElement> LabelButtons(IRenderedComponent<BoardsGrid> grid) =>
         grid.FindAll("button").Where(b => b.TextContent.Contains("Labels")).ToList();
@@ -70,10 +74,41 @@ public class BoardsGridTests : ComponentTestBase
     {
         RouteOneBoard(isOpen: false);
 
-        var grid = RenderGrid();
+        var grid = RenderGrid(canManage: true);
 
         Assert.Empty(LabelButtons(grid));
         Assert.Contains("Reopen", grid.Markup);
+    }
+
+    // A board's lifecycle is the super admin's alone; the API answers anyone
+    // else 403, so the grid doesn't offer it.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_writer_who_is_not_a_super_admin_cannot_create_close_or_reopen(bool isOpen)
+    {
+        RouteOneBoard(isOpen);
+
+        var grid = RenderGrid(canWrite: true, canManage: false);
+
+        Assert.DoesNotContain("Close", ButtonTexts(grid));
+        Assert.DoesNotContain("Reopen", ButtonTexts(grid));
+        Assert.DoesNotContain("New board", grid.Markup);
+        Assert.DoesNotContain("Create one", grid.Markup);
+        Assert.Equal(isOpen, LabelButtons(grid).Count == 1);
+    }
+
+    [Fact]
+    public void A_super_admin_without_write_access_gets_the_lifecycle_but_not_the_settings()
+    {
+        RouteOneBoard();
+
+        var grid = RenderGrid(canWrite: false, canManage: true);
+
+        Assert.Empty(LabelButtons(grid));
+        Assert.DoesNotContain("Board settings", grid.Markup);
+        Assert.Contains("Close", ButtonTexts(grid));
+        Assert.Contains("New board", grid.Markup);
     }
 
     [Fact]

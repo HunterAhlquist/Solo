@@ -9,7 +9,7 @@ Select the board in the sidebar, below its project. The Projects page and the pr
 
 ## Create a board
 
-You need the Read/write role.
+Only a super admin can create a board.
 
 1. Select **Add board** below the project in the sidebar.
 2. Enter a **Name**.
@@ -119,7 +119,7 @@ To move a card to a different column, drag it to the left edge or the right edge
 
 ## Close a board
 
-Close a board when its work is complete. You need the Read/write role.
+Close a board when its work is complete. Only a super admin can close or reopen a board.
 
 1. Open the project home.
 2. On the **Boards** tab, select **Close** on the card of the board.
