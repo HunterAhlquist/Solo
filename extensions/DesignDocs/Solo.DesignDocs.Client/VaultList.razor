@@ -1,0 +1,44 @@
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject ISoloLiveTopics Live
+@inject IDialogService Dialogs
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@if(_error is not null) { <MudText Color="Color.Error">@_error</MudText> }
+else if(_list is null) { <MudProgressLinear Indeterminate="true" /> }
+else {
+    @if(_list.Vaults.Any(v=>v.IsClosed)) { <MudSwitch T="bool" @bind-Value="_closed" Label="Show closed" /> }
+    <div class="@(Compact?"":"design-docs-vault-list")">
+    @foreach(var vault in _list.Vaults.Where(v=>_closed||!v.IsClosed)) {
+        @if(Compact) {
+            <MudNavLink Href="@Href(vault.Id)" Icon="@Icons.Material.Filled.Description">@vault.Name @(vault.IsClosed?"(closed)":"")</MudNavLink>
+        } else {
+            <MudPaper Class="pa-4" Outlined="true" Elevation="0">
+                <MudLink Href="@Href(vault.Id)">@vault.Name</MudLink>
+                @if(vault.IsClosed) { <MudText Typo="Typo.caption">Closed · read-only</MudText> }
+            </MudPaper>
+        }
+    }
+    </div>
+    @if(!_list.Vaults.Any(v=>_closed||!v.IsClosed)) { <MudText Typo="Typo.body2" Class="pa-2">No open design docs.</MudText> }
+    @if(_list.CanManage) { <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="Create">New design doc</MudButton> }
+}
+@code {
+    [Parameter,EditorRequired] public ProjectSummaryDto Project {get;set;}=null!;
+    [Parameter] public bool Compact {get;set;}
+    private VaultListDto? _list;private string? _error;private bool _closed;private Guid _loaded;private IAsyncDisposable? _subscription;
+    private string Root=>$"api/ext/design-docs/projects/{Project.Id}/vaults";
+    private string Href(Guid id)=>$"/docs/{Project.Alias}/{id}";
+    protected override async Task OnParametersSetAsync() {
+        if(_loaded==Project.Id) return;
+        if(_subscription is not null) await _subscription.DisposeAsync();
+        _loaded=Project.Id;await Load();_subscription=await Live.SubscribeAsync(Project.Id,DocTopics.Vaults,_=>InvokeAsync(async()=>{await Load();StateHasChanged();}));
+    }
+    private async Task Load() {try {_list=await Api.GetAsync<VaultListDto>(Root);_error=null;}catch(SoloApiException e){_error=e.Message;}}
+    private async Task Create() {
+        var name=await DocDialogs.Name(Dialogs,"New design doc");if(name is null) return;
+        try {var v=await Api.SendAsync<VaultDto>(HttpMethod.Post,Root,new NameRequest(name));Navigation.NavigateTo(Href(v.Id));}
+        catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}
+    }
+    public async ValueTask DisposeAsync(){if(_subscription is not null)await _subscription.DisposeAsync();}
+}

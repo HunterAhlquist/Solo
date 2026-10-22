@@ -1,0 +1,13 @@
+@page "/docs/note/{NoteId:guid}"
+@attribute [Authorize]
+@inject ISoloClientApi Api
+@inject NavigationManager Navigation
+@if(_error is not null){<MudAlert Severity="Severity.Error">@_error</MudAlert>}else{<MudProgressLinear Indeterminate="true" />}
+@code {
+    [Parameter] public Guid NoteId {get;set;}
+    private string? _error;
+    protected override async Task OnParametersSetAsync(){try{
+        var n=await Api.GetAsync<LocateDto>($"api/ext/design-docs/notes/{NoteId}/locate");
+        Navigation.NavigateTo($"/docs/{n.ProjectAlias}/{n.VaultId}?note={NoteId}"+new Uri(Navigation.Uri).Fragment,replace:true);
+    }catch(SoloApiException){_error="Note not found or unavailable.";}}
+}

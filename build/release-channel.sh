@@ -11,8 +11,8 @@ case "$tag" in
     *) echo "Expected ${series}-v<version> or preview-v<version>." >&2; exit 1 ;;
 esac
 
-# Build metadata isn't used in Docker tags. Require a numbered prerelease to
-# make every preview install and rollback addressable by one immutable tag.
+# Build metadata is not used in Docker tags. Each preview uses a distinct
+# SemVer prerelease so installs and rollbacks have an exact image tag.
 if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
     echo "Invalid release version: $version" >&2; exit 1
 fi

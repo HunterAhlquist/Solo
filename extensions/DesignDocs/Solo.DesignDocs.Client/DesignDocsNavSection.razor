@@ -1,0 +1,6 @@
+@attribute [ProjectNavSection("Design Docs", Order=20)]
+<VaultList Project="Project" Compact="true" />
+@code {
+    [Parameter,EditorRequired] public ProjectSummaryDto Project {get;set;}=null!;
+    [Parameter] public bool CanWrite {get;set;}
+}

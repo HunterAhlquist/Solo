@@ -1,0 +1,18 @@
+<MudDialog>
+    <DialogContent>
+        <MudSelect T="Guid" @bind-Value="_folder" Label="Destination folder" Variant="Variant.Outlined">
+            <MudSelectItem T="Guid" Value="Guid.Empty">Vault root</MudSelectItem>
+            @foreach(var folder in Folders) { <MudSelectItem T="Guid" Value="folder.Id">@Path(folder)</MudSelectItem> }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Dialog.Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="@(()=>Dialog.Close(DialogResult.Ok(_folder)))">Move</MudButton>
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
+    [Parameter] public IReadOnlyList<FolderDto> Folders {get;set;}=[];
+    private Guid _folder;
+    private string Path(FolderDto f) {var parent=Folders.FirstOrDefault(x=>x.Id==f.ParentId);return parent is null?f.Name:Path(parent)+"/"+f.Name;}
+}
