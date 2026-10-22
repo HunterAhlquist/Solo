@@ -5,16 +5,18 @@ using Solo.Shared.Dtos;
 namespace Solo.DesignDocs.Tests;
 
 [Collection("postgres")]
-public sealed class VaultTests(PostgresFixture postgres) : IAsyncLifetime
+public sealed partial class VaultTests(PostgresFixture postgres) : IAsyncLifetime
 {
     private SoloApiFactory _factory=null!;
+    private string _connectionString=null!;
     private HttpClient _admin=null!, _writer=null!, _reader=null!;
     private ProjectDto _project=null!;
     private string Root => $"/api/ext/design-docs/projects/{_project.Id}/vaults";
     public async Task InitializeAsync()
     {
         if(!postgres.DockerAvailable) return;
-        _factory=new(await postgres.CreateDatabaseAsync("docs"),[SoloApiFactory.PackageDirectory("design-docs")]);
+        _connectionString=await postgres.CreateDatabaseAsync("docs");
+        _factory=new(_connectionString,[SoloApiFactory.PackageDirectory("design-docs")]);
         _admin=_factory.As("admin","admin@example.com");await TestClients.CompleteSetupAsync(_admin);
         _project=await _admin.PostJson<ProjectDto>("/api/projects",new {name="Docs",alias="DOCS"});
         await _admin.PostJson<ProjectMemberDto>($"/api/projects/{_project.Id}/members",new {email="writer@example.com",role="ReadWrite"});

@@ -14,3 +14,13 @@
  .design-docs-tree-backdrop { display:block; position:absolute; inset:0; background:#0005; border:0; z-index:2; }
  .design-docs-note { padding:16px 8px; }
 }
+.design-docs-editor { margin-top:12px; min-height:40vh; line-height:1.65; }
+.design-docs-editor .cm-editor.cm-focused { outline:none; }
+.design-docs-editor .cm-content { padding:8px 0; caret-color:var(--mud-palette-primary); }
+.design-docs-h1 { font-size:1.8em; font-weight:650; }
+.design-docs-h2 { font-size:1.5em; font-weight:650; }
+.design-docs-h3 { font-size:1.25em; font-weight:650; }
+.design-docs-strong { font-weight:700; }
+.design-docs-emphasis { font-style:italic; }
+.design-docs-editor .cm-ySelectionCaret { outline:1px solid var(--mud-palette-surface); }
+.design-docs-editor .cm-ySelectionInfo { color:white; text-shadow:0 1px 2px black; }

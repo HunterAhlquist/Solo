@@ -714,3 +714,35 @@ Official documentation:
 Research: Healey, C. G. (1996). [Choosing Effective Colours for Data Visualization](https://www.cs.ubc.ca/tr/1996/tr-96-10). Proceedings IEEE Visualization '96, 263–270.
 
 Bug reports and forums, for browser behavior with no official page: [Apple Developer Forums: 240 Hz Apple Pencil input in JavaScript](https://developer.apple.com/forums/thread/689375), [WebKit bug 292350: HEIC transcoding on upload](https://bugs.webkit.org/show_bug.cgi?id=292350).
+
+## Implementation findings: durable relay
+
+- The database enforces cross-vault folder/note parents, unique root names
+  (`NULLS NOT DISTINCT`), and cascade ownership of both note and sketch logs.
+  `Sketches.VaultId` enforces its vault-wide name namespace. Exclusive nullable
+  `DocUpdates.NoteId` / `SketchId` foreign keys enforce log cleanup without a
+  foreign key into core.
+- Vault-row locks serialize closure/deletion with content writes and tree moves.
+  Lifecycle state is read under that lock instead of caching closed status;
+  this avoids an authorization window after closing a vault.
+- Snapshots retain `ThroughSeq` separately from their new database identity.
+  Replay sends the snapshot first and then its retained tail. Sync currently
+  replays that full compacted state, making recovery robust to reordered live
+  delivery; `afterSeq` is a future bandwidth optimization.
+- `compact-part` extends the multipart envelope for snapshots that exceed one
+  hub message. It uses the same bounded, expiring per-connection buffer as updates.
+- Seeding uses a lease token and persists `Notes.SeededByToken`. A delayed seed
+  from an expired lease is refused; retrying an accepted seed gets its ack
+  without appending it twice. This closes a race the original envelope did not
+  distinguish from an ordinary edit.
+- B1 constraints/cascades: 10 database tests passed. B2 and durable relay: 10
+  host tests passed, including recorded Yjs bytes through the real hub. B4: five
+  component tests passed; browser creation of a vault, folder and nested note
+  appeared immediately in a Read member's open page, with no mutation controls.
+- Browser verification exposed an A2 implementation bug: the existing hub's
+  state notification also fires for presence/subscription changes. Forwarding
+  every notification as `ConnectionChanged` made focusing CodeMirror initiate a
+  resync and remove focus. A regression test reproduced two false connection
+  events; LiveTopics now filters by actual transport-state transitions. All
+  eight LiveTopics tests pass, and sustained browser typing works with normal
+  presence reporting. Temporary focus/status experiments were removed.
