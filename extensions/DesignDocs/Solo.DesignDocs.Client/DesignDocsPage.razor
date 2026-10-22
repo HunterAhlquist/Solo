@@ -50,7 +50,7 @@ else if(VaultId==Guid.Empty) {
             @if(Selected is {} note) {
                 <MudText Typo="Typo.h4">@note.Name</MudText>
                 @if(note.LastEditedAt is {} edited) { <MudText Typo="Typo.caption">Last edited @edited.ToLocalTime().ToString("g")</MudText> }
-                <pre class="design-docs-stored-markdown">@note.Markdown</pre>
+                <NoteEditor @key="note.Id" ProjectId="_project.Id" Note="note" CanWrite="CanEdit" />
             } else { <MudText Class="pa-6" Color="Color.Secondary">Choose a note from the tree.</MudText> }
         </main>
     </div>

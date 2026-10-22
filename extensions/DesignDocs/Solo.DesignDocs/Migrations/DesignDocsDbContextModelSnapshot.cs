@@ -212,6 +212,9 @@ namespace Solo.DesignDocs.Migrations
                     b.Property<string>("SeedMarkdown")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("SeededByToken")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("VaultId")
                         .HasColumnType("uuid");
 

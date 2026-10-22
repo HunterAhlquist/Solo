@@ -6,3 +6,4 @@ export function ensureStyles(url) {
     link.dataset.designDocs = '';
     document.head.append(link);
 }
+export { mountEditor } from './editor/index.js';

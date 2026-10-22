@@ -97,6 +97,7 @@ public sealed class Note
     public long MarkdownSeq { get; set; }
     public string Headings { get; set; } = "[]";
     public string? SeedMarkdown { get; set; }
+    public Guid? SeededByToken { get; set; }
     public Guid? LastEditedBy { get; set; }
     public DateTimeOffset? LastEditedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -1,0 +1,7 @@
+<div @ref="_root" class="design-docs-editor" aria-label="Note editor"></div>
+@code {
+    [Parameter] public EventCallback<ElementReference> Ready {get;set;}
+    private ElementReference _root;
+    protected override bool ShouldRender()=>false;
+    protected override Task OnAfterRenderAsync(bool firstRender)=>firstRender?Ready.InvokeAsync(_root):Task.CompletedTask;
+}

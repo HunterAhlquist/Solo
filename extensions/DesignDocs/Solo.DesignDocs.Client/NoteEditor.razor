@@ -1,0 +1,42 @@
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject ISoloLiveTopics Live
+@inject IJSRuntime Js
+@inject NavigationManager Navigation
+<MudText Typo="Typo.caption" role="status">@_status</MudText>
+<div class="design-docs-presence">
+    @foreach(var p in _presence){<MudChip T="string" Size="Size.Small">@p.DisplayName · @p.Mode</MudChip>}
+</div>
+<EditorSurface Ready="Mount" />
+@code {
+    [Parameter] public Guid ProjectId {get;set;}
+    [Parameter,EditorRequired] public NoteDto Note {get;set;}=null!;
+    [Parameter] public bool CanWrite {get;set;}
+    private ElementReference _root;private IJSObjectReference? _editor;private DotNetObjectReference<NoteEditor>? _reference;
+    private IAsyncDisposable? _subscription;private string _status="Connecting…";private bool _disposed;
+    private IReadOnlyList<TopicPresenceEntry> _presence=[];
+    private bool? _lastWrite;
+    protected override async Task OnParametersSetAsync(){if(_lastWrite!=CanWrite&&_editor is not null)await _editor.InvokeVoidAsync("permissions",CanWrite);_lastWrite=CanWrite;}
+    private string Topic=>DocTopics.Doc(Note.Id);
+    private async Task Mount(ElementReference root){_root=root;
+        try {
+            var user=await Api.GetAsync<UserDto>("api/users/me");
+            var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
+            var hue=slot.Slot*137.508%360;var color=$"oklch(55% .15 {hue.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
+            var module=await DesignDocsAssets.ModuleAsync(Js,new DesignDocsApi(Api));_reference=DotNetObjectReference.Create(this);
+            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,color,colorLight=$"color-mix(in srgb, {color} 20%, transparent)"}});
+            _subscription=await Live.SubscribeAsync(ProjectId,Topic,async m=>{
+                if(_editor is null||_disposed)return;
+                if(m.Kind is "deleted" or "closed"){await _editor.InvokeVoidAsync("connected",false);await Status("Content unavailable · read-only");return;}
+                await _editor.InvokeVoidAsync("receive",m.Kind,m.Data);
+            },async people=>{_presence=people;if(_editor is not null)await _editor.InvokeVoidAsync("presence",people);await InvokeAsync(StateHasChanged);});
+            Live.ConnectionChanged+=Connection;await Live.SetPresenceAsync(ProjectId,Topic,PresenceMode.Viewing);await Connection();
+        }catch(Exception e){await Status(e.Message);}
+    }
+    private Task Connection()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
+    [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);
+    [JSInvokable] public Task Status(string value){_status=value;return InvokeAsync(StateHasChanged);}
+    [JSInvokable] public Task Focus(bool focused)=>Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
+    [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}
+    public async ValueTask DisposeAsync(){_disposed=true;Live.ConnectionChanged-=Connection;if(_subscription is not null)await _subscription.DisposeAsync();if(_editor is not null){try{await _editor.InvokeVoidAsync("dispose");await _editor.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
+}
