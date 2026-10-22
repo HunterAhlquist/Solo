@@ -1000,7 +1000,9 @@ links still render with their stored labels.
 
 `ISoloClientApi.GetBytesAsync` returns `SoloBinary(Content, ContentType)`;
 `SendBytesAsync<T>` sends raw bytes with a media type and reads a JSON response.
-Both share core's sign-in credential and `SoloApiException` handling. Fetch
+Both share core's sign-in credential and `SoloApiException` handling. Its optional
+`RetryAfter` delay preserves an HTTP `Retry-After` header (seconds or a date), so
+bulk uploaders can pace retries after a 429. Fetch
 members-only images through this API and create/revoke object URLs in JavaScript.
 Both browser and desktop CSPs permit `blob:` images; uploaded files still need
 an isolated response policy and authorization on every fetch.
