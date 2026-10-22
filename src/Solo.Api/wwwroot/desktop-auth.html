@@ -112,10 +112,16 @@
       color: var(--dim);
     }
 
+    /* color-scheme: light whatever the page's scheme, because Google's
+       personalized "Continue as …" iframe declares light: when an iframe's
+       scheme differs from its embedder's, Safari paints it on an opaque
+       canvas, a white box around the pill. Same fix as the web sign-in's
+       GoogleSignInButton. The pill's own colors come from the GIS theme. */
     #button {
       display: flex;
       justify-content: center;
       min-height: 44px;
+      color-scheme: light;
     }
 
     #button:empty {
