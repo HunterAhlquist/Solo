@@ -15,7 +15,7 @@
          projects pin that contract version, so `1.9.x` of this package always
          scaffolds against contract 1.9. build/pack-templates.sh fails when the
          two disagree. -->
-    <Version>1.9.0</Version>
+    <Version>1.10.0</Version>
 
     <PackageId>HunterAhlquist.Solo.Templates</PackageId>
     <PackageType>Template</PackageType>

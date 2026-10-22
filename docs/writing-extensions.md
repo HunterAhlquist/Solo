@@ -949,3 +949,58 @@ Nothing an extension does today needs 1.9, so leave your ranges where they
 are. There is still no seam for reading the instance's name from a client
 page — an extension's `<PageTitle>` that ends in "Solo" stays that way on a
 named instance.
+
+
+## Contract 1.10: collaborative content
+
+The server can receive messages from project-topic subscribers. Register one scoped
+`ISoloLiveMessageHandler` with `services.AddLiveMessageHandler<MyHandler>()`.
+A second handler from the same extension is a load failure. A topic's prefix before
+its first colon is its owner: only that extension's handler receives the message.
+Disabled extensions and topics without handlers refuse sends; user topics cannot
+receive client messages. Use `LiveMessage.Sender` for identity and project role,
+including `IsProjectOwner`, rather than HTTP request state. `ConnectionId` is an
+opaque key for bounded multipart buffers or leases; it changes on reconnect and
+is not a credential. Core refreshes those
+values when membership changes. Read members can send messages; the handler must
+refuse edits while permitting reads and sync.
+
+`ILiveMessageReply.ToSenderAsync` answers just that connection;
+`ToOthersAsync` reaches every other connection on the topic, including other tabs
+of the same user. Neither call is automatic. Messages arrive as `TopicMessage`
+with the sender's `ActorUserId`. Handlers have five seconds and must honor
+cancellation. Do not retain a handler, reply, or invocation-scoped service.
+
+Clients use `ISoloLiveTopics.SendAsync(projectId, topic, kind, data, ct)`.
+`LiveSendResult.Accepted` means the handler ran; it does not promise that it saved
+anything. Define acknowledgments in your protocol for durable edits. Kinds are
+1–64 characters and data is at most 48,000 characters. The hub wire envelope is
+limited to 64 KiB, so use ASCII/base64 and allow room for JSON escaping when
+splitting payloads. Per-connection defaults are a burst of 200 and 50 tokens per
+second (`RateLimiting:Live:Burst` / `TokensPerSecond`), separate from REST limits.
+Watch `IsConnected` and `ConnectionChanged`: on reconnect, held topics have been
+resubscribed, but messages during the gap must be resynced by your protocol.
+
+The markdown editor discovers classes marked `[MarkdownEditorAction]` implementing
+`ISoloMarkdownEditorAction`. `ButtonsAsync` gets one second; `OnChosenAsync` can
+open a dialog and returns plain markdown to insert at the cursor, replacing the
+selection. Null inserts nothing. `MarkdownEditorContext` identifies the project,
+entity, surface (task description, epic description, or comment), and selection.
+The editor refuses inserts beyond its character limit. Button IDs are isolated
+between contributors. The host constructs contributors with constructor injection
+and disposes them with their component.
+
+`[MarkdownLinkProvider]` classes implement `ISoloMarkdownLinkProvider`.
+`Claims` must be synchronous and cheap. `LabelsAsync` receives all claimed safe
+links in a batch, with a one-second deadline. Return plain-text labels keyed by
+URL. Images, unsafe destinations, and omitted URLs keep their original rendering;
+failures leave written labels intact. Core renders immediately, then replaces
+labels. **Core calls on every render; providers own caching.** When uninstalled,
+links still render with their stored labels.
+
+`ISoloClientApi.GetBytesAsync` returns `SoloBinary(Content, ContentType)`;
+`SendBytesAsync<T>` sends raw bytes with a media type and reads a JSON response.
+Both share core's sign-in credential and `SoloApiException` handling. Fetch
+members-only images through this API and create/revoke object URLs in JavaScript.
+Both browser and desktop CSPs permit `blob:` images; uploaded files still need
+an isolated response policy and authorization on every fetch.

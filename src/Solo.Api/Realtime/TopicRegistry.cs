@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Solo.Shared;
+using Solo.Extensibility;
 using Solo.Shared.Hubs;
 
 namespace Solo.Api.Realtime;
@@ -23,13 +24,14 @@ public sealed class TopicRegistry
     /// <summary>The "project" a user topic is held under. No project has an empty id.</summary>
     public static readonly Guid UserScope = Guid.Empty;
 
-    private sealed record Subscription(Guid UserId, string? DisplayName, PresenceMode Mode);
+    private sealed record Subscription(Guid UserId, string? DisplayName, PresenceMode Mode, ProjectRole Role, bool IsOwner);
 
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<(Guid ProjectId, string Topic), Subscription>>
         _connections = new();
 
     /// <summary>False when the connection already holds as many topics as it may.</summary>
-    public bool Subscribe(string connectionId, Guid projectId, string topic, Guid userId, string? displayName)
+    public bool Subscribe(string connectionId, Guid projectId, string topic, Guid userId, string? displayName,
+        ProjectRole role = ProjectRole.Read, bool isOwner = false)
     {
         var topics = _connections.GetOrAdd(connectionId, _ => new());
         if (topics.ContainsKey((projectId, topic)))
@@ -42,7 +44,7 @@ public sealed class TopicRegistry
             return false;
         }
 
-        topics[(projectId, topic)] = new Subscription(userId, displayName, PresenceMode.None);
+        topics[(projectId, topic)] = new Subscription(userId, displayName, PresenceMode.None, role, isOwner);
         return true;
     }
 
@@ -61,8 +63,26 @@ public sealed class TopicRegistry
             return false;
         }
 
-        topics[(projectId, topic)] = subscription with { Mode = mode };
+        // A presence report must not overwrite a concurrent role refresh.
+        while (!topics.TryUpdate((projectId, topic), subscription with { Mode = mode }, subscription))
+            if (!topics.TryGetValue((projectId, topic), out subscription)) return false;
         return true;
+    }
+
+    public LiveSender? Sender(string connectionId, Guid projectId, string topic) =>
+        projectId != UserScope && _connections.TryGetValue(connectionId, out var held) &&
+        held.TryGetValue((projectId, topic), out var s)
+            ? new(s.UserId, s.DisplayName, s.Role, s.IsOwner) { ConnectionId = connectionId } : null;
+
+    public void RefreshRole(Guid userId, Guid projectId, ProjectRole role, bool isOwner)
+    {
+        foreach (var held in _connections.Values)
+            foreach (var (key, s) in held.Where(t => t.Key.ProjectId == projectId && t.Value.UserId == userId))
+            {
+                var current = s;
+                while (!held.TryUpdate(key, current with { Role = role, IsOwner = isOwner }, current))
+                    if (!held.TryGetValue(key, out current)) break;
+            }
     }
 
     /// <summary>The topics a user's connections hold, for re-checking their access.</summary>

@@ -35,6 +35,7 @@ public static class ExtensionStartup
         builder.Services.AddScoped<ExtensionCredentialIssuers>();
         builder.Services.AddScoped<ExtensionAuditInterceptor>();
         builder.Services.AddSingleton<HookCatalog>();
+        builder.Services.AddSingleton<LiveHandlerCatalog>();
         // Scoped, not singleton: handlers are scoped (they hold the extension's
         // own DbContext), so the publisher has to resolve them from the request
         // scope. As a singleton it would resolve from the root provider, which

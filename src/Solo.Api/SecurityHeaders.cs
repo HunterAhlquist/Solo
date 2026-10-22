@@ -21,6 +21,10 @@ public static class SecurityHeaders
     /// stylesheet, and the calls it makes. They cost nothing on an instance
     /// configured for another provider, which never loads that script.</para>
     ///
+    /// <para>Blob images let a page fetch a members-only image with its sign-in
+    /// credential and display an object URL; only script already running on
+    /// the page can mint that URL.</para>
+    ///
     /// <para><c>connect-src</c> is <c>'self'</c> only. The SignalR hub's
     /// WebSocket is same-origin, and CSP Level 3 resolves that through
     /// <c>'self'</c> — it matches the ws/wss form of the page's own origin.
@@ -32,7 +36,7 @@ public static class SecurityHeaders
         "default-src 'self'; " +
         "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com; " +
         "style-src 'self' 'unsafe-inline' https://accounts.google.com; " +
-        "img-src 'self' data: https:; " +
+        "img-src 'self' data: https: blob:; " +
         "font-src 'self' data:; " +
         "connect-src 'self' https://accounts.google.com; " +
         "frame-src https://accounts.google.com; " +

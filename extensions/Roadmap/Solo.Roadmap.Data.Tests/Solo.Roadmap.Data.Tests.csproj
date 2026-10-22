@@ -30,7 +30,7 @@
 
   <ItemGroup>
     <!-- Solo.Roadmap keeps its own reference private, so this one is explicit. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.9.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.10.0" />
     <ProjectReference Include="..\Solo.Roadmap\Solo.Roadmap.csproj" />
   </ItemGroup>
 

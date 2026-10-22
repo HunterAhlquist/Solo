@@ -111,7 +111,8 @@
 
             <MudText Typo="Typo.subtitle2" Class="mb-1">Description</MudText>
             @* Keyed so switching entity (e.g. via a task link) can't carry a draft across. *@
-            <MarkdownEditor @key="@EntityId" Value="@Description" CanWrite="@CanWrite"
+            <MarkdownEditor ProjectId="@(Store.Board?.ProjectId ?? Guid.Empty)" EntityId="@EntityId"
+                            Surface="@(Task is not null ? Solo.Shared.Extensibility.MarkdownSurface.TaskDescription : Solo.Shared.Extensibility.MarkdownSurface.EpicDescription)" @key="@EntityId" Value="@Description" CanWrite="@CanWrite"
                             MaxLength="FieldLimits.Description" OnSave="@OnDescriptionSaved"
                             OnEditingChanged="@ReportEditingAsync" Class="mb-4" />
 

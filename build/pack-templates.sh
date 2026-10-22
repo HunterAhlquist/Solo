@@ -55,7 +55,7 @@ done
 mkdir -p "$output"
 output="$(cd "$output" && pwd)"
 
-echo "Packing the extension templates $version…"
+echo "Packing the extension templates ${version}…"
 dotnet pack "$project" -c Release -o "$output" --nologo
 package="$output/HunterAhlquist.Solo.Templates.$version.nupkg"
 

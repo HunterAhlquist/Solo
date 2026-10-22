@@ -32,6 +32,7 @@ public static class SoloMarkdownPipeline
 
     public static MarkdownPipeline Instance { get; } = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
+        .UsePreciseSourceLocation()
         // Drops the raw-HTML block and inline parsers, so markup in user text
         // renders as the literal characters the author typed.
         .DisableHtml()

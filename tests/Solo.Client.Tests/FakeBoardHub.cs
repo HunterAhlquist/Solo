@@ -27,6 +27,13 @@ internal sealed class FakeBoardHub : IBoardHubClient
 
     public List<(string EntityType, Guid EntityId, PresenceMode Mode)> PresenceReports { get; } = [];
 
+    public List<(Guid ProjectId, string Topic, string Kind, string? Data)> Sent { get; } = [];
+    public Task<LiveSendResult> SendTopicMessage(Guid projectId, string topic, string kind, string? data)
+    {
+        Sent.Add((projectId, topic, kind, data));
+        return Task.FromResult(LiveSendResult.Accepted);
+    }
+
     public Task JoinBoard(Guid boardId)
     {
         Joined.Add(boardId);

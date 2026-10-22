@@ -11,6 +11,7 @@ public sealed class FixtureExtension : ISoloExtension
         services.AddExtensionDbContext<FixtureDbContext>(context);
         services.AddOperationHook<FixtureHook>();
         services.AddEventHandler<FixtureEventHandler>();
+        services.AddLiveMessageHandler<FixtureLiveHandler>();
         services.AddCredentialIssuer<FixtureCredentialIssuer>();
         services.AddSingleton<FixtureEventLog>();
     }

@@ -60,10 +60,13 @@ namespace Solo.Shared.Extensibility;
 /// defaults — which core's own client and API use. They are members of a
 /// published assembly all the same, so the number moves with them: a package
 /// reading one needs 1.9 in the range covering the half that does.</para>
+/// <para>1.10.0 adds client-sent live topic messages and refreshed sender roles,
+/// markdown editor actions and link labels, and authenticated binary API calls.
+/// Both server and client contracts changed.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.9.0";
+    public const string Current = "1.10.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than
