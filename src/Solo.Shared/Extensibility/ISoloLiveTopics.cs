@@ -15,6 +15,15 @@ namespace Solo.Shared.Extensibility;
 /// </remarks>
 public interface ISoloLiveTopics
 {
+    /// <summary>Sends to a subscribed project topic's extension handler (contract 1.10).</summary>
+    Task<LiveSendResult> SendAsync(Guid projectId, string topic, string kind, string? data = null,
+        CancellationToken ct = default);
+
+    bool IsConnected { get; }
+
+    /// <summary>The connection went down, or returned with held topics resubscribed. Resync after a gap.</summary>
+    event Func<Task>? ConnectionChanged;
+
     /// <summary>
     /// Starts receiving a project's topic. <paramref name="onPresence"/>, when
     /// given, hears who else is present there — the signed-in user is left out,

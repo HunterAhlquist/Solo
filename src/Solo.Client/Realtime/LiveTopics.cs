@@ -37,7 +37,24 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
         _session = session;
         _logger = logger;
         _hub.TopicMessage += OnMessageAsync;
+        _hub.ConnectionStateChanged += OnConnectionChangedAsync;
         _hub.TopicPresenceChanged += OnPresenceAsync;
+    }
+
+    public bool IsConnected => _hub.IsConnected;
+    public event Func<Task>? ConnectionChanged;
+
+    public async Task<LiveSendResult> SendAsync(Guid projectId, string topic, string kind, string? data = null,
+        CancellationToken ct = default)
+    {
+        if (!IsConnected) return LiveSendResult.NotConnected;
+        return await _hub.SendTopicMessage(projectId, topic, kind, data).WaitAsync(ct);
+    }
+
+    private async Task OnConnectionChangedAsync()
+    {
+        if (ConnectionChanged is { } changed)
+            foreach (Func<Task> handler in changed.GetInvocationList()) await DeliverAsync(handler);
     }
 
     public async Task<IAsyncDisposable> SubscribeAsync(
@@ -180,6 +197,7 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
     public void Dispose()
     {
         _hub.TopicMessage -= OnMessageAsync;
+        _hub.ConnectionStateChanged -= OnConnectionChangedAsync;
         _hub.TopicPresenceChanged -= OnPresenceAsync;
     }
 

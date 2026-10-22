@@ -14,7 +14,7 @@
   <ItemGroup>
     <!-- The version is the contract version this compiles against. The manifest
          declares the lowest one the code needs, which can be older. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.9.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.10.0" />
   </ItemGroup>
 
   <!--#if (Database) -->

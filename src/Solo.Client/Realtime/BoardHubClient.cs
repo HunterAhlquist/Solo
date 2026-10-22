@@ -54,6 +54,20 @@ public sealed class BoardHubClient(
 
     public bool IsActive => _boardId is not null || _topics.Values.Any(t => t.Mode != PresenceMode.None);
 
+    public async Task<LiveSendResult> SendTopicMessage(Guid projectId, string topic, string kind, string? data)
+    {
+        if (_connection is null || !IsConnected) return LiveSendResult.NotConnected;
+        try
+        {
+            return await _connection.InvokeAsync<LiveSendResult>(
+                nameof(IBoardHubServer.SendTopicMessage), projectId, topic, kind, data);
+        }
+        catch (Exception e) when (e is HubException or InvalidOperationException or HttpRequestException)
+        {
+            return IsConnected ? LiveSendResult.Failed : LiveSendResult.NotConnected;
+        }
+    }
+
     public async Task JoinBoard(Guid boardId)
     {
         await _gate.WaitAsync();

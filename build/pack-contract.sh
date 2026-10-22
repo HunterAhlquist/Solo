@@ -55,7 +55,7 @@ done
 mkdir -p "$output"
 output="$(cd "$output" && pwd)"
 
-echo "Packing the extension contract $version…"
+echo "Packing the extension contract ${version}…"
 dotnet pack "$root/src/Solo.Shared/Solo.Shared.csproj" -c Release -o "$output" --nologo
 dotnet pack "$root/src/Solo.Extensibility/Solo.Extensibility.csproj" -c Release -o "$output" --nologo
 

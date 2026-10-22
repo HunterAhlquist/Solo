@@ -416,3 +416,16 @@ The authorization-bypass test in the integration list is the one that matters mo
 - **`Solo.Shared` becomes a public contract.** Accepted — it effectively already is.
 
 
+
+
+## Update: contract 1.10 (2026-10-22)
+
+Client-sent project-topic messages use a handler owned by the extension whose id
+prefixes the topic. Each handler decides whether to drop, reply, or relay; core
+retains subscription access checks, fresh membership roles, connection budgets,
+and timeouts. This reuses the existing credential and reconnect path. Giving
+every live extension a separate hub or WebSocket would make each solve sign-in,
+desktop proxying, and reconnects again. The other additions are markdown editor
+insertion actions, batched link labels, authenticated binary API calls, and blob
+image CSP support. These are general extension seams; core knows no consuming
+extension by name.

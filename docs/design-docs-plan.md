@@ -1,6 +1,8 @@
 # Design Docs: build plan
 
-> **Status (2026-10-22):** plan only, nothing built. Written for a coding agent to follow phase by phase. Grounded in the code at commit `d6357e1`.
+> **Status (2026-10-22):** implementation in progress on `codex/design-docs-prerelease`. Original plan grounded in `d6357e1`; lifecycle behavior checked against merged PR #29 (`843a19c`).
+>
+> **Verified correction:** B2's original acceptance sentence denied vault lifecycle to non-member super admins, contradicting its policy table and settled PR #29 behavior. `AccessPolicy.Allows(..., Owner)` admits super admins; `Read` still requires membership. The B2 acceptance sentence now matches those rules. Physical iPad/Pencil, Safari selection retention, and desktop download checks remain required; no result is inferred from a desktop browser test.
 >
 > **Where the decisions come from:** the feasibility review, [Design Docs extension: feasibility review](https://claude.ai/artifact/RxZ5kdcCkJZN7LZunHY1CL), and Hunter's answers in its comment threads (2026-10-22). Treat the decisions in §1 as settled. Anything this plan had to decide on its own is listed in §5, so Hunter can overrule it before or during the build.
 
@@ -114,7 +116,10 @@ public sealed record LiveMessage(Guid ProjectId, string Topic, string Kind, stri
 
 /// Who sent it. Core resolves this when the topic is subscribed and refreshes it when
 /// the member's role changes, so a handler never has to look it up per message.
-public sealed record LiveSender(Guid UserId, string? DisplayName, ProjectRole Role, bool IsProjectOwner);
+public sealed record LiveSender(Guid UserId, string? DisplayName, ProjectRole Role, bool IsProjectOwner)
+{
+    public string ConnectionId { get; init; } = string.Empty;
+}
 
 public interface ILiveMessageReply
 {
@@ -129,6 +134,8 @@ public interface ILiveMessageReply
 Registration in `ExtensionServiceCollectionExtensions.cs`: `services.AddLiveMessageHandler<THandler>()`, scoped like hooks and event handlers. One handler per extension. Registering a second one is a load failure.
 
 Messages reach the client as the existing `TopicMessage` (`src/Solo.Shared/Hubs/BoardHubContract.cs`), with `ActorUserId` set to the sender. That way the client's dispatch in `LiveTopics.cs` doesn't change.
+
+**Implementation finding (2026-10-22):** the original sender shape had no connection key, but B3 requires per-connection multipart buffers and seed leases. An invocation-scoped handler cannot distinguish a user's two tabs from `UserId` alone, and must not depend on HTTP request state. `LiveSender.ConnectionId` is the opaque hub connection id supplied by core. It is not a credential and changes on reconnect. This is a general-purpose addition within A2, before the extension is built.
 
 #### Routing and ownership
 
@@ -390,7 +397,7 @@ After each change, publish on live topics with `ISoloLiveUpdates`, as Roadmap do
 - `design-docs:vault:{vaultId:N}` (a vault's tree): `tree`, `closed`, `reopened`, `deleted`
 - `design-docs:doc:{documentId:N}` (one note or sketch): `deleted`, `renamed`
 
-**Done when:** host tests (`Solo.DesignDocs.Tests`) cover each policy: a Read member can't write, a ReadWrite member can't create or close a vault, a super admin who isn't a member can't do either, writes to a closed vault get 409, and cross-project ids get 404.
+**Done when:** host tests (`Solo.DesignDocs.Tests`) cover each policy: a Read member can't write, a ReadWrite member can't create or close a vault, a super admin who isn't a member can manage vault lifecycle but cannot read vault contents or subscribe to their topics, writes to a closed vault get 409, and cross-project ids get 404.
 
 ### B3. Live sync: the relay protocol
 

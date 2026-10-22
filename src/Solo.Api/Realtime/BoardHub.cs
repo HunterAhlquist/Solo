@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Solo.Api.Auth;
+using Microsoft.EntityFrameworkCore;
+using Solo.Extensibility;
+using Solo.Extensions;
 using Solo.Data;
 using Solo.Data.Domain;
 using Solo.Shared;
@@ -13,8 +16,8 @@ namespace Solo.Api.Realtime;
 /// presence protocol, and the same two things for extensions on topics of their
 /// own (see <see cref="Solo.Extensibility.ISoloLiveUpdates"/>). Change events are
 /// broadcast from the REST write path via <see cref="IBoardNotifier"/>, keeping
-/// REST as the single write path — the hub itself only manages membership and
-/// presence.
+/// REST as core's write path. Extensions can also opt into client messages on
+/// their own topics; their handlers own validation and persistence.
 /// </summary>
 [Authorize]
 public sealed class BoardHub(
@@ -22,12 +25,19 @@ public sealed class BoardHub(
     UserProvisioningService provisioning,
     PresenceRegistry presence,
     TopicRegistry topics,
-    SessionConnections sessions)
+    SessionConnections sessions,
+    LiveMessageLimits limits,
+    LiveHandlerCatalog handlers,
+    ExtensionState extensions,
+    IServiceProvider services,
+    IHubContext<BoardHub, IBoardClient> hub,
+    ILogger<BoardHub> logger)
     : Hub<IBoardClient>, IBoardHubServer
 {
     public override Task OnConnectedAsync()
     {
         sessions.Opened(Context);
+        limits.Open(Context.ConnectionId);
         return base.OnConnectedAsync();
     }
 
@@ -65,8 +75,12 @@ public sealed class BoardHub(
     public async Task SubscribeTopic(Guid projectId, string topic)
     {
         RequireTopic(topic);
-        var user = await RequireMemberAsync(projectId);
-        if (!topics.Subscribe(Context.ConnectionId, projectId, topic, user.Id, user.DisplayName ?? user.Email))
+        var user = await RequireUserAsync();
+        var membership = await db.ProjectMembers.AsNoTracking().SingleOrDefaultAsync(
+            m => m.ProjectId == projectId && m.UserId == user.Id, Context.ConnectionAborted);
+        if (membership is null) throw new HubException("Not a member of this project.");
+        if (!topics.Subscribe(Context.ConnectionId, projectId, topic, user.Id, user.DisplayName ?? user.Email,
+                membership.Role, membership.IsOwner))
         {
             throw new HubException($"A connection can hold at most {BoardHubConstants.TopicsPerConnection} topics.");
         }
@@ -74,6 +88,34 @@ public sealed class BoardHub(
         await Groups.AddToGroupAsync(Context.ConnectionId, BoardHubConstants.TopicGroup(projectId, topic));
         // Whoever was already there, so a page arriving late doesn't start empty.
         await Clients.Caller.TopicPresenceChanged(topics.Snapshot(projectId, topic));
+    }
+
+    public async Task<LiveSendResult> SendTopicMessage(Guid projectId, string topic, string kind, string? data)
+    {
+        RequireTopic(topic);
+        if (string.IsNullOrEmpty(kind) || kind.Length > 64) return LiveSendResult.Failed;
+        if (data?.Length > BoardHubConstants.ClientMessageMaxLength) return LiveSendResult.TooLarge;
+        if (topics.Sender(Context.ConnectionId, projectId, topic) is not { } sender)
+            return LiveSendResult.NotSubscribed;
+        if (!limits.TryAcquire(Context.ConnectionId)) return LiveSendResult.RateLimited;
+
+        var extensionId = topic.Split(':', 2)[0];
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Context.ConnectionAborted);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        try
+        {
+            if (handlers.Find(topic, services, extensions) is not { } entry) return LiveSendResult.NoHandler;
+            var message = new LiveMessage(projectId, topic, kind, data, sender);
+            await entry.Handler.HandleAsync(message,
+                new LiveMessageReply(hub, Context.ConnectionId, message, timeout.Token), timeout.Token)
+                .AsTask().WaitAsync(timeout.Token);
+            return LiveSendResult.Accepted;
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning(e, "Extension {ExtensionId} failed to handle a live message.", extensionId);
+            return LiveSendResult.Failed;
+        }
     }
 
     public async Task UnsubscribeTopic(Guid projectId, string topic)
@@ -130,6 +172,7 @@ public sealed class BoardHub(
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         sessions.Closed(Context.ConnectionId);
+        limits.Close(Context.ConnectionId);
         var boardId = presence.Leave(Context.ConnectionId);
         if (boardId is not null)
         {

@@ -1,3 +1,7 @@
+@implements IAsyncDisposable
+@inject IServiceProvider Services
+@using Solo.Client.Extensions
+
 @*
     MudMarkdown plus Solo's task-link syntax: ||PROJECT-BOARD-N|| becomes a link
     to that task, served by the board page's ?task= handler. Task links render
@@ -36,7 +40,28 @@ else
     [Parameter]
     public bool NavigationLocked { get; set; }
 
-    private string Rendered => Value is null ? string.Empty : LinkifySerials(Value);
+    private string Rendered = string.Empty;
+    private MarkdownContributions? _contributions;
+    private CancellationTokenSource? _render;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _render?.Cancel();
+        _render?.Dispose();
+        var render = _render = new();
+        _contributions ??= new(Services);
+        var written = Value is null ? string.Empty : LinkifySerials(Value);
+        Rendered = written;
+        var labeled = await _contributions.LabelsAsync(written, render.Token);
+        if (!render.IsCancellationRequested) Rendered = labeled;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _render?.Cancel();
+        _render?.Dispose();
+        if (_contributions is not null) await _contributions.DisposeAsync();
+    }
 
     /// <summary>Rewrites ||serial|| tokens into markdown links to the board's ?task= route.</summary>
     public static string LinkifySerials(string markdown) =>

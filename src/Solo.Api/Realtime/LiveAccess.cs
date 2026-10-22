@@ -38,12 +38,13 @@ public sealed class LiveAccess(
             return;
         }
 
-        var isSuperAdmin = await db.Users.AsNoTracking()
-            .Where(u => u.Id == userId).Select(u => u.IsSuperAdmin).FirstOrDefaultAsync(ct);
         foreach (var projectId in boards.Select(b => b.ProjectId).Concat(held.Select(t => t.ProjectId)).Distinct())
         {
-            if (await ProjectAccessHandler.AllowsAsync(db, userId, isSuperAdmin, projectId, ProjectAccessLevel.Read, ct))
+            var membership = await db.ProjectMembers.AsNoTracking()
+                .SingleOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
+            if (membership is not null)
             {
+                topics.RefreshRole(userId, projectId, membership.Role, membership.IsOwner);
                 continue;
             }
 

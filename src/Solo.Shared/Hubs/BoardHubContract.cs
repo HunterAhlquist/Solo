@@ -67,6 +67,9 @@ public interface IBoardHubServer
 
     Task UnsubscribeTopic(Guid projectId, string topic);
 
+    /// <summary>Sends to the owner of a held project topic (contract 1.10).</summary>
+    Task<LiveSendResult> SendTopicMessage(Guid projectId, string topic, string kind, string? data);
+
     /// <summary>Report viewing/editing a subscribed topic; <see cref="PresenceMode.None"/> clears it.</summary>
     Task SetTopicPresence(Guid projectId, string topic, PresenceMode mode);
 
@@ -79,6 +82,9 @@ public interface IBoardHubServer
 
     Task UnsubscribeUserTopic(string topic);
 }
+
+/// <summary>Whether a client message reached its handler; Accepted does not imply a persisted edit.</summary>
+public enum LiveSendResult { Accepted, NotSubscribed, NoHandler, TooLarge, RateLimited, Failed, NotConnected }
 
 /// <summary>Entity type names used in change events and presence reports.</summary>
 public static class EntityTypes
@@ -113,6 +119,8 @@ public static class BoardHubConstants
 
     /// <summary>Longest topic name accepted; topics are short keys like "roadmap:{id}", not payloads.</summary>
     public const int TopicMaxLength = 200;
+
+    public const int ClientMessageMaxLength = 48_000;
 
     /// <summary>Topics one connection may hold at once — a page and its sidebar need a handful.</summary>
     public const int TopicsPerConnection = 64;

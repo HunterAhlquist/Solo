@@ -1,15 +1,30 @@
 @inject IDialogService Dialogs
 @inject IJSRuntime Js
+@inject IServiceProvider Services
+@inject ISnackbar Snackbar
+@using Solo.Shared.Extensibility
+@using Solo.Client.Extensions
+@implements IAsyncDisposable
 
 @*
     Write/preview toggle. The save event is an explicit Save (or drawer close);
     Esc cancels. Never per keystroke. Reused for descriptions and comments.
 *@
-<div class="@Class">
+<div class="@Class" @ref="_root">
     @if (_editing)
     {
         <MudTabs Elevation="0" Rounded="true" Class="mb-2" @bind-ActivePanelIndex="_tab">
             <MudTabPanel Text="Write" Icon="@Icons.Material.Filled.Edit">
+                @if (_buttons.Count > 0)
+                {
+                    <div class="d-flex flex-wrap" style="gap:.25rem" role="toolbar" aria-label="Insert into markdown">
+                        @foreach (var button in _buttons)
+                        {
+                            <MudButton @key="button.Id" Size="Size.Small" StartIcon="@button.Button.Icon"
+                                       Disabled="@_choosing" OnClick="@(() => ChooseAsync(button))">@button.Button.Label</MudButton>
+                        }
+                    </div>
+                }
                 @* Immediate keeps the counter honest per keystroke; saving stays explicit. *@
                 <MudTextField @bind-Value="_draft" Lines="@Lines" MaxLines="24" Variant="Variant.Outlined"
                               Margin="Margin.Dense" Immediate="true" MaxLength="@MaxLength" Counter="@MaxLength"
@@ -64,6 +79,16 @@
 </div>
 
 @code {
+    private ElementReference _root;
+    private MarkdownContributions? _contributions;
+    private readonly CancellationTokenSource _lifetime = new();
+    private IReadOnlyList<MarkdownContributions.ActionButton> _buttons = [];
+    private bool _choosing;
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public MarkdownSurface Surface { get; set; }
+    [Parameter] public Guid EntityId { get; set; }
+    private MarkdownEditorContext Context(string? selection = null) => new(ProjectId, Surface, EntityId, selection);
+
     private bool _editing;
     private int _tab;
     private string _draft = string.Empty;
@@ -108,13 +133,38 @@
     [Parameter]
     public EventCallback<bool> OnEditingChanged { get; set; }
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         if (AlwaysEditing && !_editing)
         {
             _editing = true;
             _draft = Value ?? string.Empty;
         }
+        _contributions ??= new(Services);
+        _buttons = await _contributions.ButtonsAsync(Context(), _lifetime.Token);
+    }
+
+    private async Task ChooseAsync(MarkdownContributions.ActionButton button)
+    {
+        _choosing = true;
+        try
+        {
+            var selection = await Js.InvokeAsync<string?>("solo.markdown.selection", _root);
+            var text = await button.Action.OnChosenAsync(button.Button.Id, Context(selection), _lifetime.Token);
+            if (text is null || _lifetime.IsCancellationRequested) return;
+            var inserted = await Js.InvokeAsync<bool>("solo.markdown.insertAtCursor", _root, text, MaxLength);
+            if (!inserted) Snackbar.Add($"The text would exceed the {MaxLength:N0}-character limit.", Severity.Warning);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception) { Snackbar.Add("The markdown action could not be completed.", Severity.Error); }
+        finally { _choosing = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _lifetime.Cancel();
+        if (_contributions is not null) await _contributions.DisposeAsync();
+        _lifetime.Dispose();
     }
 
     private Task ShowCheatsheetAsync() =>

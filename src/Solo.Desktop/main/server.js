@@ -23,7 +23,7 @@ const CONTENT_SECURITY_POLICY = [
     "default-src 'self'",
     "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com",
     "style-src 'self' 'unsafe-inline' https://accounts.google.com",
-    "img-src 'self' data: https:",
+    "img-src 'self' data: https: blob:",
     "font-src 'self' data:",
     // 'self' covers the same-origin SignalR WebSocket (CSP3 resolves it to the
     // page origin's ws/wss); no bare ws:/wss: wildcard to any host.

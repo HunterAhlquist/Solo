@@ -15,7 +15,7 @@ lede: The client half is a Razor class library that the browser loads after sign
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
-    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.9.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.10.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
   </ItemGroup>

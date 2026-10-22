@@ -25,6 +25,26 @@ public class LiveTopicsTests
         _topics = new LiveTopics(_hub, session, NullLogger<LiveTopics>.Instance);
     }
 
+    [Fact]
+    public async Task Sends_forward_and_connection_changes_notify_every_listener()
+    {
+        Assert.Equal(LiveSendResult.Accepted, await _topics.SendAsync(Project, "fixture:doc", "update", "bytes"));
+        Assert.Equal((Project, "fixture:doc", "update", "bytes"), Assert.Single(_hub.Sent));
+        var changes = new List<bool>();
+        _topics.ConnectionChanged += () => throw new InvalidOperationException("One listener fails");
+        _topics.ConnectionChanged += () => { changes.Add(_topics.IsConnected); return Task.CompletedTask; };
+        _hub.IsConnected = false;
+        await _hub.RaiseConnectionStateChanged();
+        Assert.Equal(LiveSendResult.NotConnected, await _topics.SendAsync(Project, "fixture:doc", "update"));
+        Assert.Single(_hub.Sent);
+        _hub.IsConnected = true;
+        await _hub.RaiseConnectionStateChanged();
+        Assert.Equal([false, true], changes);
+        _topics.Dispose();
+        await _hub.RaiseConnectionStateChanged();
+        Assert.Equal(2, changes.Count);
+    }
+
     private static TopicPresenceSnapshot Snapshot(string topic, params (Guid User, PresenceMode Mode)[] entries) =>
         new(Project, topic, entries.Select(e => new TopicPresenceEntry(e.User, "Someone", e.Mode)).ToList());
 
