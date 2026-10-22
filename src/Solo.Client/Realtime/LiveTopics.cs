@@ -24,6 +24,7 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
         Func<TopicMessage, Task> OnMessage,
         Func<IReadOnlyList<TopicPresenceEntry>, Task>? OnPresence);
 
+    private bool _lastConnected;
     private readonly IBoardHubClient _hub;
     private readonly UserSession _session;
     private readonly ILogger<LiveTopics> _logger;
@@ -34,6 +35,7 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
     public LiveTopics(IBoardHubClient hub, UserSession session, ILogger<LiveTopics> logger)
     {
         _hub = hub;
+        _lastConnected = hub.IsConnected;
         _session = session;
         _logger = logger;
         _hub.TopicMessage += OnMessageAsync;
@@ -53,6 +55,11 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
 
     private async Task OnConnectionChangedAsync()
     {
+        // The hub also notifies its UI after presence and subscription changes.
+        // Only a transport transition means an extension needs to resynchronize.
+        var connected = _hub.IsConnected;
+        if (connected == _lastConnected) return;
+        _lastConnected = connected;
         if (ConnectionChanged is { } changed)
             foreach (Func<Task> handler in changed.GetInvocationList()) await DeliverAsync(handler);
     }
