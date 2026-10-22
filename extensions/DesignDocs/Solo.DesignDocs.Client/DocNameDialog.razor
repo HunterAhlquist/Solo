@@ -1,0 +1,17 @@
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" AutoFocus="true" Immediate="true" MaxLength="200" Variant="Variant.Outlined" OnKeyUp="KeyUp" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Dialog.Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Disabled="@string.IsNullOrWhiteSpace(_name)" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
+    [Parameter] public string InitialName {get;set;}="";
+    private string _name="";
+    protected override void OnInitialized()=>_name=InitialName;
+    private void Save() {if(!string.IsNullOrWhiteSpace(_name)) Dialog.Close(DialogResult.Ok(_name.Trim()));}
+    private void KeyUp(KeyboardEventArgs e) {if(e.Key=="Enter") Save();}
+}
