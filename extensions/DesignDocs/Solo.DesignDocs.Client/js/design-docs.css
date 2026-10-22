@@ -34,3 +34,9 @@
 .design-docs-image-viewer::backdrop { background:#000c; }
 .design-docs-image-viewer img { display:block; max-width:95%; max-height:85vh; margin:0 auto; object-fit:contain; touch-action:pan-y; }
 .design-docs-image-viewer button { padding:8px 16px; margin:4px; cursor:pointer; background:#222; border:1px solid #777; color:white; }
+.design-docs-sketch-tools { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; align-items:center; }
+.design-docs-sketch-tools button,.design-docs-sketch-tools select { font:inherit; background:var(--mud-palette-surface); color:inherit; border:1px solid var(--mud-palette-lines-default); padding:4px 6px; border-radius:3px; }
+.design-docs-sketch-viewport { position:relative; height:65vh; overflow:hidden; background:var(--mud-palette-background); border:1px solid var(--mud-palette-lines-default); }
+.design-docs-sketch-viewport canvas { position:absolute; left:0; top:0; image-rendering:pixelated; touch-action:none; user-select:none; }
+.design-docs-sketch-text { position:absolute; z-index:2; min-width:180px; min-height:60px; background:var(--mud-palette-surface); color:inherit; border:1px solid var(--mud-palette-primary); }
+.design-docs-sketch-card { display:inline-block; border:1px solid var(--mud-palette-lines-default); background:var(--mud-palette-surface); color:inherit; padding:16px 24px; cursor:pointer; }

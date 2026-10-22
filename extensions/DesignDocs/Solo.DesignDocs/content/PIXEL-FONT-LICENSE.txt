@@ -1,0 +1,4 @@
+Solo Tiny 5 — original 5 × 7 bitmap glyph atlas created for Solo Design Docs.
+Dedicated to the public domain under CC0 1.0 Universal.
+https://creativecommons.org/publicdomain/zero/1.0/
+The editable glyph source is js/sketch/font-data.json; build-font.mjs generates pixel-font.png.

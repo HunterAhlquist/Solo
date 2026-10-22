@@ -1,9 +1,11 @@
 import { build } from 'esbuild';
+import { buildFont } from './sketch/build-font.mjs';
 import { readFile, writeFile, copyFile, mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const output = '../../Solo.DesignDocs/content';
 await mkdir(output, { recursive: true });
+await buildFont(output);
 await build({ entryPoints: ['index.js'], bundle: true, format: 'esm', target: ['safari15.4', 'chrome111'],
     outfile: `${output}/design-docs.js`, minify: true, legalComments: 'eof' });
 await copyFile('design-docs.css', `${output}/design-docs.css`);

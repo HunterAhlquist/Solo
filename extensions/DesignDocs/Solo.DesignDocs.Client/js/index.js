@@ -7,3 +7,4 @@ export function ensureStyles(url) {
     document.head.append(link);
 }
 export { mountEditor } from './editor/index.js';
+export { mountSketch } from './sketch/index.js';
