@@ -6,3 +6,5 @@ export function ensureStyles(url) {
     link.dataset.designDocs = '';
     document.head.append(link);
 }
+
+export { mountPrototype } from './prototype.js';

@@ -8,3 +8,7 @@
 .design-docs-editor .cm-editor { min-height: 20rem; }
 .design-docs-editor .cm-scroller { font-family: var(--mud-typography-default-family); }
 .design-docs-editor .cm-focused { outline: 2px solid var(--mud-palette-primary); }
+
+.design-docs-probe-metrics { display:block; white-space:pre-wrap; margin:1rem 0; font-size:.8rem; }
+.design-docs-probe-tools { display:flex; flex-wrap:wrap; gap:1rem; padding:.75rem 0; }
+.design-docs-probe-tools select { color:var(--mud-palette-text-primary); background:var(--mud-palette-surface); }

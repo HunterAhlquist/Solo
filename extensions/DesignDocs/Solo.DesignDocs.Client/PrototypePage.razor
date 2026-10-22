@@ -1,0 +1,109 @@
+@page "/docs/{ProjectAlias}/prototype"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject ISoloLiveTopics Live
+@inject IJSRuntime Js
+
+<PageTitle>Design Docs prototype</PageTitle>
+<MudText Typo="Typo.h5">Design Docs prototype</MudText>
+<MudAlert Severity="Severity.Warning" Class="my-3">
+    Temporary test page. Text and strokes are relayed between tabs and are not saved to the database.
+    Keep a writing tab open while testing reconnects.
+</MudAlert>
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_project is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudText Typo="Typo.body2">@_project.Name · @(_canWrite ? "Writer" : "Read-only viewer")</MudText>
+    <div class="d-flex flex-wrap my-2" style="gap:.5rem">
+        <MudButton Variant="Variant.Outlined" Disabled="@(!_canWrite)" OnClick="RunProbeAsync">Run typing probe</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="ToggleConnectionAsync">@(_paused ? "Reconnect" : "Simulate connection gap")</MudButton>
+    </div>
+    <output @ref="_metrics" aria-live="polite" class="design-docs-probe-metrics"></output>
+    <div @ref="_editor" class="design-docs-editor" aria-label="Collaborative prototype editor"></div>
+    <MudText Typo="Typo.h6" Class="mt-4">Pencil probe · A4 at 72 paint pixels per inch</MudText>
+    <MudText Typo="Typo.body2">Use the level control to compare minimum widths. Test Scribble, palm contact, and screen locking on the iPad.</MudText>
+    <div @ref="_sketch" class="design-docs-probe-sketch"></div>
+}
+
+@code {
+    [Parameter] public string ProjectAlias { get; set; } = string.Empty;
+    private const string Topic = "design-docs:prototype";
+    private ProjectSummaryDto? _project;
+    private UserDto? _user;
+    private bool _canWrite, _paused, _disposed;
+    private string? _error;
+    private ElementReference _editor, _sketch, _metrics;
+    private IJSObjectReference? _module, _prototype;
+    private DotNetObjectReference<PrototypePage>? _reference;
+    private IAsyncDisposable? _subscription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _project = (await Api.GetAsync<List<ProjectSummaryDto>>("api/projects"))
+                .FirstOrDefault(p => string.Equals(p.Alias, ProjectAlias, StringComparison.OrdinalIgnoreCase));
+            if (_project is null) { _error = "Project not found."; return; }
+            _user = await Api.GetAsync<UserDto>("api/users/me");
+            _canWrite = _project.IsOwner || _project.Role == ProjectRole.ReadWrite;
+        }
+        catch (SoloApiException e) { _error = e.Message; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_project is null || _user is null || _module is not null || _disposed) return;
+        try
+        {
+            _module = await DesignDocsAssets.ModuleAsync(Js, new DesignDocsApi(Api));
+            _reference = DotNetObjectReference.Create(this);
+            _prototype = await _module.InvokeAsync<IJSObjectReference>("mountPrototype", _editor, _sketch, _metrics,
+                _reference, new { canWrite = _canWrite, userId = _user.Id, name = _user.DisplayName ?? _user.Email });
+            _subscription = await Live.SubscribeAsync(_project.Id, Topic, async message =>
+            {
+                if (!_paused && _prototype is not null)
+                    await _prototype.InvokeVoidAsync("receive", message.Kind, message.Data);
+            });
+            Live.ConnectionChanged += ConnectionChangedAsync;
+            await Live.SetPresenceAsync(_project.Id, Topic, PresenceMode.Viewing);
+            await ConnectionChangedAsync();
+        }
+        catch (Exception e) { _error = e.Message; await InvokeAsync(StateHasChanged); }
+    }
+
+    [JSInvokable]
+    public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind, string? data) =>
+        _paused || _disposed || _project is null
+            ? Task.FromResult(Solo.Shared.Hubs.LiveSendResult.NotConnected)
+            : Live.SendAsync(_project.Id, Topic, kind, data);
+
+    private async Task ConnectionChangedAsync()
+    {
+        if (_prototype is not null && !_disposed)
+            await _prototype.InvokeVoidAsync("connected", Live.IsConnected && !_paused);
+    }
+
+    private async Task ToggleConnectionAsync() { _paused = !_paused; await ConnectionChangedAsync(); }
+    private async Task RunProbeAsync() { if (_prototype is not null) await _prototype.InvokeVoidAsync("probe"); }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        Live.ConnectionChanged -= ConnectionChangedAsync;
+        if (_subscription is not null) await _subscription.DisposeAsync();
+        if (_prototype is not null)
+        {
+            try { await _prototype.InvokeVoidAsync("dispose"); await _prototype.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+        _reference?.Dispose();
+    }
+}

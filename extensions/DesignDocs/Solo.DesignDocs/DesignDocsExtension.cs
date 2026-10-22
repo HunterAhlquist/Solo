@@ -11,5 +11,6 @@ public sealed class DesignDocsExtension : ISoloExtension
         if (!string.Equals(context.Schema, DesignDocsDbContext.Schema, StringComparison.Ordinal))
             throw new InvalidOperationException($"Expected schema {DesignDocsDbContext.Schema}.");
         services.AddExtensionDbContext<DesignDocsDbContext>(context);
+        services.AddLiveMessageHandler<PrototypeRelay>();
     }
 }

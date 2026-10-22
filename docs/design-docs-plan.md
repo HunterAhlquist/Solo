@@ -357,6 +357,32 @@ Copy from Roadmap: the csproj comments and package references (contract `1.10.0`
 
 **Done when:** the package builds and loads with an empty page, CI packages it, and the prototype's findings are written into this plan (change any section they contradict).
 
+#### B0 findings (2026-10-22)
+
+The throwaway implementation is on `codex/design-docs-prototype`; it is not part
+of the extension implementation branch. Built package and browser evidence are
+under `artifacts/` (ignored). A disposable Postgres database and synthetic local
+sessions were used, with no access to a secrets store.
+
+- The package loaded through the real extension host under the existing CSP.
+- Three writer tabs each inserted 200 changes at 10 ms intervals, batched at
+  50 ms. All three and a Read member converged on exactly 3,276 characters.
+  The observed p95 acknowledgment was 11–12 ms and delivery was 9–12 ms on
+  localhost; writers sent 40–45 messages including startup traffic. There were
+  zero failures and zero outstanding acknowledgments. This is a local latency
+  measurement, not a remote-network or server capacity benchmark.
+- A simulated gap made one editor read-only. Another writer added 1,092
+  characters; reconnect restored identical 4,368-character text in all tabs.
+  The test drops traffic at the prototype bridge, not at the network layer.
+- Blazor navigation away and back disposed/recreated CodeMirror and resynced
+  its text without browser warnings or errors. Hot reload remains unverified.
+- Four JS tests cover reordered/duplicated updates and resync, byte encoding,
+  pressure mapping, and deterministic stamp jitter. Hardware pressure, Scribble,
+  coalesced events, palm rejection and iPadOS lock/resume remain unverified.
+- **User-approved gate exception:** continue B1–B9 with the physical device
+  checks explicitly pending. These results do not waive final device acceptance.
+  Safari selection retention and desktop blob downloads also remain pending.
+
 ### B1. Data model (`ext_design_docs`)
 
 Own `DbContext`. Bare `Guid`s for core ids, no foreign keys into core (writing-extensions.md §4). `Version` is `xmin` for optimistic concurrency, as in core. All timestamps are `DateTimeOffset` in UTC.
