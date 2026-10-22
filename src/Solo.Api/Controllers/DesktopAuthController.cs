@@ -130,8 +130,9 @@ public sealed partial class DesktopAuthController(
 
         if (error is not null && ErrorCodeShape().IsMatch(error))
         {
-            // Cancelled on Google's page, or refused there.
-            logger.LogInformation("Desktop sign-in returned from Google with {Error}.", error);
+            // Cancelled on Google's page, or refused there. The code itself
+            // is posted by the browser, so it goes to the page, not the log.
+            logger.LogInformation("Desktop sign-in returned from Google with an error.");
             return await ServePageAsync(env, ct, ("solo-error", error));
         }
 
