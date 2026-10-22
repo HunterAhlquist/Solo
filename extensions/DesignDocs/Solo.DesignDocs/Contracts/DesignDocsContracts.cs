@@ -23,3 +23,4 @@ public sealed record CopyRequest([Required(AllowEmptyStrings=true), StringLength
     IReadOnlyList<HeadingDto> Headings, string Seq);
 public sealed record LabelsRequest([MaxLength(200)] IReadOnlyList<string> Urls);
 public sealed record RenameImpactDto(int References);
+public sealed record ImageDto(Guid Id,string Path,string ContentType,int Width,int Height,int Bytes,uint Version);

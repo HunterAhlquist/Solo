@@ -5,6 +5,7 @@
 @inject NavigationManager Navigation
 @inject ISoloTaskPicker TaskPicker
 @inject ISoloTaskDrawer TaskDrawer
+@inject ISoloContextMenu Menus
 <MudText Typo="Typo.caption" role="status">@_status</MudText>
 <div class="design-docs-presence">
     @foreach(var p in _presence){<MudChip T="string" Size="Size.Small">@p.DisplayName · @p.Mode</MudChip>}
@@ -16,7 +17,7 @@
     [Parameter,EditorRequired] public NoteDto Note {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
     private ElementReference _root;private IJSObjectReference? _editor;private DotNetObjectReference<NoteEditor>? _reference;
-    private IAsyncDisposable? _subscription;private string _status="Connecting…";private bool _disposed;
+    private IAsyncDisposable? _subscription, _vaultSubscription;private string _status="Connecting…";private bool _disposed;
     private IReadOnlyList<TopicPresenceEntry> _presence=[];
     private bool? _lastWrite;
     protected override async Task OnParametersSetAsync(){if(_lastWrite!=CanWrite&&_editor is not null)await _editor.InvokeVoidAsync("permissions",CanWrite);_lastWrite=CanWrite;}
@@ -33,6 +34,7 @@
                 if(m.Kind is "deleted" or "closed"){await _editor.InvokeVoidAsync("connected",false);await Status("Content unavailable · read-only");return;}
                 await _editor.InvokeVoidAsync("receive",m.Kind,m.Data);
             },async people=>{_presence=people;if(_editor is not null)await _editor.InvokeVoidAsync("presence",people);await InvokeAsync(StateHasChanged);});
+            _vaultSubscription=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(Note.VaultId),async m=>{if(m.Kind=="image"&&_editor is not null)await _editor.InvokeVoidAsync("imagesChanged");});
             Live.ConnectionChanged+=Connection;await Live.SetPresenceAsync(ProjectId,Topic,PresenceMode.Viewing);await Connection();
         }catch(Exception e){await Status(e.Message);}
     }
@@ -52,5 +54,17 @@
         return new(Aliases.Serial(project.Alias,board.Alias,task.Number),task.Name);
     }
     [JSInvokable] public Task OpenTask(Guid id)=>TaskDrawer.OpenAsync(id);
-    public async ValueTask DisposeAsync(){_disposed=true;Live.ConnectionChanged-=Connection;if(_subscription is not null)await _subscription.DisposeAsync();if(_editor is not null){try{await _editor.InvokeVoidAsync("dispose");await _editor.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
+    private string ImageRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/images";
+    private async Task<ImageDto> FindImage(string path){
+        var images=await Api.GetAsync<List<ImageDto>>(ImageRoot);var exact=images.FirstOrDefault(i=>i.Path==path);
+        if(exact is not null)return exact;var candidates=images.Where(i=>i.Path.Split('/').Last()==path.Split('/').Last()).ToList();
+        return candidates.Count==1?candidates[0]:throw new InvalidOperationException("Image not found or ambiguous.");
+    }
+    [JSInvokable] public async Task<object> Image(string path){var image=await FindImage(path);var bytes=await Api.GetBytesAsync(ImageRoot+"/"+image.Id);return new{base64=Convert.ToBase64String(bytes.Content),image.ContentType,image.Version};}
+    [JSInvokable] public async Task UploadImage(byte[] bytes,string contentType,string path,bool replace){
+        if(replace){var image=await FindImage(path);await Api.SendBytesAsync<ImageDto>(HttpMethod.Put,ImageRoot+"/"+image.Id+"?version="+image.Version,bytes,contentType);}
+        else await Api.SendBytesAsync<ImageDto>(HttpMethod.Post,ImageRoot+"?path="+Uri.EscapeDataString(path),bytes,contentType);
+    }
+    [JSInvokable] public async Task<bool> ImageMenu(string path,double x,double y)=>CanWrite&&await Menus.ShowAsync(x,y,[new("replace","Replace image")])=="replace";
+    public async ValueTask DisposeAsync(){_disposed=true;Live.ConnectionChanged-=Connection;if(_subscription is not null)await _subscription.DisposeAsync();if(_vaultSubscription is not null)await _vaultSubscription.DisposeAsync();if(_editor is not null){try{await _editor.InvokeVoidAsync("dispose");await _editor.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
 }

@@ -25,3 +25,12 @@
 .design-docs-editor .cm-ySelectionCaret { outline:1px solid var(--mud-palette-surface); }
 .design-docs-editor .cm-ySelectionInfo { color:white; text-shadow:0 1px 2px black; }
 .design-docs-task-chip { display:inline-block; border:1px solid var(--mud-palette-lines-default); border-radius:4px; padding:0 6px; font-size:.9em; }
+.design-docs-media-tools button { border:1px solid var(--mud-palette-lines-default); color:inherit; background:transparent; padding:4px 10px; border-radius:4px; cursor:pointer; }
+.design-docs-image-card,.design-docs-image-stack { display:inline-block; position:relative; border:0; background:none; cursor:zoom-in; padding:10px; vertical-align:middle; }
+.design-docs-image-card img,.design-docs-image-stack img { display:block; max-width:240px; max-height:180px; object-fit:contain; padding:6px; background:white; border:1px solid #bbb; box-shadow:1px 2px 5px #0003; }
+.design-docs-image-stack { width:260px; height:200px; }
+.design-docs-image-stack img { position:absolute; top:8px; left:8px; }
+.design-docs-image-viewer { width:100vw; height:100vh; max-width:100vw; max-height:100vh; border:0; padding:16px; background:#111e; color:white; }
+.design-docs-image-viewer::backdrop { background:#000c; }
+.design-docs-image-viewer img { display:block; max-width:95%; max-height:85vh; margin:0 auto; object-fit:contain; touch-action:pan-y; }
+.design-docs-image-viewer button { padding:8px 16px; margin:4px; cursor:pointer; background:#222; border:1px solid #777; color:white; }
