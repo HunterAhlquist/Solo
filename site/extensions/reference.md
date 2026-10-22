@@ -26,6 +26,8 @@ The contract version is the version of the two contract packages. Declare the lo
 | 1.8 | Client | `[TaskCardExtension]`, `[BoardColumnExtension]`, `[ProjectSettingsSection]`, `[BoardSettingsSection]`, `[AppBarExtension]`, `ISoloTaskMenuContributor`, `ISoloLiveTopics.SubscribeUserAsync`. |
 | 1.9 | Server, client | No new interface. `AuthConfigDto` and `InstanceSettingsDto` have the display name and the tagline of the instance, and `InstanceBranding` has their limits and defaults. |
 
+| 1.10 | Server, client | Client-sent live messages with refreshed sender roles; markdown insertion actions and link labels; authenticated binary API calls; blob images. |
+
 `ContractVersion.Current` in `Solo.Shared.Extensibility` holds the contract version of an instance.
 
 ## Operations

@@ -43,6 +43,7 @@ public sealed class SecurityHeaderTests(PostgresFixture postgres) : IAsyncLifeti
         // repoint every relative asset the client loads.
         Assert.Contains("frame-ancestors 'none'", csp);
         Assert.Contains("base-uri 'self'", csp);
+        Assert.Contains("img-src 'self' data: https: blob:", csp);
         Assert.Contains("object-src 'none'", csp);
         // Blazor WebAssembly needs this and nothing broader — in particular
         // no bare 'unsafe-eval'.

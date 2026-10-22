@@ -23,7 +23,7 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
             return;
         }
 
-        _factory = new SoloApiFactory(await postgres.CreateDatabaseAsync("signalr"));
+        _factory = new SoloApiFactory(await postgres.CreateDatabaseAsync("signalr"), [SoloApiFactory.FixtureDirectory]);
         _admin = _factory.As("admin", "admin@example.com", "Admin");
         await TestClients.CompleteSetupAsync(_admin);
     }
@@ -452,6 +452,75 @@ public sealed class SignalRTests(PostgresFixture postgres) : IAsyncLifetime
         };
         Assert.True(revoked.IsSuccessStatusCode, $"{how}: {revoked.StatusCode}");
         await closed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [SkippableFact]
+    public async Task Client_messages_are_scoped_limited_and_relayed_to_other_connections()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Relay", alias = "RELAY" });
+        await using var sender = Connect("admin", "admin@example.com", "Admin");
+        await using var other = Connect("admin", "admin@example.com", "Admin");
+        await sender.StartAsync();
+        await other.StartAsync();
+        Task<LiveSendResult> Send(string topic, string data = "payload") => sender.InvokeAsync<LiveSendResult>(
+            nameof(IBoardHubServer.SendTopicMessage), project.Id, topic, "echo", data);
+        Assert.Equal(LiveSendResult.NotSubscribed, await Send("fixture:doc"));
+        foreach (var topic in new[] { "fixture:doc", "unknown:doc", "fixture-other:doc" })
+            await sender.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), project.Id, topic);
+        Assert.Equal(LiveSendResult.NoHandler, await Send("unknown:doc"));
+        Assert.Equal(LiveSendResult.NoHandler, await Send("fixture-other:doc"));
+        Assert.Equal(LiveSendResult.TooLarge, await Send("fixture:doc", new string('a', 48_001)));
+        await other.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), project.Id, "fixture:doc");
+        var received = new TaskCompletionSource<TopicMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var echoedToSender = false;
+        other.On<TopicMessage>(nameof(IBoardClient.TopicMessage), m => received.TrySetResult(m));
+        sender.On<TopicMessage>(nameof(IBoardClient.TopicMessage), m => { if (m.Kind == "echo") echoedToSender = true; });
+        Assert.Equal(LiveSendResult.Accepted, await Send("fixture:doc", new string('x', 48_000)));
+        Assert.Equal(48_000, (await received.Task.WaitAsync(TimeSpan.FromSeconds(10))).Data!.Length);
+        // A reply is a sentinel on the sender's ordered output stream.
+        var sentinel = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        sender.On<TopicMessage>(nameof(IBoardClient.TopicMessage), m => { if (m.Kind == "sender") sentinel.TrySetResult(); });
+        await sender.InvokeAsync<LiveSendResult>(nameof(IBoardHubServer.SendTopicMessage), project.Id, "fixture:doc", "sender", null);
+        await sentinel.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(echoedToSender);
+        Assert.Equal(LiveSendResult.Failed, await sender.InvokeAsync<LiveSendResult>(
+            nameof(IBoardHubServer.SendTopicMessage), project.Id, "fixture:doc", "fail", null));
+        Assert.Equal(LiveSendResult.Failed, await sender.InvokeAsync<LiveSendResult>(
+            nameof(IBoardHubServer.SendTopicMessage), project.Id, "fixture:doc", "slow", null));
+        _factory.Services.GetRequiredService<Solo.Extensions.ExtensionState>().Disable("fixture", "Test disabled");
+        Assert.Equal(LiveSendResult.NoHandler, await Send("fixture:doc"));
+    }
+
+    [SkippableFact]
+    public async Task A_demotion_refreshes_the_sender_without_reconnecting()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var project = await _admin.PostJson<ProjectDto>("/api/projects", new { name = "Roles", alias = "ROLES" });
+        var member = await _admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members",
+            new { email = "writer@example.com", role = "ReadWrite" });
+        await using var writer = Connect("writer", "writer@example.com", "Writer");
+        await writer.StartAsync();
+        await writer.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), project.Id, "fixture:doc");
+        async Task<Solo.Extensibility.LiveSender> ReadSender()
+        {
+            var received = new TaskCompletionSource<TopicMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var subscription = writer.On<TopicMessage>(nameof(IBoardClient.TopicMessage), m => received.TrySetResult(m));
+            Assert.Equal(LiveSendResult.Accepted, await writer.InvokeAsync<LiveSendResult>(
+                nameof(IBoardHubServer.SendTopicMessage), project.Id, "fixture:doc", "sender", null));
+            return System.Text.Json.JsonSerializer.Deserialize<Solo.Extensibility.LiveSender>(
+                (await received.Task.WaitAsync(TimeSpan.FromSeconds(10))).Data!)!;
+        }
+        var initial = await ReadSender();
+        Assert.Equal(ProjectRole.ReadWrite, initial.Role);
+        Assert.Equal(writer.ConnectionId, initial.ConnectionId);
+        var response = await _admin.PutAsJsonAsync($"/api/projects/{project.Id}/members/{member.Id}",
+            new { role = "Read", isOwner = false }, TestClients.Json);
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(ProjectRole.Read, (await ReadSender()).Role);
+        await _admin.DeleteAsync($"/api/projects/{project.Id}/members/{member.Id}");
+        Assert.Equal(LiveSendResult.NotSubscribed, await writer.InvokeAsync<LiveSendResult>(
+            nameof(IBoardHubServer.SendTopicMessage), project.Id, "fixture:doc", "sender", null));
     }
 
     private async Task<(ProjectDto Project, BoardDto Board)> BoardAsync(string name, string alias)

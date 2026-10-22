@@ -149,7 +149,7 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR().AddHubOptions<BoardHub>(options => options.MaximumReceiveMessageSize = 64 * 1024);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
 
@@ -199,6 +199,7 @@ builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
     });
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddSingleton<TopicRegistry>();
+builder.Services.AddSingleton<LiveMessageLimits>();
 builder.Services.AddSingleton<SessionConnections>();
 builder.Services.AddScoped<LiveAccess>();
 builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();

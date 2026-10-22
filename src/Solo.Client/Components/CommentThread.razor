@@ -43,7 +43,8 @@ else
 
             @if (_editingId == comment.Id)
             {
-                <MarkdownEditor Value="@comment.Body" CanWrite="true" AlwaysEditing="true" Lines="4"
+                <MarkdownEditor ProjectId="@(Store.Board?.ProjectId ?? Guid.Empty)" EntityId="@comment.Id"
+                                Surface="Solo.Shared.Extensibility.MarkdownSurface.Comment" Value="@comment.Body" CanWrite="true" AlwaysEditing="true" Lines="4"
                                 MaxLength="FieldLimits.Comment"
                                 SaveText="Save" OnSave="@(body => UpdateAsync(comment, body))" />
             }
@@ -64,7 +65,8 @@ else
 
     @if (CanComment)
     {
-        <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
+        <MarkdownEditor ProjectId="@(Store.Board?.ProjectId ?? Guid.Empty)" EntityId="@(TaskId ?? EpicId ?? Guid.Empty)"
+                        Surface="Solo.Shared.Extensibility.MarkdownSurface.Comment" CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
                         MaxLength="FieldLimits.Comment"
                         Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
     }

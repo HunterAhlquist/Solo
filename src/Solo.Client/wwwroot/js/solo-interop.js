@@ -125,6 +125,20 @@ window.solo = {
     // click from a click on the text around it, and swallows clicks inside
     // .markdown-locked so an editor's preview can't navigate a draft away.
     markdown: {
+        selection: root => {
+            const input = root?.querySelector('textarea');
+            return input ? input.value.slice(input.selectionStart, input.selectionEnd) : null;
+        },
+        insertAtCursor: (root, text, maxLength) => {
+            const input = root?.querySelector('textarea');
+            if (!input) return false;
+            const start = input.selectionStart, end = input.selectionEnd;
+            if (input.value.length - (end - start) + text.length > maxLength) return false;
+            input.setRangeText(text, start, end, 'end');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.focus();
+            return true;
+        },
         _lastLinkClick: 0,
 
         wasLinkClick: () => Date.now() - window.solo.markdown._lastLinkClick < 400,

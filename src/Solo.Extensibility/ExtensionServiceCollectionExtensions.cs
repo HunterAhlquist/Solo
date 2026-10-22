@@ -48,6 +48,18 @@ public static class ExtensionServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>Registers the extension's single client-message handler (contract 1.10).</summary>
+    public static IServiceCollection AddLiveMessageHandler<THandler>(this IServiceCollection services)
+        where THandler : class, ISoloLiveMessageHandler
+    {
+        if (services.Any(s => s.ImplementationInstance is LiveMessageHandlerRegistration r &&
+                              r.HandlerType.Assembly == typeof(THandler).Assembly))
+            throw new InvalidOperationException("An extension may register only one live message handler.");
+        services.AddScoped<THandler>();
+        services.AddSingleton(new LiveMessageHandlerRegistration(typeof(THandler)));
+        return services;
+    }
+
     /// <summary>Registers a domain event handler.</summary>
     public static IServiceCollection AddEventHandler<THandler>(this IServiceCollection services)
         where THandler : class, ISoloEventHandler

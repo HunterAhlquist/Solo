@@ -52,9 +52,18 @@ public interface ISoloClientApi
     /// <summary>A call with a response body. <paramref name="body"/> is serialized as JSON when present.</summary>
     Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, CancellationToken ct = default);
 
+    /// <summary>GET as bytes, using the same credential and error handling as JSON calls (contract 1.10).</summary>
+    Task<SoloBinary> GetBytesAsync(string path, CancellationToken ct = default);
+
+    /// <summary>Sends raw bytes and reads a JSON response (contract 1.10).</summary>
+    Task<T> SendBytesAsync<T>(HttpMethod method, string path, byte[] content, string contentType,
+        CancellationToken ct = default);
+
     /// <summary>A call whose response body is discarded — a 204, typically.</summary>
     Task SendAsync(HttpMethod method, string path, object? body = null, CancellationToken ct = default);
 }
+
+public sealed record SoloBinary(byte[] Content, string? ContentType);
 
 /// <summary>
 /// A non-success response from the Solo API, carrying its ProblemDetails.

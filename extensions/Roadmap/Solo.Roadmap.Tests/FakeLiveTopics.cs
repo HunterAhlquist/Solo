@@ -10,6 +10,11 @@ namespace Solo.Roadmap.Tests;
 /// </summary>
 internal sealed class FakeLiveTopics : ISoloLiveTopics
 {
+    public bool IsConnected => true;
+    public event Func<Task>? ConnectionChanged { add { } remove { } }
+    Task<LiveSendResult> ISoloLiveTopics.SendAsync(Guid projectId, string topic, string kind, string? data,
+        CancellationToken ct) => Task.FromResult(LiveSendResult.Accepted);
+
     private sealed record Holder(
         Guid ProjectId,
         string Topic,

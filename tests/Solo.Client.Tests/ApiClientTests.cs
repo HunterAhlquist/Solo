@@ -7,6 +7,24 @@ namespace Solo.Client.Tests;
 public class ApiClientTests
 {
     [Fact]
+    public async Task Binary_calls_keep_bytes_media_type_and_problem_details()
+    {
+        byte[] bytes = [0, 1, 127, 128, 255];
+        var http = new StubHttp().RouteBytes("/image", bytes).RespondJson(new { saved = true });
+        Solo.Shared.Extensibility.ISoloClientApi api = http.CreateClient();
+        var download = await api.GetBytesAsync("image");
+        Assert.Equal(bytes, download.Content);
+        Assert.Equal("application/octet-stream", download.ContentType);
+        var reply = await api.SendBytesAsync<System.Text.Json.JsonElement>(HttpMethod.Post, "upload", [65, 66], "image/webp");
+        Assert.True(reply.GetProperty("saved").GetBoolean());
+        Assert.Equal("AB", http.Bodies[1]);
+        Assert.Equal("image/webp", http.Requests[1].Content!.Headers.ContentType!.MediaType);
+        http.RespondConflict("Image replaced by someone else.");
+        var error = await Assert.ThrowsAsync<ApiConflictException>(() => api.GetBytesAsync("missing"));
+        Assert.Equal("Image replaced by someone else.", error.Detail);
+    }
+
+    [Fact]
     public async Task Conflict_surfaces_as_ApiConflictException_carrying_the_ProblemDetails()
     {
         var http = new StubHttp().RespondConflict("Someone saved first.");

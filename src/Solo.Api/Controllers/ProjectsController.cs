@@ -204,7 +204,7 @@ public sealed class ProjectsController(
     [HttpPut("{projectId:guid}/members/{memberId:guid}")]
     [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
     public async Task<ActionResult<ProjectMemberDto>> UpdateMember(
-        Guid projectId, Guid memberId, UpdateMemberRequest request, CancellationToken ct)
+        Guid projectId, Guid memberId, UpdateMemberRequest request, [FromServices] LiveAccess live, CancellationToken ct)
     {
         var member = await db.ProjectMembers.Include(m => m.User)
             .FirstOrDefaultAsync(m => m.ProjectId == projectId && m.Id == memberId, ct);
@@ -226,6 +226,8 @@ public sealed class ProjectsController(
         {
             return conflict;
         }
+
+        if (member.UserId is { } userId) await live.RevalidateAsync(userId, ct);
 
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Project, projectId,
             ChangeKind.Updated, "Members");
