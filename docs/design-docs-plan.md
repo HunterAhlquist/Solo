@@ -774,3 +774,7 @@ Bug reports and forums, for browser behavior with no official page: [Apple Devel
   editable glyph rows and build script ship in source, and the PNG and license
   ship in the package. Basic ASCII glyphs are supported; other characters stay
   in the text data and render as a question-mark glyph.
+
+- A4 exposes optional `SoloApiException.RetryAfter` so B9 can honor server
+  pacing without bypassing the authenticated API. JSON and binary calls preserve
+  both delta-seconds and HTTP-date headers; 14 API client tests passed.
