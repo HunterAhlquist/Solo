@@ -45,6 +45,22 @@ public class LiveTopicsTests
         Assert.Equal(2, changes.Count);
     }
 
+    [Fact]
+    public async Task Presence_and_subscription_notifications_do_not_report_a_connection_gap()
+    {
+        var changes = 0;
+        _topics.ConnectionChanged += () => { changes++; return Task.CompletedTask; };
+        await _hub.RaiseConnectionStateChanged();
+        await _hub.RaiseConnectionStateChanged();
+        Assert.Equal(0, changes);
+        _hub.IsConnected = false;
+        await _hub.RaiseConnectionStateChanged();
+        await _hub.RaiseConnectionStateChanged();
+        _hub.IsConnected = true;
+        await _hub.RaiseConnectionStateChanged();
+        Assert.Equal(2, changes);
+    }
+
     private static TopicPresenceSnapshot Snapshot(string topic, params (Guid User, PresenceMode Mode)[] entries) =>
         new(Project, topic, entries.Select(e => new TopicPresenceEntry(e.User, "Someone", e.Mode)).ToList());
 
