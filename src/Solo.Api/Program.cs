@@ -338,7 +338,7 @@ app.Services.GetRequiredService<ThemeCatalog>();
 // Serves the Blazor WASM client: framework files (_framework/*) first, then the
 // client's own wwwroot assets, with index.html as the SPA fallback below.
 app.UseBlazorFrameworkFiles();
-app.UseStaticFiles(new StaticFileOptions
+var revalidatedFiles = new StaticFileOptions
 {
     // index.html, css/app.css and js/solo-interop.js carry no fingerprint, and
     // ASP.NET sends them with an ETag but no Cache-Control — which lets a browser
@@ -347,7 +347,8 @@ app.UseStaticFiles(new StaticFileOptions
     // 304. (_framework/* is fingerprinted and handled by UseBlazorFrameworkFiles.)
     OnPrepareResponse = context =>
         context.Context.Response.Headers.CacheControl = "no-cache",
-});
+};
+app.UseStaticFiles(revalidatedFiles);
 
 app.UseAuthentication();
 // After authentication so authenticated callers are metered per user, before
@@ -367,8 +368,12 @@ app.MapHealthChecks("/healthz").AllowAnonymous();
 // policy's 401 — real endpoints match first and keep enforcing their own auth.
 app.MapFallback("/api/{**_}", () => Results.Problem(statusCode: StatusCodes.Status404NotFound))
     .AllowAnonymous();
-// The SPA shell itself is public — the client boots, then authenticates.
-app.MapFallbackToFile("index.html").AllowAnonymous();
+// The SPA shell itself is public — the client boots, then authenticates. With
+// the same options as the static files: this is how /, /signin and every other
+// client route reach index.html, and a heuristically cached copy names the
+// previous release's client files, so a browser kept booting the old app after
+// an update.
+app.MapFallbackToFile("index.html", revalidatedFiles).AllowAnonymous();
 
 app.Run();
 

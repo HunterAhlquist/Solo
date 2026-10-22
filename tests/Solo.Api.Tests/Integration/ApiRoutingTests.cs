@@ -52,4 +52,26 @@ public sealed class ApiRoutingTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
     }
+
+    /// <summary>
+    /// The shell names the fingerprinted client files a page load uses. A
+    /// browser allowed to reuse it without asking keeps booting the previous
+    /// release after an update — from every route, since the fallback serves
+    /// the same page for all of them.
+    /// </summary>
+    [SkippableTheory]
+    [InlineData("/")]
+    [InlineData("/signin")]
+    [InlineData("/some/deep/client-route")]
+    [InlineData("/index.html")]
+    public async Task TheSpaShell_IsRevalidatedOnEveryLoad(string path)
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var response = await _factory.CreateClient().GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.CacheControl?.NoCache, $"{path} went out without Cache-Control: no-cache.");
+    }
 }
