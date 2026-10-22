@@ -2,9 +2,9 @@ name: Desktop Release
 
 on:
   push:
-    # Desktop releases only. The container image has its own `server-v*` series
-    # and its own workflow, so the two artifacts version independently.
-    tags: ["desktop-v*"]
+    # Stable desktop versions are independent; preview-v* also builds a server
+    # and extension train from this same commit in ci.yml.
+    tags: ["desktop-v*", "preview-v*"]
   # Manual runs build the installers as workflow artifacts without touching
   # a release — useful for testing the packaging on a branch.
   workflow_dispatch:
@@ -26,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.diff.outputs.build }}
+      version: ${{ steps.channel.outputs.version }}
+      prerelease: ${{ steps.channel.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,9 +35,14 @@ jobs:
           # can reach earlier tags.
           fetch-depth: 0
 
-      # Tags can point at any commit; only release ones that landed on main.
-      - name: Verify tagged commit is on main
+      - name: Classify the release channel
+        id: channel
         if: github.event_name == 'push'
+        run: bash build/release-channel.sh desktop "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      # Stable tags must have landed on main; prereleases can test an unmerged branch.
+      - name: Verify tagged commit is on main
+        if: github.event_name == 'push' && steps.channel.outputs.prerelease != 'true'
         run: |
           if git merge-base --is-ancestor HEAD origin/main; then
             echo "Tag ${GITHUB_REF_NAME} is on main."
@@ -46,10 +53,12 @@ jobs:
 
       - name: Diff against the previous desktop release
         id: diff
+        env:
+          IS_PRERELEASE: ${{ steps.channel.outputs.prerelease }}
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" != "push" ] || [ "$IS_PRERELEASE" = "true" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -71,7 +80,7 @@ jobs:
           # --exclude keeps the tag being pushed from matching itself; when a
           # second tag sits on the same commit the diff is correctly empty.
           PREVIOUS=$(git describe --tags --abbrev=0 --match "${TAG_PREFIX}*" \
-            --exclude "${GITHUB_REF_NAME}" HEAD 2>/dev/null || true)
+            --exclude "${GITHUB_REF_NAME}" --exclude "${TAG_PREFIX}*-*" HEAD 2>/dev/null || true)
 
           if [ -z "${PREVIOUS}" ]; then
             echo "No earlier ${TAG_PREFIX}* tag in this history — building."
@@ -167,16 +176,14 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode_2[6-9]*.app | sort -V | tail -1)"
           xcrun actool --version | grep short-bundle-version
 
-      # Installer filenames come from package.json's version; keep them in
-      # step with the tag. Tags that aren't valid semver (e.g. desktop-v1.2.0rc)
-      # can't be stamped — those builds keep the committed version.
+      # The channel guard already validated this version; a failed stamp must
+      # stop the build rather than publish mislabeled installers.
       - name: Stamp version from tag
+        env:
+          RELEASE_VERSION: ${{ needs.changes.outputs.version }}
         if: github.event_name == 'push'
         run: |
-          VERSION="${GITHUB_REF_NAME#${TAG_PREFIX}}"
-          if ! npm version "$VERSION" --no-git-tag-version; then
-            echo "::warning::Tag ${GITHUB_REF_NAME} is not valid semver; keeping package.json version $(node -p "require('./package.json').version")"
-          fi
+          npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
         shell: bash
 
       - name: Publish Blazor client into shell
@@ -335,6 +342,9 @@ jobs:
           if-no-files-found: error
 
   release:
+    concurrency:
+      group: github-release-${{ github.ref }}
+      cancel-in-progress: false
     name: Attach to GitHub release
     needs: [changes, build]
     if: github.event_name == 'push'
@@ -355,6 +365,8 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+          prerelease: ${{ needs.changes.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.changes.outputs.prerelease == 'true' && 'false' || 'legacy' }}
 
       # The installers are hundreds of MB a build and now live on the release,
       # where they cost nothing; as workflow artifacts they were only a handoff
