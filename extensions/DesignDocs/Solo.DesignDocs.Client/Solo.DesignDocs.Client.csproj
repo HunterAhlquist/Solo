@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- The Design Docs extension's client half: the sidebar and home sections,
+       the vault page, its dialogs, the "Link a doc" button in core's markdown
+       editor, live labels for doc links and the task view's "Linked docs".
+       The editor itself is the browser module in js/, bundled into the server
+       project's content/ folder and loaded from there.
+
+       References only the Solo.Shared contract package, Components.Web and
+       MudBlazor, like Solo.Roadmap.Client, and compiles the server project's
+       Contracts folder so both halves share one set of request shapes. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <Version>1.0.0</Version>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
+    <PackageReference Include="MudBlazor" Version="9.11.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.10.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Solo.DesignDocs\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+    <None Remove="js\**" />
+    <Content Remove="js\**" />
+  </ItemGroup>
+
+</Project>

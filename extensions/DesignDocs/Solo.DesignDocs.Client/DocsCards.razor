@@ -1,0 +1,63 @@
+@* Design docs as cards: the home section and the project's Design Docs page. *@
+
+@if (List is null && Error is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (Error is not null)
+{
+    <MudText Typo="Typo.body2" Color="Color.Error">@Error</MudText>
+}
+else if (List!.Vaults.Count == 0)
+{
+    <MudPaper Elevation="0" Class="dd-home__empty pa-4 d-flex flex-column align-center gap-2">
+        <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.body1" Color="Color.Secondary">No design docs yet.</MudText>
+        @if (List.CanManage)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@OnCreate">Create one</MudButton>
+        }
+    </MudPaper>
+}
+else
+{
+    <MudGrid>
+        @foreach (var vault in List.Vaults.OrderBy(v => v.IsClosed).ThenBy(v => v.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="1" Class="dd-home__card">
+                    <MudCardContent Class="d-flex align-center gap-2" Style="cursor:pointer"
+                                    @onclick="@(() => Navigation.NavigateTo(Href(vault)))">
+                        <MudIcon Icon="@(vault.IsClosed ? Icons.Material.Filled.Lock : Icons.Material.Filled.MenuBook)"
+                                 Color="@(vault.IsClosed ? Color.Default : Color.Primary)" />
+                        <MudText Typo="Typo.h6" Class="text-truncate flex-grow-1">@vault.Name</MudText>
+                        @if (vault.IsClosed)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Closed</MudChip>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+        @if (List.CanManage)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudButton Variant="Variant.Outlined" FullWidth="true" Class="h-100" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@OnCreate">New design doc</MudButton>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    [Parameter] public VaultListDto? List { get; set; }
+
+    [Parameter] public string? Error { get; set; }
+
+    [Parameter, EditorRequired] public Func<VaultDto, string> Href { get; set; } = null!;
+
+    [Parameter] public EventCallback OnCreate { get; set; }
+}

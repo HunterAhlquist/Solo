@@ -1,0 +1,137 @@
+@*
+    A vault's folders and notes. Click opens a note or folds a folder; the ⋯
+    button (always shown on touch) and right-click open the host's context
+    menu; writers drag a row onto a folder, or onto the top row for the vault's
+    root. "Move to…" in the menu does the same for touch.
+*@
+
+<div class="dd-tree" role="tree" aria-label="Notes">
+    @if (CanWrite)
+    {
+        <div class="@RowClass(null, _dropTarget == RootKey)" role="treeitem"
+             @ondragover:preventDefault="true" @ondragover="@(() => _dropTarget = RootKey)"
+             @ondragleave="@(() => _dropTarget = null)" @ondrop="@(() => DropAsync(null))">
+            <MudIcon Icon="@Icons.Material.Filled.Home" Size="Size.Small" Color="Color.Secondary" />
+            <span class="dd-tree__name dd-tree__muted">Top level</span>
+        </div>
+    }
+    @RenderLevel(null, 0)
+    @if (Tree.Folders.Count == 0 && Tree.Notes.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="px-4 py-2">
+            @(CanWrite ? "No notes yet. Start one with the + above." : "No notes yet.")
+        </MudText>
+    }
+</div>
+
+@code {
+    private const string RootKey = "root";
+
+    private readonly HashSet<Guid> _collapsed = [];
+    private (bool IsFolder, Guid Id)? _dragging;
+    private string? _dropTarget;
+
+    [Parameter, EditorRequired] public VaultTreeDto Tree { get; set; } = null!;
+
+    [Parameter] public Guid? ActiveNoteId { get; set; }
+
+    [Parameter] public bool CanWrite { get; set; }
+
+    [Parameter] public EventCallback<Guid> OnOpenNote { get; set; }
+
+    /// <summary>The menu for a row, at a point on screen.</summary>
+    [Parameter] public EventCallback<TreeMenuRequest> OnMenu { get; set; }
+
+    /// <summary>A drag dropped a folder or note into a folder (null: the root).</summary>
+    [Parameter] public EventCallback<TreeMoveRequest> OnMove { get; set; }
+
+    /// <summary>Opens the folders on the way to a note, so the open note is always in view.</summary>
+    public void Reveal(Guid noteId)
+    {
+        var folders = Tree.Folders.ToDictionary(f => f.Id);
+        var note = Tree.Notes.FirstOrDefault(n => n.Id == noteId);
+        for (var at = note?.FolderId; at is { } id && folders.TryGetValue(id, out var folder); at = folder.ParentId)
+        {
+            _collapsed.Remove(id);
+        }
+    }
+
+    private RenderFragment RenderLevel(Guid? parent, int depth) => __builder =>
+    {
+        foreach (var folder in Tree.Folders.Where(f => f.ParentId == parent)
+                     .OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            var open = !_collapsed.Contains(folder.Id);
+            var key = folder.Id.ToString();
+            <div @key="folder.Id" class="@RowClass(null, _dropTarget == key)" style="@Indent(depth)" role="treeitem"
+                 aria-expanded="@(open ? "true" : "false")" draggable="@(CanWrite ? "true" : "false")"
+                 @onclick="@(() => Toggle(folder.Id))"
+                 @oncontextmenu:preventDefault="true" @oncontextmenu="@(e => MenuAsync(e, true, folder.Id))"
+                 @ondragstart="@(() => _dragging = (true, folder.Id))" @ondragend="@(() => { _dragging = null; _dropTarget = null; })"
+                 @ondragover:preventDefault="true" @ondragover="@(() => _dropTarget = key)"
+                 @ondragleave="@(() => _dropTarget = null)" @ondrop="@(() => DropAsync(folder.Id))">
+                <MudIcon Icon="@(open ? Icons.Material.Filled.FolderOpen : Icons.Material.Filled.Folder)" Size="Size.Small"
+                         Color="Color.Secondary" />
+                <span class="dd-tree__name">@folder.Name</span>
+                <button type="button" class="dd-tree__menu mud-icon-button" aria-label="@($"{folder.Name} actions")"
+                        @onclick:stopPropagation="true" @onclick="@(e => MenuAsync(e, true, folder.Id))">
+                    <MudIcon Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" />
+                </button>
+            </div>
+            @if (open)
+            {
+                @RenderLevel(folder.Id, depth + 1)
+            }
+        }
+
+        foreach (var note in Tree.Notes.Where(n => n.FolderId == parent)
+                     .OrderBy(n => n.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            <div @key="note.Id" class="@RowClass(note.Id, false)" style="@Indent(depth)" role="treeitem"
+                 aria-selected="@(note.Id == ActiveNoteId ? "true" : "false")" draggable="@(CanWrite ? "true" : "false")"
+                 @onclick="@(() => OnOpenNote.InvokeAsync(note.Id))"
+                 @oncontextmenu:preventDefault="true" @oncontextmenu="@(e => MenuAsync(e, false, note.Id))"
+                 @ondragstart="@(() => _dragging = (false, note.Id))" @ondragend="@(() => { _dragging = null; _dropTarget = null; })">
+                <MudIcon Icon="@Icons.Material.Outlined.Description" Size="Size.Small" Color="Color.Secondary" />
+                <span class="dd-tree__name">@note.Name</span>
+                <button type="button" class="dd-tree__menu mud-icon-button" aria-label="@($"{note.Name} actions")"
+                        @onclick:stopPropagation="true" @onclick="@(e => MenuAsync(e, false, note.Id))">
+                    <MudIcon Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" />
+                </button>
+            </div>
+        }
+    };
+
+    private static string Indent(int depth) => $"padding-left:{8 + depth * 16}px";
+
+    private string RowClass(Guid? noteId, bool drop) =>
+        "dd-tree__row" + (noteId is not null && noteId == ActiveNoteId ? " dd-tree__row--active" : "") +
+        (drop ? " dd-tree__row--drop" : "");
+
+    private void Toggle(Guid folderId)
+    {
+        if (!_collapsed.Remove(folderId))
+        {
+            _collapsed.Add(folderId);
+        }
+    }
+
+    private Task MenuAsync(MouseEventArgs e, bool isFolder, Guid id) =>
+        OnMenu.InvokeAsync(new TreeMenuRequest(isFolder, id, e.ClientX, e.ClientY));
+
+    private async Task DropAsync(Guid? folderId)
+    {
+        _dropTarget = null;
+        if (_dragging is not { } dragging || (dragging.IsFolder && dragging.Id == folderId))
+        {
+            return;
+        }
+
+        _dragging = null;
+        await OnMove.InvokeAsync(new TreeMoveRequest(dragging.IsFolder, dragging.Id, folderId));
+    }
+
+    public sealed record TreeMenuRequest(bool IsFolder, Guid Id, double X, double Y);
+
+    public sealed record TreeMoveRequest(bool IsFolder, Guid Id, Guid? FolderId);
+}

@@ -1,0 +1,156 @@
+@*
+    Choosing a note to link from a task or comment: a design doc, then a note
+    (searchable), then optionally one of its headings. Returns the markdown link.
+*@
+
+<MudDialog>
+    <DialogContent>
+        @if (_vaults is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_vaults.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">This project has no open design docs.</MudText>
+        }
+        else
+        {
+            <MudSelect T="Guid" Value="@_vaultId" ValueChanged="@ChooseVaultAsync" Label="Design doc" Variant="Variant.Outlined"
+                       Margin="Margin.Dense">
+                @foreach (var vault in _vaults)
+                {
+                    <MudSelectItem Value="@vault.Id">@vault.Name</MudSelectItem>
+                }
+            </MudSelect>
+            @if (_notes is not null)
+            {
+                <MudTextField @bind-Value="_search" Label="Find a note" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Immediate="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Class="mt-3" AutoFocus="true" />
+                <MudList T="Guid" Dense="true" Class="dd-link__notes">
+                    @foreach (var note in Matching().Take(50))
+                    {
+                        <MudListItem T="Guid" @key="note.Id" Icon="@Icons.Material.Outlined.Description"
+                                     OnClick="@(() => ChooseNoteAsync(note))"
+                                     Class="@(note.Id == _note?.Id ? "mud-selected-item" : null)">
+                            @note.Path
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+            @if (_note is not null && _headings is { Count: > 0 })
+            {
+                <MudSelect T="string" @bind-Value="_slug" Label="Heading (optional)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Class="mt-3" Clearable="true">
+                    @foreach (var heading in _headings)
+                    {
+                        <MudSelectItem Value="@heading.Slug">@($"{new string(' ', (heading.Level - 1) * 2)}{heading.Text}")</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(_note is null)" OnClick="@Insert">Insert link</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<VaultDto>? _vaults;
+    private Guid _vaultId;
+    private List<NotePath>? _notes;
+    private NotePath? _note;
+    private IReadOnlyList<NoteHeadingDto>? _headings;
+    private string? _slug;
+    private string _search = "";
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Inject] private ISoloClientApi Client { get; set; } = null!;
+
+    [Parameter, EditorRequired] public Guid ProjectId { get; set; }
+
+    /// <summary>The editor's selection, which becomes the link's text when there is one.</summary>
+    [Parameter] public string? SelectedText { get; set; }
+
+    private DocsApi Api => new(Client);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _vaults = (await Api.VaultsAsync(ProjectId)).Vaults.Where(v => !v.IsClosed).OrderBy(v => v.Name).ToList();
+            if (_vaults.Count > 0)
+            {
+                await ChooseVaultAsync(_vaults[0].Id);
+            }
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _vaults = [];
+        }
+    }
+
+    private async Task ChooseVaultAsync(Guid vaultId)
+    {
+        _vaultId = vaultId;
+        (_notes, _note, _headings, _slug) = (null, null, null, null);
+        var tree = await Api.TreeAsync(ProjectId, vaultId);
+        var folders = tree.Folders.ToDictionary(f => f.Id);
+        string PathOf(Guid? folderId)
+        {
+            var parts = new List<string>();
+            for (var at = folderId; at is { } id && folders.TryGetValue(id, out var folder); at = folder.ParentId)
+            {
+                parts.Insert(0, folder.Name);
+            }
+
+            return string.Join('/', parts);
+        }
+
+        _notes = tree.Notes
+            .Select(n => new NotePath(n.Id, n.Name, PathOf(n.FolderId) is { Length: > 0 } folder ? $"{folder}/{n.Name}" : n.Name))
+            .OrderBy(n => n.Path, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private IEnumerable<NotePath> Matching() =>
+        string.IsNullOrWhiteSpace(_search)
+            ? _notes!
+            : _notes!.Where(n => n.Path.Contains(_search.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+    private async Task ChooseNoteAsync(NotePath note)
+    {
+        _note = note;
+        _slug = null;
+        try
+        {
+            _headings = (await Api.NoteAsync(ProjectId, _vaultId, note.Id)).Headings;
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _headings = null;
+        }
+    }
+
+    private void Insert()
+    {
+        if (_note is null)
+        {
+            return;
+        }
+
+        var heading = _slug is null ? null : _headings?.FirstOrDefault(h => h.Slug == _slug);
+        var label = !string.IsNullOrWhiteSpace(SelectedText) ? SelectedText.Trim()
+            : heading is null ? _note.Name : $"{_note.Name} › {heading.Text}";
+        var url = $"/docs/note/{_note.Id:N}{(heading is null ? "" : $"#{heading.Slug}")}";
+        Dialog.Close(DialogResult.Ok($"[{EscapeLabel(label)}]({url})"));
+    }
+
+    /// <summary>Brackets in a name would end the link text early.</summary>
+    private static string EscapeLabel(string label) =>
+        label.Replace("\\", "\\\\").Replace("[", "\\[").Replace("]", "\\]");
+
+    private sealed record NotePath(Guid Id, string Name, string Path);
+}

@@ -1,0 +1,135 @@
+@implements IDisposable
+@*
+    Importing an Obsidian vault from a zip: choose the file (a label, so iOS
+    opens its picker from a tap), see what it holds and what will be skipped,
+    then import with progress. Notes come in as written; nobody's edits are
+    touched.
+*@
+
+<MudDialog>
+    <DialogContent>
+        @if (_result is not null)
+        {
+            <MudAlert Severity="Severity.Success" Dense="true">
+                Imported @_result.Notes @(_result.Notes == 1 ? "note" : "notes") and @_result.Images @(_result.Images == 1 ? "image" : "images").
+            </MudAlert>
+            <SkippedList Items="@_result.Skipped" />
+        }
+        else if (_running)
+        {
+            <MudText Typo="Typo.body2" Class="mb-2">Importing @_phase… @_done of @_total</MudText>
+            <MudProgressLinear Color="Color.Primary" Value="@(_total == 0 ? 0 : 100.0 * _done / _total)" />
+        }
+        else if (_preview is not null)
+        {
+            <MudText Typo="Typo.body1">
+                <strong>@_preview.FileName</strong>: @_preview.Notes @(_preview.Notes == 1 ? "note" : "notes"),
+                @_preview.Images @(_preview.Images == 1 ? "image" : "images") in @_preview.Folders @(_preview.Folders == 1 ? "folder" : "folders").
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                Notes whose names are taken are skipped rather than overwritten.
+            </MudText>
+            <SkippedList Items="@_preview.Skipped.Select(s => $"{s.Path}: {s.Reason}").ToList()" />
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">
+                Zip your Obsidian vault's folder and choose the zip. Notes and the images they embed come in;
+                Canvas and Excalidraw files are skipped.
+            </MudText>
+            <label for="dd-import-input" class="mud-button-root mud-button mud-button-filled mud-button-filled-primary mud-button-filled-size-medium mud-ripple"
+                   style="cursor:pointer">
+                <span class="mud-button-label">Choose zip…</span>
+            </label>
+            @if (_reading)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="ml-3" />
+            }
+        }
+        <input id="dd-import-input" type="file" accept=".zip,application/zip" class="dd-file-input" @ref="_input"
+               @onchange="@ReadAsync" tabindex="-1" />
+    </DialogContent>
+    <DialogActions>
+        @if (_result is not null)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => Dialog.Close())">Done</MudButton>
+        }
+        else
+        {
+            <MudButton Disabled="@_running" OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(_preview is null || _running)" OnClick="@RunAsync">
+                Import
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private ElementReference _input;
+    private ImportPreview? _preview;
+    private ImportOutcome? _result;
+    private bool _reading;
+    private bool _running;
+    private int _done;
+    private int _total;
+    private string _phase = "notes";
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+
+    [Parameter, EditorRequired] public IJSObjectReference Session { get; set; } = null!;
+
+    [Parameter, EditorRequired] public ImportProgressRelay Progress { get; set; } = null!;
+
+    protected override void OnInitialized() => Progress.Changed += OnProgress;
+
+    private async Task ReadAsync()
+    {
+        _reading = true;
+        try
+        {
+            _preview = await Session.InvokeAsync<ImportPreview?>("readImport", _input);
+        }
+        catch (JSException e)
+        {
+            Snackbar.Add($"That zip couldn't be read: {e.Message}", Severity.Error);
+        }
+        finally
+        {
+            _reading = false;
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        _running = true;
+        _total = (_preview?.Notes ?? 0) + (_preview?.Images ?? 0);
+        try
+        {
+            _result = await Session.InvokeAsync<ImportOutcome?>("runImport");
+        }
+        catch (JSException e)
+        {
+            Snackbar.Add($"The import stopped: {e.Message}", Severity.Error);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private void OnProgress(int done, int total, string phase) => InvokeAsync(() =>
+    {
+        (_done, _total, _phase) = (done, total, phase);
+        StateHasChanged();
+    });
+
+    public void Dispose() => Progress.Changed -= OnProgress;
+
+    public sealed record ImportPreview(string FileName, int Notes, int Images, int Folders, List<SkippedFile> Skipped);
+
+    public sealed record SkippedFile(string Path, string Reason);
+
+    public sealed record ImportOutcome(int Notes, int Images, List<string> Skipped);
+}

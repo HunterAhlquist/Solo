@@ -635,3 +635,24 @@ html[data-color-scheme="dark"] {
         transform: none;
     }
 }
+
+/* -- Lists, dialogs and the task view ------------------------------------------ */
+
+.dd-nav__muted,
+.dd-tree__muted {
+    color: var(--dd-muted);
+}
+
+.dd-presence__dot--editing {
+    box-shadow: 0 0 0 2px var(--mud-palette-primary);
+}
+
+.dd-link__notes,
+.dd-move__list {
+    max-height: 18rem;
+    overflow: auto;
+}
+
+.dd-linked-docs {
+    margin-top: 0.75rem;
+}

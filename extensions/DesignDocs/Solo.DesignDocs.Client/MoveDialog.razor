@@ -1,0 +1,59 @@
+@* "Move to…": the touch-friendly way to move a note or folder, beside dragging. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudList T="string" Dense="true" Class="dd-move__list">
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Home" OnClick="@(() => Choose(null))"
+                         Disabled="@(Current is null)">
+                Top level
+            </MudListItem>
+            @foreach (var (folder, depth) in Folders())
+            {
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Folder" Style="@($"padding-left:{16 + depth * 16}px")"
+                             OnClick="@(() => Choose(folder.Id))" Disabled="@(folder.Id == Current)">
+                    @folder.Name
+                </MudListItem>
+            }
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public VaultTreeDto Tree { get; set; } = null!;
+
+    /// <summary>Where the thing sits now.</summary>
+    [Parameter] public Guid? Current { get; set; }
+
+    /// <summary>A folder being moved: it and everything under it can't be its own destination.</summary>
+    [Parameter] public Guid? Exclude { get; set; }
+
+    private IEnumerable<(FolderDto Folder, int Depth)> Folders()
+    {
+        var children = Tree.Folders.ToLookup(f => f.ParentId);
+        IEnumerable<(FolderDto, int)> Walk(Guid? parent, int depth)
+        {
+            foreach (var folder in children[parent].OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase))
+            {
+                if (folder.Id == Exclude)
+                {
+                    continue;
+                }
+
+                yield return (folder, depth);
+                foreach (var child in Walk(folder.Id, depth + 1))
+                {
+                    yield return child;
+                }
+            }
+        }
+
+        return Walk(null, 0);
+    }
+
+    private void Choose(Guid? folderId) => Dialog.Close(DialogResult.Ok(folderId));
+}

@@ -1,0 +1,152 @@
+@page "/docs/{ProjectAlias}/{VaultId:guid}"
+@implements IAsyncDisposable
+
+@*
+    A design doc (a vault): its folders and notes on the left, the open note on
+    the right in the browser module's editor. The editor's element is rendered
+    once and left to JavaScript: Blazor never renders inside it. Sketches open
+    over the page in their own full-screen editor.
+*@
+
+<PageTitle>@(_note?.Name ?? _tree?.Vault.Name ?? "Design doc") · Solo</PageTitle>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Warning">@_error</MudAlert>
+}
+else if (_tree is null || _project is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+@if (_tree is not null && _project is not null && _error is null)
+{
+    <div class="@($"dd-vault{(_noteId is null ? "" : " dd-vault--note-open")}")">
+        <aside class="dd-vault__tree">
+            <div class="dd-vault__toolbar">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Href="@($"projects/{_project.Alias}")"
+                               aria-label="Back to project" />
+                <span class="dd-vault__title" title="@_tree.Vault.Name">@_tree.Vault.Name</span>
+                @if (_tree.Vault.IsClosed)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Lock">Closed</MudChip>
+                }
+                @if (CanWrite)
+                {
+                    <MudTooltip Text="New note">
+                        <MudIconButton Icon="@Icons.Material.Filled.NoteAdd" Size="Size.Small" aria-label="New note"
+                                       OnClick="@(() => CreateNoteAsync(OpenNoteFolder))" />
+                    </MudTooltip>
+                    <MudTooltip Text="New folder">
+                        <MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small" aria-label="New folder"
+                                       OnClick="@(() => CreateFolderAsync(null))" />
+                    </MudTooltip>
+                }
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" AriaLabel="Design doc actions" Dense="true">
+                    @if (CanWrite)
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.FileUpload" OnClick="@ImportAsync">Import from Obsidian…</MudMenuItem>
+                    }
+                    <MudMenuItem Icon="@Icons.Material.Filled.FileDownload" OnClick="@ExportAsync">Export for Obsidian</MudMenuItem>
+                    @if (_tree.CanManage)
+                    {
+                        <MudDivider />
+                        <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@RenameVaultAsync">Rename design doc</MudMenuItem>
+                        @if (_tree.Vault.IsClosed)
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.LockOpen" OnClick="@ReopenVaultAsync">Reopen</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error" OnClick="@DeleteVaultAsync">
+                                Delete design doc…
+                            </MudMenuItem>
+                        }
+                        else
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Lock" OnClick="@CloseVaultAsync">Close (read-only)</MudMenuItem>
+                        }
+                    }
+                </MudMenu>
+            </div>
+            <VaultTree @ref="_treeView" Tree="@_tree" ActiveNoteId="@_noteId" CanWrite="@CanWrite"
+                       OnOpenNote="@(id => GoToNote(id, null))" OnMenu="@TreeMenuAsync" OnMove="@MoveAsync" />
+        </aside>
+
+        <section class="dd-vault__pane">
+            <div class="dd-vault__toolbar">
+                <MudIconButton Class="dd-vault__back" Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
+                               aria-label="Back to notes" OnClick="@CloseNote" />
+                <div class="dd-vault__title">
+                    @if (_note is not null)
+                    {
+                        <span>@_note.Name</span>
+                        @if (_note.LastEditedAt is { } at)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                                Last edited@(_note.LastEditedByName is { } who ? $" by {who}" : "") @Ago(at)
+                            </MudText>
+                        }
+                    }
+                </div>
+                <PresenceBar Present="@_present" Slots="@_slots" />
+                @if (_noteId is not null)
+                {
+                    <span class="@($"dd-status{(StatusWarns ? " dd-status--warning" : "")}")" role="status">@StatusText</span>
+                }
+                @if (_noteId is not null && CanEdit)
+                {
+                    <MudTooltip Text="Insert images">
+                        <label for="@ImageInputId" class="mud-button-root mud-icon-button mud-icon-button-size-small"
+                               aria-label="Insert images" style="cursor:pointer">
+                            <MudIcon Icon="@Icons.Material.Filled.AddPhotoAlternate" Size="Size.Small" />
+                        </label>
+                    </MudTooltip>
+                    <MudTooltip Text="New sketch">
+                        <MudIconButton Icon="@Icons.Material.Filled.Draw" Size="Size.Small" aria-label="New sketch"
+                                       OnClick="@CreateSketchAsync" />
+                    </MudTooltip>
+                    <MudTooltip Text="Link a task">
+                        <MudIconButton Icon="@Icons.Material.Filled.TaskAlt" Size="Size.Small" aria-label="Link a task"
+                                       OnClick="@LinkTaskAsync" />
+                    </MudTooltip>
+                }
+                @if (_noteId is { } openNote)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" AriaLabel="Note actions" Dense="true">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Link" OnClick="@(() => CopyLinkAsync(openNote))">Copy link</MudMenuItem>
+                        @if (CanWrite)
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => RenameNoteAsync(openNote))">Rename</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.DriveFileMove" OnClick="@(() => MoveNoteAsync(openNote))">Move to…</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error"
+                                         OnClick="@(() => DeleteNoteAsync(openNote))">Delete note…</MudMenuItem>
+                        }
+                    </MudMenu>
+                }
+            </div>
+            @if (_tree.Vault.IsClosed)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Square="true">
+                    This design doc is closed, so it's read-only.@(_tree.CanManage ? " Reopen it from the ⋮ menu to edit." : "")
+                </MudAlert>
+            }
+            <div class="dd-vault__body">
+                @if (_noteId is null)
+                {
+                    <div class="dd-vault__empty">
+                        @(_tree.Notes.Count == 0 ? "This design doc has no notes yet." : "Pick a note on the left.")
+                    </div>
+                }
+                <div class="dd-note" @ref="_noteElement" style="@(_noteId is null ? "display:none" : null)"></div>
+            </div>
+        </section>
+    </div>
+
+    <input id="@ImageInputId" type="file" accept="image/*" multiple class="dd-file-input" @ref="_imageInput" tabindex="-1" />
+
+    @if (_sketchId is { } sketchId && _session is not null && _tree.Sketches.FirstOrDefault(s => s.Id == sketchId) is { } sketch)
+    {
+        <SketchOverlay @key="sketchId" Session="@_session" Sketch="@sketch" CanWrite="@CanEdit" Present="@_sketchPresent"
+                       Slots="@_slots" State="@_sketchState" OnClose="@CloseSketch"
+                       OnEditPage="@(() => EditSketchAsync(sketch))" OnDelete="@(() => DeleteSketchAsync(sketch))"
+                       ExportName="@($"{sketch.Name}.png")" />
+    }
+}

@@ -1,0 +1,17 @@
+@if (Items.Count > 0)
+{
+    <MudExpansionPanels Elevation="0" Class="mt-3">
+        <MudExpansionPanel Text="@($"{Items.Count} skipped")" Dense="true">
+            <div style="max-height:14rem;overflow:auto">
+                @foreach (var item in Items)
+                {
+                    <MudText Typo="Typo.caption" Class="d-block">@item</MudText>
+                }
+            </div>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<string> Items { get; set; } = [];
+}

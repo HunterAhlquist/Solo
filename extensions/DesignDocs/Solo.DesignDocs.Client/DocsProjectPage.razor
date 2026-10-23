@@ -1,0 +1,48 @@
+@page "/docs/{ProjectAlias}"
+@inherits DocsListComponent
+
+@* A project's design docs, for a link to the project's docs rather than one vault. *@
+
+<PageTitle>Design Docs · Solo</PageTitle>
+
+@if (_missing)
+{
+    <MudAlert Severity="Severity.Warning">That project doesn't exist, or you aren't a member of it.</MudAlert>
+}
+else if (Project is not null)
+{
+    <div class="d-flex align-center gap-2 mb-4">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Href="@($"projects/{Project.Alias}")"
+                       aria-label="Back to project" />
+        <MudText Typo="Typo.h5">Design Docs · @Project.Name</MudText>
+    </div>
+    <DocsCards List="@List" Error="@Error" Href="@Href" OnCreate="@CreateAsync" />
+}
+else
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+@code {
+    private bool _missing;
+
+    [Parameter] public string ProjectAlias { get; set; } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (await Api.ProjectAsync(ProjectAlias) is { } project)
+            {
+                Project = project;
+                await base.OnInitializedAsync();
+                return;
+            }
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+        }
+
+        _missing = true;
+    }
+}

@@ -1,0 +1,54 @@
+@attribute [ProjectNavSection("Design Docs", Order = 20)]
+@inherits DocsListComponent
+
+@* A project's open design docs in the sidebar; closed ones behind a toggle. *@
+
+@if (List is null && Error is null)
+{
+    <div class="px-4 py-2">
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+    </div>
+}
+else if (Error is not null)
+{
+    <MudText Typo="Typo.caption" Color="Color.Error" Class="px-4 py-1 d-block">@Error</MudText>
+}
+else
+{
+    @foreach (var vault in Open)
+    {
+        <MudNavLink Href="@Href(vault)" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.MenuBook">
+            @vault.Name
+        </MudNavLink>
+    }
+
+    @if (!Open.Any())
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1 d-block">No design docs.</MudText>
+    }
+
+    @if (Closed.Any())
+    {
+        <MudNavLink Icon="@(ShowClosed ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                    OnClick="@(() => ShowClosed = !ShowClosed)" Class="dd-nav__muted">
+            Closed (@Closed.Count())
+        </MudNavLink>
+        @if (ShowClosed)
+        {
+            @foreach (var vault in Closed)
+            {
+                <MudNavLink Href="@Href(vault)" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Lock"
+                            Class="dd-nav__muted">
+                    @vault.Name
+                </MudNavLink>
+            }
+        }
+    }
+
+    @if (List!.CanManage)
+    {
+        <MudNavLink Icon="@Icons.Material.Filled.Add" Class="dd-nav__muted" OnClick="@CreateAsync">
+            New design doc
+        </MudNavLink>
+    }
+}

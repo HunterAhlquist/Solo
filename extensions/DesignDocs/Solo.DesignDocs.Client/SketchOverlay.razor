@@ -1,0 +1,192 @@
+@implements IAsyncDisposable
+
+@*
+    A sketch's full-screen editor over the vault page. The toolbar is Blazor;
+    the drawing surface is the browser module's, which Blazor never renders
+    inside. Readers get the view, zoom and export, and no tools.
+*@
+
+<div class="dd-sketch-overlay" role="dialog" aria-modal="true" aria-label="@($"Sketch {Sketch.Name}")">
+    <div class="dd-sketch-overlay__bar">
+        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" aria-label="Close sketch" OnClick="@OnClose" />
+        <MudText Typo="Typo.subtitle2" Class="text-truncate" Style="max-width:12rem">@Sketch.Name</MudText>
+        @if (CanWrite)
+        {
+            <MudToggleGroup T="string" Value="@_tool" ValueChanged="@SetToolAsync" Size="Size.Small"
+                            SelectionMode="SelectionMode.SingleSelection">
+                @foreach (var (tool, icon, label) in Tools)
+                {
+                    <MudToggleItem Value="@tool" Text="@label">
+                        <MudTooltip Text="@label"><MudIcon Icon="@icon" Size="Size.Small" /></MudTooltip>
+                    </MudToggleItem>
+                }
+            </MudToggleGroup>
+            <span class="d-inline-flex gap-1 align-center" role="radiogroup" aria-label="Ink">
+                @foreach (var (ink, color, label) in Inks)
+                {
+                    <button type="button" class="@($"dd-ink-swatch{(_ink == ink ? " dd-ink-swatch--active" : "")}")"
+                            style="@($"background:{color}")" aria-label="@label" aria-checked="@(_ink == ink ? "true" : "false")"
+                            role="radio" @onclick="@(() => SetInkAsync(ink))"></button>
+                }
+            </span>
+            <MudSelect T="int" Value="@_level" ValueChanged="@SetLevelAsync" Dense="true" Margin="Margin.Dense"
+                       Variant="Variant.Outlined" Style="width:5.5rem" Label="Size">
+                @for (var level = 1; level <= 5; level++)
+                {
+                    var l = level;
+                    <MudSelectItem Value="@l">@l</MudSelectItem>
+                }
+            </MudSelect>
+            @if (_tool is "rectangle" or "ellipse")
+            {
+                <MudTooltip Text="Squares and circles (or hold Shift)">
+                    <MudToggleIconButton Toggled="@_constrain" ToggledChanged="@SetConstrainAsync" Size="Size.Small"
+                                         Icon="@Icons.Material.Filled.CropFree" ToggledIcon="@Icons.Material.Filled.CropSquare"
+                                         ToggledColor="Color.Primary" aria-label="Constrain shapes" />
+                </MudTooltip>
+            }
+            <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" aria-label="Undo" OnClick="@(() => CommandAsync("undo"))" />
+            <MudIconButton Icon="@Icons.Material.Filled.Redo" Size="Size.Small" aria-label="Redo" OnClick="@(() => CommandAsync("redo"))" />
+        }
+        <span class="dd-sketch-overlay__spacer"></span>
+        <PresenceBar Present="@Present" Slots="@Slots" />
+        <MudIconButton Icon="@Icons.Material.Filled.ZoomOut" Size="Size.Small" aria-label="Zoom out" OnClick="@(() => CommandAsync("zoom", -1))" />
+        <MudButton Size="Size.Small" OnClick="@(() => CommandAsync("fit"))" aria-label="Fit page">
+            @(State is { } s ? $"{s.Scale * 100:0}%" : "Fit")
+        </MudButton>
+        <MudIconButton Icon="@Icons.Material.Filled.ZoomIn" Size="Size.Small" aria-label="Zoom in" OnClick="@(() => CommandAsync("zoom", 1))" />
+        <MudIconButton Icon="@Icons.Material.Filled.RotateRight" Size="Size.Small" aria-label="Rotate view"
+                       OnClick="@(() => CommandAsync("rotate", 1))" />
+        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" AriaLabel="Sketch actions" Dense="true">
+            <MudMenuItem Icon="@Icons.Material.Filled.Image" OnClick="@ExportAsync">Export PNG</MudMenuItem>
+            @if (CanWrite)
+            {
+                <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@OnEditPage">Name and page…</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.LayersClear" OnClick="@ClearAsync">Clear page…</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error" OnClick="@OnDelete">Delete sketch…</MudMenuItem>
+            }
+        </MudMenu>
+    </div>
+    <div class="dd-sketch-editor" @ref="_surface"></div>
+</div>
+
+@code {
+    private static readonly (string Tool, string Icon, string Label)[] Tools =
+    [
+        ("pen", Icons.Material.Filled.Edit, "Pen"),
+        ("eraser", Icons.Material.Filled.AutoFixNormal, "Eraser"),
+        ("rectangle", Icons.Material.Outlined.CropSquare, "Rectangle"),
+        ("ellipse", Icons.Material.Outlined.Circle, "Ellipse"),
+        ("select", Icons.Material.Filled.PanTool, "Select and move"),
+        ("text", Icons.Material.Filled.TextFields, "Text"),
+    ];
+
+    private static readonly (string Ink, string Color, string Label)[] Inks =
+    [
+        ("theme", "var(--mud-palette-text-primary)", "Black or white ink"),
+        ("red", "#d0342c", "Red ink"),
+        ("blue", "#2a5bd7", "Blue ink"),
+        ("green", "#1f8a4c", "Green ink"),
+    ];
+
+    /// <summary>The last tool, ink and size, kept for the tab so reopening a sketch picks up where you were.</summary>
+    private static (string Tool, string Ink, int Level) _remembered = ("pen", "theme", 2);
+
+    private ElementReference _surface;
+    private bool _mounted;
+    private string _tool = _remembered.Tool;
+    private string _ink = _remembered.Ink;
+    private int _level = _remembered.Level;
+    private bool _constrain;
+
+    [Inject] private IDialogService Dialogs { get; set; } = null!;
+
+    [Parameter, EditorRequired] public IJSObjectReference Session { get; set; } = null!;
+
+    [Parameter, EditorRequired] public SketchSummaryDto Sketch { get; set; } = null!;
+
+    [Parameter] public bool CanWrite { get; set; }
+
+    [Parameter] public IReadOnlyList<TopicPresenceEntry> Present { get; set; } = [];
+
+    [Parameter] public IReadOnlyDictionary<Guid, int> Slots { get; set; } = new Dictionary<Guid, int>();
+
+    [Parameter] public SketchViewState? State { get; set; }
+
+    [Parameter] public string ExportName { get; set; } = "sketch.png";
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback OnEditPage { get; set; }
+
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Session.InvokeVoidAsync("mountSketchEditor", _surface, Sketch.Id.ToString(),
+                new { tool = _tool, ink = _ink, level = _level });
+            _mounted = true;
+        }
+    }
+
+    private async Task SetToolAsync(string tool)
+    {
+        _tool = tool;
+        _remembered.Tool = tool;
+        await CommandAsync("tool", tool);
+    }
+
+    private async Task SetInkAsync(string ink)
+    {
+        _ink = ink;
+        _remembered.Ink = ink;
+        await CommandAsync("ink", ink);
+    }
+
+    private async Task SetLevelAsync(int level)
+    {
+        _level = level;
+        _remembered.Level = level;
+        await CommandAsync("level", level);
+    }
+
+    private async Task SetConstrainAsync(bool on)
+    {
+        _constrain = on;
+        await CommandAsync("constrain", on);
+    }
+
+    private async Task CommandAsync(string command, object? value = null)
+    {
+        if (_mounted)
+        {
+            await Session.InvokeVoidAsync("sketch", command, value);
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        if (await DocsDialogs.ConfirmAsync(Dialogs, "Clear page", "Erase everything on this sketch? Undo brings it back.", "Clear"))
+        {
+            await CommandAsync("clear");
+        }
+    }
+
+    private Task ExportAsync() => Session.InvokeVoidAsync("exportSketchPng", Sketch.Id.ToString(), ExportName).AsTask();
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Session.InvokeVoidAsync("unmountSketchEditor");
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+}

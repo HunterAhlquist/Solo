@@ -1,0 +1,44 @@
+@* Who else has this note or sketch open: their color, initials, and whether they're editing. *@
+
+@if (Present.Count > 0)
+{
+    <div class="dd-presence" aria-label="Also here">
+        @foreach (var person in Present.Take(MaxShown))
+        {
+            <MudTooltip @key="person.UserId" Text="@Describe(person)">
+                <span class="@($"dd-presence__dot{(person.Mode == PresenceMode.Editing ? " dd-presence__dot--editing" : "")}")"
+                      style="@($"background:{DocsColors.Css(SlotOf(person.UserId))}")">
+                    @Initials(person.DisplayName)
+                </span>
+            </MudTooltip>
+        }
+        @if (Present.Count > MaxShown)
+        {
+            <span class="dd-presence__dot" style="background:var(--mud-palette-action-default)">+@(Present.Count - MaxShown)</span>
+        }
+    </div>
+}
+
+@code {
+    private const int MaxShown = 5;
+
+    [Parameter] public IReadOnlyList<TopicPresenceEntry> Present { get; set; } = [];
+
+    [Parameter] public IReadOnlyDictionary<Guid, int> Slots { get; set; } = new Dictionary<Guid, int>();
+
+    private int SlotOf(Guid userId) => Slots.TryGetValue(userId, out var slot) ? slot : 0;
+
+    private static string Describe(TopicPresenceEntry person) =>
+        $"{person.DisplayName ?? "Someone"} · {(person.Mode == PresenceMode.Editing ? "editing" : "viewing")}";
+
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? "?").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant(),
+        };
+    }
+}

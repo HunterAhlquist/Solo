@@ -1,0 +1,58 @@
+<MudDialog DefaultFocus="DefaultFocus.None">
+    <DialogContent>
+        <MudTextField @ref="_field" @bind-Value="_name" Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" AutoFocus="true" MaxLength="@DocsLimits.Name" OnKeyUp="@OnKeyUp" />
+        @if (Warning is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">@Warning</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@string.IsNullOrWhiteSpace(_name)" OnClick="@Save">
+            @SaveText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private MudTextField<string>? _field;
+    private string _name = "";
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter] public string Initial { get; set; } = "";
+
+    [Parameter] public string SaveText { get; set; } = "Create";
+
+    [Parameter] public string Label { get; set; } = "Name";
+
+    [Parameter] public string? Warning { get; set; }
+
+    protected override void OnInitialized() => _name = Initial;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _field is not null)
+        {
+            await _field.FocusAsync();
+        }
+    }
+
+    /// <summary>On keyup, not keydown, so the tail of the Enter press doesn't click the button that opened this.</summary>
+    private void OnKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            Save();
+        }
+    }
+
+    private void Save()
+    {
+        if (!string.IsNullOrWhiteSpace(_name))
+        {
+            Dialog.Close(DialogResult.Ok(_name.Trim()));
+        }
+    }
+}

@@ -1,0 +1,6 @@
+@attribute [ProjectHomeSection("Design Docs", Order = 20)]
+@inherits DocsListComponent
+
+@* The project's design docs on its home page, a card each. *@
+
+<DocsCards List="@List" Error="@Error" Href="@Href" OnCreate="@CreateAsync" />

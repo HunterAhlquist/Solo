@@ -34,6 +34,16 @@ export function ensureStyles(href) {
     }
 }
 
+/** Steps back to the page a link was followed from; false when this tab has nowhere to go back to. */
+export function goBack() {
+    if (history.length > 1) {
+        history.back();
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * @param {object} bridge  DotNetObjectReference to DocsBridge.
  * @param {{userId: string, userName: string, colorSlot: number, canWrite: boolean,
@@ -51,7 +61,7 @@ class Session {
         this.user = { id: options.userId, name: options.userName };
         this.colorSlot = options.colorSlot ?? 0;
         this.canWrite = !!options.canWrite;
-        this.connected = true;
+        this.connected = options.connected ?? true;
         this.index = new VaultIndex(options.tree);
         this.docs = new Map();
         this.images = new ImageUrls(async imageId => {

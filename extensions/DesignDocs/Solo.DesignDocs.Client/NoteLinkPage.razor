@@ -1,0 +1,44 @@
+@page "/docs/note/{NoteId:guid}"
+
+@*
+    Where a doc link lands: finds the note's project and vault, then replaces
+    this address with the vault page's, keeping the #heading. A note this
+    person can't open reads the same as one that doesn't exist.
+*@
+
+<PageTitle>Design doc · Solo</PageTitle>
+
+@if (_missing)
+{
+    <MudAlert Severity="Severity.Warning">That note doesn't exist, or you can't open it.</MudAlert>
+}
+else
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+
+@code {
+    private bool _missing;
+
+    [Inject] private ISoloClientApi Client { get; set; } = null!;
+
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    [Parameter] public Guid NoteId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _missing = false;
+        try
+        {
+            var location = await new DocsApi(Client).LocateAsync(NoteId);
+            var hash = Navigation.Uri.IndexOf('#');
+            var fragment = hash >= 0 ? Navigation.Uri[hash..] : "";
+            Navigation.NavigateTo($"docs/{location.ProjectAlias}/{location.VaultId}?note={location.NoteId}{fragment}", replace: true);
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _missing = true;
+        }
+    }
+}

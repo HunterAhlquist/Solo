@@ -1,0 +1,69 @@
+@attribute [TaskDetailExtension]
+
+@*
+    The design-doc notes a task's description links to, with their current
+    names. Parsed from the description here, so no index is kept anywhere;
+    links to notes this person can't open keep the text they were written with.
+*@
+
+@if (_links.Count > 0)
+{
+    <div class="dd-linked-docs">
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Linked docs</MudText>
+        <div class="d-flex flex-wrap gap-1">
+            @foreach (var link in _links)
+            {
+                <MudChip T="string" @key="link.Url" Size="Size.Small" Icon="@Icons.Material.Filled.MenuBook" Variant="Variant.Outlined"
+                         Href="@link.Url.TrimStart('/')">
+                    @(_labels.GetValueOrDefault(link.Url) ?? link.Text)
+                </MudChip>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly System.Text.RegularExpressions.Regex Link = new(
+        @"\[(?<text>(?:\\.|[^\]\\])*)\]\((?<url>/docs/note/[0-9a-fA-F-]{32,36}(?:#[^)\s]*)?)\)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private List<(string Url, string Text)> _links = [];
+    private IReadOnlyDictionary<string, string> _labels = new Dictionary<string, string>();
+    private string? _parsedFrom;
+
+    [Inject] private ISoloClientApi Client { get; set; } = null!;
+
+    [Parameter] public TaskDto Task { get; set; } = null!;
+
+    [Parameter] public bool CanWrite { get; set; }
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var description = Task?.Description ?? "";
+        if (description == _parsedFrom)
+        {
+            return;
+        }
+
+        _parsedFrom = description;
+        _links = Link.Matches(description)
+            .Select(m => (Url: m.Groups["url"].Value, Text: m.Groups["text"].Value.Replace("\\", "")))
+            .DistinctBy(l => l.Url)
+            .ToList();
+        if (_links.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _labels = await new DocsApi(Client).LabelsAsync(_links.Select(l => l.Url).ToList());
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _labels = new Dictionary<string, string>();
+        }
+    }
+}

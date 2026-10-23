@@ -1,0 +1,92 @@
+@* A new sketch, or a sketch's name and page. Shrinking a page that would hide drawing says so first. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                      AutoFocus="true" MaxLength="@DocsLimits.Name" />
+        <div class="d-flex gap-2 mt-3">
+            <MudSelect T="string" Value="@_size" ValueChanged="@(v => SetPageAsync(v, _orientation))" Label="Page"
+                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var size in Sizes)
+                {
+                    <MudSelectItem Value="@size">@size</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="string" Value="@_orientation" ValueChanged="@(v => SetPageAsync(_size, v))" Label="Orientation"
+                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                <MudSelectItem Value="@SketchPage.Portrait">Portrait</MudSelectItem>
+                <MudSelectItem Value="@SketchPage.Landscape">Landscape</MudSelectItem>
+            </MudSelect>
+        </div>
+        <MudSelect T="string" @bind-Value="_pattern" Label="Background" Variant="Variant.Outlined" Margin="Margin.Dense"
+                   Class="mt-3">
+            <MudSelectItem Value="@SketchPage.Empty">Empty</MudSelectItem>
+            <MudSelectItem Value="@SketchPage.Grid">Grid</MudSelectItem>
+            <MudSelectItem Value="@SketchPage.Notebook">Notebook lines</MudSelectItem>
+            <MudSelectItem Value="@SketchPage.Dots">Dots</MudSelectItem>
+        </MudSelect>
+        @if (_clips)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                Some of the drawing falls outside this page. It will be hidden, not deleted: a larger page brings it back.
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@string.IsNullOrWhiteSpace(_name)" OnClick="@Save">
+            @SaveText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private static readonly string[] Sizes = [SketchPage.A5, SketchPage.A4, SketchPage.A3, SketchPage.Letter];
+
+    private string _name = "";
+    private string _size = SketchPage.A4;
+    private string _orientation = SketchPage.Portrait;
+    private string _pattern = SketchPage.Empty;
+    private bool _clips;
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter] public SketchSummaryDto? Sketch { get; set; }
+
+    [Parameter] public string InitialName { get; set; } = "";
+
+    [Parameter] public string SaveText { get; set; } = "Create";
+
+    /// <summary>Whether a page of this size and orientation would hide drawing; only for an existing sketch.</summary>
+    [Parameter] public Func<string, string, Task<bool>>? WouldClip { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _name = Sketch?.Name ?? InitialName;
+        _size = Sketch?.PageSize ?? SketchPage.A4;
+        _orientation = Sketch?.Orientation ?? SketchPage.Portrait;
+        _pattern = Sketch?.Pattern ?? SketchPage.Empty;
+    }
+
+    private async Task SetPageAsync(string size, string orientation)
+    {
+        (_size, _orientation) = (size, orientation);
+        if (WouldClip is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _clips = await WouldClip(_size, _orientation);
+        }
+        catch (Exception e) when (e is JSException or InvalidOperationException)
+        {
+            _clips = false;
+        }
+    }
+
+    private void Save() => Dialog.Close(DialogResult.Ok(new SketchSettings(_name.Trim(), _size, _orientation, _pattern)));
+
+    public sealed record SketchSettings(string Name, string PageSize, string Orientation, string Pattern);
+}

@@ -1,0 +1,46 @@
+@page "/docs/task/{TaskId:guid}"
+
+@*
+    A task link followed from outside a note's editor (which opens the drawer
+    itself): open the task in the host's drawer over the page that was showing,
+    or over the start page when this was the first page loaded.
+*@
+
+<PageTitle>Task · Solo</PageTitle>
+
+@code {
+    [Inject] private ISoloTaskDrawer Drawer { get; set; } = null!;
+
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    [Inject] private ISoloClientApi Client { get; set; } = null!;
+
+    [Parameter] public Guid TaskId { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var wentBack = false;
+        try
+        {
+            var module = await DocsAssets.ModuleAsync(JS, new DocsApi(Client));
+            wentBack = await module.InvokeAsync<bool>("goBack");
+        }
+        catch (JSException)
+        {
+        }
+
+        if (!wentBack)
+        {
+            Navigation.NavigateTo("", replace: true);
+        }
+
+        await Drawer.OpenAsync(TaskId);
+    }
+}
