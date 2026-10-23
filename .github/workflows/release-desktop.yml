@@ -189,6 +189,8 @@ jobs:
       - name: Verify desktop isolation
         run: |
           npm run test:app-identity
+          npm run test:mac-network-identity
+          npm run test:desktop-auth
           npm run test:instance-extensions
 
       - name: Publish Blazor client into shell

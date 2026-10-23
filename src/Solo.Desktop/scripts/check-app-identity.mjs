@@ -29,7 +29,7 @@ try {
             });
             const env = override ? { SOLO_USER_DATA_DIR: path.join(root, 'automation') } : {};
             vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
-                require: id => id === 'electron' ? { app } : id.startsWith('./main/') && id !== './main/app-identity'
+                require: id => id === 'electron' ? { app } : id.startsWith('./main/') && !['./main/app-identity', './main/connection-error'].includes(id)
                     ? {} : require(require.resolve(id, { paths: [path.dirname(mainFile)] })),
                 process: { env, platform: process.platform, on() {} },
                 __dirname: path.dirname(mainFile),

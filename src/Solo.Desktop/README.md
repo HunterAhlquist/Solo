@@ -32,6 +32,15 @@ profiles are not copied: add and sign in to the preview's instances once.
 Both channels can run together; occupied local ports are skipped when adding an
 instance. Manual release-workflow builds are previews too.
 
+On macOS, connecting to a LAN instance triggers the system's Local Network
+permission request. Allow it and retry if the first connection failed while the
+prompt was open. Each packaged main/helper launcher receives a unique Mach-O
+build UUID before signing, so macOS can track its permission independently from
+other Electron apps ([Apple TN3178](https://developer.apple.com/documentation/technotes/tn3178-checking-for-and-resolving-build-uuid-problems),
+[TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)).
+The Electron framework remains untouched; only the small launchers lose their
+match to Electron's stock debug-symbol UUID.
+
 The desktop client is bundled with the installer. A server can load an extension
 whose client contract is newer than an installed desktop's. Admin settings shows
 that server state separately from the client compatibility warning; install a

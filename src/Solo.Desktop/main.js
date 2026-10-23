@@ -9,6 +9,7 @@ const path = require('path');
 const { configureAppIdentity } = require('./main/app-identity');
 configureAppIdentity(app, process.env);
 const settingsStore = require('./main/settings');
+const { connectionError } = require('./main/connection-error');
 const { createSoloServer } = require('./main/server');
 const { buildMenu } = require('./main/menu');
 const { attachContextMenu, popupClientMenu } = require('./main/context-menu');
@@ -707,7 +708,7 @@ function isLocalUrl(url, instance) {
 function beginBrowserSignIn(instance) {
     let auth = signIns.get(instance.id);
     if (!auth) {
-        auth = new DesktopAuth();
+        auth = new DesktopAuth({ appName: app.getName() });
         signIns.set(instance.id, auth);
     }
 
@@ -938,7 +939,7 @@ async function fetchInstanceConfig(url) {
 
         return { ok: true, config };
     } catch (err) {
-        return { ok: false, error: `Could not reach the server: ${err.message}` };
+        return { ok: false, error: connectionError(err, process.platform, app.getName()) };
     }
 }
 
