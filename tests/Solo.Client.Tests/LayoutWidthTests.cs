@@ -29,6 +29,26 @@ public class LayoutWidthTests : ComponentTestBase
     }
 
     [Fact]
+    public async Task Workspace_uses_available_space_and_restores_the_default_layout_on_leave()
+    {
+        this.AddAuthorization();
+        Services.AddSingleton(new UserSession(new StubHttp().CreateClient()));
+        Services.AddSingleton(new StubHttp().CreateClient());
+        Services.AddSingleton<SessionExpiry>();
+        Services.AddScoped<GoogleIdentityService>();
+        var layout = Render<MainLayout>();
+        var workspace = Services.GetRequiredService<WorkspaceState>();
+        IDisposable lease = null!;
+        await layout.InvokeAsync(() => lease=workspace.Enter(new(FullWidth:true,FillHeight:true,CollapseNavigation:true)));
+        layout.WaitForAssertion(() => Assert.NotEmpty(layout.FindAll(".workspace-container")));
+        Assert.Empty(layout.FindAll(".app-footer"));
+        Assert.DoesNotContain("mud-container-maxwidth-lg", layout.Find(".workspace-container").ClassList);
+        await layout.InvokeAsync(lease.Dispose);
+        layout.WaitForAssertion(() => Assert.NotEmpty(layout.FindAll(".app-footer")));
+        Assert.Contains("mud-container-maxwidth-lg", layout.Find(".mud-main-content > .mud-container").ClassList);
+    }
+
+    [Fact]
     public void Admin_settings_uses_the_shared_readable_width_without_inline_caps()
     {
         var http = new StubHttp()

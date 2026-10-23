@@ -9,3 +9,6 @@ export function ensureStyles(url) {
 export { mountEditor } from './editor/index.js';
 export { mountSketch } from './sketch/index.js';
 export { createTransfer } from './io/vault.js';
+
+export { mountTree } from './tree.js';
+export const isNarrowWorkspace=()=>matchMedia('(max-width:600px)').matches;

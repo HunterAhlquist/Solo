@@ -30,4 +30,10 @@ fi
 if [ "$preview" = true ] && [ "$prerelease" != true ]; then
     echo "Preview tags require a prerelease suffix, for example preview-v1.10.0-design-docs.1." >&2; exit 1
 fi
-printf 'version=%s\nprerelease=%s\n' "$version" "$prerelease"
+preview_channel=preview
+package_label=
+if [[ "$version" =~ -design-docs-([a-z][a-z0-9-]*)\.[0-9]+$ ]]; then
+    package_label=${BASH_REMATCH[1]}
+    preview_channel="preview-$package_label"
+fi
+printf 'version=%s\nprerelease=%s\npreview_channel=%s\npackage_label=%s\n' "$version" "$prerelease" "$preview_channel" "$package_label"

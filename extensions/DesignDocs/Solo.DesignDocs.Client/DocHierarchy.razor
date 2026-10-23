@@ -1,0 +1,22 @@
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject IJSRuntime Js
+<div @ref="_root" class="design-docs-hierarchy">
+    <div data-doc-drop="" class="design-docs-root pa-2">Vault root</div>
+    <MudTreeView T="Guid" Dense="true">
+        <DocTreeBranch Entries="Entries" CanWrite="CanWrite" OnOpen="OnOpen" OnMenu="OnMenu" />
+    </MudTreeView>
+</div>
+@code {
+    [Parameter] public IReadOnlyList<DocTreeEntry> Entries {get;set;}=[];
+    [Parameter] public bool CanWrite {get;set;}
+    [Parameter] public EventCallback<Guid> OnOpen {get;set;}
+    [Parameter] public EventCallback<DocTreeMenu> OnMenu {get;set;}
+    [Parameter] public EventCallback<DocTreeDrop> OnMove {get;set;}
+    private ElementReference _root;private IJSObjectReference? _tree;private DotNetObjectReference<DocHierarchy>? _reference;
+    protected override async Task OnAfterRenderAsync(bool firstRender){
+        if(firstRender){var module=await DesignDocsAssets.ModuleAsync(Js,new(Api));_reference=DotNetObjectReference.Create(this);_tree=await module.InvokeAsync<IJSObjectReference>("mountTree",_root,_reference);}
+    }
+    [JSInvokable] public Task Move(string id,string? parent)=>CanWrite&&Guid.TryParse(id,out var item)?OnMove.InvokeAsync(new(item,Guid.TryParse(parent,out var target)?target:null)):Task.CompletedTask;
+    public async ValueTask DisposeAsync(){if(_tree is not null){try{await _tree.InvokeVoidAsync("dispose");await _tree.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
+}

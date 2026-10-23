@@ -9,6 +9,7 @@
 @inject ISnackbar Snackbar
 @inject ThemeState Theme
 @inject Solo.Client.Extensions.ExtensionCatalog Extensions
+@inject WorkspaceState Workspace
 
 <SoloThemeProvider />
 <MudPopoverProvider />
@@ -73,26 +74,48 @@
         </Authorized>
     </AuthorizeView>
 
-    <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="pa-4">
+    <MudMainContent Class="@(Workspace.Options.FillHeight ? "workspace-content" : null)">
+        <MudContainer MaxWidth="@(Workspace.Options.FullWidth ? MaxWidth.False : MaxWidth.Large)" Class="@(Workspace.Options.FillHeight ? "workspace-container" : "pa-4")">
             <DayRollover>
                 @Body
             </DayRollover>
         </MudContainer>
 
-        <footer class="app-footer">
-            @* The one place that always says Solo: an instance with a name of
-               its own is still running it. *@
-            <div class="app-footer__copyright">@(Config.HasOwnName
-                    ? $"{Config.SiteName}, powered by Solo."
-                    : "Solo, a simple project management app") - 
-                <MudLink Target="_blank" Href="https://github.com/HunterAhlquist/Solo">View Source on Github</MudLink></div>
-        </footer>
+        @if (!Workspace.Options.FillHeight)
+        {
+            <footer class="app-footer">
+                @* The one place that always says Solo: an instance with a name of
+                   its own is still running it. *@
+                <div class="app-footer__copyright">@(Config.HasOwnName
+                        ? $"{Config.SiteName}, powered by Solo."
+                        : "Solo, a simple project management app") -
+                    <MudLink Target="_blank" Href="https://github.com/HunterAhlquist/Solo">View Source on Github</MudLink></div>
+            </footer>
+        }
     </MudMainContent>
 </MudLayout>
 
 @code {
     private bool _drawerOpen = true;
+    private bool _workspaceActive;
+    private bool _drawerBeforeWorkspace;
+    private void OnWorkspaceChanged() => _ = InvokeAsync(() =>
+    {
+        if (Workspace.IsActive && !_workspaceActive)
+        {
+            _drawerBeforeWorkspace = _drawerOpen;
+            if (Workspace.Options.CollapseNavigation)
+            {
+                _drawerOpen = false;
+            }
+        }
+        else if (!Workspace.IsActive && _workspaceActive)
+        {
+            _drawerOpen = _drawerBeforeWorkspace;
+        }
+        _workspaceActive = Workspace.IsActive;
+        StateHasChanged();
+    });
 
     /// <summary>
     /// The menu's activator icon. MudMenu wraps <c>Icon</c> in an
@@ -116,6 +139,7 @@
         SessionExpiry.Expired += OnSessionExpired;
         Session.AccessDenied += OnAccessDenied;
         Extensions.Changed += OnExtensionsChanged;
+        Workspace.Changed += OnWorkspaceChanged;
     }
 
     private IReadOnlyList<Type>? _appBarExtensions;
@@ -194,6 +218,7 @@
         SessionExpiry.Expired -= OnSessionExpired;
         Session.AccessDenied -= OnAccessDenied;
         Extensions.Changed -= OnExtensionsChanged;
+        Workspace.Changed -= OnWorkspaceChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

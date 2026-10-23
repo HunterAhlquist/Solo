@@ -8,14 +8,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj. The host's
          copy reaches Solo.DesignDocs.Tests through Solo.Api; Solo.DesignDocs.Data.Tests,
          which has no host, references the package itself. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.10.0" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
