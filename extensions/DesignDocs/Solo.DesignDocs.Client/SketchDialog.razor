@@ -12,7 +12,9 @@
                     <MudTooltip Text="@item.Label" Placement="Placement.Right"><MudIconButton Icon="@item.Icon" Color="@(_tool==item.Id?Color.Primary:Color.Default)" Class="@(_tool==item.Id?"is-selected":null)" Disabled="@(!_writable)" OnClick="@(()=>SetTool(item.Id))" aria-label="@item.Label" aria-pressed="@(_tool==item.Id)" /></MudTooltip>
                 }
                 <MudDivider />
+                @if(_supportsTouch){
                 <MudTooltip Text="@(_touchDrawing?"Touch drawing on — tap to use one finger to pan":"Touch drawing off — one finger pans, Pencil draws")" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.TouchApp" Color="@(_touchDrawing?Color.Primary:Color.Default)" OnClick="ToggleTouchDrawing" aria-label="Draw with touch" aria-pressed="@(_touchDrawing.ToString().ToLowerInvariant())" /></MudTooltip>
+                }
                 <MudTooltip Text="Constrain shapes (or hold Shift)" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.AspectRatio" Color="@(_constrain?Color.Primary:Color.Default)" Disabled="@(!_writable)" OnClick="Constrain" aria-label="Constrain shapes" aria-pressed="@_constrain" /></MudTooltip>
                 <MudTooltip Text="Page settings" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.Settings" Disabled="@(!_writable)" OnClick='@(()=>Command("settings"))' aria-label="Page settings" /></MudTooltip>
                 <MudTooltip Text="Export PNG" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.Download" OnClick='@(()=>Command("export"))' aria-label="Export PNG" /></MudTooltip>
@@ -49,7 +51,7 @@
     [Parameter] public Guid VaultId {get;set;}
     [Parameter,EditorRequired] public SketchDto Sketch {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
-    private string _tool="pen",_ink="theme";private int _level;private bool _constrain,_writable,_touchDrawing;
+    private string _tool="pen",_ink="theme";private int _level;private bool _constrain,_writable,_touchDrawing,_supportsTouch;
     private static readonly (string Id,string Label,string Icon)[] Tools=[("pen","Pen",Icons.Material.Filled.Edit),("eraser","Eraser",Icons.Material.Filled.AutoFixNormal),("rectangle","Rectangle",Icons.Material.Filled.CropSquare),("ellipse","Ellipse",Icons.Material.Filled.RadioButtonUnchecked),("select","Box select",Icons.Material.Filled.SelectAll),("lasso","Lasso select",Icons.Material.Filled.Gesture),("text","Text",Icons.Material.Filled.TextFields)];
     private static string BrushIcon(int level)=>$"<circle cx='12' cy='12' r='{new[]{1,2,3,5,8}[level]}' />";
     private Task Command(string action,object? value=null)=>_sketch is null?Task.CompletedTask:_sketch.InvokeVoidAsync("command",action,value).AsTask();
@@ -66,7 +68,7 @@
     private IJSObjectReference? _sketch;private DotNetObjectReference<SketchDialog>? _reference;private IAsyncDisposable? _subscription,_vault;private bool _disposed;
     private async Task Mount(ElementReference root){
         var user=await Api.GetAsync<UserDto>("api/users/me");var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
-        var api=new DesignDocsApi(Api);var module=await DesignDocsAssets.ModuleAsync(Js,api);_reference=DotNetObjectReference.Create(this);
+        var api=new DesignDocsApi(Api);var module=await DesignDocsAssets.ModuleAsync(Js,api);_supportsTouch=await module.InvokeAsync<bool>("supportsTouch");await InvokeAsync(StateHasChanged);_reference=DotNetObjectReference.Create(this);
         var hue=(slot.Slot*137.508%360).ToString(System.Globalization.CultureInfo.InvariantCulture);
         _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,name=Sketch.Name,explosionUrl=api.Content("explosion.gif").ToString(),explosionSoundUrl=api.Content("explosion.wav").ToString(),
             meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,color=$"oklch(65% .15 {hue})"}});

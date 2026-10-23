@@ -59,8 +59,35 @@ public sealed class VaultComponentTests : ComponentTestBase
         var cut=Render<DocTreeBranch>(p=>p.Add(x=>x.Entries,new List<DocTreeEntry>{
             new(Guid.NewGuid(),true,null,"Systems",1),new(Guid.NewGuid(),false,null,"Overview",1)
         }));
-        Assert.Single(cut.FindAll("button[aria-label='Collapse']"));
+        Assert.Single(cut.FindAll("button[aria-label='Expand']"));
         Assert.Contains("Overview",cut.Markup);
+    }
+
+    [Fact]
+    public void Folder_expansion_is_controlled_by_the_restored_preference() {
+        var folder=Guid.NewGuid();
+        var cut=Render<DocTreeBranch>(p=>p.Add(x=>x.Entries,new List<DocTreeEntry>{
+            new(folder,true,null,"Systems",1),new(Guid.NewGuid(),false,folder,"Child note",1)
+        }).Add(x=>x.OpenFolders,new HashSet<Guid>{folder}));
+        Assert.Single(cut.FindAll("button[aria-label='Collapse']"));
+        Assert.Contains("Child note",cut.Markup);
+    }
+
+    [Theory][InlineData(false)][InlineData(true)]
+    public void Only_writers_can_drag_from_a_title_without_a_separate_handle(bool canWrite) {
+        var cut=Render<DocTreeBranch>(p=>p.Add(x=>x.Entries,new List<DocTreeEntry>{new(Guid.NewGuid(),false,null,"Overview",1)}).Add(x=>x.CanWrite,canWrite));
+        Assert.Equal(canWrite,cut.Find(".design-docs-tree-name").HasAttribute("data-doc-drag"));
+        Assert.Empty(cut.FindAll(".design-docs-tree-handle"));
+    }
+
+    [Fact]
+    public void Collapsed_children_do_not_contribute_to_the_sidebar_width() {
+        var folder=Guid.NewGuid();
+        var cut=Render<DocTreeBranch>(p=>p.Add(x=>x.Entries,new List<DocTreeEntry>{
+            new(folder,true,null,"Systems",1),new(Guid.NewGuid(),false,folder,"A very long hidden title",1)
+        }));
+        Assert.Single(cut.FindAll("button[aria-label='Expand']"));
+        Assert.DoesNotContain("A very long hidden title",cut.Markup);
     }
 
 }
