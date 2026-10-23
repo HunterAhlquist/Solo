@@ -4,12 +4,13 @@
 <div @ref="_root" class="design-docs-hierarchy">
     <div data-doc-drop="" class="design-docs-root pa-2">Vault root</div>
     <MudTreeView T="Guid" Dense="true">
-        <DocTreeBranch Entries="Entries" CanWrite="CanWrite" OpenFolders="OpenFolders" OnExpanded="OnExpanded" OnOpen="OnOpen" OnMenu="OnMenu" />
+        <DocTreeBranch Entries="Entries" CanWrite="CanWrite" SelectedNoteId="SelectedNoteId" OpenFolders="OpenFolders" OnExpanded="OnExpanded" OnOpen="OnOpen" OnMenu="OnMenu" />
     </MudTreeView>
 </div>
 @code {
     [Parameter] public IReadOnlyList<DocTreeEntry> Entries {get;set;}=[];
     [Parameter] public bool CanWrite {get;set;}
+    [Parameter] public Guid? SelectedNoteId {get;set;}
     [Parameter] public IReadOnlySet<Guid> OpenFolders {get;set;}=new HashSet<Guid>();
     [Parameter] public EventCallback<DocTreeExpansion> OnExpanded {get;set;}
     [Parameter] public EventCallback<Guid> OnOpen {get;set;}

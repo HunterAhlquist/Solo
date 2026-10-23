@@ -1,4 +1,11 @@
 import { parser } from '@lezer/markdown';
+export function mediaType(target){
+    let path=String(target).split('|')[0].split(/[?#]/)[0];try{path=decodeURIComponent(path);}catch{}
+    if(/\.sketch$/i.test(path))return 'sketch';
+    if(/\.(png|jpe?g|webp|gif)$/i.test(path))return 'image';
+    if(/\.(mp4|m4v|mov|webm|mkv|avi|mpeg|mpg|ogv|wmv|3gp|3g2|mts|m2ts|vob)$/i.test(path))return 'video';
+    return 'unsupported';
+}
 export function normalizePath(value){
     if(typeof value!=='string'||value.startsWith('/')||/^[a-z][a-z\d+.-]*:/i.test(value))return null;
     const result=[];for(const part of value.replaceAll('\\','/').split('/')){if(!part||part==='.')continue;if(part==='..'){if(!result.length)return null;result.pop();}else result.push(part);}return result.join('/');

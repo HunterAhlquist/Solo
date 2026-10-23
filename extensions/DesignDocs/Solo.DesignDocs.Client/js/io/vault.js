@@ -1,19 +1,21 @@
 import { unzipSync,zipSync } from 'fflate';
 import * as Y from 'yjs';
 import { decode,encode } from '../sync/protocol.js';
-import { normalizePath,resolvePath,imageTargets } from '../media/vault-paths.js';
+import { normalizePath,resolvePath,imageTargets,mediaType } from '../media/vault-paths.js';
 import { pageSize,paint } from '../sketch/render.js';
 import { loadFont } from '../sketch/font.js';
 const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
 const imageType=path=>/\.(png|jpe?g|webp|gif)$/i.test(path);
+const metadata=new Set(['__macosx','.ds_store','.appledouble','.spotlight-v100','.trashes','.fseventsd','.temporaryitems','.obsidian','.git','.svn','.hg','thumbs.db','desktop.ini']);
 export function inspectZip(bytes,existing=[]){
-    const skipped=[],seen=new Set();let expanded=0;
+    const skipped=[],seen=new Set(),videoFiles=new Set(),missingVideos=new Set();let expanded=0;
     const files=unzipSync(bytes,{filter:file=>{
         if(file.name.endsWith('/'))return false;const path=normalizePath(file.name);
         const omit=reason=>{skipped.push(`${file.name}: ${reason}`);return false;};
         if(!path||file.name.split(/[\\/]/).includes('..'))return omit('invalid path');
+        if(path.split('/').some(p=>p.startsWith('._')||metadata.has(p.toLowerCase())))return false;
         if(seen.has(path))throw new Error(`Duplicate zip path: ${path}`);seen.add(path);
-        if(path.split('/').some(p=>p==='.obsidian'))return omit('Obsidian settings');
+        if(mediaType(path)==='video'){videoFiles.add(path);return omit('video skipped; video import is not supported yet');}
         if(/\.(canvas|excalidraw)(\.md)?$/i.test(path))return omit('unsupported canvas or Excalidraw content');
         if(!/\.md$/i.test(path)&&!imageType(path))return omit('not a markdown note or supported raster image');
         if(file.originalSize>(/\.md$/i.test(path)?1048576:25*1024*1024))return omit('file exceeds the import size limit');
@@ -26,7 +28,12 @@ export function inspectZip(bytes,existing=[]){
         let markdown;try{markdown=decoder.decode(data);}catch{skipped.push(`${path}: note is not UTF-8`);continue;}
         notes.push({path,markdown});
         for(const target of imageTargets(markdown)){
-            if(/\.sketch$/i.test(target))continue;
+            const kind=mediaType(target);if(kind==='sketch')continue;
+            if(kind==='video'){
+                if(!resolvePath([...videoFiles],target,path))missingVideos.add(`${path}: video embed skipped (${target})`);
+                continue;
+            }
+            if(kind!=='image'){skipped.push(`${path}: unsupported attachment (${target})`);continue;}
             const resolved=resolvePath([...normalized.keys()].filter(imageType),target,path);
             if(resolved)wanted.add(resolved);else skipped.push(`${path}: image missing or ambiguous (${target})`);
         }
@@ -34,7 +41,7 @@ export function inspectZip(bytes,existing=[]){
     const images=[...wanted].map(path=>({path,bytes:normalized.get(path)}));
     for(const path of normalized.keys())if(imageType(path)&&!wanted.has(path))skipped.push(`${path}: not embedded by an imported note`);
     const conflicts=notes.map(n=>n.path).concat(images.map(i=>i.path)).filter(p=>existing.includes(p));
-    return {notes,images,skipped,conflicts};
+    skipped.push(...missingVideos);return {notes,images,skipped,conflicts,videos:videoFiles.size+missingVideos.size};
 }
 export function batches(notes){const result=[];let current=[];for(const note of notes){const next=current.concat(note);if(current.length&&(next.length>100||encoder.encode(JSON.stringify({notes:next})).length>5*1024*1024)){result.push(current);current=[];}current.push(note);}if(current.length)result.push(current);return result;}
 export function markdownFromState(state){if(!state.updates.length)return state.seedMarkdown??'';const doc=new Y.Doc();try{for(const update of state.updates)Y.applyUpdate(doc,typeof update.data==='string'?decode(update.data):update.data);return doc.getText('markdown').toString();}finally{doc.destroy();}}
@@ -53,7 +60,7 @@ export async function chooseImport(existing){return await new Promise((resolve,r
     input.addEventListener('cancel',()=>{input.remove();resolve(null);},{once:true});input.addEventListener('change',async()=>{const file=input.files[0];input.remove();if(!file){resolve(null);return;}
         try{if(file.size>100*1024*1024)throw new Error('The zip exceeds 100 MB. Split it into smaller zips.');const plan=inspectZip(new Uint8Array(await file.arrayBuffer()),existing);
             const images=[];for(const image of plan.images){try{images.push(await originalImage(image));}catch(e){plan.skipped.push(`${image.path}: ${e.message}`);}}plan.images=images;plan.conflicts=plan.notes.map(n=>n.path).concat(images.map(i=>i.path)).filter(path=>existing.includes(path));
-            resolve({plan,summary:{notes:plan.notes.length,images:images.length,skipped:plan.skipped,conflicts:plan.conflicts}});
+            resolve({plan,summary:{notes:plan.notes.length,images:images.length,skipped:plan.skipped,conflicts:plan.conflicts,videos:plan.videos}});
         }catch(e){reject(e);}
     },{once:true});input.click();
 });}
