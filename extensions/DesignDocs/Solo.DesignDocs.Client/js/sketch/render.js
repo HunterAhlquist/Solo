@@ -27,7 +27,7 @@ export function connectedRegion(raster,width,height,x,y){let at=Math.round(y)*wi
         for(const next of [px>0?p-1:-1,px<width-1?p+1:-1,p>=width?p-width:-1,p+width<mask.length?p+width:-1,px>0&&p>=width?p-width-1:-1,px<width-1&&p>=width?p-width+1:-1,px>0&&p+width<mask.length?p+width-1:-1,px<width-1&&p+width<mask.length?p+width+1:-1])if(next>=0&&!mask[next]&&raster.pixels[next]){mask[next]=1;queue[write++]=next;}
     }return {mask,owners};
 }
-export function splitMove(ops,region,width,height,dx,dy,selectedIds=null){const result=[],moved=[];
+export function splitSelection(ops,region,width,height,dx,dy,selectedIds=null){const result=[],moved=[];
     ops.forEach((stroke,index)=>{
         if(stroke.tool==='eraser'||(selectedIds?!selectedIds.has(stroke.id):!region.owners.has(index+1))){result.push(stroke);return;}
         let segment=[],selected=null;
@@ -41,18 +41,19 @@ export function splitMove(ops,region,width,height,dx,dy,selectedIds=null){const 
             }
             if(selected!==null&&selected!==hit)finish();selected=hit;segment.push(hit?[point[0]+dx,point[1]+dy,point[2]]:point);
         }finish();
-    });return result.concat(moved);
+    });return {stationary:result,moved};
 }
+export function splitMove(...args){const {stationary,moved}=splitSelection(...args);return stationary.concat(moved);}
 export function shape(tool,a,b,constrain=false){let dx=b[0]-a[0],dy=b[1]-a[1];if(constrain){const n=Math.max(Math.abs(dx),Math.abs(dy));dx=Math.sign(dx||1)*n;dy=Math.sign(dy||1)*n;}
     if(tool==='rectangle')return [[a[0],a[1],1],[a[0]+dx,a[1],1],[a[0]+dx,a[1]+dy,1],[a[0],a[1]+dy,1],[a[0],a[1],1]];
     const result=[];for(let i=0;i<=64;i++){const angle=i*Math.PI/32;result.push([a[0]+dx/2+Math.cos(angle)*dx/2,a[1]+dy/2+Math.sin(angle)*dy/2,1]);}return result;
 }
-export function paint(context,ops,texts,meta,{frame=0,themeInk='#111',font,exporting=false}={}){
+export function paint(context,ops,texts,meta,{frame=0,themeInk='#111',font,exporting=false,paperColor='white'}={}){
     const [width,height]=pageSize(meta);if(context.canvas.width!==width)context.canvas.width=width;if(context.canvas.height!==height)context.canvas.height=height;
-    context.imageSmoothingEnabled=false;context.fillStyle=exporting?'white':themeInk==='#fff'?'#242424':'#fff';context.fillRect(0,0,width,height);
+    context.clearRect(0,0,width,height);context.imageSmoothingEnabled=false;context.fillStyle=paperColor;context.globalAlpha=.5;context.fillRect(0,0,width,height);context.globalAlpha=1;
     context.fillStyle='#d0d0d0';if(meta.pattern==='grid'||meta.pattern==='notebook'){for(let y=24;y<height;y+=24)context.fillRect(0,y,width,1);if(meta.pattern==='grid')for(let x=24;x<width;x+=24)context.fillRect(x,0,1,height);}
     if(meta.pattern==='dots')for(let y=12;y<height;y+=12)for(let x=12;x<width;x+=12)context.fillRect(x,y,1,1);
-    const raster=rasterize(ops,width,height,frame),palette=['',exporting?'#111':themeInk,...(!exporting&&themeInk==='#fff'?['#fa7c82','#80b9ff','#8cdb9f']:['#b52c32','#2164b4','#23763e'])];
+    const raster=rasterize(ops,width,height,frame),palette=['',themeInk,'#b52c32','#2164b4','#23763e'];
     for(let i=0;i<raster.pixels.length;i++){const ink=raster.pixels[i];if(ink){context.fillStyle=palette[ink];context.fillRect(i%width,Math.floor(i/width),1,1);}}
     if(font)for(const text of texts){context.fillStyle=palette[{theme:1,red:2,blue:3,green:4}[text.ink]??1];font(context,text);}
     return raster;

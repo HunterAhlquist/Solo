@@ -7,6 +7,7 @@ import { Provider } from '../sync/provider.js';
 import { livePreview, refreshSketchPreview } from './preview.js';
 import { headings } from './markdown.js';
 import { Images } from '../media/images.js';
+import { protectMedia, mediaEdit } from './media-protection.js';
 import { mediaReference, mediaRange } from '../media/references.js';
 export function mountEditor(root, bridge, options) {
     const readOnly = new Compartment(); let view;
@@ -17,7 +18,7 @@ export function mountEditor(root, bridge, options) {
     editorRoot.className='design-docs-editor-host';fallback.className = 'design-docs-stored-markdown'; root.append(fallback,editorRoot);
     const provider = new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {
         ...options,
-        writable:value=>{images.canWrite=value;upload.disabled=!value;view?.dispatch({effects:readOnly.reconfigure([EditorState.readOnly.of(!value),EditorView.editable.of(value)])});},
+        writable:value=>{images.canWrite=value;view?.dispatch({effects:readOnly.reconfigure([EditorState.readOnly.of(!value),EditorView.editable.of(value)])});},
         status:message=>bridge.invokeMethodAsync('Status',message),
         copy:(text,seq)=>bridge.invokeMethodAsync('Copy',text,seq,headings(text)),
         unseeded:markdown=>{fallback.textContent=markdown;editorRoot.hidden=true;},
@@ -25,20 +26,24 @@ export function mountEditor(root, bridge, options) {
     const insert=text=>{if(!provider.canWrite)return;const r=view.state.selection.main;view.dispatch({changes:{from:r.from,to:r.to,insert:text},selection:{anchor:r.from+text.length}});view.focus();};
     const text=provider.doc.getText('markdown');
     const images=new Images(bridge,options.canWrite,insert,message=>bridge.invokeMethodAsync('Status',message),{
+        icons:options.icons,
         reference:entry=>mediaReference(text,entry),
         text:(from,to)=>view.state.doc.sliceString(from,to),
         remove:reference=>{
             if(!provider.canWrite)return false;
             const range=mediaRange(provider.doc,text,reference);
             if(!range){bridge.invokeMethodAsync('Status','Attachment changed elsewhere. Reopen the viewer to remove it.');return false;}
-            view.dispatch({changes:{...range,insert:''}});return true;
+            view.dispatch({changes:{...range,insert:''},annotations:mediaEdit.of(true)});return true;
         },
     });
-    const toolbar=document.createElement('div');toolbar.className='design-docs-media-tools';
-    const upload=document.createElement('button');upload.type='button';upload.textContent='Add image';upload.onclick=()=>images.choose();toolbar.append(upload);
-    root.prepend(toolbar);toolbar.hidden=!options.canWrite;
+    const noteBody=root.closest('.design-docs-note-body');
+    let paletteTimer;
+    const showPalette=event=>{if(event.pointerType==='touch'||event.movementX||event.movementY){noteBody?.classList.add('is-pointer-active');clearTimeout(paletteTimer);paletteTimer=setTimeout(()=>noteBody?.classList.remove('is-pointer-active'),2400);}};
+    const typing=event=>{if(event.altKey&&event.key==='Insert'){event.preventDefault();noteBody?.classList.add('is-pointer-active');noteBody?.querySelector('.design-docs-note-palette button')?.focus();return;}if(event.key.length===1||event.key==='Backspace'||event.key==='Delete')noteBody?.classList.remove('is-pointer-active');};
+    noteBody?.addEventListener('pointermove',showPalette);root.addEventListener('keydown',typing);
+    const preview=livePreview(bridge,images);
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
-        markdown(),lineNumbers(),highlightActiveLineGutter(),keymap.of([...defaultKeymap,...yUndoManagerKeymap]),EditorView.lineWrapping,livePreview(bridge,images),
+        markdown(),lineNumbers(),highlightActiveLineGutter(),keymap.of([...defaultKeymap,...yUndoManagerKeymap]),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Status',message)),
         yCollab(provider.doc.getText('markdown'),provider.awareness),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
         EditorView.domEventHandlers({focus:()=>{bridge.invokeMethodAsync('Focus',true);},blur:()=>{bridge.invokeMethodAsync('Focus',false);},
@@ -52,18 +57,20 @@ export function mountEditor(root, bridge, options) {
                     let raw=images.dragged.raw;
                     if(position>0&&!/\s/.test(view.state.doc.sliceString(position-1,position)))raw=' '+raw;
                     if(position<view.state.doc.length&&!/\s/.test(view.state.doc.sliceString(position,position+1)))raw+=' ';
-                    view.dispatch({changes:[{...range,insert:''},{from:position,insert:raw}]});images.dragged=null;return true;
+                    view.dispatch({changes:[{...range,insert:''},{from:position,insert:raw}],annotations:mediaEdit.of(true)});images.dragged=null;return true;
                 }
                 const files=[...(event.dataTransfer?.files??[])];if(!provider.canWrite||!files.length)return false;event.preventDefault();files.forEach(f=>images.upload(f));return true;},
             dragover:event=>{if(event.dataTransfer?.types.some(type=>type==='Files'||type==='application/x-solo-design-doc-media'))event.preventDefault();},
         }),
 
     ]})});
-    const themeObserver=new MutationObserver(()=>{const user=themeUser();if(user.color!==provider.options.user.color){provider.options.user=user;if(provider.canWrite)provider.awareness.setLocalStateField('user',user);}});
+    const previewTheme=()=>{const style=getComputedStyle(root);return style.fontFamily+'|'+style.color+'|'+style.getPropertyValue('--mud-palette-surface');};
+    let lastPreviewTheme=previewTheme();
+    const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh();}const user=themeUser();if(user.color!==provider.options.user.color){provider.options.user=user;if(provider.canWrite)provider.awareness.setLocalStateField('user',user);}});
     themeObserver.observe(document.head,{childList:true,subtree:true,characterData:true});
     return {
         connected:value=>provider.connected(value),
-        permissions(value){images.canWrite=value;toolbar.hidden=!value;provider.options.canWrite=value;provider.connected(provider.online);},
+        permissions(value){images.canWrite=value;provider.options.canWrite=value;provider.connected(provider.online);},
         async receive(kind,data) {
             await provider.receive(kind,data);
             if(kind==='state'||kind==='update'){fallback.textContent='';editorRoot.hidden=false;}
@@ -77,8 +84,9 @@ export function mountEditor(root, bridge, options) {
         },
         presence:users=>provider.presence(users),
         insert,
+        chooseImage:()=>images.choose(),
         imagesChanged:()=>images.refresh(),
         refreshSketches:()=>images.refresh(),
-        dispose(){themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
+        dispose(){clearTimeout(paletteTimer);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }

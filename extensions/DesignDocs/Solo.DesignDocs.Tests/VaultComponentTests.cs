@@ -54,4 +54,13 @@ public sealed class VaultComponentTests : ComponentTestBase
         var cut=Render<DocTreeBranch>(p=>p.Add(x=>x.Entries,new List<DocTreeEntry>{new(id,false,null,"Read me",1)}).Add(x=>x.CanWrite,false));
         Assert.Contains("Read me",cut.Markup);Assert.DoesNotContain("Actions for",cut.Markup);
     }
+    [Fact]
+    public void Only_folders_have_disclosure_carets() {
+        var cut=Render<DocTreeBranch>(p=>p.Add(x=>x.Entries,new List<DocTreeEntry>{
+            new(Guid.NewGuid(),true,null,"Systems",1),new(Guid.NewGuid(),false,null,"Overview",1)
+        }));
+        Assert.Single(cut.FindAll("button[aria-label='Collapse']"));
+        Assert.Contains("Overview",cut.Markup);
+    }
+
 }

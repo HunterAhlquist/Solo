@@ -88,3 +88,8 @@ extensions/DesignDocs/Solo.DesignDocs/content/design-docs.css
 extensions/DesignDocs/Solo.DesignDocs/content/THIRD-PARTY-LICENSES.txt
 
 extensions/DesignDocs/Solo.DesignDocs/content/pixel-font.png
+
+# Generated copies of the sketch clear effect; source assets live beside JS.
+extensions/DesignDocs/Solo.DesignDocs/content/explosion.gif
+extensions/DesignDocs/Solo.DesignDocs/content/explosion.wav
+extensions/DesignDocs/Solo.DesignDocs/content/NOTICE.txt

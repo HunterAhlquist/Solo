@@ -1,6 +1,6 @@
 @implements IDisposable
 @foreach(var entry in Entries.Where(e=>e.ParentId==ParentId).OrderByDescending(e=>e.IsFolder).ThenBy(e=>e.Name)) {
-    <MudTreeViewItem T="Guid" Value="entry.Id" Text="entry.Name" Icon="@(entry.IsFolder?Icons.Material.Filled.Folder:Icons.Material.Filled.Description)" Expanded="true">
+    <MudTreeViewItem T="Guid" Value="entry.Id" Text="entry.Name" Icon="@(entry.IsFolder?Icons.Material.Filled.Folder:Icons.Material.Filled.Description)" Expanded="true" CanExpand="@entry.IsFolder" Class="@(entry.IsFolder?null:"design-docs-leaf")" ChildContent="@Children(entry)">
         <BodyContent>
             <div class="design-docs-tree-row" data-doc-tree-id="@entry.Id" data-doc-drop="@(entry.IsFolder?entry.Id.ToString():entry.ParentId?.ToString()??"")" data-doc-name="@entry.Name"
                  @oncontextmenu:preventDefault="true" @oncontextmenu="@(e=>OnMenu.InvokeAsync(new(entry,e.ClientX,e.ClientY)))"
@@ -10,9 +10,6 @@
                 @if(CanWrite) { <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" aria-label="@($"Actions for {entry.Name}")" OnClick="@(e=>OnMenu.InvokeAsync(new(entry,e.ClientX,e.ClientY)))" /> }
             </div>
         </BodyContent>
-        <ChildContent>
-            @if(entry.IsFolder) { <DocTreeBranch Entries="Entries" ParentId="entry.Id" CanWrite="CanWrite" OnOpen="OnOpen" OnMenu="OnMenu" /> }
-        </ChildContent>
     </MudTreeViewItem>
 }
 @code {
@@ -21,6 +18,10 @@
     [Parameter] public bool CanWrite {get;set;}
     [Parameter] public EventCallback<Guid> OnOpen {get;set;}
     [Parameter] public EventCallback<DocTreeMenu> OnMenu {get;set;}
+    private RenderFragment? Children(DocTreeEntry entry) {
+        if(!entry.IsFolder)return null;
+        return @<DocTreeBranch Entries="Entries" ParentId="entry.Id" CanWrite="CanWrite" OnOpen="OnOpen" OnMenu="OnMenu" />;
+    }
     private CancellationTokenSource? _press;private bool _longPressed;private double _x,_y;
     private async Task StartPress(DocTreeEntry entry,PointerEventArgs e) {
         _longPressed=false;if(e.PointerType=="mouse"||!CanWrite)return;

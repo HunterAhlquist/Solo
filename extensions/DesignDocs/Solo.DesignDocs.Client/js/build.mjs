@@ -9,6 +9,7 @@ await buildFont(output);
 await build({ entryPoints: ['index.js'], bundle: true, format: 'esm', target: ['safari15.4', 'chrome111'],
     outfile: `${output}/design-docs.js`, minify: true, legalComments: 'eof' });
 await copyFile('design-docs.css', `${output}/design-docs.css`);
+for(const file of ['explosion.gif','explosion.wav','NOTICE.txt'])await copyFile(`assets/${file}`, `${output}/${file}`);
 
 // Include the dependency notices in the installable package, not just the source checkout.
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));

@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <Version>1.0.8</Version>
+    <Version>1.0.9</Version>
     <!-- content/ (the stylesheet and the pointer-event module) ships in the
          package and is fetched from /api/extensions/design-docs/content/, not
          through the host's static-web-asset pipeline. -->
