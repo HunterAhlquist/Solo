@@ -211,3 +211,23 @@ html.solo-desktop--glass .design-docs-image-viewer:not(.is-presented)::backdrop 
  .design-docs-image-viewer,.design-docs-image-viewer::backdrop,.design-docs-image-viewer header,.design-docs-image-viewer footer,.design-docs-image-viewer .design-docs-viewer-previous,.design-docs-image-viewer .design-docs-viewer-next,
  html.solo-desktop--glass body:has(.design-docs-image-viewer[open]) .mud-layout { transition:none; }
 }
+
+.design-docs-presence { display:inline-flex; align-items:center; gap:5px; margin-left:auto; }
+.design-docs-presence-avatar.mud-avatar { border:3px solid var(--design-docs-user-color); background:var(--mud-palette-surface); color:var(--mud-palette-text-primary); font:600 11px var(--mud-typography-default-family); }
+.design-docs-presence-avatar img { width:100%; height:100%; border-radius:inherit; object-fit:cover; }
+.design-docs-sketch-title { display:flex; align-items:center; gap:16px; flex:1; min-width:0; padding-right:40px; }
+.design-docs-sketch-title > .mud-typography { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.design-docs-cursor { position:relative; display:inline-block; color:var(--design-docs-user-color); pointer-events:none; user-select:none; -webkit-user-select:none; }
+.design-docs-cursor > svg { position:absolute; left:0; top:0; overflow:visible; width:36px; height:40px; fill:var(--mud-palette-surface); stroke:currentColor; stroke-width:2; stroke-linejoin:round; }
+.design-docs-cursor-avatar { position:absolute; left:11px; top:15px; display:flex; align-items:center; justify-content:center; width:24px; height:24px; box-sizing:border-box; border:2px solid currentColor; border-radius:50%; background:var(--mud-palette-surface); font:600 9px var(--mud-typography-default-family); line-height:1; overflow:hidden; }
+.design-docs-cursor-avatar img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:inherit; }
+.design-docs-cursor--text > svg { width:10px; height:1.35em; fill:none; }
+.design-docs-cursor--text .design-docs-cursor-avatar { width:20px; height:20px; left:6px; top:.85em; }
+.design-docs-text-peer { position:relative; display:inline-block; width:0; height:0; vertical-align:baseline; pointer-events:none; }
+.design-docs-text-peer > .design-docs-cursor { position:absolute; top:-1.05em; left:-4px; height:1.35em; z-index:6; }
+.design-docs-editor .cm-ySelectionCaret { display:none; }
+.design-docs-sketch-presence-layer { position:absolute; inset:0; z-index:5; overflow:hidden; pointer-events:none; }
+.design-docs-sketch-peer { position:absolute; left:0; top:0; pointer-events:none; }
+.design-docs-brush-footprint { position:absolute; transform:translate(-50%,-50%); box-sizing:border-box; border:1px solid var(--design-docs-user-color); border-radius:50%; opacity:.85; }
+.design-docs-brush-footprint[hidden] { display:none; }
+.design-docs-sketch-peer > .design-docs-cursor { position:absolute; left:-2px; top:-2px; }
