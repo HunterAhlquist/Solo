@@ -1263,3 +1263,8 @@ with the assigned color confined to their outlines and profile-picture borders.
 A wider colored stroke behind the black I-beam preserves its curved caps. Browser
 style checks confirm both bodies resolve to black and the outlines retain each
 user's assigned color. This revision is also unpublished.
+
+The user approved the black-body, assigned-color-outline cursor design for the
+next preview. Codex preview 15 packages the presence repair and approved cursor
+components as Design Docs 1.0.18. The prior local-review records above describe
+the review stage; approval permits the prerelease and isolated preview deployment.

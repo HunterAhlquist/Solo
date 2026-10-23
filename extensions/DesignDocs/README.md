@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.17.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.18.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -92,8 +92,8 @@ is cleared while the sketch is open unless a text field has focus. Text fields
 keep their editing/selection menus; toolbar taps and Pointer Event pan/zoom remain
 available. Physical Pencil retesting is still required.
 
-The local presence follow-up repairs writable Awareness initialization, continuous
+The presence follow-up repairs writable Awareness initialization, continuous
 cursor broadcasting and stationary late joins. Its merged profile-picture pointer
 and I-beam cursors share the assigned project color with roster borders. Brush
 footprints remain visible beside the profile cursor. Missing photos fall back to
-initials. The cursor design is under user review and has not been published.
+initials. The cursor design was approved for Codex preview 15. Both cursor bodies are black, with their assigned color outlining the shape and profile picture.
