@@ -32,6 +32,16 @@ public sealed class VaultComponentTests : ComponentTestBase
         await DisposeComponentsOnDispatcherAsync();Assert.Empty(_live.Held);
     }
     [Fact]
+    public void Sidebar_refreshes_after_navigation_without_a_remote_echo() {
+        VaultListDto list=new(false,[]);_http.Route("vaults",HttpStatusCode.OK,()=>list);
+        var cut=Render<VaultList>(p=>p.Add(x=>x.Project,_project).Add(x=>x.Compact,true));
+        cut.WaitForAssertion(()=>Assert.Contains("No open design docs",cut.Markup));
+        list=new(false,[new(Guid.NewGuid(),"Combat design",false,null,1)]);
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().NavigateTo("/docs/DOCS");
+        cut.WaitForAssertion(()=>Assert.Contains("Combat design",cut.Markup));
+        Assert.DoesNotContain("No open design docs",cut.Markup);
+    }
+    [Fact]
     public void Closed_vaults_are_hidden_until_requested() {
         _http.RouteJson("vaults",new VaultListDto(false,[new(Guid.NewGuid(),"Archived",true,DateTimeOffset.UtcNow,1)]));
         var cut=Render<VaultList>(p=>p.Add(x=>x.Project,_project));

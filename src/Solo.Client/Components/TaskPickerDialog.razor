@@ -118,6 +118,7 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        _filter = new(Options.IncludeFinished, Options.IncludeClosedBoards);
         try
         {
             var boards = await Api.GetBoardsAsync(ProjectId);

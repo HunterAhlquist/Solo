@@ -1,7 +1,5 @@
-import * as Y from 'yjs';
-import { decode } from '../sync/protocol.js';
-import { paint } from '../sketch/render.js';
-import { loadFont } from '../sketch/font.js';
+import { refreshSketchPreview } from '../media/sketch-preview.js';
+export { refreshSketchPreview };
 import { WikiLink } from './wiki.js';
 import { StateField } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
@@ -23,43 +21,34 @@ class Link extends WidgetType {
     ignoreEvent() { return true; }
     destroy(){clearInterval(this.timer);}
 }
-class ImageCard extends WidgetType {
-    constructor(paths,images){super();this.paths=paths;this.images=images;}
-    eq(other){return this.paths.join('\n')===other.paths.join('\n');}
-    toDOM(){return this.images.card(this.paths);}
+class MediaCard extends WidgetType {
+    constructor(entries,images){super();this.entries=entries;this.images=images;}
+    eq(other){return this.entries.length===other.entries.length&&this.entries.every((e,i)=>e.from===other.entries[i].from&&e.to===other.entries[i].to&&e.raw===other.entries[i].raw);}
+    toDOM(){return this.images.card(this.entries);}
     ignoreEvent(){return true;}
-}
-export async function refreshSketchPreview(canvas,bridge){
-    const data=await bridge.invokeMethodAsync('SketchPreview',canvas.dataset.sketch);if(!data)return;
-    const doc=new Y.Doc();try{for(const update of data.updates)Y.applyUpdate(doc,decode(update));const font=await loadFont(data.fontUrl);
-        paint(canvas.getContext('2d'),doc.getArray('ops').toArray(),[...doc.getMap('texts')].map(([id,text])=>({id,...text.toJSON()})),{pageSize:data.sketch.pageSize,orientation:data.sketch.orientation,pattern:data.sketch.pattern,...doc.getMap('meta').toJSON()},{font,frame:0,exporting:true});
-    }finally{doc.destroy();}
-}
-class SketchCard extends WidgetType {
-    constructor(name,bridge){super();this.name=name;this.bridge=bridge;}
-    eq(other){return this.name===other.name;}
-    toDOM(){const button=document.createElement('button');button.type='button';button.className='design-docs-sketch-card';button.textContent=`Open sketch: ${this.name}`;const canvas=document.createElement('canvas');canvas.dataset.sketch=this.name;canvas.setAttribute('aria-hidden','true');button.append(canvas);refreshSketchPreview(canvas,this.bridge).catch(()=>{});button.onclick=()=>this.bridge.invokeMethodAsync('OpenSketch',this.name);return button;}
-    ignoreEvent(){return true;}
+    destroy(dom){this.images.release(dom);}
 }
 function build(view, bridge, images) {
     const ranges = [], doc = view.state.doc, cursorLines = new Set();
     if (view.state.facet(EditorView.editable)) for (const r of view.state.selection.ranges) for (let n=doc.lineAt(r.from).number;n<=doc.lineAt(r.to).number;n++) cursorLines.add(n);
     const tree=syntaxTree(view.state);
     const insideCode=from=>{for(let node=tree.resolveInner(from,1);node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name))return true;return false;};
-    const embedded=[];let offset=0;
-    for(const paragraph of doc.toString().split(/(\n\s*\n)/)) {
-        const start=offset;offset+=paragraph.length;
-        const matches=[...paragraph.matchAll(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g)].filter(m=>!(/\.sketch$/i.test(m[1]??m[2]))&&!insideCode(start+m.index));
-        if(!matches.length||matches.some(m=>cursorLines.has(doc.lineAt(start+m.index).number)))continue;
-        const onlyImages=paragraph.replace(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g,'').trim()==='';
-        const groups=onlyImages?[matches]:matches.map(m=>[m]);
-        for(const group of groups){const from=start+group[0].index,to=start+group.at(-1).index+group.at(-1)[0].length;
-            const paths=group.map(m=>{try{return decodeURIComponent((m[1]??m[2]).split('|')[0]);}catch{return m[1]??m[2];}});
-            ranges.push(Decoration.replace({widget:new ImageCard(paths,images)}).range(from,to));embedded.push({from,to});}
-    }
-    for(const match of doc.toString().matchAll(/!\[\[([^\]]+)\.sketch\]\]/g)){
-        if(cursorLines.has(doc.lineAt(match.index).number)||insideCode(match.index))continue;
-        const from=match.index,to=from+match[0].length;ranges.push(Decoration.replace({widget:new SketchCard(match[1],bridge)}).range(from,to));embedded.push({from,to});
+    const embedded=[];
+    for(let number=1;number<=doc.lines;number++) {
+        const line=doc.line(number);
+        const matches=[...line.text.matchAll(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g)]
+            .filter(m=>!insideCode(line.from+m.index));
+        if(!matches.length)continue;
+        const onlyMedia=line.text.replace(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g,'').trim()==='';
+        for(const group of onlyMedia?[matches]:matches.map(m=>[m])) {
+            const entries=group.map(m=>{
+                let path=(m[1]??m[2]).split('|')[0];try{path=decodeURIComponent(path);}catch{}
+                return {path,from:line.from+m.index,to:line.from+m.index+m[0].length,raw:m[0],sketch:/\.sketch$/i.test(path)};
+            });
+            const from=entries[0].from,to=entries.at(-1).to;
+            ranges.push(Decoration.replace({widget:new MediaCard(entries,images),media:true}).range(from,to));
+            embedded.push({from,to});
+        }
     }
     for(const match of doc.toString().matchAll(/\[\[([^\]]+)\]\]/g)){
         if(match.index>0&&doc.sliceString(match.index-1,match.index)==='!')continue;
@@ -87,5 +76,8 @@ function build(view, bridge, images) {
 export const livePreview = (bridge,images) => StateField.define({
     create:state=>build({state},bridge,images),
     update:(_,transaction)=>build({state:transaction.state},bridge,images),
-    provide:field=>EditorView.decorations.from(field),
+    provide:field=>[
+        EditorView.decorations.from(field),
+        EditorView.atomicRanges.of(view=>view.state.field(field).update({filter:(_from,_to,value)=>!!value.spec.media})),
+    ],
 });

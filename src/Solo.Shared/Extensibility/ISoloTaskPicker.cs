@@ -29,6 +29,12 @@ public interface ISoloTaskPicker
 /// <summary>What the picker asks for and leaves out.</summary>
 public sealed record TaskPickerOptions
 {
+    /// <summary>Initially include completed work, for references rather than scheduling.</summary>
+    public bool IncludeFinished { get; init; }
+
+    /// <summary>Initially include closed boards. The person may change either filter.</summary>
+    public bool IncludeClosedBoards { get; init; }
+
     /// <summary>The dialog's title. "Pick a task" when not given.</summary>
     public string? Title { get; init; }
 

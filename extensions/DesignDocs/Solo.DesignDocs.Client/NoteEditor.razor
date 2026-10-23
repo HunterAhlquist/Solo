@@ -7,14 +7,18 @@
 @inject ISoloTaskDrawer TaskDrawer
 @inject ISoloContextMenu Menus
 @inject IDialogService Dialogs
+<div class="design-docs-note-status">
 @if(_status.Contains("read-only",StringComparison.OrdinalIgnoreCase)){
     <MudAlert Severity="@(_status.StartsWith("Offline",StringComparison.Ordinal)?Severity.Warning:Severity.Info)" Dense="true">@_status</MudAlert>
-}else{<MudText Typo="Typo.caption" Class="d-block" role="status">@_status</MudText>}
+}else{<MudText Typo="Typo.caption" role="status">@_status</MudText>}
 <div class="design-docs-presence">
     @foreach(var p in _presence){<MudChip T="string" Size="Size.Small">@p.DisplayName · @p.Mode</MudChip>}
 </div>
-@if(CanWrite){<MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.AddLink" OnClick="InsertTask">Link a task</MudButton>}
-@if(CanWrite){<MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Draw" OnClick="NewSketch">New sketch</MudButton>}
+</div>
+@if(CanWrite){<div class="design-docs-note-tools">
+    <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.AddLink" OnClick="InsertTask">Link a task</MudButton>
+    <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Draw" OnClick="NewSketch">New sketch</MudButton>
+</div>}
 <EditorSurface Ready="Mount" />
 @code {
     [Parameter] public Guid ProjectId {get;set;}
@@ -48,7 +52,7 @@
     [JSInvokable] public Task Focus(bool focused)=>Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
     [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}
     private async Task InsertTask(){
-        var task=await TaskPicker.PickAsync(ProjectId);if(task is null||_editor is null)return;
+        var task=await TaskPicker.PickAsync(ProjectId,new TaskPickerOptions{IncludeFinished=true,IncludeClosedBoards=true});if(task is null||_editor is null)return;
         var info=await TaskInfo(task.Id.ToString());await _editor.InvokeVoidAsync("insert",$"[{info.Serial}](/docs/task/{task.Id:N})");
     }
     public sealed record TaskLabel(string Serial,string Name);
@@ -82,7 +86,7 @@
     [JSInvokable]public async Task OpenSketch(string name){
         try{var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");
             var sketch=sketches.SingleOrDefault(s=>s.Name==name&&s.NoteId==Note.Id);if(sketch is null){await Status("Sketch not found in this note.");return;}
-            var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullWidth=true,MaxWidth=MaxWidth.ExtraLarge});
+            var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullScreen=true,CloseButton=true,CloseOnEscapeKey=true,BackdropClick=false});
             await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches");
         }catch(SoloApiException e){await Status(e.Message);}}
     [JSInvokable]public async Task<object?> ResolveWiki(string target){

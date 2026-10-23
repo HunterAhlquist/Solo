@@ -156,6 +156,17 @@ public class TaskPickerTests : ComponentTestBase
     // -- Searching and filtering -------------------------------------------------------
 
     [Fact]
+    public async Task Reference_pickers_can_initially_offer_completed_tasks_and_closed_boards()
+    {
+        var picker = await OpenAsync(new TaskPickerOptions { IncludeFinished=true, IncludeClosedBoards=true },
+            Features([Item("Completed design", 1, status:TaskState.Finished)]),
+            Bugs([Item("Archived decision", 2)], open:false));
+        Assert.Equal(["Completed design", "Archived decision"], Options(picker));
+        picker.FindAll("input[type=checkbox]")[0].Change(false);
+        Assert.Equal(["Archived decision"], Options(picker));
+    }
+
+    [Fact]
     public async Task Search_matches_names_serials_and_epics_and_drops_what_empties()
     {
         var combat = Epic("Combat", 1m);

@@ -1,3 +1,4 @@
+import { refreshSketchPreview } from './sketch-preview.js';
 import { decode } from '../sync/protocol.js';
 export async function prepareImage(file) {
     if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name ?? '')) throw new Error('SVG images are not supported.');
@@ -15,49 +16,109 @@ export async function prepareImage(file) {
 }
 export function imageAngle(path) {let seed=0;for(const c of path)seed=(seed*31+c.charCodeAt(0))|0;return (Math.abs(seed)%701)/100-3.5;}
 export class Images {
-    constructor(bridge,canWrite,insert,status) {this.bridge=bridge;this.canWrite=canWrite;this.insert=insert;this.status=status;this.cache=new Map();this.cards=new Set();this.inputs=new Set();this.disposed=false;}
+    constructor(bridge,canWrite,insert,status,actions={}) {
+        Object.assign(this,{bridge,canWrite,insert,status,actions});
+        this.cache=new Map();this.cards=new Set();this.inputs=new Set();this.disposed=false;this.dragged=null;
+    }
+    get canWrite(){return this._canWrite;}
+    set canWrite(value){this._canWrite=value;for(const entry of this.cards??[]){entry.button.draggable=value;for(const image of entry.button.querySelectorAll('img'))image.draggable=value;}
+        const remove=this.dialog?.querySelector('[aria-label="Remove attachment from note"]');if(remove)remove.hidden=!value;
+    }
     async resolve(path) {
-        if(!this.cache.has(path))this.cache.set(path,this.bridge.invokeMethodAsync('Image',path).then(data=>{
-            const url=URL.createObjectURL(new Blob([decode(data.base64)],{type:data.contentType}));
-            if(this.disposed){URL.revokeObjectURL(url);throw new Error('Page closed');}return url;
-        }).catch(e=>{this.cache.delete(path);throw e;}));
+        if(!this.cache.has(path))this.cache.set(path,(async()=>{
+            let blob;
+            if(/\.sketch$/i.test(path)){
+                const canvas=document.createElement('canvas');canvas.dataset.sketch=path.slice(0,-7);
+                await refreshSketchPreview(canvas,this.bridge);
+                blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+                if(!blob)throw new Error('Sketch preview could not be rendered.');
+            }else{
+                const data=await this.bridge.invokeMethodAsync('Image',path);
+                blob=new Blob([decode(data.base64)],{type:data.contentType});
+            }
+            const url=URL.createObjectURL(blob);
+            if(this.disposed){URL.revokeObjectURL(url);throw new Error('Page closed');}
+            return url;
+        })().catch(e=>{this.cache.delete(path);throw e;}));
         return this.cache.get(path);
     }
-    card(paths) {
-        const button=document.createElement('button');button.type='button';button.className=paths.length>1?'design-docs-image-stack':'design-docs-image-card';
-        button.setAttribute('aria-label',paths.length>1?`Open ${paths.length} images`:`Open ${paths[0]}`);
-        const entry={button,paths};this.cards.add(entry);
-        for(const [index,path] of paths.entries()) {
-            const img=document.createElement('img');img.alt=path;img.style.transform=`rotate(${imageAngle(path)}deg)`;img.style.zIndex=index;
-            this.resolve(path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable image: ${path}`;});button.append(img);
+    card(entries) {
+        const button=document.createElement('button');button.type='button';
+        button.className=entries.length>1?'design-docs-image-stack':'design-docs-image-card';
+        button.setAttribute('aria-label',entries.length>1?`Open ${entries.length} attachments`:`Open ${entries[0].path}`);
+        button.draggable=this.canWrite;
+        const references=entries.map(e=>this.actions.reference?.(e)??e),entry={button,entries};this.cards.add(entry);
+        for(const [index,item] of entries.entries()){
+            const img=document.createElement('img');img.alt=item.path;img.draggable=this.canWrite;img.dataset.mediaIndex=String(index);
+            img.style.transform=`translate(${index%3*5}px,${index%3*3}px) rotate(${imageAngle(item.path)}deg)`;img.style.zIndex=index;
+            this.resolve(item.path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable: ${item.path}`;});button.append(img);
         }
-        button.addEventListener('click',()=>this.open(paths));
-        button.addEventListener('contextmenu',async event=>{if(!this.canWrite)return;event.preventDefault();
-            const replace=await this.bridge.invokeMethodAsync('ImageMenu',paths[0],event.clientX,event.clientY);
-            if(replace)this.choose(paths[0]);
+        if(entries.length>1){const count=document.createElement('span');count.className='design-docs-stack-count';count.textContent=String(entries.length);button.append(count);}
+        button.addEventListener('click',()=>this.open(references,selected=>{[...button.querySelectorAll('img')].forEach((img,i)=>img.style.zIndex=i===selected?entries.length+1:i);}));
+        button.addEventListener('dragstart',event=>{
+            if(!this.canWrite){event.preventDefault();return;}
+            const item=event.target.closest('img[data-media-index]');
+            this.dragged=item?references[Number(item.dataset.mediaIndex)]:this.actions.reference?.({from:entries[0].from,to:entries.at(-1).to,raw:this.actions.text?.(entries[0].from,entries.at(-1).to)??entries.map(e=>e.raw).join(' ')})??null;
+            event.dataTransfer.setData('application/x-solo-design-doc-media','move');event.dataTransfer.effectAllowed='move';
+        });
+        button.addEventListener('dragend',()=>{this.dragged=null;});
+        button.addEventListener('contextmenu',async event=>{
+            if(!this.canWrite||entries[0].sketch)return;event.preventDefault();
+            if(await this.bridge.invokeMethodAsync('ImageMenu',entries[0].path,event.clientX,event.clientY))this.choose(entries[0].path);
         });
         return button;
     }
-    async open(paths) {
-        this.dialog?.remove();const dialog=document.createElement('dialog');dialog.className='design-docs-image-viewer';this.dialog=dialog;
-        const image=document.createElement('img');image.alt=paths[0];let index=0;
-        const show=async next=>{index=(next+paths.length)%paths.length;image.alt=paths[index];try{image.src=await this.resolve(paths[index]);}catch{image.removeAttribute('src');}};
-        const close=document.createElement('button');close.textContent='Close';close.onclick=()=>dialog.close();
-        const previous=document.createElement('button');previous.textContent='Previous';previous.onclick=()=>show(index-1);
-        const next=document.createElement('button');next.textContent='Next';next.onclick=()=>show(index+1);
-        dialog.append(close,image);if(paths.length>1)dialog.append(previous,next);
-        let start;image.addEventListener('pointerdown',e=>{start=e.clientX;});image.addEventListener('pointerup',e=>{if(start!==undefined&&Math.abs(e.clientX-start)>40)show(index+(e.clientX<start?1:-1));start=undefined;});
-        dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();await show(0);
+    release(button){for(const entry of this.cards)if(entry.button===button)this.cards.delete(entry);}
+    async open(references,onSelection=()=>{}) {
+        this.dialog?.close();
+        const dialog=document.createElement('dialog');dialog.className='design-docs-image-viewer';
+        dialog.setAttribute('aria-label','Attachments');this.dialog=dialog;
+        let index=0,request=0;const items=[...references];
+        const header=document.createElement('header'),label=document.createElement('span'),counter=document.createElement('span');
+        const stage=document.createElement('div');stage.className='design-docs-viewer-stage';
+        const image=document.createElement('img');image.draggable=false;
+        const caption=document.createElement('p');caption.className='design-docs-viewer-error';caption.hidden=true;
+        const footer=document.createElement('footer');
+        const control=(text,name,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.setAttribute('aria-label',name);b.onclick=action;return b;};
+        const close=control('×','Close viewer',()=>dialog.close());close.className='design-docs-viewer-close';
+        const previous=control('‹','Previous attachment',()=>show(index-1));previous.className='design-docs-viewer-previous';
+        const next=control('›','Next attachment',()=>show(index+1));next.className='design-docs-viewer-next';
+        const edit=control('Edit sketch','Edit sketch',async()=>{
+            const path=items[index].path;
+            dialog.close();await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));await this.refresh();
+        });
+        const remove=control('Remove from note','Remove attachment from note',()=>{
+            if(!this.canWrite||!this.actions.remove?.(items[index]))return;
+            items.splice(index,1);if(!items.length){dialog.close();return;}show(Math.min(index,items.length-1));
+        });
+        const show=async position=>{
+            index=(position+items.length)%items.length;const item=items[index],serial=++request;onSelection(references.indexOf(item));
+            label.textContent=item.path;counter.textContent=`${index+1} / ${items.length}`;
+            image.alt=item.path;image.removeAttribute('src');caption.hidden=true;
+            previous.hidden=next.hidden=items.length<2;edit.hidden=!item.sketch;remove.hidden=!this.canWrite;
+            try{const url=await this.resolve(item.path);if(serial===request&&dialog.open)image.src=url;}
+            catch(e){if(serial===request){caption.textContent=e.message;caption.hidden=false;}}
+        };
+        header.append(label,counter,close);stage.append(previous,image,caption,next);footer.append(edit,remove);dialog.append(header,stage,footer);
+        dialog.addEventListener('keydown',event=>{
+            if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
+                event.preventDefault();event.stopPropagation();show(index+(event.key==='ArrowLeft'?-1:1));
+            }
+        });
+        let start;image.addEventListener('pointerdown',event=>{start=event.clientX;image.setPointerCapture(event.pointerId);});
+        image.addEventListener('pointerup',event=>{if(start!==undefined&&Math.abs(event.clientX-start)>40)show(index+(event.clientX<start?1:-1));start=undefined;});
+        image.addEventListener('pointercancel',()=>{start=undefined;});
+        dialog.addEventListener('close',()=>{++request;dialog.remove();if(this.dialog===dialog)this.dialog=null;},{once:true});
+        document.body.append(dialog);dialog.showModal();await show(0);close.focus();
     }
     choose(replace=null) {
-        const input=document.createElement('input');input.type='file';input.accept='image/*';
-        input.hidden=true;document.body.append(input);this.inputs.add(input);
+        const input=document.createElement('input');input.type='file';input.accept='image/*';input.hidden=true;document.body.append(input);this.inputs.add(input);
         input.addEventListener('change',()=>{if(input.files[0])this.upload(input.files[0],replace);input.remove();this.inputs.delete(input);},{once:true});
         input.addEventListener('cancel',()=>{input.remove();this.inputs.delete(input);},{once:true});input.click();
     }
     async upload(file,replace=null) {
         if(!this.canWrite||this.disposed)return;
-        try {
+        try{
             const image=await prepareImage(file);if(this.disposed)return;
             const name=(file.name??'image').replace(/\.[^.]+$/,'').replace(/[^\p{L}\p{N}_-]/gu,'-').slice(0,80)||'image';
             const path=replace??`attachments/${name}-${crypto.randomUUID().slice(0,8)}.${image.extension}`;
@@ -66,12 +127,12 @@ export class Images {
             if(!replace)this.insert(`![[${path}]]`);await this.refresh();
         }catch(e){if(!this.disposed)this.status(e.message);}
     }
-    async refresh() {
+    async refresh(){
         for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();
         for(const entry of [...this.cards]){
             if(!entry.button.isConnected){this.cards.delete(entry);continue;}
-            const images=entry.button.querySelectorAll('img');entry.paths.forEach((path,i)=>this.resolve(path).then(url=>{if(images[i])images[i].src=url;}).catch(()=>{}));
+            const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>this.resolve(item.path).then(url=>{if(images[i])images[i].src=url;}).catch(()=>{}));
         }
     }
-    dispose() {this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.dialog?.remove();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();}
+    dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.dialog?.close();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();}
 }

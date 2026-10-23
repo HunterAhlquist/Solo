@@ -9,6 +9,7 @@
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject IJSRuntime Js
+@inject ISoloWorkspace Workspace
 <PageTitle>@(_tree?.Vault.Name ?? "Design Docs")</PageTitle>
 @if(_error is not null) { <MudAlert Severity="Severity.Error">@_error</MudAlert> }
 else if(_project is null) { <MudProgressLinear Indeterminate="true" /> }
@@ -16,6 +17,7 @@ else if(VaultId==Guid.Empty) {
     <MudText Typo="Typo.h4">Design Docs</MudText>
     <VaultList Project="_project" />
 } else if(_tree is not null) {
+    <div class="design-docs-page">
     <div class="design-docs-heading">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" OnClick="@(()=>_treeOpen=!_treeOpen)" aria-label="Toggle note tree" />
         <MudText Typo="Typo.h5">@_tree.Vault.Name</MudText>
@@ -29,7 +31,7 @@ else if(VaultId==Guid.Empty) {
             </MudMenu>
         }
     </div>
-    <VaultTransfer @key="VaultId" ProjectId="_project.Id" Tree="_tree" CanImport="@(CanEdit||_canManage)" IsSuperAdmin="_canManage" PromptImport="ImportOnOpen" Imported="Load" />
+    <VaultTransfer @key="VaultId" ProjectId="_project.Id" Tree="_tree" />
     <div class="design-docs-workspace">
         @if(_treeOpen) { <button class="design-docs-tree-backdrop" aria-label="Close note tree" @onclick="@(()=>_treeOpen=false)"></button> }
         <aside class="@($"design-docs-tree {(_treeOpen?"is-open":"")}")" aria-label="Notes">
@@ -39,12 +41,7 @@ else if(VaultId==Guid.Empty) {
                     <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(()=>Add(true,null))">Folder</MudButton>
                 }
             </div>
-            <div @ondragover:preventDefault="true" @ondrop="@(()=>Drop(null))" class="pa-2">
-                <MudLink Href="@($"/docs/{ProjectAlias}/{VaultId}")">Vault root</MudLink>
-            </div>
-            <MudTreeView T="Guid" Dense="true">
-                <DocTreeBranch Entries="Entries" CanWrite="CanEdit" OnOpen="Open" OnMenu="Context" OnDrag="@(e=>_dragged=e)" OnDrop="Drop" />
-            </MudTreeView>
+            <DocHierarchy @key="VaultId" Entries="Entries" CanWrite="CanEdit" OnOpen="Open" OnMenu="Context" OnMove="Drop" />
             @if(_tree.Notes.Count==0) { <MudText Typo="Typo.body2" Class="pa-3">No notes yet.</MudText> }
         </aside>
         <main class="design-docs-note">
@@ -55,26 +52,29 @@ else if(VaultId==Guid.Empty) {
             } else { <MudText Class="pa-6" Color="Color.Secondary">Choose a note from the tree.</MudText> }
         </main>
     </div>
+    </div>
 }
 @code {
     [Parameter] public string ProjectAlias {get;set;}="";
     [Parameter] public Guid VaultId {get;set;}
-    [SupplyParameterFromQuery(Name="import")] public bool ImportOnOpen {get;set;}
     [SupplyParameterFromQuery(Name="note")] public Guid? NoteId {get;set;}
     private readonly Dictionary<Guid,string> _authors=[];
     private string Author(Guid? id)=>id.HasValue&&_authors.TryGetValue(id.Value,out var name)?name:"Former member";
     private ProjectSummaryDto? _project;private TreeDto? _tree;private string? _error,_loaded;
-    private bool _canManage,_treeOpen,_disposed;private IAsyncDisposable? _subscription;private DocTreeEntry? _dragged;
+    private IDisposable? _workspace;
+    private bool _canManage,_disposed;private bool _treeOpen=true;private IAsyncDisposable? _subscription;
     private bool CanEdit=>_project is not null&&(_project.IsOwner||_project.Role==ProjectRole.ReadWrite)&&_tree?.Vault.IsClosed==false;
     private string Root=>$"api/ext/design-docs/projects/{_project!.Id}/vaults";
     private string Path=>$"{Root}/{VaultId}";
-    private NoteDto? Selected=>_tree?.Notes.FirstOrDefault(n=>n.Id==NoteId);
+    private NoteDto? Selected=>NoteId.HasValue?_tree?.Notes.FirstOrDefault(n=>n.Id==NoteId):_tree?.Notes.FirstOrDefault();
     private IReadOnlyList<DocTreeEntry> Entries=>_tree is null?[]:_tree.Folders.Select(f=>new DocTreeEntry(f.Id,true,f.ParentId,f.Name,f.Version))
         .Concat(_tree.Notes.Select(n=>new DocTreeEntry(n.Id,false,n.FolderId,n.Name,n.Version))).ToList();
     protected override async Task OnParametersSetAsync() {
         var key=$"{ProjectAlias}/{VaultId}";if(_loaded==key)return;_loaded=key;
         if(_subscription is not null){await _subscription.DisposeAsync();_subscription=null;}
         _tree=null;_error=null;
+        if(VaultId!=Guid.Empty)_workspace??=Workspace.Enter(new(FullWidth:true,FillHeight:true,CollapseNavigation:true));
+        else {_workspace?.Dispose();_workspace=null;}
         try {
             _project=(await Api.GetAsync<List<ProjectSummaryDto>>("api/projects")).FirstOrDefault(p=>string.Equals(p.Alias,ProjectAlias,StringComparison.OrdinalIgnoreCase));
             if(_project is null){_error="Project not found.";return;}
@@ -91,7 +91,7 @@ else if(VaultId==Guid.Empty) {
         }catch(SoloApiException e){_error=e.Message;}
     }
     private async Task Load(){try{_tree=await Api.GetAsync<TreeDto>(Path);_error=null;}catch(SoloApiException e){_error=e.Message;}}
-    private Task Open(Guid id){_treeOpen=false;Navigation.NavigateTo($"/docs/{ProjectAlias}/{VaultId}?note={id}");return Task.CompletedTask;}
+    private async Task Open(Guid id){var module=await DesignDocsAssets.ModuleAsync(Js,new(Api));if(await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;Navigation.NavigateTo($"/docs/{ProjectAlias}/{VaultId}?note={id}");}
     private async Task Run(Func<Task> action){try{await action();await Load();}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);await Load();}}
     private async Task Add(bool folder,Guid? parent) {
         var name=await DocDialogs.Name(Dialogs,folder?"New folder":"New note");if(name is null)return;
@@ -123,11 +123,11 @@ else if(VaultId==Guid.Empty) {
         }
     }
     private Task Move(DocTreeEntry e,Guid? parent,string? name=null)=>Run(()=>Api.SendAsync(HttpMethod.Put,$"{Path}/{(e.IsFolder?"folders":"notes")}/{e.Id}",new ItemChange(name??e.Name,parent,e.Version)));
-    private async Task Drop(Guid? parent){var e=_dragged;_dragged=null;if(e is not null&&CanEdit)await Move(e,parent);}
+    private async Task Drop(DocTreeDrop drop){var entry=Entries.FirstOrDefault(e=>e.Id==drop.Id);if(entry is not null&&CanEdit&&entry.ParentId!=drop.ParentId&&entry.Id!=drop.ParentId)await Move(entry,drop.ParentId);}
     private async Task RenameVault(){var name=await DocDialogs.Name(Dialogs,"Rename design doc",_tree!.Vault.Name);if(name is not null)await ChangeVault(name,_tree.Vault.IsClosed);}
     private Task ToggleClosed()=>ChangeVault(_tree!.Vault.Name,!_tree.Vault.IsClosed);
-    private Task ChangeVault(string name,bool closed)=>Run(()=>Api.SendAsync(HttpMethod.Put,Path,new VaultChange(name,closed,_tree!.Vault.Version)));
+    private Task ChangeVault(string name,bool closed)=>Run(async()=>{await Api.SendAsync(HttpMethod.Put,Path,new VaultChange(name,closed,_tree!.Vault.Version));DesignDocsNavEvents.Raise(_project!.Id);});
     private async Task DeleteVault(){if(!await DocDialogs.Confirm(Dialogs,"Delete design doc","Permanently delete every note, image and sketch in this closed design doc?"))return;
-        try{await Api.SendAsync(HttpMethod.Delete,Path+"?version="+_tree!.Vault.Version);Navigation.NavigateTo($"/docs/{ProjectAlias}");}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}}
-    public async ValueTask DisposeAsync(){_disposed=true;if(_subscription is not null)await _subscription.DisposeAsync();}
+        try{await Api.SendAsync(HttpMethod.Delete,Path+"?version="+_tree!.Vault.Version);DesignDocsNavEvents.Raise(_project!.Id);Navigation.NavigateTo($"/docs/{ProjectAlias}");}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}}
+    public async ValueTask DisposeAsync(){_disposed=true;_workspace?.Dispose();if(_subscription is not null)await _subscription.DisposeAsync();}
 }

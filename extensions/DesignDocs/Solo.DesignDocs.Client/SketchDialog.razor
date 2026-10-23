@@ -3,9 +3,8 @@
 @inject ISoloLiveTopics Live
 @inject IJSRuntime Js
 @inject IDialogService Dialogs
-<MudDialog>
+<MudDialog Class="design-docs-sketch-dialog">
     <DialogContent><EditorSurface Ready="Mount" /></DialogContent>
-    <DialogActions><MudButton OnClick="@(()=>Dialog.Close())">Close</MudButton></DialogActions>
 </MudDialog>
 @code{
     [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;

@@ -71,6 +71,7 @@ public class AppExtensionLoadTests : SoloBunitContext
         Services.AddScoped<DragBridge>();
         Services.AddSingleton<IBoardHubClient>(new FakeBoardHub());
         Services.AddScoped<SaveGuard>();
+        Services.AddScoped<WorkspaceState>();
         Services.AddScoped(sp => new ThemeState(sp.GetRequiredService<IJSRuntime>()));
         // The layout hosts the extension task drawer and context menu, closed
         // unless something opens them.

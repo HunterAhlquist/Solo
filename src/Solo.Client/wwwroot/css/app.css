@@ -1883,3 +1883,7 @@ html.solo-desktop .solo-titlebar {
     margin: 0.25rem 0;
     border-top: 1px solid var(--mud-palette-divider);
 }
+
+/* A workspace owns the available content height; its editor supplies scrolling. */
+.workspace-content { height:100dvh; display:flex; flex-direction:column; }
+.workspace-container { flex:1; min-height:0; height:100%; padding:0; display:flex; flex-direction:column; }

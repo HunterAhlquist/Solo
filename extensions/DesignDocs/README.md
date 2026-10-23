@@ -1,6 +1,6 @@
 # Design Docs
 
-Optional design-document vaults for Solo, requiring extension contract 1.10.
+Optional design-document vaults for Solo, requiring extension contract 1.11.
 The extension owns `ext_design_docs`; uninstalling it removes its UI and endpoints
 without changing core's data model.
 
@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.7.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.8.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
