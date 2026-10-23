@@ -1159,3 +1159,33 @@ inside the sidebar. Browser and native Mac checks cover thumbnail expansion,
 return dismissal, carousel keys, and opening the sketch editor after dismissal.
 Native screenshots verify the sketch title and close button in the header row.
 Physical Windows titlebar and iPad/Pencil checks remain pending.
+
+
+## Final appearance and desktop rotation feedback (Codex preview 13)
+
+Folder guides use a dotted 1px primary-color border at 50% opacity. The vault
+header background uses `max(50%, --solo-glass-background-alpha)` so it stays at
+least half opaque and follows higher desktop settings. Purple is available in
+the sketch palette and both raster/text rendering, including cached frames,
+previews, and exported PNGs.
+
+The desktop rotation failure was a missing transport: the sketch listened for
+Safari DOM gestures, while Electron reports AppKit rotation on BrowserWindow.
+The shell now sends a generic native rotation event through preload as plain
+numeric DOM event data. It retains incremental degree values and the zero end
+marker, converts screen coordinates to renderer CSS coordinates at the current
+page zoom, and leaves all Electron objects in the isolated context. The sketch
+only consumes the event over its drawing viewport, ignores text inputs, keeps
+its anchor fixed during a gesture, and detaches on disposal. AppKit's angle sign
+is converted to CSS's clockwise convention. This requires the updated desktop
+installer; the extension remains independent of core's projects and schema.
+
+Validation: 57 C# and 81 JavaScript tests pass. A regression driving the real
+instance-window registration and preload failed with zero renderer events before
+the bridge and passes afterward. Viewport tests cover fractional deltas in both
+directions, anchor preservation, gesture end, invalid data, input/viewport
+exclusions, and disposal. The purple render test compares live cached output
+with exported pixels for strokes and text. Browser computed styles confirm
+header alpha values 0.5/0.5/0.5/0.75/1 at settings 0/25/50/75/100%, and a dotted
+1px guide with alpha 0.5. The native Mac fixture displays the palette and updated
+vault surfaces. The user reported rotation working during verification.

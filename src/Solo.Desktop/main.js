@@ -4,7 +4,7 @@
 // web build. Every instance has a local origin of its own and at most one
 // window. Sign-in happens in the system browser on the instance's own origin
 // (main/desktop-auth.js).
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, screen, session, shell } = require('electron');
 const path = require('path');
 const { configureAppIdentity } = require('./main/app-identity');
 configureAppIdentity(app, process.env);
@@ -627,6 +627,22 @@ function createInstanceWindow(instance) {
     // reserving room for them. A reload asks for the state instead (below).
     for (const [event, fullScreen] of [['enter-full-screen', true], ['leave-full-screen', false]]) {
         win.on(event, () => win.webContents.send('window:full-screen', fullScreen));
+    }
+
+    // Chromium does not expose AppKit rotation as Safari's DOM gesture events.
+    // Keep the native event generic so any canvas can opt in through preload.
+    if (isMac) {
+        win.on('rotate-gesture', (_event, rotation) => {
+            if (!Number.isFinite(rotation) || win.webContents.isDestroyed()) return;
+            const cursor = screen.getCursorScreenPoint();
+            const bounds = win.getContentBounds();
+            const scale = win.webContents.getZoomFactor();
+            win.webContents.send('window:rotate-gesture', {
+                rotation,
+                clientX: (cursor.x - bounds.x) / scale,
+                clientY: (cursor.y - bounds.y) / scale,
+            });
+        });
     }
 
     // The client's "Authorize in browser" button starts sign-in over IPC, but

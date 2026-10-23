@@ -192,6 +192,7 @@ jobs:
           npm run test:mac-network-identity
           npm run test:desktop-auth
           npm run test:instance-extensions
+          npm run test:rotation-gesture
 
       - name: Publish Blazor client into shell
         run: npm run build:client

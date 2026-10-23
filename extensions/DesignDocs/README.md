@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.15.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.16.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -79,3 +79,9 @@ highlights; its action buttons align with expand/collapse-all. Attachment previe
 animate into and out of the slideshow while its background fades. Reduced-motion
 preferences disable these transitions. Native modal headers use the same 70-pixel
 vertical axis as the desktop window controls.
+
+Hierarchy guides are 1px dotted lines at 50% of the theme primary color. The vault
+header uses the theme background with a 50% opacity floor, following higher desktop
+background settings. Purple is available for strokes, shapes, and sketch text,
+including previews and PNG exports. Mac desktop rotation uses the shell's native
+trackpad gesture bridge; it requires Codex preview 13 or a later desktop build.

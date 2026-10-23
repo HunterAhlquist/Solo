@@ -92,3 +92,12 @@ ipcRenderer.invoke('window:full-screen').then(value => {
 // a reload it already does, and applying now avoids a frame of the wrong inset.
 applyChrome();
 document.addEventListener('DOMContentLoaded', applyChrome);
+
+// Pass data alone into the page; the renderer never receives the IPC event or
+// an Electron object. Canvases opt in and remove their listener on disposal.
+ipcRenderer.on('window:rotate-gesture', (_event, value) => {
+    if (![value?.rotation, value?.clientX, value?.clientY].every(Number.isFinite)) return;
+    window.dispatchEvent(new CustomEvent('solo:rotate-gesture', {
+        detail: { rotation: value.rotation, clientX: value.clientX, clientY: value.clientY },
+    }));
+});

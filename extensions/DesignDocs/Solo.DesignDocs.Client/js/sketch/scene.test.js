@@ -5,7 +5,7 @@ const meta={pageSize:'A5',pattern:'grid'},stroke={id:'a',tool:'pen',ink:'theme',
 // A tiny software canvas checks pixels and compositing, not merely method calls.
 export function bitmapCanvas(){
     const canvas={width:0,height:0};
-    const colors={'white':[255,255,255],'#111':[17,17,17],'#d0d0d0':[208,208,208],'#b52c32':[181,44,50],'#2164b4':[33,100,180],'#23763e':[35,118,62]};
+    const colors={'white':[255,255,255],'#111':[17,17,17],'#d0d0d0':[208,208,208],'#b52c32':[181,44,50],'#2164b4':[33,100,180],'#23763e':[35,118,62],'#8043ad':[128,67,173]};
     const context={canvas,globalAlpha:1,fillStyle:'white',fills:0,copies:0,buffer:null,
         clearRect(){this.buffer=new Uint8ClampedArray(canvas.width*canvas.height*4);},
         fillRect(x,y,w,h){if(this.buffer?.length!==canvas.width*canvas.height*4)this.buffer=new Uint8ClampedArray(canvas.width*canvas.height*4);this.fills++;const rgb=colors[this.fillStyle];assert.ok(rgb,this.fillStyle);
@@ -71,4 +71,13 @@ test('a held selection keeps a complete floating preview outside the paper until
     assert.ok(floating.buffer.some((v,i)=>i%4===3&&v>0),'off-page movement must retain the complete selection raster');
     const before=floating.buffer.slice();selection.dx=100;scene.render(target,{selection,selectionContext:floating});assert.deepEqual(floating.buffer,before);
     assert.equal(scene.render(target,{selection:{...selection,dx:0},selectionContext:floating}),null,'release returns drawing to the page surface');
+});
+
+test('purple strokes and text retain their color in the scene and exported painting',()=>{
+    const ops=[{...stroke,ink:'purple'}],scene=new SketchScene(bitmapCanvas);scene.setScene(ops,meta);
+    const texts=[{ink:'purple'}],font=context=>context.fillRect(100,100,2,2),live=output(),exported=output();
+    scene.render(live,{texts,font});paint(exported,ops,texts,meta,{font,exporting:true});
+    assert.deepEqual(live.buffer,exported.buffer);
+    const pixel=(x,y)=>[...exported.buffer.slice((y*420+x)*4,(y*420+x)*4+4)];
+    assert.deepEqual(pixel(20,20),[128,67,173,255]);assert.deepEqual(pixel(100,100),[128,67,173,255]);
 });
