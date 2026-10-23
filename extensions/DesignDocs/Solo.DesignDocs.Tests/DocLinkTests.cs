@@ -1,3 +1,6 @@
+using Bunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using Solo.DesignDocs.Client;
 using Solo.DesignDocs.Contracts;
@@ -41,5 +44,42 @@ public sealed partial class VaultTests
         var labels=await _reader.PostJson<Dictionary<string,string>>("/api/ext/design-docs/links/labels",new LabelsRequest([url]));
         Assert.Equal("Renamed › Dash",labels[url]);
         Assert.Equal(n.Id,(await _reader.GetJson<LocateDto>($"/api/ext/design-docs/notes/{n.Id}/locate")).NoteId);
+    }
+}
+public sealed partial class VaultTests
+{
+    [SkippableFact]
+    public async Task Compact_links_keep_member_authorization_and_heading_labels()
+    {
+        postgres.SkipUnlessDockerAvailable();var vault=await Vault();var note=await NewNote(vault);var path=$"{Root}/{vault.Id}/notes/{note.Id}";
+        (await _writer.PutAsync(path+"/copy",System.Net.Http.Json.JsonContent.Create(new CopyRequest("#### Detail",[new("detail","Detail",4)],"0")))).EnsureSuccessStatusCode();
+        var url=NoteAddress.Url(note.Id)+"#detail";
+        var labels=await _reader.PostJson<Dictionary<string,string>>("/api/ext/design-docs/links/labels",new LabelsRequest([url]));Assert.Equal(note.Name+" › Detail",labels[url]);
+        var other=await _admin.PostJson<ProjectDto>("/api/projects",new {name="Other",alias="OTHER"});
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{other.Id}/members",new {email="stranger-short@example.com",role="Read"});
+        using var stranger=_factory.As("stranger-short","stranger-short@example.com");
+        Assert.Equal(HttpStatusCode.NotFound,(await stranger.GetAsync($"/api/ext/design-docs/notes/{note.Id}/locate")).StatusCode);
+        Assert.Empty(await stranger.PostJson<Dictionary<string,string>>("/api/ext/design-docs/links/labels",new LabelsRequest([url])));
+    }
+}
+
+public sealed class CompactLinkComponentTests : ComponentTestBase
+{
+    [Fact]
+    public async Task A_compact_note_route_passes_the_resolved_project_and_note_to_the_editor()
+    {
+        var note=Guid.NewGuid();var project=Guid.NewGuid();var vault=Guid.NewGuid();var http=new StubHttp();
+        http.RouteJson($"notes/{note}/locate",new LocateDto(project,"DOCS",vault,note));
+        Services.AddSingleton<ISoloClientApi>(http.CreateClient());
+        ComponentFactories.AddStub<DesignDocsPage>(parameters=>builder=>{
+            builder.OpenElement(0,"span");builder.AddAttribute(1,"data-project",parameters.Get(x=>x.ProjectAlias));
+            builder.AddAttribute(2,"data-note",parameters.Get(x=>x.InitialNoteId));builder.CloseElement();
+        });
+        var cut=Render<NoteLinkPage>(p=>p.Add(x=>x.NoteKey,NoteAddress.Encode(note)));
+        cut.WaitForAssertion(()=>{var target=cut.Find("[data-project]");Assert.Equal("DOCS",target.GetAttribute("data-project"));Assert.Equal(note.ToString(),target.GetAttribute("data-note"));});
+        await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(NoteLinkPage.NoteKey),"not-a-note"}})));
+        Assert.Contains("Note not found",cut.Markup);
+        await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(NoteLinkPage.NoteKey),NoteAddress.Encode(note)}})));
+        cut.WaitForAssertion(()=>Assert.Equal("DOCS",cut.Find("[data-project]").GetAttribute("data-project")));
     }
 }

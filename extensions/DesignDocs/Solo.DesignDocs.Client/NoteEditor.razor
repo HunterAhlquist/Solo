@@ -101,12 +101,12 @@
         var tree=await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}");
         string FolderPath(Guid? id){if(id is null)return "";var f=tree.Folders.Single(x=>x.Id==id);return FolderPath(f.ParentId)+f.Name+"/";}
         string Canonical(string value){var parts=new List<string>();foreach(var part in value.Replace('\\','/').Split('/')){if(part is "" or ".")continue;if(part==".."){if(parts.Count==0)return "";parts.RemoveAt(parts.Count-1);}else parts.Add(part);}return string.Join('/',parts);}
-        if(string.IsNullOrEmpty(target))return new{url=$"/docs/note/{Note.Id:N}",headings=tree.Notes.Single(n=>n.Id==Note.Id).Headings};
+        if(string.IsNullOrEmpty(target))return new{url=NoteAddress.Url(Note.Id),headings=tree.Notes.Single(n=>n.Id==Note.Id).Headings};
         var path=Uri.UnescapeDataString(target);if(!path.EndsWith(".md",StringComparison.OrdinalIgnoreCase))path+=".md";
         var exact=Canonical(path);var relative=Canonical(FolderPath(Note.FolderId)+path);
         var note=tree.Notes.FirstOrDefault(n=>FolderPath(n.FolderId)+n.Name+".md"==exact)??tree.Notes.FirstOrDefault(n=>FolderPath(n.FolderId)+n.Name+".md"==relative);
         if(note is null){var matches=tree.Notes.Where(n=>n.Name+".md"==path.Split('/').Last()).ToList();if(matches.Count==1)note=matches[0];}
-        return note is null?null:new{url=$"/docs/note/{note.Id:N}",note.Headings};
+        return note is null?null:new{url=NoteAddress.Url(note.Id),note.Headings};
     }
     [JSInvokable]public async Task<object?> SketchPreview(string name){
         var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");var sketch=sketches.SingleOrDefault(s=>s.Name==name&&s.NoteId==Note.Id);if(sketch is null)return null;

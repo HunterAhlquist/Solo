@@ -7,7 +7,7 @@
     [Parameter] public EventCallback OnChanged {get;set;}
     private string? _loaded;private long _generation;private Dictionary<string,string> _links=[];
     protected override async Task OnParametersSetAsync(){if(_loaded==Task.Description)return;_loaded=Task.Description;var generation=++_generation;
-        var urls=System.Text.RegularExpressions.Regex.Matches(Task.Description??"",@"/docs/note/[0-9a-fA-F-]{32,36}(?:#[\p{L}\p{N}_-]+)?").Select(m=>m.Value).Distinct().Take(200).ToList();
+        var urls=System.Text.RegularExpressions.Regex.Matches(Task.Description??"",NoteAddress.UrlPattern).Select(m=>m.Value).Where(url=>NoteAddress.TryReadUrl(url,out _)).Distinct().Take(200).ToList();
         if(urls.Count==0){_links=[];return;}
         try{var labels=await new DocLinkLabels(Api).LabelsAsync(urls,CancellationToken.None);if(generation==_generation)_links=labels.ToDictionary();}catch(SoloApiException){_links=[];}
     }

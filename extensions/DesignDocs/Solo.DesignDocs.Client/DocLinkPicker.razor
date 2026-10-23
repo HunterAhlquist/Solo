@@ -26,6 +26,6 @@
     private NoteDto? Selected=>_notes.FirstOrDefault(n=>n.Id==_note);
     protected override async Task OnInitializedAsync(){try{_vaults=(await Api.GetAsync<VaultListDto>($"api/ext/design-docs/projects/{ProjectId}/vaults")).Vaults.Where(v=>!v.IsClosed).ToList();if(_vaults.Count>0)await LoadVault(_vaults[0].Id);}catch(SoloApiException e){_error=e.Message;}}
     private async Task LoadVault(Guid id){_vault=id;_note=Guid.Empty;_heading="";try{_notes=(await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{ProjectId}/vaults/{id}")).Notes;}catch(SoloApiException e){_error=e.Message;}}
-    private void Choose(){if(Selected is not {} n)return;var h=n.Headings.FirstOrDefault(h=>h.Slug==_heading);var label=h is null?n.Name:n.Name+" › "+h.Text;Dialog.Close(DialogResult.Ok($"[{Escape(label)}](/docs/note/{n.Id:N}{(h is null?"":"#"+h.Slug)})"));}
+    private void Choose(){if(Selected is not {} n)return;var h=n.Headings.FirstOrDefault(h=>h.Slug==_heading);var label=h is null?n.Name:n.Name+" › "+h.Text;Dialog.Close(DialogResult.Ok($"[{Escape(label)}]({NoteAddress.Url(n.Id)}{(h is null?"":"#"+h.Slug)})"));}
     private static string Escape(string text)=>text.Replace("\\","\\\\").Replace("[","\\[").Replace("]","\\]");
 }

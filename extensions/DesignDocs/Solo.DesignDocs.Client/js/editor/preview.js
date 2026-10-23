@@ -5,6 +5,7 @@ import { StateField } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import { isSafeUrl } from './markdown.js';
+import { mediaType } from '../media/vault-paths.js';
 class Link extends WidgetType {
     constructor(label, url, bridge) { super(); this.label = label; this.url = url; this.bridge=bridge; }
     eq(other) { return this.label === other.label && this.url === other.url; }
@@ -33,6 +34,11 @@ class ListMarker extends WidgetType {
     eq(other){return this.raw===other.raw;}
     toDOM(){const span=document.createElement('span'),ordered=/^\d/.test(this.raw);span.className='design-docs-list-marker'+(ordered?' is-ordered':'');span.textContent=ordered?this.raw:'•';return span;}
 }
+class UnsupportedMedia extends WidgetType {
+    constructor(path,kind){super();this.path=path;this.kind=kind;}
+    eq(other){return this.path===other.path&&this.kind===other.kind;}
+    toDOM(){const label=document.createElement('span');label.className='design-docs-unsupported-media';label.textContent=(this.kind==='video'?'Video not imported: ':'Unsupported attachment: ')+this.path;return label;}
+}
 function build(view, bridge, images) {
     const ranges = [], doc = view.state.doc, cursorLines = new Set();
     if (view.state.facet(EditorView.editable)) for (const r of view.state.selection.ranges) for (let n=doc.lineAt(r.from).number;n<=doc.lineAt(r.to).number;n++) cursorLines.add(n);
@@ -41,17 +47,19 @@ function build(view, bridge, images) {
     const embedded=[];
     for(let number=1;number<=doc.lines;number++) {
         const line=doc.line(number);
-        const matches=[...line.text.matchAll(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g)]
+        const matches=[...line.text.matchAll(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/g)]
             .filter(m=>!insideCode(line.from+m.index));
         if(!matches.length)continue;
-        const onlyMedia=line.text.replace(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^\s)]+)\)/g,'').trim()==='';
+        const onlyMedia=matches.reduce((text,m)=>text.replace(m[0],''),line.text).trim()===''&&matches.every(m=>['image','sketch'].includes(mediaType(m[1]??m[2]??m[3])));
         for(const group of onlyMedia?[matches]:matches.map(m=>[m])) {
             const entries=group.map(m=>{
-                let path=(m[1]??m[2]).split('|')[0];try{path=decodeURIComponent(path);}catch{}
+                let path=(m[1]??m[2]??m[3]).split('|')[0];try{path=decodeURIComponent(path);}catch{}
                 return {path,from:line.from+m.index,to:line.from+m.index+m[0].length,raw:m[0],sketch:/\.sketch$/i.test(path)};
             });
             const from=entries[0].from,to=entries.at(-1).to;
-            ranges.push(Decoration.replace({widget:new MediaCard(entries,images),media:true}).range(from,to));
+            const kind=mediaType(entries[0].path),supported=kind==='image'||kind==='sketch';
+            if(!supported&&cursorLines.has(number))continue;
+            ranges.push(Decoration.replace({widget:supported?new MediaCard(entries,images):new UnsupportedMedia(entries[0].path,kind),media:supported}).range(from,to));
             embedded.push({from,to});
         }
     }

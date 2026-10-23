@@ -1018,3 +1018,72 @@ after closing. Reconstructing the saved Yjs document confirms its Markdown staye
 byte-for-byte unchanged after sketch typing and close. Preview 6's actions
 were canceled before deployment; its immutable tag is retained. Preview 7 carries
 these changes and Design Docs 1.0.12.
+
+
+### Preference, URL, and import follow-up
+
+A deterministic component test reproduced preference loss: rerender the vault while
+`loadVaultPreferences` is pending, and the old implementation writes empty folders
+and 100% font scale before hydration completes. This can overwrite valid cookies
+on theme/auth rerenders. The page now gates saves and controls until preferences
+are loaded; asynchronous responses from an old vault cannot replace a newer view.
+Cookies still hold folder IDs, the selected note, and font size, with the new margin
+width added. Old cookies default margins to Auto. Explicit widths of 0%, 5%, 10%,
+15%, and 20% are available beside font scale; Auto preserves the existing reading
+width behavior. The current note is marked with `aria-current=page` and the theme's
+primary color. H4/H5/H6 have explicit heading styles.
+
+Note URLs encode the complete 128-bit GUID as 22 unpadded base64url characters.
+The GUID and all database keys remain unchanged. Canonical `/docs/note/<key>` URLs
+render the vault directly instead of redirecting to a long vault/query URL. Old
+GUID note links and old vault query links still open; newly generated note links
+use compact keys. Label resolution, linked-doc extraction, wiki links, heading
+fragments, and membership checks support both encodings. This is an encoding, not
+an authorization token, and deliberately avoids a truncated 11-character ID.
+
+Video files are filtered before decompression/import and generate a video warning.
+Their Markdown references are preserved byte-for-byte. The editor recognizes video
+embeds, including ones imported by older previews, without sending them to the
+image endpoint; it displays a skipped-video label away from the editing cursor.
+Unsupported attachments also avoid the image loader. Common metadata is ignored
+silently: AppleDouble files, `__MACOSX`, `.DS_Store`, macOS indexing/trash metadata,
+Obsidian settings, source-control metadata, `Thumbs.db`, and `desktop.ini`. Genuine
+unsupported content such as canvas/Excalidraw files still appears in the report.
+
+#### Storage and a future video option
+
+The hierarchy is represented by `Vaults`, `Folders`, and `Notes` rows in the
+extension's `ext_design_docs` PostgreSQL schema. Notes have a text Markdown copy;
+collaborative Yjs updates and compacted snapshots are binary `DocUpdates` rows.
+Export reconstructs current text from that log. Images are `bytea` values in the
+extension's `Images` table. No Markdown files or image files are edited on disk by
+the current design.
+
+Videos are not inherently incompatible with PostgreSQL binary storage, but the
+current image endpoint materializes a whole blob and is not a video-streaming
+implementation. For larger or numerous videos, a future implementation could use
+a separate media dataset mounted outside PostgreSQL's data directory, or object
+storage. Keep vault/project ownership, MIME type, byte length, checksum, and a
+server-generated storage key in PostgreSQL. Serve content through the existing
+project authorization model with HTTP Range support for seeking. Coordinate database
+and media backups and handle orphan-file cleanup. This is a design note only; this
+preview neither adds a media mount nor imports/stores video bytes. The database
+storage mechanics are described in [PostgreSQL's TOAST documentation](https://www.postgresql.org/docs/17/storage-toast.html),
+and [S3's GetObject API](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+is one example of object storage supporting byte-range reads. The suggested split
+is an architectural recommendation, not a measured size threshold for this setup.
+
+
+Validation for this follow-up: 56 C# extension tests and 75 JavaScript tests pass.
+The preference lifecycle test was run red before the hydration guard and green
+afterward. Import/video tests were also run red before the fix. Browser verification
+used an isolated fake identity and PostgreSQL fixture: changed the instance theme
+from Ahlquist Interactive to Blueprint, signed out and returned with the fixture
+identity, restarted the server against the same database, and reloaded the vault
+without a note query. Expanded folders, the remembered note, 150% font scale, and
+10% margins persisted. A legacy GUID link became a 22-character note route while
+retaining its heading fragment. The current note color matched the active primary
+color. At a 21 px body size, H4 measured 24.15 px and H5 22.575 px. Video embeds
+rendered skipped-video labels; fenced examples stayed source text. Physical iPad,
+Pencil, keyboard, backgrounding, and Force Touch checks remain pending under the
+existing approved exception.

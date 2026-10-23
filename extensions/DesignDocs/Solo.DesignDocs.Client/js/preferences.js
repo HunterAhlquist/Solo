@@ -2,7 +2,8 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function viewPreferences(value){
     return {openFolders:[...new Set((Array.isArray(value?.openFolders)?value.openFolders:[]).filter(id=>typeof id==='string'&&uuid.test(id)))],
         noteId:typeof value?.noteId==='string'&&uuid.test(value.noteId)?value.noteId:null,
-        fontScale:[75,90,100,110,125,150,175,200].includes(value?.fontScale)?value.fontScale:100};
+        fontScale:[75,90,100,110,125,150,175,200].includes(value?.fontScale)?value.fontScale:100,
+        marginWidth:[-1,0,5,10,15,20].includes(value?.marginWidth)?value.marginWidth:-1};
 }
 export class VaultPreferences {
     constructor(read,write){this.read=read;this.write=write;}

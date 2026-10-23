@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.12.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.13.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -62,3 +62,12 @@ Sketch dialogs suspend Markdown input until they close. Sketch history loads as
 one current state, and held selections use a floating preview beyond the paper
 edge until release. The eraser uses Google's Material Symbols SVG; its attribution
 and Apache 2.0 license are included in the package.
+
+
+Preferences load before the vault becomes interactive, so a rerender cannot save
+defaults over existing cookies. Margin width is configurable beside font scale.
+The current note uses the theme primary color in the hierarchy. Compact note URLs
+preserve every GUID bit; legacy links still work. H4/H5/H6 have heading styles.
+Vault import skips videos with a warning and ignores common OS/vault metadata
+silently. Unsupported video references stay in Markdown and never use the image
+loader. The design record includes a future file/object-storage option for videos.

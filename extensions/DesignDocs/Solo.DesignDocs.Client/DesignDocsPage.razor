@@ -16,8 +16,8 @@ else if(_project is null) { <MudProgressLinear Indeterminate="true" /> }
 else if(VaultId==Guid.Empty) {
     <MudText Typo="Typo.h4">Design Docs</MudText>
     <VaultList Project="_project" />
-} else if(_tree is not null) {
-    <div class="design-docs-page" style="@($"--design-docs-font-scale:{_fontScale}%")">
+} else if(_tree is not null&&_preferencesLoaded) {
+    <div class="design-docs-page" style="@($"--design-docs-font-scale:{_fontScale}%;{(_marginWidth<0?"":$"--design-docs-margin:{_marginWidth}cqw;")}")">
     <div class="design-docs-heading">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" OnClick="@(()=>_treeOpen=!_treeOpen)" aria-label="Toggle note tree" />
         <MudText Typo="Typo.h5">@_tree.Vault.Name</MudText>
@@ -26,6 +26,11 @@ else if(VaultId==Guid.Empty) {
         <MudMenu Label="@($"{_fontScale}%")" StartIcon="@Icons.Material.Filled.FormatSize" aria-label="Editor font size">
             @foreach(var scale in new[]{75,90,100,110,125,150,175,200}) {
                 <MudMenuItem OnClick="@(()=>SetFontScale(scale))" Icon="@(scale==_fontScale?Icons.Material.Filled.Check:null)">@($"{scale}%")</MudMenuItem>
+            }
+        </MudMenu>
+        <MudMenu Label="@($"Margins: {MarginLabel}")" StartIcon="@Icons.Material.Filled.SpaceBar" aria-label="Editor margin width">
+            @foreach(var width in new[]{-1,0,5,10,15,20}) {
+                <MudMenuItem OnClick="@(()=>SetMarginWidth(width))" Icon="@(width==_marginWidth?Icons.Material.Filled.Check:null)">@(width<0?"Auto":$"{width}%")</MudMenuItem>
             }
         </MudMenu>
         <MudMenu Icon="@Icons.Material.Filled.MoreVert" aria-label="Design doc actions">
@@ -47,7 +52,7 @@ else if(VaultId==Guid.Empty) {
                     <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(()=>Add(true,null))">Folder</MudButton>
                 }
             </div>
-            <DocHierarchy @key="VaultId" Entries="Entries" CanWrite="CanEdit" OpenFolders="_openFolders" OnExpanded="SetExpanded" OnOpen="Open" OnMenu="Context" OnMove="Drop" />
+            <DocHierarchy @key="VaultId" Entries="Entries" CanWrite="CanEdit" SelectedNoteId="Selected?.Id" OpenFolders="_openFolders" OnExpanded="SetExpanded" OnOpen="Open" OnMenu="Context" OnMove="Drop" />
             @if(_tree.Notes.Count==0) { <MudText Typo="Typo.body2" Class="pa-3">No notes yet.</MudText> }
         </aside>
         <main class="design-docs-note">
@@ -59,55 +64,75 @@ else if(VaultId==Guid.Empty) {
         </main>
     </div>
     </div>
-}
+} else { <MudProgressLinear Indeterminate="true" /> }
 @code {
     [Parameter] public string ProjectAlias {get;set;}="";
     [Parameter] public Guid VaultId {get;set;}
-    [SupplyParameterFromQuery(Name="note")] public Guid? NoteId {get;set;}
+    [Parameter] public Guid? InitialNoteId {get;set;}
+    [SupplyParameterFromQuery(Name="note")] public string? NoteKey {get;set;}
+    private Guid? NoteId=>InitialNoteId??(NoteAddress.TryDecode(NoteKey,out var id)?id:null);
     private readonly Dictionary<Guid,string> _authors=[];
     private string Author(Guid? id)=>id.HasValue&&_authors.TryGetValue(id.Value,out var name)?name:"Former member";
     private ProjectSummaryDto? _project;private TreeDto? _tree;private string? _error,_loaded;
     private IDisposable? _workspace;
-    private IJSObjectReference? _preferences;private HashSet<Guid> _openFolders=[];private Guid? _rememberedNote;private int _fontScale=100;
+    private IJSObjectReference? _preferences;private HashSet<Guid> _openFolders=[];private Guid? _rememberedNote;private int _fontScale=100,_marginWidth=-1;private bool _preferencesLoaded;private long _loadGeneration;
+    private string MarginLabel=>_marginWidth<0?"Auto":$"{_marginWidth}%";
     private bool _canManage,_disposed;private bool _treeOpen=true;private IAsyncDisposable? _subscription;
     private bool CanEdit=>_project is not null&&(_project.IsOwner||_project.Role==ProjectRole.ReadWrite)&&_tree?.Vault.IsClosed==false;
     private VaultTransfer? _transfer;
     private string Root=>$"api/ext/design-docs/projects/{_project!.Id}/vaults";
     private string Path=>$"{Root}/{VaultId}";
-    private NoteDto? Selected=>NoteId.HasValue?_tree?.Notes.FirstOrDefault(n=>n.Id==NoteId):_tree?.Notes.FirstOrDefault(n=>n.Id==_rememberedNote)??_tree?.Notes.FirstOrDefault();
+    private NoteDto? Selected=>InitialNoteId.HasValue||!string.IsNullOrEmpty(NoteKey)?_tree?.Notes.FirstOrDefault(n=>n.Id==NoteId):_tree?.Notes.FirstOrDefault(n=>n.Id==_rememberedNote)??_tree?.Notes.FirstOrDefault();
     private IReadOnlyList<DocTreeEntry> Entries=>_tree is null?[]:_tree.Folders.Select(f=>new DocTreeEntry(f.Id,true,f.ParentId,f.Name,f.Version))
         .Concat(_tree.Notes.Select(n=>new DocTreeEntry(n.Id,false,n.FolderId,n.Name,n.Version))).ToList();
     protected override async Task OnParametersSetAsync() {
-        var key=$"{ProjectAlias}/{VaultId}";if(_loaded==key){await RememberNote();return;}_loaded=key;
-        if(_subscription is not null){await _subscription.DisposeAsync();_subscription=null;}
-        _tree=null;_error=null;
-        if(VaultId!=Guid.Empty)_workspace??=Workspace.Enter(new(FullWidth:true,FillHeight:true,CollapseNavigation:true));
+        var key=$"{ProjectAlias}/{VaultId}";if(_loaded==key){if(_preferencesLoaded)await RememberNote();return;}_loaded=key;
+        var generation=++_loadGeneration;var vaultId=VaultId;var alias=ProjectAlias;_preferencesLoaded=false;
+        var previous=_subscription;_subscription=null;if(previous is not null)await previous.DisposeAsync();
+        if(generation!=_loadGeneration||_disposed)return;
+        _tree=null;_project=null;_error=null;
+        if(vaultId!=Guid.Empty)_workspace??=Workspace.Enter(new(FullWidth:true,FillHeight:true,CollapseNavigation:true));
         else {_workspace?.Dispose();_workspace=null;}
         try {
-            _project=(await Api.GetAsync<List<ProjectSummaryDto>>("api/projects")).FirstOrDefault(p=>string.Equals(p.Alias,ProjectAlias,StringComparison.OrdinalIgnoreCase));
-            if(_project is null){_error="Project not found.";return;}
-            _canManage=(await Api.GetAsync<UserDto>("api/users/me")).IsSuperAdmin;
-            _authors.Clear();foreach(var member in (await Api.GetAsync<ProjectDto>($"api/projects/{_project.Id}")).Members)if(member.UserId is Guid userId)_authors[userId]=member.DisplayName??member.Email;
+            var project=(await Api.GetAsync<List<ProjectSummaryDto>>("api/projects")).FirstOrDefault(p=>string.Equals(p.Alias,alias,StringComparison.OrdinalIgnoreCase));
+            if(generation!=_loadGeneration||_disposed)return;
+            if(project is null){_error="Project not found.";return;}
+            var user=await Api.GetAsync<UserDto>("api/users/me");
+            var details=await Api.GetAsync<ProjectDto>($"api/projects/{project.Id}");
             await DesignDocsAssets.EnsureStylesAsync(Js,new DesignDocsApi(Api));
-            if(VaultId!=Guid.Empty) {
-                await Load();
-                _preferences=await DesignDocsAssets.ModuleAsync(Js,new(Api));
-                var preferences=await _preferences.InvokeAsync<VaultViewPreferences>("loadVaultPreferences",VaultId.ToString());
-                _openFolders=preferences.OpenFolders.ToHashSet();_rememberedNote=preferences.NoteId;_fontScale=preferences.FontScale;
+            if(generation!=_loadGeneration||_disposed)return;
+            _project=project;_canManage=user.IsSuperAdmin;
+            _authors.Clear();foreach(var member in details.Members)if(member.UserId is Guid userId)_authors[userId]=member.DisplayName??member.Email;
+            if(vaultId!=Guid.Empty) {
+                var tree=await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{project.Id}/vaults/{vaultId}");
+                var module=await DesignDocsAssets.ModuleAsync(Js,new(Api));
+                var preferences=await module.InvokeAsync<VaultViewPreferences>("loadVaultPreferences",vaultId.ToString());
+                if(generation!=_loadGeneration||_disposed)return;
+                _preferences=module;_tree=tree;_openFolders=preferences.OpenFolders.ToHashSet();_rememberedNote=preferences.NoteId;_fontScale=preferences.FontScale;_marginWidth=preferences.MarginWidth;
+                // Theme/auth rerenders can arrive while JS is loading. They must never persist defaults.
+                _preferencesLoaded=true;
+                if(InitialNoteId.HasValue&&await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;
                 await RememberNote();
-                _subscription=await Live.SubscribeAsync(_project.Id,DocTopics.Vault(VaultId),m=>InvokeAsync(async()=>{
-                    if(_disposed)return;if(m.Kind=="deleted"){Navigation.NavigateTo($"/docs/{ProjectAlias}");return;}
+                if(generation!=_loadGeneration||_disposed)return;
+                var subscription=await Live.SubscribeAsync(project.Id,DocTopics.Vault(vaultId),m=>InvokeAsync(async()=>{
+                    if(_disposed||generation!=_loadGeneration)return;if(m.Kind=="deleted"){Navigation.NavigateTo($"/docs/{alias}");return;}
                     await Load();StateHasChanged();
                 }));
+                if(generation!=_loadGeneration||_disposed)await subscription.DisposeAsync();else _subscription=subscription;
             }
-        }catch(SoloApiException e){_error=e.Message;}
+        }catch(SoloApiException e){if(generation==_loadGeneration&&!_disposed)_error=e.Message;}
     }
-    private async Task Load(){try{_tree=await Api.GetAsync<TreeDto>(Path);_error=null;}catch(SoloApiException e){_error=e.Message;}}
-    private Task SavePreferences()=>_preferences is null?Task.CompletedTask:_preferences.InvokeVoidAsync("saveVaultPreferences",VaultId.ToString(),new VaultViewPreferences(_openFolders.Order().ToArray(),_rememberedNote,_fontScale)).AsTask();
+    private async Task Load(){
+        if(_disposed)return;var generation=_loadGeneration;var path=Path;
+        try{var tree=await Api.GetAsync<TreeDto>(path);if(generation==_loadGeneration&&!_disposed){_tree=tree;_error=null;}}
+        catch(SoloApiException e){if(generation==_loadGeneration&&!_disposed)_error=e.Message;}
+    }
+    private Task SavePreferences()=>!_preferencesLoaded||_preferences is null?Task.CompletedTask:_preferences.InvokeVoidAsync("saveVaultPreferences",VaultId.ToString(),new VaultViewPreferences(_openFolders.Order().ToArray(),_rememberedNote,_fontScale,_marginWidth)).AsTask();
     private async Task RememberNote(){if(Selected is {} note&&note.Id!=_rememberedNote){_rememberedNote=note.Id;await SavePreferences();}}
     private async Task SetExpanded(DocTreeExpansion change){if(change.Expanded)_openFolders.Add(change.Id);else _openFolders.Remove(change.Id);await SavePreferences();}
     private async Task SetFontScale(int scale){_fontScale=scale;await SavePreferences();}
-    private async Task Open(Guid id){_rememberedNote=id;await SavePreferences();var module=await DesignDocsAssets.ModuleAsync(Js,new(Api));if(await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;Navigation.NavigateTo($"/docs/{ProjectAlias}/{VaultId}?note={id}");}
+    private async Task SetMarginWidth(int width){_marginWidth=width;await SavePreferences();}
+    private async Task Open(Guid id){_rememberedNote=id;await SavePreferences();var module=await DesignDocsAssets.ModuleAsync(Js,new(Api));if(await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;Navigation.NavigateTo(NoteAddress.Url(id));}
     private async Task Run(Func<Task> action){try{await action();await Load();}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);await Load();}}
     private async Task Add(bool folder,Guid? parent) {
         var name=await DocDialogs.Name(Dialogs,folder?"New folder":"New note");if(name is null)return;
@@ -140,5 +165,5 @@ else if(VaultId==Guid.Empty) {
     private Task ChangeVault(string name,bool closed)=>Run(async()=>{await Api.SendAsync(HttpMethod.Put,Path,new VaultChange(name,closed,_tree!.Vault.Version));DesignDocsNavEvents.Raise(_project!.Id);});
     private async Task DeleteVault(){if(!await DocDialogs.Confirm(Dialogs,"Delete design doc","Permanently delete every note, image and sketch in this closed design doc?"))return;
         try{await Api.SendAsync(HttpMethod.Delete,Path+"?version="+_tree!.Vault.Version);DesignDocsNavEvents.Raise(_project!.Id);Navigation.NavigateTo($"/docs/{ProjectAlias}");}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}}
-    public async ValueTask DisposeAsync(){_disposed=true;_workspace?.Dispose();if(_subscription is not null)await _subscription.DisposeAsync();}
+    public async ValueTask DisposeAsync(){_disposed=true;_loadGeneration++;_workspace?.Dispose();if(_subscription is not null)await _subscription.DisposeAsync();}
 }
