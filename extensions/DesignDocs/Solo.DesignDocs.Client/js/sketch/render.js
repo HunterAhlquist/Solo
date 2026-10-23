@@ -12,13 +12,16 @@ function stamp(x,y,width,put){const first=-Math.floor(width/2),radius=width/2;
         const cx=dx+first,cy=dy+first;if(width>2&&Math.abs(cx)+Math.abs(cy)>radius*1.5)continue;put(Math.round(x)+cx,Math.round(y)+cy);
     }
 }
-export function rasterize(ops,width,height,frame=0){const pixels=new Uint8Array(width*height),owners=new Int32Array(width*height);
+export function rasterize(ops,width,height,frame=0){
+    return applyStrokes({pixels:new Uint8Array(width*height),owners:new Int32Array(width*height)},ops,width,height,frame);
+}
+export function applyStrokes(raster,ops,width,height,frame=0,ownerOffset=0){const {pixels,owners}=raster;
     ops.forEach((stroke,owner)=>{let index=0,previous,paintBudget=262144;for(const [x,y,p] of samples(stroke)){
         if(paintBudget<=0)break;const [dx,dy]=jitter(stroke.seed,index++,frame),size=pressureWidth(stroke.level,p,stroke.pointerType);
         const target=[x+dx,y+dy],start=previous??target,steps=Math.min(4096,Math.max(1,Math.ceil(Math.hypot(target[0]-start[0],target[1]-start[1]))));
-        for(let n=0;n<=steps&&paintBudget-->0;n++)stamp(start[0]+(target[0]-start[0])*n/steps,start[1]+(target[1]-start[1])*n/steps,size,(px,py)=>{if(px<0||py<0||px>=width||py>=height)return;const at=py*width+px;pixels[at]=stroke.tool==='eraser'?0:({theme:1,red:2,blue:3,green:4}[stroke.ink]??1);owners[at]=pixels[at]?owner+1:0;});
+        for(let n=0;n<=steps&&paintBudget-->0;n++)stamp(start[0]+(target[0]-start[0])*n/steps,start[1]+(target[1]-start[1])*n/steps,size,(px,py)=>{if(px<0||py<0||px>=width||py>=height)return;const at=py*width+px;pixels[at]=stroke.tool==='eraser'?0:({theme:1,red:2,blue:3,green:4}[stroke.ink]??1);owners[at]=pixels[at]?owner+ownerOffset+1:0;});
         previous=target;
-    }});return {pixels,owners};
+    }});return raster;
 }
 export function connectedRegion(raster,width,height,x,y){let at=Math.round(y)*width+Math.round(x);
     if(!raster.pixels[at]){const near=[];for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){const px=Math.round(x)+dx,py=Math.round(y)+dy;if(px>=0&&py>=0&&px<width&&py<height&&raster.pixels[py*width+px])near.push(py*width+px);}if(!near.length)return null;at=near[0];}
@@ -48,13 +51,26 @@ export function shape(tool,a,b,constrain=false){let dx=b[0]-a[0],dy=b[1]-a[1];if
     if(tool==='rectangle')return [[a[0],a[1],1],[a[0]+dx,a[1],1],[a[0]+dx,a[1]+dy,1],[a[0],a[1]+dy,1],[a[0],a[1],1]];
     const result=[];for(let i=0;i<=64;i++){const angle=i*Math.PI/32;result.push([a[0]+dx/2+Math.cos(angle)*dx/2,a[1]+dy/2+Math.sin(angle)*dy/2,1]);}return result;
 }
-export function paint(context,ops,texts,meta,{frame=0,themeInk='#111',font,exporting=false,paperColor='white'}={}){
+export function paint(context,ops,texts,meta,{frame=0,themeInk='#111',font,exporting=false,paperColor='white',raster=null,paper=true}={}){
     const [width,height]=pageSize(meta);if(context.canvas.width!==width)context.canvas.width=width;if(context.canvas.height!==height)context.canvas.height=height;
-    context.clearRect(0,0,width,height);context.imageSmoothingEnabled=false;context.fillStyle=paperColor;context.globalAlpha=.5;context.fillRect(0,0,width,height);context.globalAlpha=1;
-    context.fillStyle='#d0d0d0';if(meta.pattern==='grid'||meta.pattern==='notebook'){for(let y=24;y<height;y+=24)context.fillRect(0,y,width,1);if(meta.pattern==='grid')for(let x=24;x<width;x+=24)context.fillRect(x,0,1,height);}
-    if(meta.pattern==='dots')for(let y=12;y<height;y+=12)for(let x=12;x<width;x+=12)context.fillRect(x,y,1,1);
-    const raster=rasterize(ops,width,height,frame),palette=['',themeInk,'#b52c32','#2164b4','#23763e'];
-    for(let i=0;i<raster.pixels.length;i++){const ink=raster.pixels[i];if(ink){context.fillStyle=palette[ink];context.fillRect(i%width,Math.floor(i/width),1,1);}}
-    if(font)for(const text of texts){context.fillStyle=palette[{theme:1,red:2,blue:3,green:4}[text.ink]??1];font(context,text);}
-    return raster;
+    context.clearRect(0,0,width,height);context.imageSmoothingEnabled=false;context.fillStyle=paperColor;if(paper)context.fillRect(0,0,width,height);context.globalAlpha=.5;
+    context.fillStyle='#d0d0d0';if(paper&&(meta.pattern==='grid'||meta.pattern==='notebook')){for(let y=24;y<height;y+=24)context.fillRect(0,y,width,1);if(meta.pattern==='grid')for(let x=24;x<width;x+=24)context.fillRect(x,0,1,height);}
+    if(paper&&meta.pattern==='dots')for(let y=12;y<height;y+=12)for(let x=12;x<width;x+=12)context.fillRect(x,y,1,1);
+    context.globalAlpha=1;
+    raster??=rasterize(ops,width,height,frame);
+    paintPixels(context,raster,width,height,themeInk);
+    paintTexts(context,texts,{font,themeInk});return raster;
+}
+export function paintPixels(context,raster,width,height,themeInk='#111'){
+    const palette=['',themeInk,'#b52c32','#2164b4','#23763e'];
+    // Batch adjacent pixels into row spans instead of issuing a call per pixel.
+    for(let y=0;y<height;y++)for(let x=0;x<width;){
+        const ink=raster.pixels[y*width+x],start=x++;
+        while(x<width&&raster.pixels[y*width+x]===ink)x++;
+        if(ink){context.fillStyle=palette[ink];context.fillRect(start,y,x-start,1);}
+    }
+}
+export function paintTexts(context,texts,{font,themeInk='#111'}={}){
+    const palette={theme:themeInk,red:'#b52c32',blue:'#2164b4',green:'#23763e'};
+    if(font)for(const text of texts){context.fillStyle=palette[text.ink]??themeInk;font(context,text);}
 }

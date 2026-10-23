@@ -1,5 +1,5 @@
 import { EditorState, Compartment } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLineGutter } from '@codemirror/view';
+import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
@@ -9,6 +9,7 @@ import { headings } from './markdown.js';
 import { Images } from '../media/images.js';
 import { protectMedia, mediaEdit } from './media-protection.js';
 import { mediaReference, mediaRange } from '../media/references.js';
+import { caretPalettePosition } from './palette.js';
 export function mountEditor(root, bridge, options) {
     const readOnly = new Compartment(); let view;
     const baseUser={...options.user};
@@ -38,12 +39,21 @@ export function mountEditor(root, bridge, options) {
     });
     const noteBody=root.closest('.design-docs-note-body');
     let paletteTimer;
-    const showPalette=event=>{if(event.pointerType==='touch'||event.movementX||event.movementY){noteBody?.classList.add('is-pointer-active');clearTimeout(paletteTimer);paletteTimer=setTimeout(()=>noteBody?.classList.remove('is-pointer-active'),2400);}};
+    const palette=noteBody?.querySelector('.design-docs-note-palette');
+    const paletteMeasure={
+        read(current){
+            if(!palette||!noteBody)return null;
+            return caretPalettePosition(current.coordsAtPos(current.state.selection.main.head),noteBody.getBoundingClientRect(),current.scrollDOM.getBoundingClientRect(),{width:palette.offsetWidth,height:palette.offsetHeight});
+        },
+        write(position){if(!palette)return;palette.toggleAttribute('data-caret-hidden',!position);if(position){palette.style.left=position.left+'px';palette.style.top=position.top+'px';}},
+    };
+    const positionPalette=()=>view?.requestMeasure(paletteMeasure);
+    const showPalette=event=>{if(event.pointerType==='touch'||event.movementX||event.movementY){noteBody?.classList.add('is-pointer-active');positionPalette();clearTimeout(paletteTimer);paletteTimer=setTimeout(()=>noteBody?.classList.remove('is-pointer-active'),2400);}};
     const typing=event=>{if(event.altKey&&event.key==='Insert'){event.preventDefault();noteBody?.classList.add('is-pointer-active');noteBody?.querySelector('.design-docs-note-palette button')?.focus();return;}if(event.key.length===1||event.key==='Backspace'||event.key==='Delete')noteBody?.classList.remove('is-pointer-active');};
     noteBody?.addEventListener('pointermove',showPalette);root.addEventListener('keydown',typing);
     const preview=livePreview(bridge,images);
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
-        markdown(),lineNumbers(),highlightActiveLineGutter(),keymap.of([...defaultKeymap,...yUndoManagerKeymap]),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Status',message)),
+        markdown(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),keymap.of([...defaultKeymap,...yUndoManagerKeymap]),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Status',message)),
         yCollab(provider.doc.getText('markdown'),provider.awareness),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
         EditorView.domEventHandlers({focus:()=>{bridge.invokeMethodAsync('Focus',true);},blur:()=>{bridge.invokeMethodAsync('Focus',false);},
@@ -64,6 +74,8 @@ export function mountEditor(root, bridge, options) {
         }),
 
     ]})});
+    view.scrollDOM.addEventListener('scroll',positionPalette);
+    const paletteResize=new ResizeObserver(positionPalette);if(noteBody)paletteResize.observe(noteBody);positionPalette();
     const previewTheme=()=>{const style=getComputedStyle(root);return style.fontFamily+'|'+style.color+'|'+style.getPropertyValue('--mud-palette-surface');};
     let lastPreviewTheme=previewTheme();
     const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh();}const user=themeUser();if(user.color!==provider.options.user.color){provider.options.user=user;if(provider.canWrite)provider.awareness.setLocalStateField('user',user);}});
@@ -87,6 +99,6 @@ export function mountEditor(root, bridge, options) {
         chooseImage:()=>images.choose(),
         imagesChanged:()=>images.refresh(),
         refreshSketches:()=>images.refresh(),
-        dispose(){clearTimeout(paletteTimer);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
+        dispose(){clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }
