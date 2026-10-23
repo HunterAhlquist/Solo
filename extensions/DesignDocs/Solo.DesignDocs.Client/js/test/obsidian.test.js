@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { VaultIndex, parseWikiLink } from '../src/links/obsidian.js';
+import { VaultIndex, parseWikiLink, relativeTo } from '../src/links/obsidian.js';
 
 const tree = {
     folders: [
@@ -48,6 +48,15 @@ test('images resolve by path or unique file name, decoding markdown links', () =
     assert.equal(index.resolveImage('Design/Combat/arena%20map.webp', true)?.id, 'i2');
     assert.equal(index.resolveImage('same.png'), null);
     assert.equal(index.resolveImage('b/same.png')?.id, 'i4');
+});
+
+test('images resolve relative to the embedding note first, as Obsidian can write them', () => {
+    const index = new VaultIndex(tree);
+    assert.equal(index.resolveImage('../../attachments/hero.png', true, 'n2')?.id, 'i1');
+    assert.equal(index.resolveImage('./arena%20map.webp', true, 'n2')?.id, 'i2');
+    assert.equal(index.resolveImage('../b/same.png', false, 'n1'), null, 'climbing out of the vault resolves nothing');
+    assert.equal(relativeTo('Design/Combat', '../../a/same.png'), 'a/same.png');
+    assert.equal(relativeTo('', '../x.png'), null);
 });
 
 test('sketches resolve by name and new images get free paths', () => {

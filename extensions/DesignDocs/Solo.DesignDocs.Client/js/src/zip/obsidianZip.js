@@ -4,7 +4,7 @@
 
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import * as Y from 'yjs';
-import { isImageReference, isSketchReference, parseWikiLink } from '../links/obsidian.js';
+import { isImageReference, isSketchReference, parseWikiLink, relativeTo } from '../links/obsidian.js';
 import { fromBase64 } from '../sync/base64.js';
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -71,8 +71,10 @@ export function readVaultZip(bytes) {
                 }
             }
 
+            const folder = note.path.split('/').slice(0, -1).join('/');
+            const besideNote = relativeTo(folder, reference)?.toLowerCase();
             const wanted = reference.replace(/^\.?\//, '').toLowerCase();
-            const found = byPath.get(wanted) ?? byName.get(wanted.split('/').pop());
+            const found = (besideNote && byPath.get(besideNote)) ?? byPath.get(wanted) ?? byName.get(wanted.split('/').pop());
             if (found) {
                 embedded.add(found);
             }

@@ -33,6 +33,19 @@ test('a vault zip sorts into notes, embedded images and skipped files', () => {
     assert.equal(skipped['.obsidian/app.json'], undefined, 'Obsidian\'s settings go unmentioned');
 });
 
+test('images embedded relative to a note\'s folder are found, not skipped', () => {
+    const zip = writeZip({
+        'Vault/Design/Combat/Dodge.md': '![](../../attachments/roll.png)\n![[./arc.png]]',
+        'Vault/attachments/roll.png': png,
+        'Vault/Design/Combat/arc.png': png,
+        'Vault/arc.png': png,
+    });
+
+    const vault = readVaultZip(zip);
+    assert.deepEqual(vault.images.map(i => i.path).sort(), ['Design/Combat/arc.png', 'attachments/roll.png']);
+    assert.match(vault.skipped.find(s => s.path === 'arc.png').reason, /No note embeds it/);
+});
+
 test('notes batch under the per-call limits', () => {
     const notes = Array.from({ length: 250 }, (_, i) => ({ path: `${i}.md`, markdown: 'x' }));
     assert.deepEqual(batches(notes).map(b => b.length), [100, 100, 50]);

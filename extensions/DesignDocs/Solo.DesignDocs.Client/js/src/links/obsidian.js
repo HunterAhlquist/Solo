@@ -70,8 +70,12 @@ export class VaultIndex {
         return (from && matches.find(n => n.folder === from.folder)) ?? null;
     }
 
-    /** The image an embed names: `![[path]]` or `![](path)`, with %20 decoded for the latter. */
-    resolveImage(reference, markdownStyle = false) {
+    /**
+     * The image an embed names: `![[path]]` or `![](path)`, with %20 decoded for the latter.
+     * Obsidian can write either relative to the note ("../attachments/a.png"), so that is tried
+     * before the vault-relative path and the bare name.
+     */
+    resolveImage(reference, markdownStyle = false, fromNoteId = null) {
         let wanted = reference;
         if (markdownStyle) {
             try {
@@ -79,6 +83,13 @@ export class VaultIndex {
             } catch {
                 wanted = reference;
             }
+        }
+
+        const from = fromNoteId ? this.notesById.get(fromNoteId) : null;
+        const relative = from ? relativeTo(from.folder, wanted)?.toLowerCase() : null;
+        const besideNote = relative ? this.images.find(i => i.path.toLowerCase() === relative) : null;
+        if (besideNote) {
+            return besideNote;
         }
 
         wanted = normalize(wanted).toLowerCase();
@@ -120,6 +131,24 @@ export class VaultIndex {
 export const isSketchReference = reference => /\.sketch$/i.test(reference.trim());
 
 export const isImageReference = reference => /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic)$/i.test(reference.trim());
+
+/** `reference` read from inside `folder`, with `.` and `..` applied; null if it climbs out of the vault. */
+export function relativeTo(folder, reference) {
+    const parts = folder ? folder.split('/') : [];
+    for (const segment of reference.replace(/\\/g, '/').split('/')) {
+        if (segment === '..') {
+            if (!parts.length) {
+                return null;
+            }
+
+            parts.pop();
+        } else if (segment && segment !== '.') {
+            parts.push(segment);
+        }
+    }
+
+    return parts.length ? parts.join('/') : null;
+}
 
 function normalize(path) {
     return path.replace(/\\/g, '/').split('/').filter(Boolean).join('/').trim();

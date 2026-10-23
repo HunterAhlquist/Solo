@@ -170,7 +170,7 @@ function build(state, context) {
 
             const url = node.node.getChild('URL');
             const reference = url ? doc.sliceString(url.from, url.to) : '';
-            const image = reference ? index.resolveImage(reference, true) : null;
+            const image = reference ? index.resolveImage(reference, true, context.noteId) : null;
             const altFrom = node.from + 2;
             const alt = doc.sliceString(altFrom, Math.max(altFrom, findLabelEnd(node.node) ?? altFrom));
             embeds.push({ from: node.from, to: node.to, image, alt, missing: image ? null : reference });
@@ -192,7 +192,7 @@ function build(state, context) {
                 if (isSketchReference(link.target)) {
                     embeds.push({ from: start, to: end, sketch: index.resolveSketch(link.target), missing: link.target, isSketch: true });
                 } else if (isImageReference(link.target)) {
-                    const image = index.resolveImage(link.target);
+                    const image = index.resolveImage(link.target, false, context.noteId);
                     embeds.push({ from: start, to: end, image, alt: link.alias ?? '', missing: image ? null : link.target });
                 } else {
                     // A note embedded in a note shows as a link to it; transclusion can come later.

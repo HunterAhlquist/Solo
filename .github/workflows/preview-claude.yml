@@ -1,0 +1,205 @@
+name: Preview (claude)
+
+# Agent-labelled Design Docs previews, built from an unmerged branch so they
+# can be installed beside, and compared with, another agent's. A tag such as
+# preview-v1.17.0-design-docs-claude.1 publishes exactly:
+#
+#   ghcr.io/hunterahlquist/solo:1.17.0-design-docs-claude.1   (never moved)
+#   ghcr.io/hunterahlquist/solo:preview-claude                (this label's newest)
+#   a GitHub prerelease, never marked latest, carrying
+#   solo-design-docs-<extension version>-claude.zip and its checksum
+#
+# It never touches latest, preview, a stable minor tag, or the sdk-v /
+# templates-v series. Stable releases stay in ci.yml, which this tag pattern
+# doesn't trigger. Each build takes the next number: a published tag is never
+# moved.
+
+on:
+  push:
+    tags: ["preview-v*-claude.*"]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/hunterahlquist/solo
+  LABEL: claude
+
+concurrency:
+  group: preview-claude-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  classify:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Parse the version
+        id: tag
+        run: |
+          set -euo pipefail
+          # Exactly one shape, so a typo can't publish under another label or channel.
+          if [[ ! "$GITHUB_REF_NAME" =~ ^preview-v([0-9]+\.[0-9]+\.[0-9]+-design-docs-${LABEL}\.[1-9][0-9]*)$ ]]; then
+            echo "::error::Expected preview-v<major.minor.patch>-design-docs-${LABEL}.<n>, got ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+  build-test:
+    name: Build, test and package
+    needs: classify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Build and test core
+        run: |
+          dotnet build Solo.slnx -c Release
+          dotnet test Solo.slnx --no-build -c Release --logger "trx" --results-directory TestResults
+
+      - name: Package the extension contract
+        run: build/pack-contract.sh
+
+      # Builds and tests the browser module too (npm ci, npm test, esbuild).
+      - name: Package the Design Docs extension
+        run: build/pack-design-docs-extension.sh "$PWD/artifacts" "$LABEL"
+
+      - name: Test the Design Docs extension
+        run: dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx -c Release --logger "trx" --results-directory TestResults
+
+      # The other extensions load into the same host, so a core change that
+      # breaks them shows up here rather than on someone's instance.
+      - name: Test the MCP and Roadmaps extensions
+        run: |
+          dotnet test extensions/Mcp/Solo.Mcp.slnx -c Release --logger "trx" --results-directory TestResults
+          dotnet test extensions/Roadmap/Solo.Roadmap.slnx -c Release --logger "trx" --results-directory TestResults
+
+      - name: Checksum the package
+        run: cd artifacts && sha256sum solo-design-docs-*-"$LABEL".zip > SHA256SUMS
+
+      - name: Upload the package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: design-docs-claude
+          path: |
+            artifacts/solo-design-docs-*-claude.zip
+            artifacts/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results
+          path: TestResults
+          retention-days: 7
+
+  publish-image:
+    name: Publish the preview image
+    needs: [classify, build-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Refuses to overwrite: an exact preview tag names one build forever.
+      - name: Check the exact tag is new
+        env:
+          VERSION: ${{ needs.classify.outputs.version }}
+        run: |
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" > /dev/null 2>&1; then
+            echo "::error::$IMAGE:$VERSION already exists. Tag the next build number instead."
+            exit 1
+          fi
+
+      # Only these two tags. No metadata-action: its defaults would add latest.
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ needs.classify.outputs.version }}
+            ${{ env.IMAGE }}:preview-${{ env.LABEL }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.classify.outputs.version }}
+          build-args: |
+            SOLO_VERSION=${{ needs.classify.outputs.version }}
+            SOLO_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=preview-claude
+          cache-to: type=gha,mode=max,scope=preview-claude
+
+  release:
+    name: Publish the prerelease
+    needs: [classify, build-test, publish-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: design-docs-claude
+          path: artifacts
+
+      - name: Write the release notes
+        env:
+          VERSION: ${{ needs.classify.outputs.version }}
+          DIGEST: ${{ needs.publish-image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Agent-labelled preview of the Design Docs extension (label: \`${LABEL}\`). Not a stable release."
+            echo
+            echo "**Source commit:** [\`${GITHUB_SHA}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+            echo
+            echo "**Image:** \`${IMAGE}:${VERSION}\` (also \`${IMAGE}:preview-${LABEL}\`, which moves to each newer ${LABEL} preview)"
+            echo
+            echo "**Image digest:** \`${DIGEST}\`"
+            echo
+            echo "**Extension package (sha256):**"
+            echo
+            echo '```'
+            cat artifacts/SHA256SUMS
+            echo '```'
+            echo
+            echo "The manifest id is \`design-docs\`: the \`-${LABEL}\` suffix names the build, not a separate extension. Install one Design Docs zip per instance's extensions directory, then restart."
+            echo
+            cat .github/preview-claude-checks.md
+          } > release-notes.md
+
+      - name: Create the prerelease
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          prerelease: true
+          make_latest: false
+          name: Design Docs preview ${{ needs.classify.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            artifacts/solo-design-docs-*-claude.zip
+            artifacts/SHA256SUMS
+          fail_on_unmatched_files: true
