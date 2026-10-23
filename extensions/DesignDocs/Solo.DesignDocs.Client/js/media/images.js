@@ -56,7 +56,13 @@ export class Images {
             this.resolve(item.path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable: ${item.path}`;});button.append(img);
         }
         if(entries.length>1){const count=document.createElement('span');count.className='design-docs-stack-count';count.textContent=String(entries.length);button.append(count);}
-        button.addEventListener('click',()=>this.open(references,selected=>{[...button.querySelectorAll('img')].forEach((img,i)=>img.style.zIndex=i===selected?entries.length+1:i);}));
+        let front=entries.length-1;
+        button.addEventListener('click',event=>{
+            const clicked=event.target.closest('img[data-media-index]');
+            this.open(references,selected=>{
+                front=selected;[...button.querySelectorAll('img')].forEach((img,i)=>img.style.zIndex=i===selected?entries.length+1:i);
+            },clicked?Number(clicked.dataset.mediaIndex):front,selected=>button.querySelector(`img[data-media-index="${selected}"]`));
+        });
         button.addEventListener('dragstart',event=>{
             if(!this.canWrite){event.preventDefault();return;}
             const item=event.target.closest('img[data-media-index]');
@@ -71,11 +77,41 @@ export class Images {
         return button;
     }
     release(button){for(const entry of this.cards)if(entry.button===button)this.cards.delete(entry);}
-    async open(references,onSelection=()=>{}) {
-        this.dialog?.close();
+    async open(references,onSelection=()=>{},initialIndex=0,sourceFor=()=>null) {
+        this.closeViewer?.();
         const dialog=document.createElement('dialog');dialog.className='design-docs-image-viewer';
         dialog.setAttribute('aria-label','Attachments');this.dialog=dialog;
-        let index=0,request=0;const items=[...references];
+        let index=initialIndex,request=0,closing=false,closed=false,presented=false,flight,hiddenSource,closingTask;const items=[...references];
+        const duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:260;
+        const restoreSource=()=>{if(hiddenSource){hiddenSource.style.visibility='';hiddenSource=null;}};
+        const sourceTransform=()=>{
+            const source=sourceFor(references.indexOf(items[index]));
+            if(!source?.isConnected||!image.naturalWidth)return null;
+            const from=source.getBoundingClientRect(),to=image.getBoundingClientRect(),style=getComputedStyle(source);
+            if(!to.width||!to.height||!from.width||!from.height)return null;
+            const width=source.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);
+            const height=source.clientHeight-parseFloat(style.paddingTop)-parseFloat(style.paddingBottom);
+            const scale=Math.min(width/image.naturalWidth,height/image.naturalHeight)*image.naturalWidth/to.width;
+            const matrix=new DOMMatrixReadOnly(style.transform==='none'?undefined:style.transform);
+            const angle=Math.atan2(matrix.b,matrix.a)*180/Math.PI;
+            hiddenSource=source;
+            return `translate(${from.x+from.width/2-to.x-to.width/2}px,${from.y+from.height/2-to.y-to.height/2}px) rotate(${angle}deg) scale(${scale})`;
+        };
+        const cleanup=()=>{
+            if(closed)return;closed=true;++request;flight?.cancel();restoreSource();dialog.remove();
+            if(this.dialog===dialog){this.dialog=null;this.refreshViewer=null;this.closeViewer=null;}
+        };
+        const finish=()=>{if(dialog.open)dialog.close();cleanup();};
+        const dismiss=()=>closingTask??=(async()=>{
+            if(closed)return;closing=true;++request;dialog.dataset.phase='closing';
+            const current=getComputedStyle(image).transform;flight?.cancel();
+            const transform=presented?sourceTransform():null;
+            if(hiddenSource)hiddenSource.style.visibility='hidden';
+            dialog.classList.remove('is-presented');
+            flight=image.animate(transform?[{transform:current,opacity:1},{transform,opacity:1}]:[{opacity:1},{opacity:0}],{duration,easing:'cubic-bezier(.4,0,.2,1)',fill:'both'});
+            await Promise.allSettled([flight.finished,new Promise(resolve=>setTimeout(resolve,duration))]);finish();
+        })();
+        this.closeViewer=finish;
         const header=document.createElement('header'),label=document.createElement('span'),counter=document.createElement('span');
         const stage=document.createElement('div');stage.className='design-docs-viewer-stage';
         const image=document.createElement('img');image.draggable=false;
@@ -84,16 +120,16 @@ export class Images {
         const control=(icon,name,action)=>{const b=document.createElement('button');b.type='button';b.className='mud-button-root mud-icon-button mud-icon-button-size-medium mud-ripple';b.setAttribute('aria-label',name);b.title=name;b.onclick=action;
             const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('mud-icon-root','mud-svg-icon');
             svg.innerHTML=this.actions.icons?.[icon]??'';b.append(svg);return b;};
-        const close=control('close','Close viewer',()=>dialog.close());close.classList.add('design-docs-viewer-close');
+        const close=control('close','Close viewer',()=>dismiss());close.classList.add('design-docs-viewer-close');
         const previous=control('previous','Previous attachment',()=>show(index-1));previous.classList.add('design-docs-viewer-previous');
         const next=control('next','Next attachment',()=>show(index+1));next.classList.add('design-docs-viewer-next');
         const edit=control('edit','Edit sketch',async()=>{
             const path=items[index].path;
-            dialog.close();await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));await this.refresh();
+            await dismiss();if(this.disposed)return;await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));await this.refresh();
         });
         const remove=control('remove','Remove attachment from note',()=>{
             if(!this.canWrite||!this.actions.remove?.(items[index]))return;
-            items.splice(index,1);if(!items.length){dialog.close();return;}show(Math.min(index,items.length-1));
+            items.splice(index,1);if(!items.length){dismiss();return;}show(Math.min(index,items.length-1));
         });
         const download=control('download','Download attachment',async()=>{
             try{const item=items[index],a=document.createElement('a');a.href=await this.resolve(item.path);a.download=item.sketch?item.path.replace(/\.sketch$/i,'.png'):item.path.split('/').at(-1);document.body.append(a);a.click();a.remove();}catch(e){this.status(e.message);}
@@ -101,15 +137,31 @@ export class Images {
         const replace=control('replace','Replace image',()=>this.choose(items[index].path));
         this.refreshViewer=()=>show(index);
         const show=async position=>{
+            if(closing||closed)return;
+            if(presented){flight?.cancel();restoreSource();dialog.dataset.phase='open';}
             index=(position+items.length)%items.length;const item=items[index],serial=++request;this.viewerSketch=item.sketch;onSelection(references.indexOf(item));
             label.textContent=item.path;counter.textContent=`${index+1} / ${items.length}`;
-            image.alt=item.path;image.removeAttribute('src');caption.hidden=true;
+            image.alt=item.path;image.style.visibility='hidden';caption.hidden=true;
             previous.hidden=next.hidden=items.length<2;edit.hidden=!item.sketch;remove.hidden=!this.canWrite;replace.hidden=!this.canWrite||item.sketch;download.setAttribute('aria-label',item.sketch?'Export sketch PNG':'Download image');download.title=download.getAttribute('aria-label');
-            try{const url=await this.resolve(item.path);if(serial===request&&dialog.open)image.src=url;}
-            catch(e){if(serial===request){caption.textContent=e.message;caption.hidden=false;}}
+            try{
+                const url=await this.resolve(item.path);if(serial!==request||!dialog.open||closing)return;
+                image.src=url;await image.decode();if(serial!==request||!dialog.open||closing)return;
+                if(!presented){
+                    // Promote the selected paper before the wash starts, then animate the
+                    // pixels in the top layer so the rest of the stack never jumps above it.
+                    const transform=sourceTransform();await new Promise(requestAnimationFrame);
+                    if(closed||closing)return;
+                    presented=true;dialog.dataset.phase='opening';dialog.classList.add('is-presented');
+                    if(hiddenSource)hiddenSource.style.visibility='hidden';
+                    const opening=image.animate(transform?[{transform,opacity:1},{transform:'none',opacity:1}]:[{opacity:0},{opacity:1}],{duration,easing:'cubic-bezier(.2,0,0,1)',fill:'both'});flight=opening;image.style.visibility='';
+                    await opening.finished.catch(()=>{});
+                    if(!closing&&!closed&&flight===opening){restoreSource();opening.cancel();dialog.dataset.phase='open';}
+                }else image.style.visibility='';
+            }catch(e){if(serial===request&&!closed){caption.textContent=e.message;caption.hidden=false;dialog.classList.add('is-presented');}}
         };
         header.append(label,counter,close);stage.append(previous,image,caption,next);footer.append(download,replace,edit,remove);dialog.append(header,stage,footer);
-        dialog.addEventListener('click',event=>{if(event.target===dialog||event.target===stage)dialog.close();});
+        dialog.addEventListener('click',event=>{if(event.target===dialog||event.target===stage)dismiss();});
+        dialog.addEventListener('cancel',event=>{event.preventDefault();dismiss();});
         dialog.addEventListener('keydown',event=>{
             if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
                 event.preventDefault();event.stopPropagation();show(index+(event.key==='ArrowLeft'?-1:1));
@@ -118,8 +170,8 @@ export class Images {
         let start;image.addEventListener('pointerdown',event=>{start=event.clientX;image.setPointerCapture(event.pointerId);});
         image.addEventListener('pointerup',event=>{if(start!==undefined&&Math.abs(event.clientX-start)>40)show(index+(event.clientX<start?1:-1));start=undefined;});
         image.addEventListener('pointercancel',()=>{start=undefined;});
-        dialog.addEventListener('close',()=>{++request;dialog.remove();if(this.dialog===dialog){this.dialog=null;this.refreshViewer=null;}},{once:true});
-        document.body.append(dialog);dialog.showModal();await show(0);close.focus();
+        dialog.addEventListener('close',cleanup,{once:true});
+        document.body.append(dialog);dialog.showModal();close.focus();await show(initialIndex);
     }
     choose(replace=null) {
         const input=document.createElement('input');input.type='file';input.accept='image/*';input.hidden=true;document.body.append(input);this.inputs.add(input);
@@ -145,5 +197,5 @@ export class Images {
             const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>this.resolve(item.path).then(url=>{if(images[i])images[i].src=url;}).catch(()=>{}));
         }
     }
-    dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.dialog?.close();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();}
+    dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.closeViewer?.();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();}
 }

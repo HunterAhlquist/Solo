@@ -18,8 +18,12 @@
 @media(prefers-reduced-motion:reduce) { .design-docs-tree-name[data-ticker] .design-docs-tree-track { animation:none; } }
 .design-docs-tree-row.is-drop-target,.design-docs-root.is-drop-target { outline:2px solid var(--mud-palette-primary); background:var(--mud-palette-action-default-hover); }
 .design-docs-tree-ghost { position:fixed; pointer-events:none; z-index:1500; padding:8px 12px; color:var(--mud-palette-text-primary); background:var(--mud-palette-surface); border:1px solid var(--mud-palette-primary); border-radius:3px; }
-.design-docs-note { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; padding:16px 24px 0; }
-.design-docs-note > h4,.design-docs-note > .mud-typography-caption { flex-shrink:0; }
+.design-docs-note { position:relative; flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; padding:16px 24px 0; }
+.design-docs-note-surface > h4,.design-docs-note-surface > .mud-typography-caption { flex-shrink:0; }
+.design-docs-note-surface { display:flex; flex-direction:column; flex:1; min-height:0; }
+.design-docs-note-surface.is-pending { position:absolute; inset:16px 24px 0; visibility:hidden; pointer-events:none; }
+.design-docs-note-loading { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; background:#0007; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); cursor:progress; }
+.design-docs-tree-tools { justify-content:center; }
 .design-docs-note-status { display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex-shrink:0; }
 .design-docs-presence:empty { display:none; }
 .design-docs-stored-markdown { white-space:pre-wrap; font:inherit; margin-top:16px; }
@@ -28,6 +32,7 @@
  .design-docs-tree.is-open { position:absolute; top:0; bottom:0; left:0; z-index:3; background:var(--mud-palette-surface); box-shadow:3px 0 12px #0003; }
  .design-docs-tree-backdrop { display:block; position:absolute; inset:0; background:#0005; border:0; z-index:2; }
  .design-docs-note { padding:12px 8px 0; }
+ .design-docs-note-surface.is-pending { inset:12px 8px 0; }
 }
 .design-docs-editor { flex:1; min-height:0; display:flex; flex-direction:column; line-height:1.65; }
 .design-docs-editor-host { flex:1; min-height:0; }
@@ -151,8 +156,10 @@
 
 .design-docs-root { display:flex; align-items:center; }
 .design-docs-hierarchy .mud-treeview-item-icon { display:none; }
-.design-docs-hierarchy .mud-treeview-item-content { padding:0; }
-.design-docs-hierarchy .mud-treeview-group { border-inline-start:1px solid var(--mud-palette-primary); margin-inline-start:12px; padding-inline-start:0; }
+.design-docs-hierarchy .mud-treeview-item-content { padding:0; margin-inline-start:4px; width:calc(100% - 4px); }
+.design-docs-tree-row { padding-inline-end:11px; }
+.design-docs-tree-row.is-current { padding-inline-end:9px; }
+.design-docs-hierarchy .mud-treeview-group { border-inline-start:1px solid var(--mud-palette-primary); margin-inline-start:16px; padding-inline-start:0; }
 .design-docs-hierarchy .mud-treeview-item-content:has(> .design-docs-tree-row.is-current) { color:var(--mud-palette-primary); background:var(--mud-palette-action-default-hover); border-inline-end:2px solid var(--mud-palette-primary); border-radius:var(--mud-default-borderradius); }
 .design-docs-tree-row.is-current { background:transparent; }
 .design-docs-wiki-link,.design-docs-editor a:not(.design-docs-task-chip) { color:var(--mud-palette-primary); text-decoration:underline; cursor:pointer; }
@@ -165,17 +172,41 @@ html.solo-desktop--glass .design-docs-sketch-viewport { background:transparent; 
 html.solo-desktop--glass .design-docs-image-viewer { background:transparent; }
 html.solo-desktop--glass .design-docs-image-viewer::backdrop { background:color-mix(in srgb,var(--mud-palette-background) 32%,transparent); }
 html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-dialog-title,
-html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-image-viewer header { padding-left:calc(70px + var(--solo-controls-gap,24px)); min-height:var(--mud-appbar-height,64px); }
+html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-image-viewer header { padding-left:calc(70px + var(--solo-controls-gap,24px)); }
 html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-dialog-title,
-html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-image-viewer header { padding-right:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,calc(100vw - 140px)) + var(--solo-controls-gap,24px)); min-height:var(--mud-appbar-height,64px); }
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-image-viewer header { padding-right:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,calc(100vw - 140px)) + var(--solo-controls-gap,24px)); }
 html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-button-close { right:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,calc(100vw - 140px)) + 12px); }
 
 .design-docs-nav-current > .mud-nav-link { color:var(--mud-palette-primary); background-color:var(--mud-palette-action-default-hover); border-inline-end:2px solid var(--mud-palette-primary); }
 .design-docs-nav-current > .mud-nav-link .mud-nav-link-icon { color:inherit; }
 
 .design-docs-hierarchy .mud-treeview-item-arrow { width:24px; flex:0 0 24px; margin-inline:0; }
-.design-docs-hierarchy .mud-treeview-item-expand-button { width:24px; padding-inline:0; margin-inline:0; }
+.design-docs-hierarchy .mud-treeview-item-expand-button { width:24px; height:24px; min-width:24px; min-height:24px; padding:0; margin:0; }
 /* Native glass windows do not consistently sample the renderer through a
    backdrop filter. Blur the underlying layout; the dialog provider is its
    sibling, so the drawing page and the controls stay sharp and opaque. */
-html.solo-desktop--glass body:has(.design-docs-sketch-dialog, .design-docs-image-viewer[open]) .mud-layout { filter:blur(12px); }
+html.solo-desktop--glass body:has(.design-docs-image-viewer[open]) .mud-layout { transition:filter 260ms; }
+html.solo-desktop--glass body:has(.design-docs-sketch-dialog, .design-docs-image-viewer.is-presented) .mud-layout { filter:blur(12px); }
+
+/* Native window controls are centered in Electron's 70px titlebar. Theme
+   typography can change, but must not move these modal headers off that axis. */
+html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-dialog-title,
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-dialog-title { box-sizing:border-box; display:flex; align-items:center; height:70px; min-height:70px; padding-block:0; flex-shrink:0; }
+html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-button-close,
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-button-close { top:35px; transform:translateY(-50%); }
+html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-image-viewer,
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-image-viewer { padding-top:0; }
+html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-image-viewer header,
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-image-viewer header { height:70px; min-height:70px; flex-shrink:0; }
+
+.design-docs-image-viewer,.design-docs-image-viewer::backdrop { transition:background-color 260ms; }
+.design-docs-image-viewer:not(.is-presented),.design-docs-image-viewer:not(.is-presented)::backdrop,
+html.solo-desktop--glass .design-docs-image-viewer:not(.is-presented)::backdrop { background-color:transparent; }
+.design-docs-image-viewer header,.design-docs-image-viewer footer,.design-docs-image-viewer .design-docs-viewer-previous,.design-docs-image-viewer .design-docs-viewer-next { opacity:0; transition:opacity 260ms; }
+.design-docs-image-viewer.is-presented header,.design-docs-image-viewer.is-presented footer,.design-docs-image-viewer.is-presented .design-docs-viewer-previous,.design-docs-image-viewer.is-presented .design-docs-viewer-next { opacity:1; }
+.design-docs-image-viewer img { transform-origin:center; will-change:transform; }
+.design-docs-image-viewer[data-phase="closing"] { pointer-events:none; }
+@media(prefers-reduced-motion:reduce) {
+ .design-docs-image-viewer,.design-docs-image-viewer::backdrop,.design-docs-image-viewer header,.design-docs-image-viewer footer,.design-docs-image-viewer .design-docs-viewer-previous,.design-docs-image-viewer .design-docs-viewer-next,
+ html.solo-desktop--glass body:has(.design-docs-image-viewer[open]) .mud-layout { transition:none; }
+}
