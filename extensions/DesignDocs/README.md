@@ -91,3 +91,9 @@ keep fast Pencil strokes out of iPadOS text-selection handling. Native selection
 is cleared while the sketch is open unless a text field has focus. Text fields
 keep their editing/selection menus; toolbar taps and Pointer Event pan/zoom remain
 available. Physical Pencil retesting is still required.
+
+The local presence follow-up repairs writable Awareness initialization, continuous
+cursor broadcasting and stationary late joins. Its merged profile-picture pointer
+and I-beam cursors share the assigned project color with roster borders. Brush
+footprints remain visible beside the profile cursor. Missing photos fall back to
+initials. The cursor design is under user review and has not been published.

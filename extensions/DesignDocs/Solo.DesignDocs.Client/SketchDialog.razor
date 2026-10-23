@@ -4,6 +4,9 @@
 @inject IJSRuntime Js
 @inject IDialogService Dialogs
 <MudDialog Class="design-docs-sketch-dialog">
+    <TitleContent>
+        <div class="design-docs-sketch-title"><MudText Typo="Typo.h6">@Sketch.Name</MudText><DocPresenceStrip ProjectId="ProjectId" Entries="_presence" /></div>
+    </TitleContent>
     <DialogContent>
         <div class="design-docs-sketch-shell">
             <EditorSurface Ready="Mount" />
@@ -67,14 +70,14 @@
         var dialog=await Dialogs.ShowAsync<SketchPageDialog>("Sketch page settings",new DialogParameters<SketchPageDialog>{{x=>x.Settings,settings}},new DialogOptions{CloseButton=true,MaxWidth=MaxWidth.ExtraSmall,FullWidth=true});
         return await dialog.Result is {Canceled:false,Data:SketchPageSettings result}?result:null;
     }
+    private IReadOnlyList<TopicPresenceEntry> _presence=[];
     private IJSObjectReference? _sketch;private DotNetObjectReference<SketchDialog>? _reference;private IAsyncDisposable? _subscription,_vault;private bool _disposed;
     private async Task Mount(ElementReference root){
         var user=await Api.GetAsync<UserDto>("api/users/me");var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
         var api=new DesignDocsApi(Api);var module=await DesignDocsAssets.ModuleAsync(Js,api);_supportsTouch=await module.InvokeAsync<bool>("supportsTouch");await InvokeAsync(StateHasChanged);_reference=DotNetObjectReference.Create(this);
-        var hue=(slot.Slot*137.508%360).ToString(System.Globalization.CultureInfo.InvariantCulture);
         _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,name=Sketch.Name,explosionUrl=api.Content("explosion.gif").ToString(),explosionSoundUrl=api.Content("explosion.wav").ToString(),
-            meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,color=$"oklch(65% .15 {hue})"}});
-        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await _sketch.InvokeVoidAsync("connected",false);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},async people=>{if(_sketch is not null&&!_disposed)await _sketch.InvokeVoidAsync("presence",people);});
+            meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color=DocPresenceColor.Value(slot.Slot)}});
+        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await _sketch.InvokeVoidAsync("connected",false);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},async people=>{_presence=people;if(_sketch is not null&&!_disposed)await _sketch.InvokeVoidAsync("presence",people);await InvokeAsync(StateHasChanged);});
         _vault=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(VaultId),async m=>{if(m.Kind is "closed" or "deleted"&&_sketch is not null)await _sketch.InvokeVoidAsync("connected",false);});
         Live.ConnectionChanged+=Connection;await Live.SetPresenceAsync(ProjectId,DocTopics.Doc(Sketch.Id),CanWrite?PresenceMode.Editing:PresenceMode.Viewing);await Connection();
     }

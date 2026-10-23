@@ -1,11 +1,11 @@
 // Minimal DOM event routing for mountSketch. Rendering and Yjs remain production code;
 // only the platform surface is substituted so native-default cancellation is observable.
 export class Element {
-    constructor(tag='div',ownerDocument){this.tagName=tag.toUpperCase();this.ownerDocument=ownerDocument;this.children=[];this.listeners=new Map();this.style={setProperty(){}};this.className='';this.classList={add:name=>{this.className+=' '+name;}};this.clientWidth=1000;this.clientHeight=800;this.captures=new Set();}
+    constructor(tag='div',ownerDocument){this.tagName=tag.toUpperCase();this.ownerDocument=ownerDocument;this.children=[];this.listeners=new Map();this.style={setProperty(name,value){this[name]=value;}};this.className='';this.classList={add:name=>{this.className+=' '+name;}};this.clientWidth=1000;this.clientHeight=800;this.captures=new Set();}
     append(...nodes){for(const node of nodes){node.parentElement=this;this.children.push(node);}}
     replaceChildren(){this.children=[];}
     remove(){this.parentElement.children=this.parentElement.children.filter(child=>child!==this);}
-    setAttribute(){} removeAttribute(){}
+    setAttribute(name,value){(this.attributes??=new Map()).set(name,value);} removeAttribute(name){this.attributes?.delete(name);}
     matches(selector){return selector.split(',').some(value=>value.trim().startsWith('.')?this.className.split(' ').includes(value.trim().slice(1)):value.trim().toLowerCase()===this.tagName.toLowerCase());}
     closest(selector){return this.matches(selector)?this:this.parentElement?.closest(selector)??null;}
     contains(node){return node===this||this.children.some(child=>child.contains(node));}
@@ -27,7 +27,7 @@ export class Element {
 export function installDOM(){
     const restore=[];
     const document=new Element('document');document.ownerDocument=document;document.fonts={ready:Promise.resolve()};document.hidden=false;
-    document.createElement=tag=>new Element(tag,document);document.body=document.createElement('body');document.head=document.createElement('head');document.append(document.body,document.head);
+    document.createElement=tag=>new Element(tag,document);document.createElementNS=(_namespace,tag)=>document.createElement(tag);document.body=document.createElement('body');document.head=document.createElement('head');document.append(document.body,document.head);
     const selection={rangeCount:0,anchorNode:null,focusNode:null,removeAllRanges(){this.rangeCount=0;this.anchorNode=this.focusNode=null;}};document.getSelection=()=>selection;
     const window=new Element('window',document);document.defaultView=window;window.getSelection=()=>selection;
     let frame=0;const frames=new Map();

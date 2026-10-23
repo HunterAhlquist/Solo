@@ -1224,3 +1224,36 @@ describes canceling native touch defaults. [WebKit issue 249223](https://bugs.we
 reports native iOS selections despite event cancellation. These sources support
 the extra safeguards; they do not establish the exact internal cause on the
 user's current iPadOS version.
+
+### Presence follow-up — local design review, not published
+
+Presence updates were discarded because initialization and disconnect set the
+Yjs Awareness state to null, and setLocalStateField cannot recreate a null state.
+Writable sync now creates a local state with the assigned user profile. The
+awareness sender also throttles rather than debounces: continuous Pencil motion
+or typing must not postpone every packet. Topic presence changes reannounce the
+current state to newly joined collaborators without waiting for another movement.
+Regression checks isolate initialization/reconnect, continuous movement, and
+stationary late joins; both timing checks still failed after initialization alone
+was repaired.
+
+The user requested profile pictures joined to pointer arrows and I-beam carets,
+with the assigned project color outlining both shapes. The implemented local
+review uses those cursors, a brush-footprint ring, and profile-picture rosters in
+both Markdown and the sketch header. Pictures use the receiving instance's avatar
+proxy, never another desktop client's localhost address. Missing pictures fall
+back to initials. Persistent color slots drive cursor, selection and avatar
+borders; a shared CSS lightness variable adapts them to the local background.
+
+A local two-client relay fixture runs the production editor, sketch, Yjs provider
+and cursor components. It verifies both text and brush cursors arrive, all demo
+profile pictures load, and pointer tips align with brush footprints. The review
+shows enlarged examples alongside the actual-size editor rendering. The user
+explicitly requested reviewing this design after the presence repair and before
+publishing a preview; this follow-up remains unpublished pending that review.
+
+The pointer's two edges are true tangents to the avatar's border circle; that
+circle's near arc is the concave notch, producing one continuous silhouette.
+Geometry tests verify circle contact and perpendicular tangent/radius vectors.
+Local validation passes 58 C# and 92 JavaScript checks. No tag or preview was
+published for this review.
