@@ -35,7 +35,7 @@ export function mountEditor(root, bridge, options) {
             drop:event=>{const files=[...(event.dataTransfer?.files??[])];if(!provider.canWrite||!files.length)return false;event.preventDefault();files.forEach(f=>images.upload(f));return true;},
             dragover:event=>{if(event.dataTransfer?.types.includes('Files'))event.preventDefault();},
         }),
-        
+
     ]})});
     const themeObserver=new MutationObserver(()=>{const user=themeUser();if(user.color!==provider.options.user.color){provider.options.user=user;if(provider.canWrite)provider.awareness.setLocalStateField('user',user);}});
     themeObserver.observe(document.head,{childList:true,subtree:true,characterData:true});
