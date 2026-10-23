@@ -1189,3 +1189,38 @@ with exported pixels for strokes and text. Browser computed styles confirm
 header alpha values 0.5/0.5/0.5/0.75/1 at settings 0/25/50/75/100%, and a dotted
 1px guide with alpha 0.5. The native Mac fixture displays the palette and updated
 vault surfaces. The user reported rotation working during verification.
+
+
+### Pencil selection interruption follow-up (Codex preview 14)
+
+The user's iPad recording shows the system Copy/Translate/Copy Link with Highlight
+menu appearing repeatedly during rapid handwriting, including strokes away from
+the header and without a palm resting on the screen. The existing pointer-default,
+CSS and selectstart guards were therefore insufficient on the device.
+
+A mountSketch regression fixture exercises the production DOM listeners, raster
+renderer, Yjs document, and outgoing sync updates. Before the change, native
+touchstart remained uncanceled and selectionchange left a native range intact.
+The regression reports both failures. This reproduces missing safeguards, not the
+iPadOS native recognizer itself; the recording remains the hardware evidence.
+
+The viewport now cancels touchstart/move/end through non-passive capture listeners,
+without adding a second touch drawing path. Pointer Events still own drawing,
+one-finger panning and two-finger navigation. Selectionchange removes stray ranges
+while the modal is mounted, except when a text field has focus. Context menus are
+blocked across the modal except inside editable fields. Compatibility mouse
+selection defaults are blocked on the viewport; explicit WebKit selection and
+callout properties cover the paper and header descendants. Every new listener is
+removed on disposal. Toolbar touch defaults remain available for normal clicks.
+
+Five regression checks cover 40 rapid strokes committed once each, native selection
+cleanup with text-field exceptions, cancellation recovery and palm priority,
+Pointer Event pan/zoom, toolbar taps and disposal. The cancellation/recovery check
+already passed with the earlier input state machine; it did not need another
+state-machine change. Actual iPad Pencil/Scribble behavior requires retesting.
+
+Apple's [canvas input guidance](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/HTML-canvas-guide/AddingMouseandTouchControlstoCanvas/AddingMouseandTouchControlstoCanvas.html)
+describes canceling native touch defaults. [WebKit issue 249223](https://bugs.webkit.org/show_bug.cgi?id=249223)
+reports native iOS selections despite event cancellation. These sources support
+the extra safeguards; they do not establish the exact internal cause on the
+user's current iPadOS version.
