@@ -65,7 +65,12 @@ function build(view, bridge, images) {
         if (node.name === 'Emphasis') ranges.push(Decoration.mark({class:'design-docs-emphasis'}).range(node.from,node.to));
         if (node.name === 'InlineCode') ranges.push(Decoration.mark({class:'design-docs-code'}).range(node.from,node.to));
         if (cursorLines.has(line.number)) return;
-        if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark)$/.test(node.name)) ranges.push(Decoration.replace({}).range(node.from,node.to));
+        if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark)$/.test(node.name)) {
+            // An ATX marker's separator belongs to its syntax, not the rendered title.
+            const separator=node.name==='HeaderMark'&&/^ATXHeading/.test(node.node.parent?.name??'')&&node.from===line.from
+                ? /^[ \t]*/.exec(doc.sliceString(node.to,line.to))[0].length:0;
+            ranges.push(Decoration.replace({}).range(node.from,node.to+separator));
+        }
         if (node.name === 'Link' && doc.lineAt(node.to).number === line.number) {
             const raw = doc.sliceString(node.from,node.to), match = /^\[([^\]]+)\]\(([^\s)]+)\)$/.exec(raw);
             if (match && isSafeUrl(match[2])) { ranges.push(Decoration.replace({widget:(/^[^:#?]+\.md(?:#.*)?$/i.test(match[2])?new WikiLink(match[2],match[1],bridge):new Link(match[1],match[2],bridge))}).range(node.from,node.to)); return false; }
