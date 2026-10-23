@@ -1,0 +1,21 @@
+<MudDialog>
+    <DialogContent>
+        <MudSelect T="string" Label="Paper size" @bind-Value="_paper" Class="mb-4">
+            @foreach(var size in new[]{"A3","A4","A5","Letter"}){<MudSelectItem Value="@size">@size</MudSelectItem>}
+        </MudSelect>
+        <MudSelect T="string" Label="Orientation" @bind-Value="_orientation" Class="mb-4">
+            <MudSelectItem Value='@("portrait")'>Portrait</MudSelectItem><MudSelectItem Value='@("landscape")'>Landscape</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string" Label="Page pattern" @bind-Value="_pattern">
+            @foreach(var pattern in new[]{"empty","grid","notebook","dots"}){<MudSelectItem Value="@pattern">@pattern</MudSelectItem>}
+        </MudSelect>
+    </DialogContent>
+    <DialogActions><MudButton OnClick="Dialog.Cancel">Cancel</MudButton><MudButton Color="Color.Primary" OnClick="Save">Apply</MudButton></DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
+    [Parameter] public SketchPageSettings Settings {get;set;}=new("A4","portrait","empty");
+    private string _paper="A4",_orientation="portrait",_pattern="empty";
+    protected override void OnInitialized(){_paper=Settings.PageSize;_orientation=Settings.Orientation;_pattern=Settings.Pattern;}
+    private void Save()=>Dialog.Close(DialogResult.Ok(new SketchPageSettings(_paper,_orientation,_pattern)));
+}

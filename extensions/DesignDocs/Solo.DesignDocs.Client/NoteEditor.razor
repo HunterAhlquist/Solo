@@ -15,11 +15,14 @@
     @foreach(var p in _presence){<MudChip T="string" Size="Size.Small">@p.DisplayName · @p.Mode</MudChip>}
 </div>
 </div>
-@if(CanWrite){<div class="design-docs-note-tools">
-    <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.AddLink" OnClick="InsertTask">Link a task</MudButton>
-    <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Draw" OnClick="NewSketch">New sketch</MudButton>
-</div>}
+<div class="design-docs-note-body">
+@if(CanWrite){<MudPaper Class="design-docs-note-palette" Elevation="4" role="toolbar" aria-label="Insert into note" aria-keyshortcuts="Alt+Insert">
+    <MudTooltip Text="Link a task"><MudIconButton Icon="@Icons.Material.Filled.AddLink" OnClick="InsertTask" aria-label="Link a task" /></MudTooltip>
+    <MudTooltip Text="New sketch"><MudIconButton Icon="@Icons.Material.Filled.Draw" OnClick="NewSketch" aria-label="New sketch" /></MudTooltip>
+    <MudTooltip Text="Add image"><MudIconButton Icon="@Icons.Material.Filled.AddPhotoAlternate" OnClick="AddImage" aria-label="Add image" /></MudTooltip>
+</MudPaper>}
 <EditorSurface Ready="Mount" />
+</div>
 @code {
     [Parameter] public Guid ProjectId {get;set;}
     [Parameter,EditorRequired] public NoteDto Note {get;set;}=null!;
@@ -36,7 +39,7 @@
             var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
             var hue=slot.Slot*137.508%360;var color=$"oklch(55% .15 {hue.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
             var module=await DesignDocsAssets.ModuleAsync(Js,new DesignDocsApi(Api));_reference=DotNetObjectReference.Create(this);
-            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,color,colorLight=$"oklch(55% .15 {hue.ToString(System.Globalization.CultureInfo.InvariantCulture)} / .2)"}});
+            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,icons=new{close=Icons.Material.Filled.Close,previous=Icons.Material.Filled.ChevronLeft,next=Icons.Material.Filled.ChevronRight,edit=Icons.Material.Filled.Edit,remove=Icons.Material.Filled.Delete},fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,color,colorLight=$"oklch(55% .15 {hue.ToString(System.Globalization.CultureInfo.InvariantCulture)} / .2)"}});
             _subscription=await Live.SubscribeAsync(ProjectId,Topic,async m=>{
                 if(_editor is null||_disposed)return;
                 if(m.Kind is "deleted" or "closed"){await _editor.InvokeVoidAsync("connected",false);await Status("Content unavailable · read-only");return;}
@@ -51,6 +54,7 @@
     [JSInvokable] public Task Status(string value){_status=value;return InvokeAsync(StateHasChanged);}
     [JSInvokable] public Task Focus(bool focused)=>Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
     [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}
+    private Task AddImage()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("chooseImage").AsTask();
     private async Task InsertTask(){
         var task=await TaskPicker.PickAsync(ProjectId,new TaskPickerOptions{IncludeFinished=true,IncludeClosedBoards=true});if(task is null||_editor is null)return;
         var info=await TaskInfo(task.Id.ToString());await _editor.InvokeVoidAsync("insert",$"[{info.Serial}](/docs/task/{task.Id:N})");

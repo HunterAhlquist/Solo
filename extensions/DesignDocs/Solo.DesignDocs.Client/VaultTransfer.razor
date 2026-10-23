@@ -3,7 +3,6 @@
 @inject IJSRuntime Js
 @inject ISnackbar Snackbar
 <div class="design-docs-transfer">
-    <MudButton Size="Size.Small" Disabled="@_busy" StartIcon="@Icons.Material.Filled.Download" OnClick="Export">Export zip</MudButton>
     @if(_busy){<MudProgressCircular Indeterminate="true" Size="Size.Small" /><MudButton OnClick="Cancel">Cancel</MudButton>}
     <MudText Typo="Typo.caption" role="status">@_progress</MudText>
 </div>
@@ -11,7 +10,8 @@
     [Parameter]public Guid ProjectId {get;set;}
     [Parameter,EditorRequired]public TreeDto Tree {get;set;}=null!;
     private VaultTransferSession? _session;private bool _busy;private string _progress="";
-    private async Task Export(){
+    public async Task Export(){
+        if(_busy)return;
         _busy=true;
         try {
             if(_session is not null)await _session.DisposeAsync();

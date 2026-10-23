@@ -862,3 +862,35 @@ previously approved hardware exception.
 Browser automation confirmed native hierarchy moves and photo moves. A separate
 sketch drag out of a mixed stack still needs manual confirmation: the automation
 started the native drag but did not deliver a drop event at the target.
+
+### Second feedback round
+
+The user supplied an Obsidian reference for reading margins and requested a floating
+insertion palette, MudBlazor controls, 64-pixel attachment previews, wider image fans,
+viewer-only removal, and export in the header menu. The note tree keeps disclosure
+carets only for folders; the redundant Move to menu entry is removed.
+
+The sketch view uses tool/color/brush palettes at the upper left, history at the
+upper right, and zoom/fit icons at the lower right. Page settings use a dialog.
+Fit reserves room for these overlays; the separate Rotate view button is removed,
+while continuous touch/trackpad rotation remains available. Theme-font text is
+painted live under its transparent input, so committing text does not switch its
+font or layout. Box and lasso selection show bounds and preview moved content
+before the drag is committed. Paper and floating surfaces use 50% backgrounds.
+
+Clear plays the user-requested transparent Deltarune explosion and sound, clears
+ink/text halfway through its 1.19-second animation, and remains undoable. Reduced
+motion skips the animation. Source revision and attribution are packaged in
+`NOTICE.txt`; these game assets are separate from Solo's code license.
+
+Validation: 38 JavaScript tests cover media deletion guards, box/lasso selection,
+and moving selected cut pieces without changing unrelated objects. Browser checks
+confirmed the reading margins, 64×64 contain sizing, pointer/typing palette behavior,
+folder-only disclosure carets, menu actions, theme-font live text, multi-object move
+bounds, page settings, and the transparent Clear animation. API readback confirmed
+Clear changed two strokes and one text object to zero, and Undo restored all three.
+Physical iPad/Pencil and iPadOS backgrounding checks remain pending.
+
+The final extension suite passed all 40 C# tests. A screenshot comparison confirmed
+the theme text's glyph geometry stays unchanged after leaving its input. Clear uses
+a same-origin audio URL to preserve the host's existing media CSP.

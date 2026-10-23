@@ -47,10 +47,11 @@ export class Images {
         button.className=entries.length>1?'design-docs-image-stack':'design-docs-image-card';
         button.setAttribute('aria-label',entries.length>1?`Open ${entries.length} attachments`:`Open ${entries[0].path}`);
         button.draggable=this.canWrite;
+        button.style.width=`${84+Math.min(entries.length-1,7)*24}px`;
         const references=entries.map(e=>this.actions.reference?.(e)??e),entry={button,entries};this.cards.add(entry);
         for(const [index,item] of entries.entries()){
             const img=document.createElement('img');img.alt=item.path;img.draggable=this.canWrite;img.dataset.mediaIndex=String(index);
-            img.style.transform=`translate(${index%3*5}px,${index%3*3}px) rotate(${imageAngle(item.path)}deg)`;img.style.zIndex=index;
+            img.style.transform=`translate(${Math.min(index,7)*24}px,${index%2*6}px) rotate(${imageAngle(item.path)*(entries.length>1?2:1)}deg)`;img.style.zIndex=index;
             this.resolve(item.path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable: ${item.path}`;});button.append(img);
         }
         if(entries.length>1){const count=document.createElement('span');count.className='design-docs-stack-count';count.textContent=String(entries.length);button.append(count);}
@@ -79,15 +80,17 @@ export class Images {
         const image=document.createElement('img');image.draggable=false;
         const caption=document.createElement('p');caption.className='design-docs-viewer-error';caption.hidden=true;
         const footer=document.createElement('footer');
-        const control=(text,name,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.setAttribute('aria-label',name);b.onclick=action;return b;};
-        const close=control('×','Close viewer',()=>dialog.close());close.className='design-docs-viewer-close';
-        const previous=control('‹','Previous attachment',()=>show(index-1));previous.className='design-docs-viewer-previous';
-        const next=control('›','Next attachment',()=>show(index+1));next.className='design-docs-viewer-next';
-        const edit=control('Edit sketch','Edit sketch',async()=>{
+        const control=(icon,name,action)=>{const b=document.createElement('button');b.type='button';b.className='mud-button-root mud-icon-button mud-icon-button-size-medium mud-ripple';b.setAttribute('aria-label',name);b.title=name;b.onclick=action;
+            const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('mud-icon-root','mud-svg-icon');
+            svg.innerHTML=this.actions.icons?.[icon]??'';b.append(svg);return b;};
+        const close=control('close','Close viewer',()=>dialog.close());close.classList.add('design-docs-viewer-close');
+        const previous=control('previous','Previous attachment',()=>show(index-1));previous.classList.add('design-docs-viewer-previous');
+        const next=control('next','Next attachment',()=>show(index+1));next.classList.add('design-docs-viewer-next');
+        const edit=control('edit','Edit sketch',async()=>{
             const path=items[index].path;
             dialog.close();await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));await this.refresh();
         });
-        const remove=control('Remove from note','Remove attachment from note',()=>{
+        const remove=control('remove','Remove attachment from note',()=>{
             if(!this.canWrite||!this.actions.remove?.(items[index]))return;
             items.splice(index,1);if(!items.length){dialog.close();return;}show(Math.min(index,items.length-1));
         });

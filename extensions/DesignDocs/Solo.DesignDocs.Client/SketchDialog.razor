@@ -4,7 +4,43 @@
 @inject IJSRuntime Js
 @inject IDialogService Dialogs
 <MudDialog Class="design-docs-sketch-dialog">
-    <DialogContent><EditorSurface Ready="Mount" /></DialogContent>
+    <DialogContent>
+        <div class="design-docs-sketch-shell">
+            <EditorSurface Ready="Mount" />
+            <MudPaper Class="design-docs-sketch-palette design-docs-sketch-tool-palette" Elevation="4" role="toolbar" aria-label="Drawing tools">
+                @foreach(var item in Tools) {
+                    <MudTooltip Text="@item.Label" Placement="Placement.Right"><MudIconButton Icon="@item.Icon" Color="@(_tool==item.Id?Color.Primary:Color.Default)" Class="@(_tool==item.Id?"is-selected":null)" Disabled="@(!_writable)" OnClick="@(()=>SetTool(item.Id))" aria-label="@item.Label" aria-pressed="@(_tool==item.Id)" /></MudTooltip>
+                }
+                <MudDivider />
+                <MudTooltip Text="Constrain shapes (or hold Shift)" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.AspectRatio" Color="@(_constrain?Color.Primary:Color.Default)" Disabled="@(!_writable)" OnClick="Constrain" aria-label="Constrain shapes" aria-pressed="@_constrain" /></MudTooltip>
+                <MudTooltip Text="Page settings" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.Settings" Disabled="@(!_writable)" OnClick='@(()=>Command("settings"))' aria-label="Page settings" /></MudTooltip>
+                <MudTooltip Text="Export PNG" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.Download" OnClick='@(()=>Command("export"))' aria-label="Export PNG" /></MudTooltip>
+            </MudPaper>
+            <MudPaper Class="design-docs-sketch-palette design-docs-sketch-ink-palette" Elevation="4" role="toolbar" aria-label="Ink and brush size">
+                <div class="design-docs-swatches">
+                    @foreach(var color in new[]{"theme","red","blue","green"}) {
+                        <MudTooltip Text="@(color=="theme"?"Theme ink":color)"><MudIconButton Icon="@Icons.Material.Filled.Circle" Style="@($"color:var(--design-docs-ink-{color})")" Class="@(_ink==color?"is-selected":null)" Disabled="@(!_writable)" OnClick="@(()=>SetInk(color))" aria-label="@(color=="theme"?"Theme ink":color+" ink")" aria-pressed="@(_ink==color)" /></MudTooltip>
+                    }
+                </div>
+                <div class="design-docs-brushes">
+                    @for(var index=0;index<5;index++) {
+                        var level=index;
+                        <MudTooltip Text="@($"Brush size {level+1}")"><MudIconButton Icon="@BrushIcon(level)" Class="@(_level==level?"is-selected":null)" Disabled="@(!_writable)" OnClick="@(()=>SetLevel(level))" aria-label="@($"Brush size {level+1}")" aria-pressed="@(_level==level)" /></MudTooltip>
+                    }
+                </div>
+            </MudPaper>
+            <MudPaper Class="design-docs-sketch-palette design-docs-sketch-history-palette" Elevation="4" role="toolbar" aria-label="Sketch history">
+                <MudTooltip Text="Undo"><MudIconButton Icon="@Icons.Material.Filled.Undo" Disabled="@(!_writable)" OnClick='@(()=>Command("undo"))' aria-label="Undo" /></MudTooltip>
+                <MudTooltip Text="Redo"><MudIconButton Icon="@Icons.Material.Filled.Redo" Disabled="@(!_writable)" OnClick='@(()=>Command("redo"))' aria-label="Redo" /></MudTooltip>
+                <MudTooltip Text="Clear sketch"><MudIconButton Icon="@Icons.Material.Filled.DeleteSweep" Disabled="@(!_writable)" OnClick='@(()=>Command("clear"))' aria-label="Clear sketch" /></MudTooltip>
+            </MudPaper>
+            <MudPaper Class="design-docs-sketch-palette design-docs-sketch-zoom-palette" Elevation="4" role="toolbar" aria-label="View zoom">
+                <MudTooltip Text="Zoom out"><MudIconButton Icon="@Icons.Material.Filled.ZoomOut" OnClick='@(()=>Command("zoomOut"))' aria-label="Zoom out" /></MudTooltip>
+                <MudTooltip Text="Fit page"><MudIconButton Icon="@Icons.Material.Filled.FitScreen" OnClick='@(()=>Command("fit"))' aria-label="Fit page" /></MudTooltip>
+                <MudTooltip Text="Zoom in"><MudIconButton Icon="@Icons.Material.Filled.ZoomIn" OnClick='@(()=>Command("zoomIn"))' aria-label="Zoom in" /></MudTooltip>
+            </MudPaper>
+        </div>
+    </DialogContent>
 </MudDialog>
 @code{
     [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
@@ -12,12 +48,25 @@
     [Parameter] public Guid VaultId {get;set;}
     [Parameter,EditorRequired] public SketchDto Sketch {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
+    private string _tool="pen",_ink="theme";private int _level;private bool _constrain,_writable;
+    private static readonly (string Id,string Label,string Icon)[] Tools=[("pen","Pen",Icons.Material.Filled.Edit),("eraser","Eraser",Icons.Material.Filled.AutoFixNormal),("rectangle","Rectangle",Icons.Material.Filled.CropSquare),("ellipse","Ellipse",Icons.Material.Filled.RadioButtonUnchecked),("select","Box select",Icons.Material.Filled.SelectAll),("lasso","Lasso select",Icons.Material.Filled.Gesture),("text","Text",Icons.Material.Filled.TextFields)];
+    private static string BrushIcon(int level)=>$"<circle cx='12' cy='12' r='{new[]{1,2,3,5,8}[level]}' />";
+    private Task Command(string action,object? value=null)=>_sketch is null?Task.CompletedTask:_sketch.InvokeVoidAsync("command",action,value).AsTask();
+    private async Task SetTool(string value){_tool=value;await Command("tool",value);}
+    private async Task SetInk(string value){_ink=value;await Command("ink",value);}
+    private async Task SetLevel(int value){_level=value;await Command("level",value);}
+    private async Task Constrain(){_constrain=!_constrain;await Command("constrain",_constrain);}
+    [JSInvokable] public Task Writable(bool value){_writable=CanWrite&&value;return InvokeAsync(StateHasChanged);}
+    [JSInvokable] public async Task<SketchPageSettings?> PageSettings(SketchPageSettings settings){
+        var dialog=await Dialogs.ShowAsync<SketchPageDialog>("Sketch page settings",new DialogParameters<SketchPageDialog>{{x=>x.Settings,settings}},new DialogOptions{CloseButton=true,MaxWidth=MaxWidth.ExtraSmall,FullWidth=true});
+        return await dialog.Result is {Canceled:false,Data:SketchPageSettings result}?result:null;
+    }
     private IJSObjectReference? _sketch;private DotNetObjectReference<SketchDialog>? _reference;private IAsyncDisposable? _subscription,_vault;private bool _disposed;
     private async Task Mount(ElementReference root){
         var user=await Api.GetAsync<UserDto>("api/users/me");var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
         var api=new DesignDocsApi(Api);var module=await DesignDocsAssets.ModuleAsync(Js,api);_reference=DotNetObjectReference.Create(this);
         var hue=(slot.Slot*137.508%360).ToString(System.Globalization.CultureInfo.InvariantCulture);
-        _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,name=Sketch.Name,fontUrl=api.Content("pixel-font.png").ToString(),
+        _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,name=Sketch.Name,explosionUrl=api.Content("explosion.gif").ToString(),explosionSoundUrl=api.Content("explosion.wav").ToString(),
             meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,color=$"oklch(65% .15 {hue})"}});
         _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await _sketch.InvokeVoidAsync("connected",false);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},async people=>{if(_sketch is not null&&!_disposed)await _sketch.InvokeVoidAsync("presence",people);});
         _vault=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(VaultId),async m=>{if(m.Kind is "closed" or "deleted"&&_sketch is not null)await _sketch.InvokeVoidAsync("connected",false);});
