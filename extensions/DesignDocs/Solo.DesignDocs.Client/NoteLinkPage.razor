@@ -1,13 +1,21 @@
-@page "/docs/note/{NoteId:guid}"
+@page "/docs/note/{NoteKey}"
 @attribute [Authorize]
+@implements IDisposable
 @inject ISoloClientApi Api
 @inject NavigationManager Navigation
-@if(_error is not null){<MudAlert Severity="Severity.Error">@_error</MudAlert>}else{<MudProgressLinear Indeterminate="true" />}
+@if(_error is not null){<MudAlert Severity="Severity.Error">@_error</MudAlert>}
+else if(_location is {} located){<DesignDocsPage ProjectAlias="@located.ProjectAlias" VaultId="located.VaultId" InitialNoteId="located.NoteId" />}
+else{<MudProgressLinear Indeterminate="true" />}
 @code {
-    [Parameter] public Guid NoteId {get;set;}
-    private string? _error;
-    protected override async Task OnParametersSetAsync(){try{
-        var n=await Api.GetAsync<LocateDto>($"api/ext/design-docs/notes/{NoteId}/locate");
-        Navigation.NavigateTo($"/docs/{n.ProjectAlias}/{n.VaultId}?note={NoteId}"+new Uri(Navigation.Uri).Fragment,replace:true);
-    }catch(SoloApiException){_error="Note not found or unavailable.";}}
+    [Parameter] public string NoteKey {get;set;}="";
+    private string? _error;private LocateDto? _location;private Guid? _loaded;private long _generation;
+    protected override async Task OnParametersSetAsync(){
+        if(!NoteAddress.TryDecode(NoteKey,out var id)){_generation++;_loaded=null;_location=null;_error="Note not found or unavailable.";return;}
+        if(NoteKey!=NoteAddress.Encode(id)){_generation++;_error=null;Navigation.NavigateTo(NoteAddress.Url(id)+new Uri(Navigation.Uri).Fragment,replace:true);return;}
+        if(_loaded==id&&_location is not null){_error=null;return;}
+        var generation=++_generation;_loaded=id;_error=null;
+        try{var located=await Api.GetAsync<LocateDto>($"api/ext/design-docs/notes/{id}/locate");if(generation==_generation)_location=located;}
+        catch(SoloApiException){if(generation==_generation)_error="Note not found or unavailable.";}
+    }
+    public void Dispose()=>_generation++;
 }

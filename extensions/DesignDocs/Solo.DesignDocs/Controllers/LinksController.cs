@@ -24,13 +24,13 @@ public sealed class LinksController(DesignDocsDbContext db, ISoloQuery query) : 
     {
         var projects=(await query.ProjectsAsync(ct)).Select(p=>p.Id).ToArray();
         var urls=r.Urls.Where(u=>u is not null&&u.Length<2048&&u.StartsWith("/docs/note/",StringComparison.Ordinal)).Distinct().ToList();
-        var ids=urls.Select(u=>u[11..].Split('#')[0]).Select(s=>Guid.TryParse(s,out var id)?id:Guid.Empty).ToList();
+        var ids=urls.Select(u=>u[11..].Split('#')[0]).Select(s=>NoteAddress.TryDecode(s,out var id)?id:Guid.Empty).ToList();
         var notes=await (from n in db.Notes join v in db.Vaults on n.VaultId equals v.Id
             where ids.Contains(n.Id)&&projects.Contains(v.ProjectId) select n).ToDictionaryAsync(n=>n.Id,ct);
         var labels=new Dictionary<string,string>();
         foreach(var url in urls) {
             var parts=url[11..].Split('#',2);
-            if(!Guid.TryParse(parts[0],out var id)||!notes.TryGetValue(id,out var n)) continue;
+            if(!NoteAddress.TryDecode(parts[0],out var id)||!notes.TryGetValue(id,out var n)) continue;
             var heading=parts.Length==2?(JsonSerializer.Deserialize<HeadingDto[]>(n.Headings)??[]).FirstOrDefault(h=>h.Slug==parts[1]):null;
             labels[url]=heading is null?n.Name:$"{n.Name} › {heading.Text}";
         }

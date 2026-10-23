@@ -44,3 +44,12 @@ test('list markers stay formatted until the caret directly touches their source 
         assert.equal(markers(make(marker.to+1)).length,atEnd.length);
     }
 });
+test('video embeds are never passed to the photo card/image loader',()=>{
+    for(const doc of ['![[clip.mp4]]','![](media/demo.MOV)','![[clip.webm|640]]']){
+        const found=widgets(doc,doc.length);assert.equal(found.filter(x=>x.widget.constructor.name==='MediaCard').length,0,doc);
+    }
+});
+test('an unsupported video stays separate from neighboring supported photos',()=>{
+    const doc='![[one.png]] ![[clip.mp4]] ![[two.png]]\n\nbody',found=widgets(doc,doc.length);
+    assert.equal(found.filter(x=>x.widget.constructor.name==='MediaCard').length,2);assert.equal(found.filter(x=>x.widget.kind==='video').length,1);
+});

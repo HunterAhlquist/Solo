@@ -4,7 +4,7 @@ const utf8=new TextEncoder();
 test('import keeps BOM, CRLF, front matter and dataview text unchanged',()=>{
     const original='\uFEFF---\r\ntitle: Café\r\n---\r\n# Note\r\n```dataview\r\nLIST\r\n```\r\n';
     const plan=inspectZip(zipSync({'Note.md':utf8.encode(original),'.obsidian/config.json':utf8.encode('{}'),'Board.canvas':utf8.encode('{}'),'Drawing.excalidraw.md':utf8.encode('drawing')}));
-    assert.equal(plan.notes.length,1);assert.equal(plan.notes[0].markdown,original);assert.deepEqual(utf8.encode(markdownFromState({seedMarkdown:plan.notes[0].markdown,updates:[]})),utf8.encode(original));assert.equal(plan.skipped.length,3);
+    assert.equal(plan.notes.length,1);assert.equal(plan.notes[0].markdown,original);assert.deepEqual(utf8.encode(markdownFromState({seedMarkdown:plan.notes[0].markdown,updates:[]})),utf8.encode(original));assert.equal(plan.skipped.length,2);
 });
 test('only embedded images import and percent paths resolve',()=>{
     const zip=zipSync({'Folder/Note.md':utf8.encode('![[pictures/a b.png]] ![](../pictures/a%20b.png)'), 'pictures/a b.png':new Uint8Array([1]),'unused.png':new Uint8Array([2])});
@@ -28,3 +28,11 @@ test('image-like text in code blocks is preserved without importing that image',
     const plan=inspectZip(zipSync({'A.md':utf8.encode('```dataview\n![[unused.png]]\n```\n'), 'unused.png':new Uint8Array([1])}));assert.equal(plan.images.length,0);assert.ok(plan.notes[0].markdown.includes('![[unused.png]]'));
 });
 test('external embeds do not accidentally resolve to a local basename',()=>{assert.equal(resolvePath(['x.png'],'https://outside.test/x.png'),null);});
+test('video imports warn once and never classify the embed as a missing photo',()=>{
+    const text='![[clip.mp4]]\n![](media/demo.MOV)\n',plan=inspectZip(zipSync({'Note.md':utf8.encode(text),'clip.mp4':new Uint8Array([1]),'media/demo.MOV':new Uint8Array([2])}));
+    assert.equal(plan.notes[0].markdown,text);assert.equal(plan.images.length,0);assert.equal(plan.skipped.filter(s=>/video/i.test(s)).length,2);assert.ok(!plan.skipped.some(s=>s.includes('image missing')));
+});
+test('common vault and OS metadata is silently ignored, including AppleDouble notes',()=>{
+    const entries={'Note.md':utf8.encode('Keep this')};for(const path of ['.DS_Store','__MACOSX/._Note.md','Nested/._Note.md','Nested/.DS_Store','.obsidian/workspace.json','.git/config','Thumbs.db','desktop.ini','.AppleDouble/Note.md'])entries[path]=new Uint8Array([0]);
+    const plan=inspectZip(zipSync(entries));assert.deepEqual(plan.notes.map(n=>n.path),['Note.md']);assert.deepEqual(plan.skipped,[]);
+});

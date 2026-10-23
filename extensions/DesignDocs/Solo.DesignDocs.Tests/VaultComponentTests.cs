@@ -90,4 +90,12 @@ public sealed class VaultComponentTests : ComponentTestBase
         Assert.DoesNotContain("A very long hidden title",cut.Markup);
     }
 
+    [Fact]
+    public void The_open_note_is_marked_current_without_highlighting_its_folder() {
+        var folder=Guid.NewGuid();var note=Guid.NewGuid();
+        var cut=Render<DocTreeBranch>(p=>p.Add(x=>x.Entries,new List<DocTreeEntry>{new(folder,true,null,"Folder",1),new(note,false,folder,"Current note",1)})
+            .Add(x=>x.OpenFolders,new HashSet<Guid>{folder}).Add(x=>x.SelectedNoteId,note));
+        var current=Assert.Single(cut.FindAll("button[aria-current=page]"));Assert.Equal("Current note",current.GetAttribute("title"));
+        Assert.Single(cut.FindAll(".design-docs-tree-row.is-current"));
+    }
 }
