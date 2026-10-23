@@ -135,6 +135,7 @@
 
 .design-docs-sketch-dialog { background-color:var(--mud-palette-surface); -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 .design-docs-sketch-dialog .mud-dialog-title { touch-action:none; }
+.design-docs-sketch-dialog .mud-dialog-title *,.design-docs-sketch-viewport,.design-docs-sketch-viewport canvas { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 .design-docs-sketch-dialog textarea,.design-docs-sketch-dialog input { -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
 .design-docs-sketch-tool-palette { max-height:calc(100% - 80px); overflow-y:auto; }
 
