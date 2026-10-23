@@ -1,17 +1,18 @@
 @implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Routing
 @inject ISoloClientApi Api
 @inject ISoloLiveTopics Live
 @inject IDialogService Dialogs
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
-@if(_error is not null) { <MudText Color="Color.Error">@_error</MudText> }
+@if(_error is not null) { <MudText Typo="Typo.caption" Color="Color.Error" Class="px-4 py-1 d-block">@_error</MudText> }
 else if(_list is null) { <MudProgressLinear Indeterminate="true" /> }
 else {
-    @if(_list.Vaults.Any(v=>v.IsClosed)) { <MudSwitch T="bool" @bind-Value="_closed" Label="Show closed" /> }
+    @if(!Compact&&_list.Vaults.Any(v=>v.IsClosed)) { <MudSwitch T="bool" @bind-Value="_closed" Label="Show closed" /> }
     <div class="@(Compact?"":"design-docs-vault-list")">
     @foreach(var vault in _list.Vaults.Where(v=>_closed||!v.IsClosed)) {
         @if(Compact) {
-            <MudNavLink Href="@Href(vault.Id)" Icon="@Icons.Material.Filled.Description">@vault.Name @(vault.IsClosed?"(closed)":"")</MudNavLink>
+            <MudNavLink Href="@Href(vault.Id)" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Description">@vault.Name @(vault.IsClosed?"(closed)":"")</MudNavLink>
         } else {
             <MudPaper Class="pa-4" Outlined="true" Elevation="0">
                 <MudLink Href="@Href(vault.Id)">@vault.Name</MudLink>
@@ -20,8 +21,11 @@ else {
         }
     }
     </div>
-    @if(!_list.Vaults.Any(v=>_closed||!v.IsClosed)) { <MudText Typo="Typo.body2" Class="pa-2">No open design docs.</MudText> }
-    @if(_list.CanManage) { <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="Create">New design doc</MudButton><MudButton OnClick="CreateFromZip">New from Obsidian zip</MudButton> }
+    @if(!_list.Vaults.Any(v=>_closed||!v.IsClosed)) { <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1 d-block">No open design docs.</MudText> }
+    @if(_list.CanManage) {
+        @if(Compact) { <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__muted" OnClick="Create">New design doc</MudNavLink> }
+        else { <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="Create">New design doc</MudButton> }
+    }
 }
 @code {
     [Parameter,EditorRequired] public ProjectSummaryDto Project {get;set;}=null!;
@@ -35,12 +39,19 @@ else {
         _loaded=Project.Id;await Load();_subscription=await Live.SubscribeAsync(Project.Id,DocTopics.Vaults,_=>InvokeAsync(async()=>{await Load();StateHasChanged();}));
     }
     private async Task Load() {try {_list=await Api.GetAsync<VaultListDto>(Root);_error=null;}catch(SoloApiException e){_error=e.Message;}}
-    private Task Create()=>CreateCore(false);
-    private Task CreateFromZip()=>CreateCore(true);
-    private async Task CreateCore(bool importZip) {
-        var name=await DocDialogs.Name(Dialogs,"New design doc");if(name is null) return;
-        try {var v=await Api.SendAsync<VaultDto>(HttpMethod.Post,Root,new NameRequest(name));Navigation.NavigateTo(Href(v.Id)+(importZip?"?import=true":""));}
-        catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}
+    protected override void OnInitialized() {
+        DesignDocsNavEvents.Changed+=Changed;
+        Navigation.LocationChanged+=Navigated;
     }
-    public async ValueTask DisposeAsync(){if(_subscription is not null)await _subscription.DisposeAsync();}
+    private bool _disposed;
+    private void Changed(Guid projectId){if(projectId==Project.Id)_=Refresh();}
+    private void Navigated(object? sender,LocationChangedEventArgs e)=>_=Refresh();
+    private Task Refresh()=>InvokeAsync(async()=>{if(_disposed)return;await Load();if(!_disposed)StateHasChanged();});
+    private async Task Create() {
+        var dialog=await Dialogs.ShowAsync<CreateVaultDialog>("New design doc",new DialogParameters<CreateVaultDialog>{{x=>x.ProjectId,Project.Id}});
+        if(await dialog.Result is not {Canceled:false,Data:VaultDto vault})return;
+        DesignDocsNavEvents.Raise(Project.Id);
+        Navigation.NavigateTo(Href(vault.Id));
+    }
+    public async ValueTask DisposeAsync(){_disposed=true;DesignDocsNavEvents.Changed-=Changed;Navigation.LocationChanged-=Navigated;if(_subscription is not null)await _subscription.DisposeAsync();}
 }

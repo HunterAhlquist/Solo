@@ -28,6 +28,8 @@ jobs:
       server: ${{ steps.diff.outputs.server }}
       version: ${{ steps.channel.outputs.version }}
       prerelease: ${{ steps.channel.outputs.prerelease }}
+      preview_channel: ${{ steps.channel.outputs.preview_channel }}
+      package_label: ${{ steps.channel.outputs.package_label }}
       mcp: ${{ steps.diff.outputs.mcp }}
       roadmap: ${{ steps.diff.outputs.roadmap }}
       design_docs: ${{ steps.diff.outputs.design_docs }}
@@ -313,7 +315,7 @@ jobs:
           # the anchored minor pattern admits stable server tags only.
           tags: |
             type=raw,value=latest,enable=${{ needs.changes.outputs.prerelease != 'true' }}
-            type=raw,value=preview,enable=${{ needs.changes.outputs.prerelease == 'true' }}
+            type=raw,value=${{ needs.changes.outputs.preview_channel }},enable=${{ needs.changes.outputs.prerelease == 'true' }}
             type=raw,value=${{ needs.changes.outputs.version }}
             type=match,pattern=server-v(\d+\.\d+)\.\d+$,group=1
             type=sha,prefix=sha-
@@ -379,6 +381,16 @@ jobs:
         with:
           name: design-docs-extension
           path: artifacts
+
+      - name: Label agent preview packages
+        if: needs.changes.outputs.package_label != ''
+        env:
+          PACKAGE_LABEL: ${{ needs.changes.outputs.package_label }}
+        run: |
+          shopt -s nullglob
+          for package in artifacts/solo-*.zip; do
+            mv "$package" "${package%.zip}-$PACKAGE_LABEL.zip"
+          done
 
       # A changed server still gets release notes when no extension changed;
       # an already-published package is not attached again.

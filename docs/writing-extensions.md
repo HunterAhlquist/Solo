@@ -1006,3 +1006,18 @@ bulk uploaders can pace retries after a 429. Fetch
 members-only images through this API and create/revoke object URLs in JavaScript.
 Both browser and desktop CSPs permit `blob:` images; uploaded files still need
 an isolated response policy and authorization on every fetch.
+
+## Contract 1.11: page workspaces and reference pickers
+
+Client pages can inject `ISoloWorkspace` and keep the lease returned by
+`Enter(new WorkspaceOptions(FullWidth: true, FillHeight: true,
+CollapseNavigation: true))`. Dispose it when the page leaves. The host removes
+its readable-width cap and footer for a page that fills the available height;
+the page supplies its own scrolling. Navigation collapses on entry, and the
+person can reopen it with the normal menu button. Leaving restores the prior
+layout. Nested leases restore the previous workspace's options.
+
+A task picker used to reference existing work can initially include finished
+tasks and closed boards with `new TaskPickerOptions { IncludeFinished = true,
+IncludeClosedBoards = true }`. The person can still change those filters.
+Scheduling pickers keep their existing defaults.

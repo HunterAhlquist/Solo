@@ -829,3 +829,36 @@ Bug reports and forums, for browser behavior with no official page: [Apple Devel
   ambiguous in the editor. Image resolution now uses the note directory after
   exact vault paths and before a unique basename; its regression test also
   rejects external targets. Package 1.0.7 is included in preview build 2.
+
+## First feedback round — Codex preview
+
+The feedback build moves to client contract 1.11 for a general-purpose workspace
+lease and initial task-picker filters. Design Docs remains removable: the host
+layout names no extension. The editor uses the available page width and height,
+with line-number gutters and its own scroll area; entering a vault collapses
+main navigation, and the normal navigation button can reopen it.
+
+Vault lists refresh for local mutations and navigation as well as remote live
+messages. Creation uses the same sidebar link treatment as boards/roadmaps.
+Obsidian ZIP selection, review, and import happen only inside the new design doc
+dialog; existing vaults offer export only.
+
+Media remains rendered on the selected line. Media-only lines form photo/sketch
+stacks, with a fullscreen viewer, previous/next buttons at opposite edges,
+Left/Right keys, swipe navigation, and removal of the selected embed. Removal
+keeps the stored attachment so undo restores it. Relative Yjs positions keep
+viewer actions attached to the correct occurrence during concurrent editing.
+Cards can be dragged to move their embeds; notes and folders have drag handles
+with native mouse dragging and touch dragging, including a root drop target.
+
+Sketch editing is fullscreen with only the top-right close control. The view
+supports continuous zoom and rotation, superseding B8's original integer zoom
+rule: scroll pans, Ctrl/Cmd + scroll zooms, Alt + scroll rotates, Shift + scroll
+pans horizontally, and Space + drag pans. Two-finger transforms and Safari's
+trackpad gesture events use the same anchored transform. Physical iPad/Pencil,
+Scribble, palm rejection, and backgrounding checks remain pending under the
+previously approved hardware exception.
+
+Browser automation confirmed native hierarchy moves and photo moves. A separate
+sketch drag out of a mixed stack still needs manual confirmation: the automation
+started the native drag but did not deliver a drop event at the target.

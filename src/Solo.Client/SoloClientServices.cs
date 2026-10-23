@@ -70,6 +70,8 @@ public static class SoloClientServices
         services.AddScoped<ISoloTaskDrawer>(sp => sp.GetRequiredService<TaskDrawerService>());
         // The task picker, for the same reason: its dialog is core's to draw.
         services.AddScoped<ISoloTaskPicker, TaskPickerService>();
+        services.AddScoped<WorkspaceState>();
+        services.AddScoped<ISoloWorkspace>(sp => sp.GetRequiredService<WorkspaceState>());
         // The context menu: core's to draw, and only core can ask the desktop
         // shell for a native one. ContextMenuHost renders what this holds.
         services.AddScoped<ContextMenuService>();

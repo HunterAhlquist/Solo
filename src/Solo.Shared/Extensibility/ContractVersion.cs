@@ -63,10 +63,12 @@ namespace Solo.Shared.Extensibility;
 /// <para>1.10.0 adds client-sent live topic messages and refreshed sender roles,
 /// markdown editor actions and link labels, and authenticated binary API calls.
 /// Both server and client contracts changed.</para>
+/// <para>1.11.0 adds scoped client workspace layout requests and initial task
+/// picker filters for reference pickers that include completed work.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.10.0";
+    public const string Current = "1.11.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

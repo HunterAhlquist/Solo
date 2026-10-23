@@ -1,0 +1,54 @@
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject IJSRuntime Js
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" AutoFocus="true" Immediate="true" MaxLength="200" Variant="Variant.Outlined" Disabled="@(_busy||_created is not null)" />
+        @if(_created is null) {
+            <MudButton Class="mt-3" StartIcon="@Icons.Material.Filled.UploadFile" Disabled="@_busy" OnClick="ChooseZip">@(_summary is null?"Import an Obsidian vault (.zip)…":"Choose another Obsidian zip…")</MudButton>
+        }
+        @if(_summary is not null) {
+            <MudText Class="mt-2">@_summary.Notes notes and @_summary.Images embedded images will be imported.</MudText>
+            @if(_summary.Skipped.Count>0) {
+                <MudExpansionPanels><MudExpansionPanel Text="@($"Skipped files ({_summary.Skipped.Count})")">
+                    @foreach(var item in _summary.Skipped.Take(100)){<MudText Typo="Typo.body2">@item</MudText>}
+                </MudExpansionPanel></MudExpansionPanels>
+            }
+        }
+        @if(_error is not null){<MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert>}
+        @if(_busy){<MudProgressLinear Indeterminate="true" Class="mt-3" />}
+        <MudText Typo="Typo.caption" role="status">@_progress</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Disabled="@_busy" OnClick="Dialog.Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Disabled="@(_busy||string.IsNullOrWhiteSpace(_name)||(_summary is {Notes:0}&&_created is null))" OnClick="Create">@(_created is not null?"Open design doc":"Create")</MudButton>
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
+    [Parameter] public Guid ProjectId {get;set;}
+    private string _name="",_progress="";private string? _error;private bool _busy;
+    private VaultTransferSession? _transfer;private ImportSummary? _summary;private VaultDto? _created;
+    private async Task ChooseZip(){
+        _busy=true;_error=null;
+        try {
+            if(_transfer is not null)await _transfer.DisposeAsync();
+            _transfer=new(Api,Js,ProjectId,_name,text=>InvokeAsync(()=>{_progress=text;StateHasChanged();}));
+            _summary=await _transfer.InspectAsync();
+        }catch(Exception e)when(e is JSException or HttpRequestException){_error=e.Message;}
+        finally{_busy=false;}
+    }
+    private async Task Create(){
+        if(_created is not null){Dialog.Close(DialogResult.Ok(_created));return;}
+        _busy=true;_error=null;
+        try {
+            _created=await Api.SendAsync<VaultDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/vaults",new NameRequest(_name.Trim()));
+            DesignDocsNavEvents.Raise(ProjectId);
+            if(_summary is not null&&_transfer is not null)await _transfer.ImportAsync(_created.Id);
+            Dialog.Close(DialogResult.Ok(_created));
+        }catch(Exception e)when(e is SoloApiException or JSException or HttpRequestException or OperationCanceledException){
+            _error=_created is null?e.Message:"Import stopped. The design doc and files already imported were kept. Open it to review them.";
+        }finally{_busy=false;}
+    }
+    public async ValueTask DisposeAsync(){if(_transfer is not null)await _transfer.DisposeAsync();}
+}
