@@ -21,7 +21,7 @@ export function mountEditor(root, bridge, options) {
         writable:()=>applyAccess(),
         status:message=>bridge.invokeMethodAsync('Status',message),
         copy:(text,seq)=>bridge.invokeMethodAsync('Copy',text,seq,headings(text)),
-        unseeded:markdown=>{fallback.textContent=markdown;editorRoot.hidden=true;},
+        unseeded:markdown=>{fallback.textContent=markdown;editorRoot.hidden=true;bridge.invokeMethodAsync('Ready');},
     });
     const insert=text=>{if(!provider.canWrite)return;const r=view.state.selection.main;view.dispatch({changes:{from:r.from,to:r.to,insert:text},selection:{anchor:r.from+text.length}});if(!suspended)view.focus();};
     const text=provider.doc.getText('markdown');
@@ -97,6 +97,7 @@ export function mountEditor(root, bridge, options) {
         async receive(kind,data) {
             await provider.receive(kind,data);
             if(kind==='state'||kind==='update'){fallback.textContent='';editorRoot.hidden=false;}
+            if(kind==='synced')await bridge.invokeMethodAsync('Ready');
             if(kind==='synced' && options.fragment) {
                 let target=options.fragment.replace(/^#/,'');try{target=decodeURIComponent(target);}catch{}options.fragment=null;
                 const content=provider.doc.getText('markdown').toString(), list=headings(content);

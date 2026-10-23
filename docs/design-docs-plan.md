@@ -1125,3 +1125,37 @@ reopening. A native Mac desktop fixture verifies glass, title spacing, and
 restoration of a nested note, 125% font scale, 10% margins, and folder states after
 quitting and reopening. Physical Windows titlebar and iPad/Pencil/Force Touch
 checks remain pending under the existing hardware exception.
+
+
+## Layout and loading feedback (Codex preview 12)
+
+The displayed vault identity is separate from incoming route parameters. Compact
+note resolution no longer falls through to the vault list while awaiting the API.
+The previous note stays mounted beneath a darkened blur and circular progress
+indicator confined to the Markdown pane. A hidden incoming editor becomes visible
+only after its sync completes; keyed surfaces avoid remounting it at that point.
+Late sync completion from a superseded navigation cannot select an older note.
+
+Hierarchy caret buttons have square hit areas and round hover backgrounds. Row
+highlights have a small left inset from the folder guide, include that inset in
+their total width, and retain their selected edge inside the sidebar. Action
+buttons align with the root's expand/collapse control. Add Note/Folder is centered.
+Native modal titles and right controls share the desktop's 70-pixel titlebar axis.
+
+The attachment viewer expands the clicked photo or sketch from its thumbnail,
+then returns to the current thumbnail on dismissal. The background wash and native
+content blur fade with the movement. The selected thumbnail moves to the front
+before the wash appears; the full-size image stays hidden until the first animation
+frame, avoiding an intervening flash. Closing during opening reverses from its
+current transform. Reduced-motion preferences disable the transitions.
+
+Validation: 57 C# extension tests and 78 JavaScript tests pass. The compact-route
+loading regression failed before the fix and passes afterward, including retaining
+the editor until sync and ignoring a late superseded sync. Browser checks use an
+artificially delayed note lookup to verify that the tree and vault header stay
+visible while only the content pane is covered. Measured caret buttons are 24×24;
+all hierarchy action centers align with the root control, with the selected edge
+inside the sidebar. Browser and native Mac checks cover thumbnail expansion,
+return dismissal, carousel keys, and opening the sketch editor after dismissal.
+Native screenshots verify the sketch title and close button in the header row.
+Physical Windows titlebar and iPad/Pencil checks remain pending.

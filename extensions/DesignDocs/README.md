@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.13.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.15.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -71,3 +71,11 @@ preserve every GUID bit; legacy links still work. H4/H5/H6 have heading styles.
 Vault import skips videos with a warning and ignores common OS/vault metadata
 silently. Unsupported video references stay in Markdown and never use the image
 loader. The design record includes a future file/object-storage option for videos.
+
+Note navigation retains the displayed editor until the incoming document finishes
+syncing, with a darkened blur and circular progress indicator confined to the
+Markdown pane. The hierarchy uses round caret hover targets and inset row
+highlights; its action buttons align with expand/collapse-all. Attachment previews
+animate into and out of the slideshow while its background fades. Reduced-motion
+preferences disable these transitions. Native modal headers use the same 70-pixel
+vertical axis as the desktop window controls.

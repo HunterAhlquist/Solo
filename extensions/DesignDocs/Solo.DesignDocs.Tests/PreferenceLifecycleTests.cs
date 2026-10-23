@@ -55,8 +55,22 @@ public sealed class PreferenceLifecycleTests : ComponentTestBase
         module.SetupVoid("saveVaultPreferences",_=>true).SetVoidResult();
         var cut=Render<DesignDocsPage>(p=>p.Add(x=>x.RouteNoteKey,NoteAddress.Encode(first)));
         cut.WaitForAssertion(()=>Assert.Equal(first.ToString(),cut.Find("[data-note]").GetAttribute("data-note")));
-        await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(DesignDocsPage.RouteNoteKey),NoteAddress.Encode(second)}})));
+        await cut.InvokeAsync(()=>cut.FindComponent<Bunit.TestDoubles.Stub<NoteEditor>>().Instance.Parameters.Get(x=>x.OnReady).InvokeAsync());
+        var gate=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);http.Pause=()=>gate.Task;
+        var changing=cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{
+            {nameof(DesignDocsPage.RouteNoteKey),NoteAddress.Encode(second)},
+            {nameof(DesignDocsPage.ProjectAlias),""},{nameof(DesignDocsPage.VaultId),Guid.Empty}})));
+        try{
+            cut.WaitForAssertion(()=>Assert.Equal(first.ToString(),cut.Find("[data-note]").GetAttribute("data-note")));
+            Assert.Single(cut.FindAll(".design-docs-page"));
+        }finally{http.Pause=null;gate.SetResult();}
+        await changing;
+        Assert.Equal(first.ToString(),cut.Find(".is-current [data-note]").GetAttribute("data-note"));
+        Assert.Equal(second.ToString(),cut.Find(".is-pending [data-note]").GetAttribute("data-note"));
+        Assert.Single(cut.FindAll(".design-docs-note-loading"));
+        await cut.InvokeAsync(()=>cut.FindComponents<Bunit.TestDoubles.Stub<NoteEditor>>().Last().Instance.Parameters.Get(x=>x.OnReady).InvokeAsync());
         cut.WaitForAssertion(()=>Assert.Equal(second.ToString(),cut.Find("[data-note]").GetAttribute("data-note")));
+        Assert.Empty(cut.FindAll(".design-docs-note-loading"));
         Assert.Equal(1,workspace.Entered);Assert.Equal(0,workspace.Disposed);
         Assert.Contains("--design-docs-font-scale:150%",cut.Markup);Assert.Contains("--design-docs-margin:15cqw",cut.Markup);
         Assert.Single(module.Invocations,i=>i.Identifier=="loadVaultPreferences");
@@ -66,7 +80,28 @@ public sealed class PreferenceLifecycleTests : ComponentTestBase
         await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(DesignDocsPage.RouteNoteKey),"invalid"}})));
         Assert.Contains("Note not found",cut.Markup);
         await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(DesignDocsPage.RouteNoteKey),NoteAddress.Encode(first)}})));
+        await cut.InvokeAsync(()=>cut.FindComponents<Bunit.TestDoubles.Stub<NoteEditor>>().Last().Instance.Parameters.Get(x=>x.OnReady).InvokeAsync());
         cut.WaitForAssertion(()=>Assert.Equal(first.ToString(),cut.Find("[data-note]").GetAttribute("data-note")));
+    }
+    [Fact]
+    public async Task A_late_sync_for_a_superseded_note_cannot_replace_the_visible_note()
+    {
+        var vault=Guid.NewGuid();
+        NoteDto Note(string name)=>new(Guid.NewGuid(),vault,null,name,"","0",[],null,null,1);
+        var first=Note("First");var second=Note("Second");var third=Note("Third");
+        ComponentFactories.AddStub<NoteEditor>(parameters=>builder=>{builder.OpenElement(0,"span");builder.AddAttribute(1,"data-note",parameters.Get(x=>x.Note)!.Id);builder.CloseElement();});
+        var cut=Render<NoteViewport>(p=>p.Add(x=>x.Note,first).Add(x=>x.CanWrite,true));
+        await cut.InvokeAsync(()=>cut.FindComponent<Bunit.TestDoubles.Stub<NoteEditor>>().Instance.Parameters.Get(x=>x.OnReady).InvokeAsync());
+        await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(NoteViewport.Note),second}})));
+        var late=cut.FindComponents<Bunit.TestDoubles.Stub<NoteEditor>>().Last().Instance.Parameters.Get(x=>x.OnReady);
+        await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(NoteViewport.Note),third}})));
+        await cut.InvokeAsync(()=>late.InvokeAsync());
+        Assert.Equal(first.Id.ToString(),cut.Find(".is-current [data-note]").GetAttribute("data-note"));
+        Assert.Equal(third.Id.ToString(),cut.Find(".is-pending [data-note]").GetAttribute("data-note"));
+        Assert.Single(cut.FindAll(".design-docs-note-loading"));
+        await cut.InvokeAsync(()=>cut.FindComponents<Bunit.TestDoubles.Stub<NoteEditor>>().Last().Instance.Parameters.Get(x=>x.OnReady).InvokeAsync());
+        Assert.Equal(third.Id.ToString(),cut.Find("[data-note]").GetAttribute("data-note"));
+        Assert.Empty(cut.FindAll(".design-docs-note-loading"));
     }
     private sealed class RecordingWorkspace : ISoloWorkspace
     {

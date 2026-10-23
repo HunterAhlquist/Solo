@@ -14,7 +14,7 @@
 <PageTitle>@(_tree?.Vault.Name ?? "Design Docs")</PageTitle>
 @if(_error is not null) { <MudAlert Severity="Severity.Error">@_error</MudAlert> }
 else if(_project is null) { <MudProgressLinear Indeterminate="true" /> }
-else if(VaultId==Guid.Empty) {
+else if(_activeVaultId==Guid.Empty) {
     <MudText Typo="Typo.h4">Design Docs</MudText>
     <VaultList Project="_project" />
 } else if(_tree is not null&&_preferencesLoaded) {
@@ -43,7 +43,7 @@ else if(VaultId==Guid.Empty) {
             }
         </MudMenu>
     </div>
-    <VaultTransfer @ref="_transfer" @key="VaultId" ProjectId="_project.Id" Tree="_tree" />
+    <VaultTransfer @ref="_transfer" @key="_activeVaultId" ProjectId="_project.Id" Tree="_tree" />
     <div class="design-docs-workspace">
         @if(_treeOpen) { <button class="design-docs-tree-backdrop" aria-label="Close note tree" @onclick="@(()=>_treeOpen=false)"></button> }
         <aside class="@($"design-docs-tree {(_treeOpen?"is-open":"")}")" aria-label="Notes">
@@ -53,22 +53,17 @@ else if(VaultId==Guid.Empty) {
                     <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(()=>Add(true,null))">Folder</MudButton>
                 }
             </div>
-            <DocHierarchy @key="VaultId" Entries="Entries" CanWrite="CanEdit" SelectedNoteId="Selected?.Id" OpenFolders="_openFolders" OnExpanded="SetExpanded" OnOpen="Open" OnMenu="Context" OnMove="Drop" OnToggleAll="ToggleFolders" />
+            <DocHierarchy @key="_activeVaultId" Entries="Entries" CanWrite="CanEdit" SelectedNoteId="Selected?.Id" OpenFolders="_openFolders" OnExpanded="SetExpanded" OnOpen="Open" OnMenu="Context" OnMove="Drop" OnToggleAll="ToggleFolders" />
             @if(_tree.Notes.Count==0) { <MudText Typo="Typo.body2" Class="pa-3">No notes yet.</MudText> }
         </aside>
-        <main class="design-docs-note">
-            @if(Selected is {} note) {
-                <MudText Typo="Typo.h4">@note.Name</MudText>
-                @if(note.LastEditedAt is {} edited) { <MudText Typo="Typo.caption" Class="d-block">Last edited by @Author(note.LastEditedBy) · @edited.ToLocalTime().ToString("g")</MudText> }
-                <NoteEditor @key="note.Id" ProjectId="_project.Id" Note="note" CanWrite="CanEdit" />
-            } else { <MudText Class="pa-6" Color="Color.Secondary">Choose a note from the tree.</MudText> }
-        </main>
+        <NoteViewport ProjectId="_project.Id" Note="Selected" CanWrite="CanEdit" Navigating="_navigating" Author="@(Selected is {} selected?Author(selected.LastEditedBy):"")" />
     </div>
     </div>
 } else { <MudProgressLinear Indeterminate="true" /> }
 @code {
     [Parameter] public string? RouteNoteKey {get;set;}
     private Guid? _routeNoteId;private long _routeGeneration;
+    private Guid _activeVaultId;private string _activeAlias="";private bool _navigating;
     [Parameter] public string ProjectAlias {get;set;}="";
     [Parameter] public Guid VaultId {get;set;}
     [SupplyParameterFromQuery(Name="note")] public string? NoteKey {get;set;}
@@ -83,24 +78,28 @@ else if(VaultId==Guid.Empty) {
     private bool CanEdit=>_project is not null&&(_project.IsOwner||_project.Role==ProjectRole.ReadWrite)&&_tree?.Vault.IsClosed==false;
     private VaultTransfer? _transfer;
     private string Root=>$"api/ext/design-docs/projects/{_project!.Id}/vaults";
-    private string Path=>$"{Root}/{VaultId}";
-    private NoteDto? Selected=>_routeNoteId.HasValue||!string.IsNullOrEmpty(NoteKey)?_tree?.Notes.FirstOrDefault(n=>n.Id==NoteId):_tree?.Notes.FirstOrDefault(n=>n.Id==_rememberedNote)??_tree?.Notes.FirstOrDefault();
+    private string Path=>$"{Root}/{_activeVaultId}";
+    private NoteDto? Selected=>_routeNoteId.HasValue?_tree?.Notes.FirstOrDefault(n=>n.Id==NoteId):_tree?.Notes.FirstOrDefault(n=>n.Id==_rememberedNote)??_tree?.Notes.FirstOrDefault();
     private IReadOnlyList<DocTreeEntry> Entries=>_tree is null?[]:_tree.Folders.Select(f=>new DocTreeEntry(f.Id,true,f.ParentId,f.Name,f.Version))
         .Concat(_tree.Notes.Select(n=>new DocTreeEntry(n.Id,false,n.FolderId,n.Name,n.Version))).ToList();
     protected override async Task OnParametersSetAsync() {
-        var routeGeneration=++_routeGeneration;_routeNoteId=null;
+        var routeGeneration=++_routeGeneration;
+        var vaultId=VaultId;var alias=ProjectAlias;Guid? requestedNote=NoteAddress.TryDecode(NoteKey,out var queryNote)?queryNote:null;
+        _navigating=_tree is not null;
         if(RouteNoteKey is not null){
-            if(!NoteAddress.TryDecode(RouteNoteKey,out var id)){_error="Note not found or unavailable.";return;}
+            if(!NoteAddress.TryDecode(RouteNoteKey,out var id)){_navigating=false;_error="Note not found or unavailable.";return;}
             if(RouteNoteKey!=NoteAddress.Encode(id)){Navigation.NavigateTo(NoteAddress.Url(id)+new Uri(Navigation.Uri).Fragment,replace:true);return;}
             try{
                 var located=await Api.GetAsync<LocateDto>($"api/ext/design-docs/notes/{id}/locate");
                 if(routeGeneration!=_routeGeneration||_disposed)return;
-                ProjectAlias=located.ProjectAlias;VaultId=located.VaultId;_routeNoteId=located.NoteId;_error=null;
-            }catch(SoloApiException){if(routeGeneration==_routeGeneration)_error="Note not found or unavailable.";return;}
+                alias=located.ProjectAlias;vaultId=located.VaultId;requestedNote=located.NoteId;_error=null;
+            }catch(SoloApiException){if(routeGeneration==_routeGeneration){_navigating=false;_error="Note not found or unavailable.";}return;}
         }
 
-        var key=$"{ProjectAlias}/{VaultId}";if(_loaded==key){if(_preferencesLoaded)await RememberNote();return;}_loaded=key;
-        var generation=++_loadGeneration;var vaultId=VaultId;var alias=ProjectAlias;_preferencesLoaded=false;
+        var key=$"{alias}/{vaultId}";
+        if(_loaded==key){_routeNoteId=requestedNote;_navigating=false;if(_preferencesLoaded)await RememberNote();return;}
+        _loaded=key;var generation=++_loadGeneration;_preferencesLoaded=false;
+        _activeVaultId=vaultId;_activeAlias=alias;_routeNoteId=requestedNote;
         var previous=_subscription;_subscription=null;if(previous is not null)await previous.DisposeAsync();
         if(generation!=_loadGeneration||_disposed)return;
         _tree=null;_project=null;_error=null;
@@ -124,7 +123,7 @@ else if(VaultId==Guid.Empty) {
                 _preferences=module;_tree=tree;_openFolders=preferences.OpenFolders.ToHashSet();_rememberedNote=preferences.NoteId;_fontScale=preferences.FontScale;_marginWidth=preferences.MarginWidth;
                 // Theme/auth rerenders can arrive while JS is loading. They must never persist defaults.
                 _preferencesLoaded=true;
-                DesignDocsNavEvents.Activate(_project.Id,VaultId);
+                DesignDocsNavEvents.Activate(_project.Id,_activeVaultId);
                 if(NoteId.HasValue&&await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;
                 await RememberNote();
                 if(generation!=_loadGeneration||_disposed)return;
@@ -135,13 +134,14 @@ else if(VaultId==Guid.Empty) {
                 if(generation!=_loadGeneration||_disposed)await subscription.DisposeAsync();else _subscription=subscription;
             }
         }catch(SoloApiException e){if(generation==_loadGeneration&&!_disposed)_error=e.Message;}
+        finally{if(generation==_loadGeneration&&!_disposed)_navigating=false;}
     }
     private async Task Load(){
         if(_disposed)return;var generation=_loadGeneration;var path=Path;
         try{var tree=await Api.GetAsync<TreeDto>(path);if(generation==_loadGeneration&&!_disposed){_tree=tree;_error=null;}}
         catch(SoloApiException e){if(generation==_loadGeneration&&!_disposed)_error=e.Message;}
     }
-    private Task SavePreferences()=>!_preferencesLoaded||_preferences is null?Task.CompletedTask:_preferences.InvokeVoidAsync("saveVaultPreferences",VaultId.ToString(),new VaultViewPreferences(_openFolders.Order().ToArray(),_rememberedNote,_fontScale,_marginWidth)).AsTask();
+    private Task SavePreferences()=>!_preferencesLoaded||_preferences is null?Task.CompletedTask:_preferences.InvokeVoidAsync("saveVaultPreferences",_activeVaultId.ToString(),new VaultViewPreferences(_openFolders.Order().ToArray(),_rememberedNote,_fontScale,_marginWidth)).AsTask();
     private async Task RememberNote(){if(Selected is {} note&&note.Id!=_rememberedNote){_rememberedNote=note.Id;await SavePreferences();}}
     private async Task ToggleFolders(){
         var folders=_tree!.Folders;
@@ -187,6 +187,6 @@ else if(VaultId==Guid.Empty) {
     private Task ToggleClosed()=>ChangeVault(_tree!.Vault.Name,!_tree.Vault.IsClosed);
     private Task ChangeVault(string name,bool closed)=>Run(async()=>{await Api.SendAsync(HttpMethod.Put,Path,new VaultChange(name,closed,_tree!.Vault.Version));DesignDocsNavEvents.Raise(_project!.Id);});
     private async Task DeleteVault(){if(!await DocDialogs.Confirm(Dialogs,"Delete design doc","Permanently delete every note, image and sketch in this closed design doc?"))return;
-        try{await Api.SendAsync(HttpMethod.Delete,Path+"?version="+_tree!.Vault.Version);DesignDocsNavEvents.Raise(_project!.Id);Navigation.NavigateTo($"/docs/{ProjectAlias}");}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}}
+        try{await Api.SendAsync(HttpMethod.Delete,Path+"?version="+_tree!.Vault.Version);DesignDocsNavEvents.Raise(_project!.Id);Navigation.NavigateTo($"/docs/{_activeAlias}");}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}}
     public async ValueTask DisposeAsync(){_disposed=true;_loadGeneration++;_workspace?.Dispose();if(_subscription is not null)await _subscription.DisposeAsync();}
 }
