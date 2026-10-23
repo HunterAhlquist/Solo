@@ -87,12 +87,16 @@
         try{var sketch=await Api.SendAsync<SketchDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches/notes/{Note.Id}",new NameRequest(name));
             await _editor.InvokeVoidAsync("insert",$"![[{sketch.Name}.sketch]]");await OpenSketch(sketch.Name);
         }catch(SoloApiException e){await Status(e.Message);}}
+    private bool _sketchOpen;
     [JSInvokable]public async Task OpenSketch(string name){
+        if(_sketchOpen||_editor is null)return;_sketchOpen=true;
         try{var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");
             var sketch=sketches.SingleOrDefault(s=>s.Name==name&&s.NoteId==Note.Id);if(sketch is null){await Status("Sketch not found in this note.");return;}
+            await _editor.InvokeVoidAsync("suspend",true);
             var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullScreen=true,CloseButton=true,CloseOnEscapeKey=true,BackdropClick=false});
             await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches");
-        }catch(SoloApiException e){await Status(e.Message);}}
+        }catch(SoloApiException e){await Status(e.Message);}
+        finally{_sketchOpen=false;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("suspend",false);}}
     [JSInvokable]public async Task<object?> ResolveWiki(string target){
         var tree=await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}");
         string FolderPath(Guid? id){if(id is null)return "";var f=tree.Folders.Single(x=>x.Id==id);return FolderPath(f.ParentId)+f.Name+"/";}

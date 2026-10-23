@@ -5,7 +5,7 @@ import { encode, decode, parts, sequence } from './protocol.js';
 export class Provider {
     constructor(bridge, options = {}) {
         this.bridge = bridge; this.options = options; this.doc = new Y.Doc(); this.awareness = new Awareness(this.doc);
-        this.remote = {}; this.pending = new Map(); this.chunks = new Map(); this.seq = '0'; this.batch = [];
+        this.remote = {}; this.pending = new Map(); this.chunks = new Map(); this.seq = '0'; this.batch = [];this.loading=[];
         this.online = false; this.synced = false; this.canWrite = false; this.disposed = false; this.queue = Promise.resolve();
         this.doc.on('update', (update, origin) => {
             if (this.disposed || origin === this.remote) return;
@@ -51,6 +51,7 @@ export class Provider {
     }
     connected(value) {
         this.online = value; this.synced = false; this.setWritable(false);
+        this.loading=[];
         this.options.status?.(value ? 'Synchronizing…' : 'Offline · read-only');
         if (value) this.send('sync', {afterSeq: this.seq});
     }
@@ -69,8 +70,13 @@ export class Provider {
             if (!item) { if (this.chunks.size > 512) this.chunks.clear(); item = {values: new Array(p.count), at: Date.now()}; this.chunks.set(key, item); }
             item.values[p.index] = p.data;
             if (Array.from(item.values).some(v => v === undefined)) return;
-            Y.applyUpdate(this.doc, decode(item.values.join('')), this.remote); this.chunks.delete(key); this.seq = sequence(this.seq, p.seq);
+            const update=decode(item.values.join(''));this.chunks.delete(key);
+            // A sketch's sync stream is history, not an animation. Keep its old
+            // states invisible until the server marks the replay complete.
+            if(this.options.atomicSync&&!this.synced)this.loading.push(update);
+            else{Y.applyUpdate(this.doc,update,this.remote);this.seq=sequence(this.seq,p.seq);}
         } else if (kind === 'synced') {
+            if(this.loading.length){Y.applyUpdate(this.doc,Y.mergeUpdates(this.loading),this.remote);this.loading=[];}
             this.seq = sequence(this.seq, p.seq); this.synced = true; this.setWritable(p.canWrite);
             this.options.status?.(this.canWrite ? 'Saved online' : 'Read-only');
             this.flush(); for (const packet of this.pending.values()) this.transmit(packet);
@@ -113,6 +119,6 @@ export class Provider {
         this.disposed = true; clearTimeout(this.batchTimer); clearTimeout(this.copyTimer); clearTimeout(this.retry);clearTimeout(this.awarenessTimer);
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', this.beforeUnload);
         if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.visibility);
-        this.awareness.destroy(); this.doc.destroy(); this.chunks.clear();
+        this.awareness.destroy(); this.doc.destroy(); this.chunks.clear();this.loading=[];
     }
 }

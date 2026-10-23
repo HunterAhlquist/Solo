@@ -981,3 +981,40 @@ the selected note, adaptive sidebar bounds, left alignment, the moving overflow 
 The touch toggle is absent on the desktop test platform. Physical iPad touch-drag,
 palm rejection, iPadOS backgrounding, and Force Touch pressure still need hardware
 retesting under the existing approved exception.
+
+### Sketch follow-up fixes
+
+Opening a sketch now suspends the underlying Markdown view with both CodeMirror's
+read-only/editable facets and DOM `inert`. Permission updates cannot re-enable it
+while the dialog is open; closing the dialog restores current permissions rather
+than assuming write access. An asynchronous insertion can finish without stealing
+focus from sketch text. Desktop typing did not reproduce the reported leakage,
+but the baseline check confirmed the underlying view remained editable while the
+dialog was open; the fixed browser check requires it to be noneditable and inert.
+Physical iPad keyboard behavior still needs retesting.
+
+The sketch provider buffers sync history until `synced`, then merges it into one
+Yjs update. A failing replay test previously exposed an old stroke, its deletion,
+and the current stroke as three visible states. Initial loading now exposes only
+the current state, while subsequent live updates still apply immediately.
+Interrupted loads resume from the last applied sequence, without skipping buffered
+history.
+
+A moving selection has a separate transparent canvas in the viewport. Its full
+cut raster and bounding box travel beyond the paper edge until release; only the
+committed drawing is clipped to the paper. The original raster already survived a
+held off-page-and-back round trip in the unit harness; the missing behavior was a
+preview independent of the paper clip. Tests now require that independent layer
+and preservation of its pixels through movement. Real iPad pointer behavior remains
+a device check.
+
+The eraser uses Google's outlined `ink_eraser` Material Symbol, scaled from its
+960-unit view box into MudIcon's 24-unit view box. Its Apache 2.0 license and source
+attribution ship with the package. Source: [Google Material Symbols SVG](https://github.com/google/material-design-icons/blob/master/symbols/web/ink_eraser/materialsymbolsoutlined/ink_eraser_24px.svg).
+
+Validation: 70 JavaScript tests and 44 C# extension tests pass. Browser checks
+confirm sketch typing, a noneditable/inert background view, and restored editing
+after closing. Reconstructing the saved Yjs document confirms its Markdown stayed
+byte-for-byte unchanged after sketch typing and close. Preview 6's actions
+were canceled before deployment; its immutable tag is retained. Preview 7 carries
+these changes and Design Docs 1.0.12.

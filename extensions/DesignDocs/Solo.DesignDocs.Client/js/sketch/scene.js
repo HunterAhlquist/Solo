@@ -29,17 +29,17 @@ export class SketchScene {
         }
         return value;
     }
-    render(context,{frame=0,texts=[],extra=[],selection=null,font}={}){
+    render(context,{frame=0,texts=[],extra=[],selection=null,selectionContext=null,font}={}){
         const {width:w,height:h}=this,moving=selection&&(selection.dx||selection.dy);
         if(context.canvas.width!==w)context.canvas.width=w;if(context.canvas.height!==h)context.canvas.height=h;
         context.clearRect(0,0,w,h);context.imageSmoothingEnabled=false;
         let raster;
         if(moving){
             const value=this.dragFrame(selection,frame);
-            if(!extra.length){context.drawImage(value.canvas,0,0);context.drawImage(value.overlay,selection.dx-value.padding,selection.dy-value.padding);}
+            if(!extra.length){context.drawImage(value.canvas,0,0);if(!selectionContext)context.drawImage(value.overlay,selection.dx-value.padding,selection.dy-value.padding);}
             else{
                 raster={pixels:value.base.pixels.slice(),owners:value.base.owners.slice()};
-                for(let y=0;y<value.height;y++){const targetY=y+selection.dy-value.padding;if(targetY<0||targetY>=h)continue;
+                if(!selectionContext)for(let y=0;y<value.height;y++){const targetY=y+selection.dy-value.padding;if(targetY<0||targetY>=h)continue;
                     for(let x=0;x<value.width;x++){const targetX=x+selection.dx-value.padding,ink=value.moving.pixels[y*value.width+x];if(ink&&targetX>=0&&targetX<w)raster.pixels[targetY*w+targetX]=ink;}}
             }
         }else{
@@ -47,8 +47,18 @@ export class SketchScene {
             if(!extra.length)context.drawImage(value.canvas,0,0);else raster={pixels:value.raster.pixels.slice(),owners:value.raster.owners.slice()};
         }
         if(raster){applyStrokes(raster,extra,w,h,frame,this.ops.length);paint(context,[],[],this.meta,{...this.style,raster});}
-        const boxes=moving?texts.map(t=>selection.textIds.has(t.id)?{...t,x:t.x+selection.dx,y:t.y+selection.dy}:t):texts;
+        const boxes=moving?(selectionContext?texts.filter(t=>!selection.textIds.has(t.id)):texts.map(t=>selection.textIds.has(t.id)?{...t,x:t.x+selection.dx,y:t.y+selection.dy}:t)):texts;
         paintTexts(context,boxes,{...this.style,font});
+        if(moving&&selectionContext){
+            // Position this complete cut layer in the viewport, rather than
+            // clipping it to the paper during an uncommitted pointer gesture.
+            const value=this.dragFrame(selection,frame),surface=selectionContext.canvas;
+            if(surface.width!==value.width)surface.width=value.width;if(surface.height!==value.height)surface.height=value.height;
+            selectionContext.clearRect(0,0,value.width,value.height);selectionContext.drawImage(value.overlay,0,0);
+            paintTexts(selectionContext,texts.filter(t=>selection.textIds.has(t.id)).map(t=>({...t,x:t.x+value.padding,y:t.y+value.padding})),{...this.style,font});
+            return {padding:value.padding};
+        }
+        return null;
     }
     dispose(){this.frames.clear();this.drag=null;this.ops=[];}
 }
