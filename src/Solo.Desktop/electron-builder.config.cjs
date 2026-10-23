@@ -5,6 +5,14 @@ const identity = identityForVersion(version);
 module.exports = {
     ...build,
     appId: identity.appId,
+    afterPack: 'scripts/after-pack.mjs',
+    mac: {
+        ...build.mac,
+        extendInfo: {
+            ...build.mac.extendInfo,
+            NSLocalNetworkUsageDescription: 'Solo connects to the Solo instances you add on your local network to sign in and sync your projects.',
+        },
+    },
     productName: identity.productName,
     // The installed package, not the build runner's environment, decides its
     // profile and branding every time it starts.

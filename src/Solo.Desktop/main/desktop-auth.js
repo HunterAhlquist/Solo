@@ -11,6 +11,7 @@
 //   4. Receive the authorization code on loopback and redeem it with the
 //      verifier for a ready-made solo_ session.
 const crypto = require('crypto');
+const { connectionError } = require('./connection-error');
 const http = require('http');
 const { net, shell } = require('electron');
 
@@ -23,6 +24,7 @@ class DesktopAuth {
         this._fetch = dependencies.fetch ?? ((...args) => net.fetch(...args));
         this._openExternal = dependencies.openExternal ?? (url => shell.openExternal(url));
         this._randomBytes = dependencies.randomBytes ?? (size => crypto.randomBytes(size));
+        this._connectionError = error => connectionError(error, dependencies.platform ?? process.platform, dependencies.appName ?? 'Solo');
         this._pending = null;
     }
 
@@ -89,7 +91,7 @@ class DesktopAuth {
                 loopbackPort: address.port,
             });
         } catch (error) {
-            this._failPending(pending, `Could not reach the server: ${error.message}`);
+            this._failPending(pending, this._connectionError(error));
             return;
         }
         if (this._pending !== pending) {
