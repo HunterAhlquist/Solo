@@ -1,6 +1,8 @@
 # Design Docs: build plan
 
-> **Status (2026-10-22):** plan only, nothing built. Written for a coding agent to follow phase by phase. Grounded in the code at commit `d6357e1`.
+> **Status (2026-10-23):** built on branch `claude/project-thread-huekia`: Part A as contract 1.10, Part B as `extensions/DesignDocs`. Where the build differs from this plan, §6 says how and why. The extension's [README](../extensions/DesignDocs/Solo.DesignDocs/README.md) describes what exists.
+>
+> **Originally (2026-10-22):** plan only, nothing built. Written for a coding agent to follow phase by phase. Grounded in the code at commit `d6357e1`.
 >
 > **Where the decisions come from:** the feasibility review, [Design Docs extension: feasibility review](https://claude.ai/artifact/RxZ5kdcCkJZN7LZunHY1CL), and Hunter's answers in its comment threads (2026-10-22). Treat the decisions in §1 as settled. Anything this plan had to decide on its own is listed in §5, so Hunter can overrule it before or during the build.
 
@@ -650,7 +652,23 @@ These weren't decided by Hunter. Each is the most likely reading, and each is ch
 9. **Sketch boil holds still under `prefers-reduced-motion`.**
 10. **Starting values to tune:** the hub size cap (48,000 characters), the live rate limit (burst 200, 50 per second), the five brush widths (1, 2, 3, 5, 8 paint pixels) and the image size cap (2,560 px, 10 MB).
 
-## 6. Sources
+## 6. What the build changed or settled
+
+Found while building, in the order they came up. Each is cheap to revisit.
+
+1. **`part` framing goes both ways.** The plan split only client uploads. A catch-up answer or snapshot can exceed the hub's 48,000 characters too, so the server sends long answers as `part{k,id,i,n,d}` of 46,000 characters, and both sides reassemble.
+2. **`lastSeq` advances only once synced.** The convergence test with a lossy relay found that a relayed update arriving before the catch-up answer moved `lastSeq` past updates the client hadn't applied. The provider now advances it from relayed updates and acks only after it is synced (`advance(seq)`); a seed's ack marks it synced first.
+3. **`DocUpdates` has a foreign key to its vault,** so deleting a vault drops its log in one cascade.
+4. **Images show only when they resolve inside the vault,** relative to the note's folder first (Obsidian's "relative path" setting), then by vault path, then by a unique name. An embed that doesn't resolve is marked missing, with the reference in its tooltip, and nothing is fetched.
+5. **An embedded note (`![[Note]]`) renders as a link.** Transclusion stays in B10.
+6. **The sketch editor is full screen** rather than inline, so the pen gets the whole paper and the canvas's gestures never compete with the note's scrolling. Not yet checked on an iPad (see the preview's device checks).
+7. **Import skips HEIC, SVG and anything over 10 MB,** and images no note embeds, and lists each with its reason. CRLF becomes LF when a note is seeded.
+8. **Doc-link routes can collide with a project alias** of `NOTE` or `TASK` (`/docs/note/{id}`, `/docs/task/{id}`); the link routes win.
+9. **Seed leases, document locks and part buffers are per process,** which fits the single-container deployment.
+10. **Presence colors are CSS `oklch(0.58 0.14 h)`,** from a slot each member gets per project in the order they first open a doc, stepped by the golden angle, so nobody's color changes when someone joins.
+11. **The agent-labelled preview build is its own workflow** (`.github/workflows/preview-claude.yml`), so `ci.yml`'s stable and shared-`preview` publishing is untouched. CI does build and test the extension on every pull request.
+
+## 7. Sources
 
 Solo repository at `d6357e1`:
 [CLAUDE.md](../CLAUDE.md),

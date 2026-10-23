@@ -14,6 +14,7 @@ tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, plus
                         (Solo.Api.Testing, Solo.Client.Testing) and the fixture extension
 extensions/Mcp          an EXTENSION, not core — the reference example (Solo.Mcp.slnx)
 extensions/Roadmap      an EXTENSION, not core — timelines; uses every 1.3–1.6 seam (Solo.Roadmap.slnx)
+extensions/DesignDocs   an EXTENSION, not core — live markdown vaults and sketches (Solo.DesignDocs.slnx)
 samples/HelloExtension  an EXTENSION built from the NuGet contract packages alone (not in Solo.slnx)
 templates/              the `dotnet new` template package that scaffolds an extension (not in Solo.slnx)
 site/                   the documentation site (Jekyll, published by GitHub Pages); see site/README.md
