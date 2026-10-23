@@ -1,0 +1,44 @@
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject IJSRuntime Js
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@if(PromptImport&&!_promptDismissed){<MudAlert Severity="Severity.Info">Choose Import Obsidian zip to add your notes and embedded images to this new design doc.</MudAlert>}
+<div class="d-flex flex-wrap align-center" style="gap:.5rem">
+    @if(CanImport&&!Tree.Vault.IsClosed){<MudButton Disabled="@_busy" OnClick="Import">Import Obsidian zip</MudButton>}
+    <MudButton Disabled="@_busy" OnClick="Export">Export zip</MudButton>
+    @if(_busy){<MudProgressCircular Indeterminate="true" Size="Size.Small" /><MudButton OnClick="Cancel">Cancel</MudButton>}
+    <MudText Typo="Typo.caption" role="status">@_progress</MudText>
+</div>
+@code{
+    [Parameter]public Guid ProjectId {get;set;}
+    [Parameter,EditorRequired]public TreeDto Tree {get;set;}=null!;
+    [Parameter]public bool CanImport {get;set;}
+    [Parameter]public bool IsSuperAdmin {get;set;}
+    [Parameter]public bool PromptImport {get;set;}
+    private bool _promptDismissed;
+    [Parameter]public EventCallback Imported {get;set;}
+    private IJSObjectReference? _transfer;private DotNetObjectReference<VaultTransfer>? _reference;private bool _busy;private string _progress="";private CancellationTokenSource _cancel=new();
+    private string Root=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Tree.Vault.Id}";
+    private static string NotePath(NoteDto note,IReadOnlyList<FolderDto> folders){var parts=new List<string>{note.Name+".md"};for(var parent=note.FolderId;parent.HasValue;){var folder=folders.Single(f=>f.Id==parent);parts.Insert(0,folder.Name);parent=folder.ParentId;}return string.Join('/',parts);}
+    protected override async Task OnAfterRenderAsync(bool firstRender){if(!firstRender)return;var api=new DesignDocsApi(Api);var module=await DesignDocsAssets.ModuleAsync(Js,api);_reference=DotNetObjectReference.Create(this);_transfer=await module.InvokeAsync<IJSObjectReference>("createTransfer",_reference,new{name=Tree.Vault.Name,fontUrl=api.Content("pixel-font.png").ToString()});}
+    private async Task Run(Func<Task> action){if(_transfer is null)return;_busy=true;_cancel.Dispose();_cancel=new();try{await action();}catch(OperationCanceledException){_progress="Canceled. Files already imported are kept.";}catch(Exception e)when(e is SoloApiException or JSException or HttpRequestException){Snackbar.Add(e.Message,Severity.Error);_progress="Transfer stopped.";}finally{_busy=false;}}
+    private Task Import()=>Run(async()=>{
+        var images=await Api.GetAsync<List<ImageDto>>(Root+"/images",_cancel.Token);
+        var summary=await _transfer!.InvokeAsync<ImportSummary?>("inspect",_cancel.Token,new object?[]{Tree.Notes.Select(n=>NotePath(n,Tree.Folders)).Concat(images.Select(i=>i.Path)).ToArray()});if(summary is null)return;
+        var dialog=await Dialogs.ShowAsync<DocImportDialog>("Import Obsidian vault",new DialogParameters<DocImportDialog>{{x=>x.Summary,summary}});
+        if(await dialog.Result is not{Canceled:false})return;await _transfer.InvokeVoidAsync("import",_cancel.Token);_progress="Import complete.";_promptDismissed=true;await Imported.InvokeAsync();
+    });
+    private Task Export()=>Run(async()=>{
+        var tree=await Api.GetAsync<TreeDto>(Root,_cancel.Token);var images=await Api.GetAsync<List<ImageDto>>(Root+"/images",_cancel.Token);var sketches=await Api.GetAsync<List<SketchDto>>(Root+"/sketches",_cancel.Token);
+        await _transfer!.InvokeVoidAsync("export",_cancel.Token,new{notes=tree.Notes.Select(n=>new{id=n.Id,path=NotePath(n,tree.Folders)}),images,sketches});_progress="Export ready.";
+    });
+    private void Cancel()=>_cancel.Cancel();
+    [JSInvokable]public Task Progress(string text){_cancel.Token.ThrowIfCancellationRequested();_progress=text;return InvokeAsync(StateHasChanged);}
+    private async Task Retry(Func<Task> action){for(var attempt=0;;attempt++){_cancel.Token.ThrowIfCancellationRequested();try{await action();return;}catch(SoloApiException e)when(e.StatusCode==HttpStatusCode.TooManyRequests&&attempt<6){var wait=e.RetryAfter??TimeSpan.FromSeconds(Math.Min(30,Math.Pow(2,attempt)));await Progress($"Waiting {Math.Ceiling(wait.TotalSeconds)} seconds before retrying…");await Task.Delay(wait,_cancel.Token);}}}
+    [JSInvokable]public Task Notes(string content)=>Retry(async()=>{await Api.SendBytesAsync<System.Text.Json.JsonElement>(HttpMethod.Post,Root+"/import/notes",System.Text.Encoding.UTF8.GetBytes(content),"application/json",_cancel.Token);});
+    [JSInvokable]public Task Image(string path,string type,string bytes)=>Retry(async()=>{await Api.SendBytesAsync<ImageDto>(HttpMethod.Post,Root+"/images"+(IsSuperAdmin?"/import":"")+"?path="+Uri.EscapeDataString(path),Convert.FromBase64String(bytes),type,_cancel.Token);});
+    [JSInvokable]public Task<System.Text.Json.JsonElement> State(Guid id)=>Api.GetAsync<System.Text.Json.JsonElement>($"api/ext/design-docs/projects/{ProjectId}/documents/{id}",_cancel.Token);
+    [JSInvokable]public async Task<string> ImageBytes(Guid id)=>Convert.ToBase64String((await Api.GetBytesAsync(Root+"/images/"+id,_cancel.Token)).Content);
+    public async ValueTask DisposeAsync(){_cancel.Cancel();_cancel.Dispose();if(_transfer is not null){try{await _transfer.InvokeVoidAsync("dispose");await _transfer.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
+}

@@ -29,6 +29,7 @@ else if(VaultId==Guid.Empty) {
             </MudMenu>
         }
     </div>
+    <VaultTransfer @key="VaultId" ProjectId="_project.Id" Tree="_tree" CanImport="@(CanEdit||_canManage)" IsSuperAdmin="_canManage" PromptImport="ImportOnOpen" Imported="Load" />
     <div class="design-docs-workspace">
         @if(_treeOpen) { <button class="design-docs-tree-backdrop" aria-label="Close note tree" @onclick="@(()=>_treeOpen=false)"></button> }
         <aside class="@($"design-docs-tree {(_treeOpen?"is-open":"")}")" aria-label="Notes">
@@ -49,7 +50,7 @@ else if(VaultId==Guid.Empty) {
         <main class="design-docs-note">
             @if(Selected is {} note) {
                 <MudText Typo="Typo.h4">@note.Name</MudText>
-                @if(note.LastEditedAt is {} edited) { <MudText Typo="Typo.caption">Last edited @edited.ToLocalTime().ToString("g")</MudText> }
+                @if(note.LastEditedAt is {} edited) { <MudText Typo="Typo.caption" Class="d-block">Last edited by @Author(note.LastEditedBy) · @edited.ToLocalTime().ToString("g")</MudText> }
                 <NoteEditor @key="note.Id" ProjectId="_project.Id" Note="note" CanWrite="CanEdit" />
             } else { <MudText Class="pa-6" Color="Color.Secondary">Choose a note from the tree.</MudText> }
         </main>
@@ -58,7 +59,10 @@ else if(VaultId==Guid.Empty) {
 @code {
     [Parameter] public string ProjectAlias {get;set;}="";
     [Parameter] public Guid VaultId {get;set;}
+    [SupplyParameterFromQuery(Name="import")] public bool ImportOnOpen {get;set;}
     [SupplyParameterFromQuery(Name="note")] public Guid? NoteId {get;set;}
+    private readonly Dictionary<Guid,string> _authors=[];
+    private string Author(Guid? id)=>id.HasValue&&_authors.TryGetValue(id.Value,out var name)?name:"Former member";
     private ProjectSummaryDto? _project;private TreeDto? _tree;private string? _error,_loaded;
     private bool _canManage,_treeOpen,_disposed;private IAsyncDisposable? _subscription;private DocTreeEntry? _dragged;
     private bool CanEdit=>_project is not null&&(_project.IsOwner||_project.Role==ProjectRole.ReadWrite)&&_tree?.Vault.IsClosed==false;
@@ -75,6 +79,7 @@ else if(VaultId==Guid.Empty) {
             _project=(await Api.GetAsync<List<ProjectSummaryDto>>("api/projects")).FirstOrDefault(p=>string.Equals(p.Alias,ProjectAlias,StringComparison.OrdinalIgnoreCase));
             if(_project is null){_error="Project not found.";return;}
             _canManage=(await Api.GetAsync<UserDto>("api/users/me")).IsSuperAdmin;
+            _authors.Clear();foreach(var member in (await Api.GetAsync<ProjectDto>($"api/projects/{_project.Id}")).Members)if(member.UserId is Guid userId)_authors[userId]=member.DisplayName??member.Email;
             await DesignDocsAssets.EnsureStylesAsync(Js,new DesignDocsApi(Api));
             if(VaultId!=Guid.Empty) {
                 await Load();
@@ -107,7 +112,7 @@ else if(VaultId==Guid.Empty) {
                 var impact=await Api.GetAsync<RenameImpactDto>($"{Path}/notes/{e.Id}/rename-impact");
                 if(impact.References>0&&!await DocDialogs.Confirm(Dialogs,"Links keep their old path",$"{impact.References} notes may link to this name. Renaming leaves those wiki links unresolved.","Rename"))return;
             }
-            await Move(e,e.ParentId,name);
+            await Move(e,e.ParentId,name);DocLinkLabels.Invalidate(Api);
         } else if(selected=="move") {
             var excluded=new HashSet<Guid>();if(e.IsFolder)excluded.Add(e.Id);
             bool grew;do{grew=false;foreach(var f in _tree!.Folders.Where(f=>f.ParentId.HasValue&&excluded.Contains(f.ParentId.Value)))grew|=excluded.Add(f.Id);}while(grew);

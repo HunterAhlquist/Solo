@@ -33,6 +33,12 @@ public sealed class ImagesController(DesignDocsDbContext db,ISoloQuery query,ISo
     }
     [HttpPost,Authorize(Policy=SoloPolicies.ProjectWrite),RequestSizeLimit(Limit)]
     public Task<ActionResult<ImageDto>> Upload(Guid projectId,Guid vaultId,[FromQuery]string path,CancellationToken ct)=>Store(projectId,vaultId,null,path,null,ct);
+    [HttpPost("import"),Authorize(Policy=SoloPolicies.ProjectRead),RequestSizeLimit(Limit)]
+    public async Task<ActionResult<ImageDto>> Import(Guid projectId,Guid vaultId,[FromQuery]string path,CancellationToken ct)
+    {
+        if (!(await query.CallerAsync(ct)).IsSuperAdmin) return Forbid();
+        return await Store(projectId,vaultId,null,path,null,ct);
+    }
     [HttpPut("{id:guid}"),Authorize(Policy=SoloPolicies.ProjectWrite),RequestSizeLimit(Limit)]
     public Task<ActionResult<ImageDto>> Replace(Guid projectId,Guid vaultId,Guid id,[FromQuery]uint version,CancellationToken ct)=>Store(projectId,vaultId,id,null,version,ct);
     private async Task<ActionResult<ImageDto>> Store(Guid projectId,Guid vaultId,Guid? id,string? path,uint? version,CancellationToken ct)

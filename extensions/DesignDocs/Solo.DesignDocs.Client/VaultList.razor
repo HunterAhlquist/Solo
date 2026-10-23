@@ -21,7 +21,7 @@ else {
     }
     </div>
     @if(!_list.Vaults.Any(v=>_closed||!v.IsClosed)) { <MudText Typo="Typo.body2" Class="pa-2">No open design docs.</MudText> }
-    @if(_list.CanManage) { <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="Create">New design doc</MudButton> }
+    @if(_list.CanManage) { <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="Create">New design doc</MudButton><MudButton OnClick="CreateFromZip">New from Obsidian zip</MudButton> }
 }
 @code {
     [Parameter,EditorRequired] public ProjectSummaryDto Project {get;set;}=null!;
@@ -35,9 +35,11 @@ else {
         _loaded=Project.Id;await Load();_subscription=await Live.SubscribeAsync(Project.Id,DocTopics.Vaults,_=>InvokeAsync(async()=>{await Load();StateHasChanged();}));
     }
     private async Task Load() {try {_list=await Api.GetAsync<VaultListDto>(Root);_error=null;}catch(SoloApiException e){_error=e.Message;}}
-    private async Task Create() {
+    private Task Create()=>CreateCore(false);
+    private Task CreateFromZip()=>CreateCore(true);
+    private async Task CreateCore(bool importZip) {
         var name=await DocDialogs.Name(Dialogs,"New design doc");if(name is null) return;
-        try {var v=await Api.SendAsync<VaultDto>(HttpMethod.Post,Root,new NameRequest(name));Navigation.NavigateTo(Href(v.Id));}
+        try {var v=await Api.SendAsync<VaultDto>(HttpMethod.Post,Root,new NameRequest(name));Navigation.NavigateTo(Href(v.Id)+(importZip?"?import=true":""));}
         catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}
     }
     public async ValueTask DisposeAsync(){if(_subscription is not null)await _subscription.DisposeAsync();}

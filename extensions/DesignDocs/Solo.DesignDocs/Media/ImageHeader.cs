@@ -8,6 +8,8 @@ public static class ImageHeader
     public sealed record Info(string ContentType,int Width,int Height);
     public static Info? Read(ReadOnlySpan<byte> b)
     {
+        if(b.Length>=10&&(b[..6].SequenceEqual("GIF87a"u8)||b[..6].SequenceEqual("GIF89a"u8)))
+            return Valid("image/gif",BinaryPrimitives.ReadUInt16LittleEndian(b[6..]),BinaryPrimitives.ReadUInt16LittleEndian(b[8..]));
         if(b.Length>=24&&b[..8].SequenceEqual(new byte[]{137,80,78,71,13,10,26,10})&&b.Slice(12,4).SequenceEqual("IHDR"u8))
             return Valid("image/png",BinaryPrimitives.ReadInt32BigEndian(b[16..]),BinaryPrimitives.ReadInt32BigEndian(b[20..]));
         if(b.Length>=30&&b[..4].SequenceEqual("RIFF"u8)&&b.Slice(8,4).SequenceEqual("WEBP"u8)) {

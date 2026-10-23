@@ -56,15 +56,15 @@ export class Images {
         input.addEventListener('cancel',()=>{input.remove();this.inputs.delete(input);},{once:true});input.click();
     }
     async upload(file,replace=null) {
-        if(!this.canWrite)return;
+        if(!this.canWrite||this.disposed)return;
         try {
-            const image=await prepareImage(file);
+            const image=await prepareImage(file);if(this.disposed)return;
             const name=(file.name??'image').replace(/\.[^.]+$/,'').replace(/[^\p{L}\p{N}_-]/gu,'-').slice(0,80)||'image';
             const path=replace??`attachments/${name}-${crypto.randomUUID().slice(0,8)}.${image.extension}`;
             await this.bridge.invokeMethodAsync('UploadImage',image.bytes,image.type,path,!!replace);
             if(this.disposed)return;
             if(!replace)this.insert(`![[${path}]]`);await this.refresh();
-        }catch(e){this.status(e.message);}
+        }catch(e){if(!this.disposed)this.status(e.message);}
     }
     async refresh() {
         for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();

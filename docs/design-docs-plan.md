@@ -1,8 +1,8 @@
 # Design Docs: build plan
 
-> **Status (2026-10-22):** implementation in progress on `codex/design-docs-prerelease`. Original plan grounded in `d6357e1`; lifecycle behavior checked against merged PR #29 (`843a19c`).
+> **Status (2026-10-22):** A1–A5 and B0–B9 implemented on `codex/design-docs-prerelease`; physical device acceptance is pending. Original plan grounded in `d6357e1`; lifecycle behavior checked against merged PR #29 (`843a19c`).
 >
-> **Verified correction:** B2's original acceptance sentence denied vault lifecycle to non-member super admins, contradicting its policy table and settled PR #29 behavior. `AccessPolicy.Allows(..., Owner)` admits super admins; `Read` still requires membership. The B2 acceptance sentence now matches those rules. Physical iPad/Pencil, Safari selection retention, and desktop download checks remain required; no result is inferred from a desktop browser test.
+> **Verified correction:** B2's original acceptance sentence denied vault lifecycle to non-member super admins, contradicting its policy table and settled PR #29 behavior. `AccessPolicy.Allows(..., Owner)` admits super admins; `Read` still requires membership. The B2 acceptance sentence now matches those rules. Physical iPad/Pencil checks remain required; no result is inferred from a desktop browser test. Safari selection retention and actual Electron ZIP downloads passed the final checks recorded below.
 >
 > **Where the decisions come from:** the feasibility review, [Design Docs extension: feasibility review](https://claude.ai/artifact/RxZ5kdcCkJZN7LZunHY1CL), and Hunter's answers in its comment threads (2026-10-22). Treat the decisions in §1 as settled. Anything this plan had to decide on its own is listed in §5, so Hunter can overrule it before or during the build.
 
@@ -375,7 +375,7 @@ sessions were used, with no access to a secrets store.
   characters; reconnect restored identical 4,368-character text in all tabs.
   The test drops traffic at the prototype bridge, not at the network layer.
 - Blazor navigation away and back disposed/recreated CodeMirror and resynced
-  its text without browser warnings or errors. Hot reload remains unverified.
+  its text without browser warnings or errors. Extension assemblies and static assets are cached at startup; the development package workflow requires a restart. In-place extension hot reload is not supported by the existing loader.
 - Four JS tests cover reordered/duplicated updates and resync, byte encoding,
   pressure mapping, and deterministic stamp jitter. Hardware pressure, Scribble,
   coalesced events, palm rejection and iPadOS lock/resume remain unverified.
@@ -778,3 +778,49 @@ Bug reports and forums, for browser behavior with no official page: [Apple Devel
 - A4 exposes optional `SoloApiException.RetryAfter` so B9 can honor server
   pacing without bypassing the authenticated API. JSON and binary calls preserve
   both delta-seconds and HTTP-date headers; 14 API client tests passed.
+
+
+## Implementation findings: import/export and final validation
+
+- B9 imports UTF-8 notes without changing their text, including a BOM, CRLF,
+  front matter, and dataview blocks. The browser preview lists skipped files
+  and conflicts before any writes. Notes are sent in batches of at most 100
+  and 5 MB; image uploads are paced and honor `Retry-After` on 429 responses.
+- The browser-to-.NET transfer bridge uses JSON text and base64 image data;
+  the authenticated HTTP requests still send UTF-8 JSON or raw image bytes.
+  Browser verification caught and removed a failing optimized byte-array bridge.
+- Import has explicit browser memory limits: 100 MB ZIP, 256 MB expanded,
+  1 MB per note, and 25 MB per image before conversion. Export stops at
+  512 MB uncompressed. Non-UTF-8 notes and unsupported paths are reported as
+  skipped. Images already within upload limits preserve their original format
+  and bytes; oversized raster images are resized in that format. Oversized
+  animated GIFs are skipped with an explanation.
+- Super admins with Read membership can import through dedicated import
+  endpoints, matching B9's explicit exception. Non-member admins still cannot
+  read or import vault content. Ordinary image uploads remain ProjectWrite.
+- The browser round trip imported two notes and one embedded PNG, skipping
+  settings, a canvas file, and an unused image. Both exported `.md` files and
+  the PNG matched the input byte for byte. A wiki link with an alias and heading
+  navigated to the correct note and fragment; Unicode content remained intact.
+- The actual Electron shell, using an isolated synthetic profile, rendered the
+  authenticated blob image and saved the blob ZIP through the macOS Save panel.
+  Its exported note and image bytes also matched after first opening the notes.
+  No desktop download change was required. Sketch PNG downloads were verified
+  in the browser; physical device input remains pending.
+- Final local automated results: core 778 tests (777 in the full run plus the
+  shared URL-parity fixture), Design Docs 37 C# tests and 24 JavaScript tests,
+  MCP 86 tests, Roadmap 202 tests. No skipped tests in those runs. Contract
+  packaging, sample builds, and template option builds passed. The existing
+  SignalR.Common 10.0.12 NU1903 advisory warning remains in restore output.
+- Inline sketch cards show a still preview, refreshed when their editor closes.
+  The sketch editor provides live collaboration and animated boil. The tiny
+  bitmap font currently renders basic ASCII; other characters remain in the
+  collaborative data and use a placeholder glyph.
+- Pending device acceptance: Apple Pencil pressure/latency/coalesced events,
+  Scribble, palm rejection, multi-touch view gestures, iPad photo decoding,
+  and iPadOS lock/background/resume. These pending checks are not claimed as passed by desktop results.
+
+- Final task-link checks: replacing a nonempty selection through the picker
+  preserved the surrounding text and restored focus in both the in-app browser
+  and native Safari. A 32-digit task GUID rendered the current serial/title and
+  opened the core drawer without leaving the note.
