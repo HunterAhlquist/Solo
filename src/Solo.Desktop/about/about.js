@@ -3,6 +3,9 @@
 // The About window's text arrives in the query string (main/about.js).
 const params = new URLSearchParams(location.search);
 const version = params.get('version');
+document.title = `About ${params.get('name') || 'Solo'}`;
+document.querySelector('h1').textContent = params.get('name') || 'Solo';
+if (params.get('preview') === '1') document.getElementById('logo').src = 'logo-preview.png';
 document.getElementById('version').textContent = version ? `Version ${version}` : '';
 document.getElementById('copyright').textContent = params.get('copyright') ?? '';
 

@@ -89,6 +89,23 @@ public class ExtensionSettingsTests : ComponentTestBase
         Assert.Empty(page.FindAll(".extension-settings"));
     }
 
+    [Fact]
+    public void A_server_loaded_extension_explains_why_its_client_pages_are_unavailable()
+    {
+        const string reason = "Needs Solo client API >=1.11 <2.0; this build provides 1.10.0. Update the app to use this extension.";
+        var catalog = new ExtensionCatalog();
+        var page = Render(new ExtensionAdminDto([Registration("alpha")], []), catalog);
+        catalog.Apply([], [new SkippedExtension("alpha", reason)]);
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("Client pages unavailable", page.Markup);
+            Assert.Contains(reason, page.Find(".extension-client-warning").TextContent);
+        });
+        Assert.Contains("ext_alpha", page.Markup);
+        Assert.Empty(page.FindAll(".extension-settings"));
+    }
+
     /// <summary>Client halves load after sign-in, so the page may already be up when they arrive.</summary>
     [Fact]
     public void A_panel_appears_once_its_assembly_loads()

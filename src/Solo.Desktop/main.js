@@ -6,6 +6,8 @@
 // (main/desktop-auth.js).
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, session, shell } = require('electron');
 const path = require('path');
+const { configureAppIdentity } = require('./main/app-identity');
+configureAppIdentity(app, process.env);
 const settingsStore = require('./main/settings');
 const { createSoloServer } = require('./main/server');
 const { buildMenu } = require('./main/menu');
@@ -41,16 +43,11 @@ let addingInstance = false;
 
 process.on('uncaughtException', handleUncaughtException);
 
-// Isolated profile for automated runs; normal launches use the default.
-if (process.env.SOLO_USER_DATA_DIR) {
-    app.setPath('userData', process.env.SOLO_USER_DATA_DIR);
-}
-
 // Google's sign-in pages refuse "embedded" browsers by user agent. Dropping
 // the Electron and app-name tokens leaves a plain Chrome UA, which Google
 // accepts. This must happen before any window is created.
 app.userAgentFallback = app.userAgentFallback
-    .replace(new RegExp(`\\s${app.getName()}/[\\S]+`, 'i'), '')
+    .replace(new RegExp(`\\s${app.getName().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[\\S]+`, 'i'), '')
     .replace(/\sElectron\/[\S]+/, '');
 
 const gotLock = app.requestSingleInstanceLock();
@@ -163,8 +160,7 @@ function focusWindow(win) {
     win.focus();
 }
 
-// What the menu and the settings page list. `origin` is shown because it is
-// what an operator registers with a non-Google OIDC provider.
+// What the menu and the settings page list.
 function instanceList() {
     return settings.instances.map(instance => ({
         id: instance.id,
@@ -175,7 +171,6 @@ function instanceList() {
             ? `${instance.name} (${settingsStore.instanceAddress(instance.url)})`
             : instance.name,
         url: instance.url,
-        origin: localOrigin(instance),
         open: windowFor(instance) !== null,
     }));
 }
@@ -184,6 +179,7 @@ function instanceList() {
 // rebuilt rather than patched: Electron cannot disable an item once built.
 function refreshInstanceViews() {
     Menu.setApplicationMenu(buildMenu({
+        appName: app.getName(),
         openAboutWindow: () => openAboutWindow(HARDENED_WEB_PREFERENCES),
         openSettingsWindow,
         instances: instanceList(),
@@ -849,7 +845,7 @@ function openSettingsWindow() {
                 trafficLightPosition: { x: 18, y: 20 },
             }
             : {}),
-        title: 'Solo — Settings',
+        title: `${app.getName()} — Settings`,
         // No parent window. Settings belongs to the app rather than to any one
         // instance, and a child window closes with its parent — which here
         // would be the very window that removing an instance closes.
@@ -1051,6 +1047,7 @@ function registerIpc() {
     const instanceOf = event => windows.get(instanceWindowOf(event))?.instance ?? null;
 
     handleSettings('settings:get', () => ({
+        appName: app.getName(),
         instances: instanceList(),
         nativeEffects: settings.nativeEffects,
         backgroundAlpha: settings.backgroundAlpha,
