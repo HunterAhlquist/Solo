@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.16.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.17.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -85,3 +85,9 @@ header uses the theme background with a 50% opacity floor, following higher desk
 background settings. Purple is available for strokes, shapes, and sketch text,
 including previews and PNG exports. Mac desktop rotation uses the shell's native
 trackpad gesture bridge; it requires Codex preview 13 or a later desktop build.
+
+The drawing surface cancels native touch defaults as well as pointer defaults to
+keep fast Pencil strokes out of iPadOS text-selection handling. Native selection
+is cleared while the sketch is open unless a text field has focus. Text fields
+keep their editing/selection menus; toolbar taps and Pointer Event pan/zoom remain
+available. Physical Pencil retesting is still required.

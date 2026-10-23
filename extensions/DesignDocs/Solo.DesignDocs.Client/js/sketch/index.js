@@ -218,18 +218,29 @@ export async function mountSketch(root,bridge,options){
     function gestureStart(e){e.preventDefault();active=null;safariGesture={...currentView(),anchor:localPoint(e)};}
     function gestureChange(e){if(!safariGesture)return;e.preventDefault();setView(anchoredView(safariGesture,safariGesture.anchor,safariGesture.zoom*e.scale,safariGesture.angle+e.rotation));}
     function gestureEnd(e){e.preventDefault();safariGesture=null;}
-    const block=e=>e.preventDefault();
     const dialog=root.closest('.design-docs-sketch-dialog');
-    const preventSelection=event=>{if(!event.target.closest?.('textarea,input,[contenteditable=true]'))event.preventDefault();};
+    const editable=target=>target?.closest?.('textarea,input,[contenteditable=true]');
+    const preventSelection=event=>{if(!editable(event.target))event.preventDefault();};
+    // iPadOS can recognize rapid Pencil taps as native text selection without
+    // dispatching selectstart. Cancel the native touch defaults as well as pointer
+    // defaults; keep Pointer Events as the single drawing/gesture input stream.
+    const clearNativeSelection=()=>{const selection=document.getSelection();if(!editable(document.activeElement)&&selection?.rangeCount)selection.removeAllRanges();};
+    const preventNativeTouch=event=>{if(!editable(event.target)){event.preventDefault();clearNativeSelection();}};
+    const nativeTouchOptions={capture:true,passive:false};
     const preventPalm=event=>{if(event.pointerType==='touch'&&inputMode.penId!==null&&!event.target.closest('textarea')){event.preventDefault();event.stopPropagation();}};
-    dialog?.addEventListener('selectstart',preventSelection);
+    dialog?.addEventListener('selectstart',preventSelection,true);
+    dialog?.addEventListener('contextmenu',preventSelection,true);
+    document.addEventListener('selectionchange',clearNativeSelection);
+    clearNativeSelection();
+    for(const type of ['touchstart','touchmove','touchend'])viewport.addEventListener(type,preventNativeTouch,nativeTouchOptions);
+    for(const type of ['mousedown','dblclick'])viewport.addEventListener(type,preventSelection,true);
     dialog?.addEventListener('pointerdown',preventPalm,true);
-    viewport.addEventListener('pointerdown',down);viewport.addEventListener('pointermove',move);viewport.addEventListener('pointerup',up);viewport.addEventListener('pointercancel',up);canvas.addEventListener('contextmenu',block);
+    viewport.addEventListener('pointerdown',down);viewport.addEventListener('pointermove',move);viewport.addEventListener('pointerup',up);viewport.addEventListener('pointercancel',up);
     canvas.addEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.addEventListener('webkitmouseforcechanged',forceChanged);
     viewport.addEventListener('wheel',wheel,{passive:false});viewport.addEventListener('keydown',keydown);viewport.addEventListener('keyup',keyup);viewport.addEventListener('blur',blur);
     viewport.addEventListener('gesturestart',gestureStart,{passive:false});viewport.addEventListener('gesturechange',gestureChange,{passive:false});viewport.addEventListener('gestureend',gestureEnd,{passive:false});
     const stopDesktopRotation=bindDesktopRotation(viewport,currentView,view=>{if(!active&&!marquee&&!dragPan&&inputMode.penId===null)setView(view);});
     const resize=new ResizeObserver(()=>{if(fitPending&&viewport.clientWidth&&viewport.clientHeight)resetView();});resize.observe(viewport);
     draw();return {command,connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
-        dispose(){disposed=true;stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('contextmenu',block);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
+        dispose(){disposed=true;stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
 }
