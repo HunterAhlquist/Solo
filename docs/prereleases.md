@@ -2,12 +2,12 @@
 
 `preview-v<version>-<label>.<number>` starts a complete test train from its tagged
 commit, including an unmerged branch. For example,
-`preview-v1.17.0-design-docs.1` builds the server image, extension packages and
+`preview-v1.17.0-design-docs.2` builds the server image, extension packages and
 desktop installers from the same source revision.
 
 The server workflow runs the core, extension and JavaScript suites before
 publishing. It uploads the exact image tag
-`ghcr.io/hunterahlquist/solo:1.17.0-design-docs.1` and moves the floating `preview`
+`ghcr.io/hunterahlquist/solo:1.17.0-design-docs.2` and moves the floating `preview`
 tag. It never moves `latest` or a stable minor tag. The desktop workflow retains
 its existing signing and notarization steps. Both attach assets to the same
 GitHub **prerelease**, with `make_latest: false`; the releases remain visible to
@@ -24,8 +24,8 @@ suffix on either existing series is treated as a preview too. The shared
 After committing and pushing the branch, choose a fresh tag for each test build:
 
 ```sh
-git tag preview-v1.17.0-design-docs.1
-git push origin preview-v1.17.0-design-docs.1
+git tag preview-v1.17.0-design-docs.2
+git push origin preview-v1.17.0-design-docs.2
 ```
 
 Use a new number for the next build; do not move a tag already published. The
@@ -47,7 +47,7 @@ image to the **exact** preview tag:
 ```yaml
 services:
   solo:
-    image: ghcr.io/hunterahlquist/solo:1.17.0-design-docs.1
+    image: ghcr.io/hunterahlquist/solo:1.17.0-design-docs.2
 ```
 
 Keep the deployment's existing environment and volume configuration. Download
@@ -56,7 +56,7 @@ configured extensions directory, then recreate/restart Solo. Install the desktop
 build from the same prerelease to get its matching client contract. The hosted
 browser client comes with the server image.
 
-Design Docs 1.0.6 includes vaults, collaborative notes, task links, images,
+Design Docs 1.0.7 includes vaults, collaborative notes, task links, images,
 sketches, and Obsidian import/export. Physical iPad/Pencil and iPadOS
 backgrounding checks are pending under the user-approved exception in
 [the design plan](design-docs-plan.md#b0-findings-2026-10-22). An installed extension requiring contract 1.10 cannot

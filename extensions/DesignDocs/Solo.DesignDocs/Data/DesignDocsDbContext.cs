@@ -48,7 +48,7 @@ public sealed class DesignDocsDbContext(DbContextOptions<DesignDocsDbContext> op
             e.HasIndex(x => new { x.VaultId, x.Name }).IsUnique(); e.Property(x => x.Version).IsRowVersion();
         });
         b.Entity<DocUpdate>(e => {
-            e.ToTable("DocUpdates", t => t.HasCheckConstraint("CK_DocUpdates_Document", 
+            e.ToTable("DocUpdates", t => t.HasCheckConstraint("CK_DocUpdates_Document",
                 "(\"NoteId\" IS NOT NULL AND \"SketchId\" IS NULL AND \"DocumentId\" = \"NoteId\") OR (\"NoteId\" IS NULL AND \"SketchId\" IS NOT NULL AND \"DocumentId\" = \"SketchId\")"));
             e.HasKey(x => x.Seq); e.Property(x => x.Seq).UseIdentityAlwaysColumn();
             e.HasIndex(x => new { x.DocumentId, x.Seq });

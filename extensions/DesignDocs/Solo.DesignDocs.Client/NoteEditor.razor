@@ -61,9 +61,13 @@
     [JSInvokable] public Task OpenTask(string value)=>TaskDrawer.OpenAsync(Guid.Parse(value));
     private string ImageRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/images";
     private async Task<ImageDto> FindImage(string path){
-        var images=await Api.GetAsync<List<ImageDto>>(ImageRoot);var exact=images.FirstOrDefault(i=>i.Path==path);
-        if(exact is not null)return exact;var candidates=images.Where(i=>i.Path.Split('/').Last()==path.Split('/').Last()).ToList();
-        return candidates.Count==1?candidates[0]:throw new InvalidOperationException("Image not found or ambiguous.");
+        var images=await Api.GetAsync<List<ImageDto>>(ImageRoot);
+        var exact=images.FirstOrDefault(i=>i.Path==path);if(exact is not null)return exact;
+        var tree=await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}");
+        var parts=new List<string>{Note.Name+".md"};
+        for(var parent=Note.FolderId;parent.HasValue;){var folder=tree.Folders.Single(f=>f.Id==parent);parts.Insert(0,folder.Name);parent=folder.ParentId;}
+        var resolved=VaultPaths.ResolveImage(images.Select(i=>i.Path).ToArray(),path,string.Join('/',parts));
+        return images.SingleOrDefault(i=>i.Path==resolved)??throw new InvalidOperationException("Image not found or ambiguous.");
     }
     [JSInvokable] public async Task<object> Image(string path){var image=await FindImage(path);var bytes=await Api.GetBytesAsync(ImageRoot+"/"+image.Id);return new{base64=Convert.ToBase64String(bytes.Content),image.ContentType,image.Version};}
     [JSInvokable] public async Task UploadImage(byte[] bytes,string contentType,string path,bool replace){

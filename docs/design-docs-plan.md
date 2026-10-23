@@ -808,7 +808,7 @@ Bug reports and forums, for browser behavior with no official page: [Apple Devel
   No desktop download change was required. Sketch PNG downloads were verified
   in the browser; physical device input remains pending.
 - Final local automated results: core 778 tests (777 in the full run plus the
-  shared URL-parity fixture), Design Docs 37 C# tests and 24 JavaScript tests,
+  shared URL-parity fixture), Design Docs 38 C# tests and 24 JavaScript tests,
   MCP 86 tests, Roadmap 202 tests. No skipped tests in those runs. Contract
   packaging, sample builds, and template option builds passed. The existing
   SignalR.Common 10.0.12 NU1903 advisory warning remains in restore output.
@@ -824,3 +824,8 @@ Bug reports and forums, for browser behavior with no official page: [Apple Devel
   preserved the surrounding text and restored focus in both the in-app browser
   and native Safari. A 32-digit task GUID rendered the current serial/title and
   opened the core drawer without leaving the note.
+
+- Final review found that repeated image basenames made note-relative embeds
+  ambiguous in the editor. Image resolution now uses the note directory after
+  exact vault paths and before a unique basename; its regression test also
+  rejects external targets. Package 1.0.7 is included in preview build 2.
