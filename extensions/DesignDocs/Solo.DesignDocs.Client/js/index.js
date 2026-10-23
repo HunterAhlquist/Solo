@@ -11,4 +11,8 @@ export { mountSketch } from './sketch/index.js';
 export { createTransfer } from './io/vault.js';
 
 export { mountTree } from './tree.js';
-export const isNarrowWorkspace=()=>matchMedia('(max-width:600px)').matches;
+export const isNarrowWorkspace=()=>matchMedia('(max-width:1000px)').matches;
+
+export { loadVaultPreferences,saveVaultPreferences } from './preferences.js';
+import {touchSupported} from './sketch/pressure.js';
+export const supportsTouch=()=>touchSupported(navigator);

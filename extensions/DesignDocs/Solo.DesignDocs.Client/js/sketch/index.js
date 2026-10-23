@@ -6,11 +6,13 @@ import { pagePoint,anchoredView,wheelView,touchView } from './viewport.js';
 import { contains,selectPolygon,selectionBounds,shiftRegion } from './selection.js';
 import { SketchScene } from './scene.js';
 import { SketchInput } from './input.js';
+import { applyTrackpadPressure } from './pressure.js';
 const local=Symbol('local sketch');
 export async function mountSketch(root,bridge,options){
     const font=await loadFont(null,root),shell=root.closest('.design-docs-sketch-shell')??root;
     let frameRequest=null,active=null,selected=null,marquee=null,editing=null,frame=0,disposed=false,visible=true;
     let pan=[12,12],zoom=1,angle=0,gesture=null,dragPan=null,space=false,safariGesture=null,fitPending=true;
+    let mousePressure=0;
     let tool='pen',ink='theme',level=0,constrain=false,clearing=false;
     const touches=new Map(),downloads=[],timers=new Set();
     const viewport=document.createElement('div');viewport.className='design-docs-sketch-viewport';viewport.tabIndex=0;
@@ -82,7 +84,7 @@ export async function mountSketch(root,bridge,options){
     const observer=new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;});observer.observe(viewport);
     const boil=setInterval(()=>{if(visible&&!document.hidden&&!disposed&&!reduced.matches&&ops.length){frame=(frame+1)%3;requestDraw();}},250);
     function localPoint(e){if(!Number.isFinite(e.clientX)||!Number.isFinite(e.clientY))return center();const r=viewport.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];}
-    function point(e){return [...pagePoint(currentView(),localPoint(e)),e.pressure];}
+    function point(e){return [...pagePoint(currentView(),localPoint(e)),e.pointerType==='mouse'?mousePressure:e.pressure];}
     function updateAwareness(p){if(!provider.canWrite)return;provider.awareness.setLocalStateField('pointer',{x:p[0],y:p[1]});provider.awareness.setLocalStateField('stroke',active&&['pen','eraser'].includes(active.tool)?active:null);}
     function editText(box){
         viewport.querySelector('textarea')?.blur();editing=box;const text=box.get('text'),input=document.createElement('textarea');input.className='design-docs-sketch-text';input.setAttribute('aria-label','Sketch text');input.value=text.toString();input.spellcheck=false;
@@ -94,6 +96,7 @@ export async function mountSketch(root,bridge,options){
     }
     function down(e){
         if(e.target.closest('textarea')||e.button>1||clearing)return;
+        if(e.pointerType==='mouse')mousePressure=0;
         const mode=inputMode.start(e);if(mode==='ignore'){e.preventDefault();return;}
         if(e.pointerType==='pen'){touches.clear();gesture=null;dragPan=null;if(active?.pointerType==='touch'){active=null;provider.awareness.setLocalStateField('stroke',null);}}
         e.preventDefault();viewport.focus();viewport.setPointerCapture(e.pointerId);
@@ -196,6 +199,14 @@ export async function mountSketch(root,bridge,options){
         else if(action==='settings'){const next=await bridge.invokeMethodAsync('PageSettings',getMeta());if(next&&!disposed&&provider.canWrite)await changeMeta(next);}
         draw();
     }
+    function forceWillBegin(e){if(provider.canWrite&&['pen','eraser'].includes(tool))e.preventDefault();}
+    function forceChanged(e){
+        if(!active||!['pen','eraser'].includes(active.tool)||!provider.canWrite)return;
+        const pressure=applyTrackpadPressure(active,e,MouseEvent);if(pressure===null)return;
+        e.preventDefault();mousePressure=pressure;
+        const last=active.points.at(-1);active.points.push([last[0],last[1],pressure]);
+        updateAwareness([last[0],last[1],pressure]);requestDraw();
+    }
     function wheel(e){if(e.target.closest('textarea'))return;e.preventDefault();if(!safariGesture)setView(wheelView(currentView(),e,localPoint(e)));}
     function keydown(e){if(e.target.tagName==='TEXTAREA')return;if(e.code==='Space'){space=true;e.preventDefault();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();command(e.shiftKey?'redo':'undo');}}
     function keyup(e){if(e.code==='Space')space=false;}
@@ -210,9 +221,10 @@ export async function mountSketch(root,bridge,options){
     dialog?.addEventListener('selectstart',preventSelection);
     dialog?.addEventListener('pointerdown',preventPalm,true);
     viewport.addEventListener('pointerdown',down);viewport.addEventListener('pointermove',move);viewport.addEventListener('pointerup',up);viewport.addEventListener('pointercancel',up);canvas.addEventListener('contextmenu',block);
+    canvas.addEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.addEventListener('webkitmouseforcechanged',forceChanged);
     viewport.addEventListener('wheel',wheel,{passive:false});viewport.addEventListener('keydown',keydown);viewport.addEventListener('keyup',keyup);viewport.addEventListener('blur',blur);
     viewport.addEventListener('gesturestart',gestureStart,{passive:false});viewport.addEventListener('gesturechange',gestureChange,{passive:false});viewport.addEventListener('gestureend',gestureEnd,{passive:false});
     const resize=new ResizeObserver(()=>{if(fitPending&&viewport.clientWidth&&viewport.clientHeight)resetView();});resize.observe(viewport);
     draw();return {command,connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
-        dispose(){disposed=true;scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('contextmenu',block);root.replaceChildren();}};
+        dispose(){disposed=true;scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('contextmenu',block);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
 }

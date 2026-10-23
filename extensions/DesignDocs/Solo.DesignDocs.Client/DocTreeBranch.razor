@@ -1,12 +1,9 @@
-@implements IDisposable
 @foreach(var entry in Entries.Where(e=>e.ParentId==ParentId).OrderByDescending(e=>e.IsFolder).ThenBy(e=>e.Name)) {
-    <MudTreeViewItem T="Guid" Value="entry.Id" Text="entry.Name" Icon="@(entry.IsFolder?Icons.Material.Filled.Folder:Icons.Material.Filled.Description)" Expanded="true" CanExpand="@entry.IsFolder" Class="@(entry.IsFolder?null:"design-docs-leaf")" ChildContent="@Children(entry)">
+    <MudTreeViewItem T="Guid" Value="entry.Id" Text="entry.Name" Icon="@(entry.IsFolder?Icons.Material.Filled.Folder:Icons.Material.Filled.Description)" Expanded="@OpenFolders.Contains(entry.Id)" ExpandedChanged="@(value=>OnExpanded.InvokeAsync(new(entry.Id,value)))" CanExpand="@entry.IsFolder" Class="@(entry.IsFolder?null:"design-docs-leaf")" ChildContent="@Children(entry)">
         <BodyContent>
             <div class="design-docs-tree-row" data-doc-tree-id="@entry.Id" data-doc-drop="@(entry.IsFolder?entry.Id.ToString():entry.ParentId?.ToString()??"")" data-doc-name="@entry.Name"
-                 @oncontextmenu:preventDefault="true" @oncontextmenu="@(e=>OnMenu.InvokeAsync(new(entry,e.ClientX,e.ClientY)))"
-                 @onpointerdown="@(e=>StartPress(entry,e))" @onpointerup="CancelPress" @onpointercancel="CancelPress" @onpointermove="CancelMoved">
-                @if(CanWrite){<span class="design-docs-tree-handle" draggable="true" data-doc-tree-handle aria-label="@($"Drag {entry.Name}")"><MudIcon Icon="@Icons.Material.Filled.DragIndicator" Size="Size.Small" /></span>}
-                <button type="button" class="design-docs-tree-name" @onclick="@(()=>Open(entry))">@entry.Name</button>
+                 @oncontextmenu:preventDefault="true" @oncontextmenu="@(e=>OnMenu.InvokeAsync(new(entry,e.ClientX,e.ClientY)))">
+                <button type="button" class="design-docs-tree-name" title="@entry.Name" data-doc-drag="@(CanWrite?"":null)" draggable="false" @onclick:stopPropagation="true" @onclick="@(()=>Open(entry))"><span class="design-docs-tree-track"><span class="design-docs-tree-text">@entry.Name</span><span class="design-docs-tree-text design-docs-tree-copy" aria-hidden="true">@entry.Name</span></span></button>
                 @if(CanWrite) { <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" aria-label="@($"Actions for {entry.Name}")" OnClick="@(e=>OnMenu.InvokeAsync(new(entry,e.ClientX,e.ClientY)))" /> }
             </div>
         </BodyContent>
@@ -16,20 +13,17 @@
     [Parameter] public IReadOnlyList<DocTreeEntry> Entries {get;set;}=[];
     [Parameter] public Guid? ParentId {get;set;}
     [Parameter] public bool CanWrite {get;set;}
+    [Parameter] public IReadOnlySet<Guid> OpenFolders {get;set;}=new HashSet<Guid>();
+    [Parameter] public EventCallback<DocTreeExpansion> OnExpanded {get;set;}
     [Parameter] public EventCallback<Guid> OnOpen {get;set;}
     [Parameter] public EventCallback<DocTreeMenu> OnMenu {get;set;}
     private RenderFragment? Children(DocTreeEntry entry) {
         if(!entry.IsFolder)return null;
-        return @<DocTreeBranch Entries="Entries" ParentId="entry.Id" CanWrite="CanWrite" OnOpen="OnOpen" OnMenu="OnMenu" />;
+        return @<text>
+            @if(OpenFolders.Contains(entry.Id)) {
+                <DocTreeBranch Entries="Entries" ParentId="entry.Id" CanWrite="CanWrite" OpenFolders="OpenFolders" OnExpanded="OnExpanded" OnOpen="OnOpen" OnMenu="OnMenu" />
+            }
+        </text>;
     }
-    private CancellationTokenSource? _press;private bool _longPressed;private double _x,_y;
-    private async Task StartPress(DocTreeEntry entry,PointerEventArgs e) {
-        _longPressed=false;if(e.PointerType=="mouse"||!CanWrite)return;
-        _press?.Cancel();_press?.Dispose();_press=new();_x=e.ClientX;_y=e.ClientY;
-        try {await Task.Delay(550,_press.Token);_longPressed=true;await OnMenu.InvokeAsync(new(entry,e.ClientX,e.ClientY));}catch(OperationCanceledException){}
-    }
-    private Task Open(DocTreeEntry entry)=>!_longPressed&&!entry.IsFolder?OnOpen.InvokeAsync(entry.Id):Task.CompletedTask;
-    private void CancelPress(PointerEventArgs e)=>_press?.Cancel();
-    private void CancelMoved(PointerEventArgs e){if(Math.Abs(e.ClientX-_x)+Math.Abs(e.ClientY-_y)>10)_press?.Cancel();}
-    public void Dispose(){_press?.Cancel();_press?.Dispose();}
+    private Task Open(DocTreeEntry entry)=>entry.IsFolder?OnExpanded.InvokeAsync(new(entry.Id,!OpenFolders.Contains(entry.Id))):OnOpen.InvokeAsync(entry.Id);
 }

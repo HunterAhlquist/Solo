@@ -1,8 +1,6 @@
 import { EditorState, Compartment } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
-import { defaultKeymap } from '@codemirror/commands';
-import { markdown } from '@codemirror/lang-markdown';
-import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
+import { EditorView } from '@codemirror/view';
+import { yCollab } from 'y-codemirror.next';
 import { Provider } from '../sync/provider.js';
 import { livePreview, refreshSketchPreview } from './preview.js';
 import { headings } from './markdown.js';
@@ -10,6 +8,7 @@ import { Images } from '../media/images.js';
 import { protectMedia, mediaEdit } from './media-protection.js';
 import { mediaReference, mediaRange } from '../media/references.js';
 import { caretPalettePosition } from './palette.js';
+import { markdownEditing } from './commands.js';
 export function mountEditor(root, bridge, options) {
     const readOnly = new Compartment(); let view;
     const baseUser={...options.user};
@@ -43,7 +42,9 @@ export function mountEditor(root, bridge, options) {
     const paletteMeasure={
         read(current){
             if(!palette||!noteBody)return null;
-            return caretPalettePosition(current.coordsAtPos(current.state.selection.main.head),noteBody.getBoundingClientRect(),current.scrollDOM.getBoundingClientRect(),{width:palette.offsetWidth,height:palette.offsetHeight});
+            const content=current.contentDOM,style=getComputedStyle(content),line=content.querySelector('.cm-line');
+            const columnLeft=content.getBoundingClientRect().left+parseFloat(style.paddingLeft)+(line?parseFloat(getComputedStyle(line).paddingLeft):0);
+            return caretPalettePosition(current.coordsAtPos(current.state.selection.main.head),noteBody.getBoundingClientRect(),current.scrollDOM.getBoundingClientRect(),{width:palette.offsetWidth,height:palette.offsetHeight},columnLeft);
         },
         write(position){if(!palette)return;palette.toggleAttribute('data-caret-hidden',!position);if(position){palette.style.left=position.left+'px';palette.style.top=position.top+'px';}},
     };
@@ -53,7 +54,7 @@ export function mountEditor(root, bridge, options) {
     noteBody?.addEventListener('pointermove',showPalette);root.addEventListener('keydown',typing);
     const preview=livePreview(bridge,images);
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
-        markdown(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),keymap.of([...defaultKeymap,...yUndoManagerKeymap]),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Status',message)),
+        ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Status',message)),
         yCollab(provider.doc.getText('markdown'),provider.awareness),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
         EditorView.domEventHandlers({focus:()=>{bridge.invokeMethodAsync('Focus',true);},blur:()=>{bridge.invokeMethodAsync('Focus',false);},
