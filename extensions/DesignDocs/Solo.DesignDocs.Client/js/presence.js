@@ -24,7 +24,12 @@ export function presenceCursor(kind,user){
     const cursor=document.createElement('span');cursor.className='design-docs-cursor design-docs-cursor--'+kind;
     cursor.style.setProperty('--design-docs-user-color',user.color??'#a252d6');cursor.setAttribute('aria-label',user.name??'Collaborator');cursor.title=user.name??'Collaborator';
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox',kind==='text'?'0 0 12 24':'0 0 36 40');svg.setAttribute('aria-hidden','true');
-    const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',kind==='text'?'M2 2 Q6 4 10 2 M6 3 V21 M2 22 Q6 20 10 22':pointerOutline().path);svg.append(path);
+    const outline=kind==='text'?'M2 2 Q6 4 10 2 M6 3 V21 M2 22 Q6 20 10 22':pointerOutline().path;
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',outline);svg.append(path);
+    if(kind==='text'){
+        // A wider colored stroke behind the black stem outlines the thin I-beam.
+        const body=document.createElementNS('http://www.w3.org/2000/svg','path');body.setAttribute('d',outline);body.classList.add('design-docs-caret-body');svg.append(body);
+    }
     cursor.append(svg,presenceAvatar(user));return cursor;
 }
 export function viewportPoint(view,point){const a=view.angle*Math.PI/180;return [view.pan[0]+(Math.cos(a)*point[0]-Math.sin(a)*point[1])*view.zoom,view.pan[1]+(Math.sin(a)*point[0]+Math.cos(a)*point[1])*view.zoom];}
