@@ -21,7 +21,7 @@
             </MudPaper>
             <MudPaper Class="design-docs-sketch-palette design-docs-sketch-ink-palette" Elevation="4" role="toolbar" aria-label="Ink and brush size">
                 <div class="design-docs-swatches">
-                    @foreach(var color in new[]{"theme","red","blue","green"}) {
+                    @foreach(var color in new[]{"theme","red","blue","green","purple"}) {
                         <MudTooltip Text="@(color=="theme"?"Theme ink":color)"><MudIconButton Icon="@Icons.Material.Filled.Circle" Style="@($"color:var(--design-docs-ink-{color})")" Class="@(_ink==color?"is-selected":null)" Disabled="@(!_writable)" OnClick="@(()=>SetInk(color))" aria-label="@(color=="theme"?"Theme ink":color+" ink")" aria-pressed="@(_ink==color)" /></MudTooltip>
                     }
                 </div>

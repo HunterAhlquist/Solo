@@ -19,7 +19,7 @@ export function applyStrokes(raster,ops,width,height,frame=0,ownerOffset=0){cons
     ops.forEach((stroke,owner)=>{let index=0,previous,paintBudget=262144;for(const [x,y,p] of samples(stroke)){
         if(paintBudget<=0)break;const [dx,dy]=jitter(stroke.seed,index++,frame),size=pressureWidth(stroke.level,p,stroke.pointerType);
         const target=[x+dx,y+dy],start=previous??target,steps=Math.min(4096,Math.max(1,Math.ceil(Math.hypot(target[0]-start[0],target[1]-start[1]))));
-        for(let n=0;n<=steps&&paintBudget-->0;n++)stamp(start[0]+(target[0]-start[0])*n/steps,start[1]+(target[1]-start[1])*n/steps,size,(px,py)=>{if(px<0||py<0||px>=width||py>=height)return;const at=py*width+px;pixels[at]=stroke.tool==='eraser'?0:({theme:1,red:2,blue:3,green:4}[stroke.ink]??1);owners[at]=pixels[at]?owner+ownerOffset+1:0;});
+        for(let n=0;n<=steps&&paintBudget-->0;n++)stamp(start[0]+(target[0]-start[0])*n/steps,start[1]+(target[1]-start[1])*n/steps,size,(px,py)=>{if(px<0||py<0||px>=width||py>=height)return;const at=py*width+px;pixels[at]=stroke.tool==='eraser'?0:({theme:1,red:2,blue:3,green:4,purple:5}[stroke.ink]??1);owners[at]=pixels[at]?owner+ownerOffset+1:0;});
         previous=target;
     }});return raster;
 }
@@ -62,7 +62,7 @@ export function paint(context,ops,texts,meta,{frame=0,themeInk='#111',font,expor
     paintTexts(context,texts,{font,themeInk});return raster;
 }
 export function paintPixels(context,raster,width,height,themeInk='#111'){
-    const palette=['',themeInk,'#b52c32','#2164b4','#23763e'];
+    const palette=['',themeInk,'#b52c32','#2164b4','#23763e','#8043ad'];
     // Batch adjacent pixels into row spans instead of issuing a call per pixel.
     for(let y=0;y<height;y++)for(let x=0;x<width;){
         const ink=raster.pixels[y*width+x],start=x++;
@@ -71,6 +71,6 @@ export function paintPixels(context,raster,width,height,themeInk='#111'){
     }
 }
 export function paintTexts(context,texts,{font,themeInk='#111'}={}){
-    const palette={theme:themeInk,red:'#b52c32',blue:'#2164b4',green:'#23763e'};
+    const palette={theme:themeInk,red:'#b52c32',blue:'#2164b4',green:'#23763e',purple:'#8043ad'};
     if(font)for(const text of texts){context.fillStyle=palette[text.ink]??themeInk;font(context,text);}
 }

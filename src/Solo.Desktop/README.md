@@ -322,3 +322,12 @@ submission after a timeout or a cancelled run. To check one:
 ```sh
 xcrun notarytool info <submission-id> --keychain-profile <profile>
 ```
+
+### Native canvas rotation
+
+On macOS the shell forwards Electron's [native rotation event](https://www.electronjs.org/docs/latest/api/browser-window#event-rotate-gesture-macos)
+as a `solo:rotate-gesture` DOM event. Its detail contains the incremental
+counterclockwise `rotation` in degrees, plus zoom-adjusted `clientX`/`clientY`.
+A zero rotation marks the gesture end. A canvas can subscribe while mounted and
+remove its listener on disposal; the bridge exposes no IPC or Electron objects
+to the page. Run `npm run test:rotation-gesture` to check the window/preload path.
