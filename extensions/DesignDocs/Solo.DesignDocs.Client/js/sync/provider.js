@@ -16,8 +16,9 @@ export class Provider {
         this.awareness.setLocalState(null);
         this.awareness.on('update', (_, origin) => {
             if (this.disposed || origin === this.remote || !this.canWrite) return;
-            clearTimeout(this.awarenessTimer);
-            this.awarenessTimer = setTimeout(() => this.send('awareness', {data: encode(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]))}), 60);
+            // Throttle the latest state. Debouncing here starves remote cursors
+            // for as long as a Pencil or text caret keeps moving.
+            this.awarenessTimer ??= setTimeout(() => {this.awarenessTimer=null;this.send('awareness', {data: encode(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]))});}, 60);
         });
         this.beforeUnload = e => { if (this.pending.size || this.batch.length) { e.preventDefault(); e.returnValue = ''; } };
         if (typeof window !== 'undefined') window.addEventListener('beforeunload', this.beforeUnload);
@@ -57,7 +58,8 @@ export class Provider {
     }
     setWritable(value) {
         this.canWrite = value && this.online && !!this.options.canWrite;
-        if (this.canWrite) this.awareness.setLocalStateField('user', this.options.user);
+        // setLocalStateField is a no-op after disconnect cleared the local state.
+        if (this.canWrite) this.awareness.setLocalState({...this.awareness.getLocalState(),user:this.options.user});
         else this.awareness.setLocalState(null);
         this.options.writable?.(this.canWrite);
     }
@@ -111,6 +113,9 @@ export class Provider {
     }
     presence(users) {
         const held = new Set(users.map(u => u.userId));
+        const joined=[...held].some(id=>id!==this.options.user?.userId&&!this.presentUsers?.has(id));
+        this.presentUsers=held;
+        if(joined&&this.canWrite){const state=this.awareness.getLocalState();if(state)this.awareness.setLocalState({...state});}
         const gone = [...this.awareness.getStates()].filter(([id, state]) => id !== this.doc.clientID && !held.has(state.user?.userId)).map(([id]) => id);
         removeAwarenessStates(this.awareness, gone, this.remote);
     }

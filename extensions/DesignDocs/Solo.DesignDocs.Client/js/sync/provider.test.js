@@ -66,3 +66,31 @@ test('an interrupted atomic sketch load resumes from the last applied state, the
         ops.push([{id:'live'}]);await provider.receive('update',packet(2));assert.equal(provider.doc.getArray('ops').length,3);assert.equal(provider.seq,'3');
     }finally{provider.dispose();source.destroy();}
 });
+
+test('continuous pointer or caret changes publish awareness before the user stops moving',async()=>{
+    const sent=[],p=new Provider({send:async(kind,raw)=>{if(kind==='awareness')sent.push(JSON.parse(raw));return 0;}},{canWrite:true,user:{userId:'writer',name:'Writer',color:'#8043ad'}});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+        for(let i=0;i<30;i++){p.awareness.setLocalStateField('pointer',{x:i,y:20});await new Promise(resolve=>setTimeout(resolve,8));}
+        assert.ok(sent.length>=2,'remote cursors must update during continuous writing, not only after it stops');
+    }finally{p.dispose();}
+});
+test('a newly present collaborator receives an already stationary cursor',async()=>{
+    const sent=[],p=new Provider({send:async(kind,raw)=>{if(kind==='awareness')sent.push(JSON.parse(raw));return 0;}},{canWrite:true,user:{userId:'writer',name:'Writer',color:'#8043ad'}});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await tick();sent.length=0;
+        p.presence([{userId:'writer'},{userId:'new-reader'}]);await tick();
+        assert.equal(sent.length,1,'joining users must not wait for another cursor movement or the awareness heartbeat');
+    }finally{p.dispose();}
+});
+test('writable sync creates presence after initialization and every reconnect',async()=>{
+    const user={userId:'writer',name:'Writer',color:'#8043ad'},p=new Provider({send:async()=>0},{canWrite:true,user});
+    try{
+        for(let i=0;i<2;i++){
+            p.connected(true);assert.equal(p.awareness.getLocalState(),null);
+            await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+            assert.deepEqual(p.awareness.getLocalState().user,user);p.awareness.setLocalStateField('pointer',{x:10,y:20});assert.equal(p.awareness.getLocalState().pointer.x,10);
+            p.connected(false);assert.equal(p.awareness.getLocalState(),null);
+        }
+    }finally{p.dispose();}
+});

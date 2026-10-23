@@ -1,3 +1,5 @@
+import { presenceTheme } from '../presence.js';
+import { textPresence } from './presence.js';
 import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { yCollab } from 'y-codemirror.next';
@@ -11,9 +13,7 @@ import { caretPalettePosition } from './palette.js';
 import { markdownEditing } from './commands.js';
 export function mountEditor(root, bridge, options) {
     const readOnly = new Compartment(); let view,suspended=false;
-    const baseUser={...options.user};
-    function themeUser(){const probe=document.createElement('span');probe.style.color='var(--mud-palette-background, white)';root.append(probe);const rgb=getComputedStyle(probe).color.match(/[\d.]+/g)?.slice(0,3).map(Number)??[255,255,255];probe.remove();const light=rgb.reduce((a,b)=>a+b,0)<384?'75%':'50%';return {...baseUser,color:baseUser.color.replace(/55%/,light),colorLight:baseUser.colorLight.replace(/55%/,light)};}
-    options.user=themeUser();
+    presenceTheme(root);
     const fallback = document.createElement('pre'), editorRoot = document.createElement('div');
     editorRoot.className='design-docs-editor-host';fallback.className = 'design-docs-stored-markdown'; root.append(fallback,editorRoot);
     const provider = new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {
@@ -56,7 +56,7 @@ export function mountEditor(root, bridge, options) {
     const preview=livePreview(bridge,images);
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
         ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
-        yCollab(provider.doc.getText('markdown'),provider.awareness),
+        yCollab(provider.doc.getText('markdown'),provider.awareness),textPresence(provider),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
         EditorView.domEventHandlers({focus:()=>{bridge.invokeMethodAsync('Focus',true);},blur:()=>{bridge.invokeMethodAsync('Focus',false);},
             paste:event=>{const files=[...(event.clipboardData?.files??[])];if(!provider.canWrite||!files.length)return false;event.preventDefault();files.forEach(f=>images.upload(f));return true;},
@@ -88,8 +88,9 @@ export function mountEditor(root, bridge, options) {
     const paletteResize=new ResizeObserver(positionPalette);if(noteBody)paletteResize.observe(noteBody);positionPalette();
     const previewTheme=()=>{const style=getComputedStyle(root);return style.fontFamily+'|'+style.color+'|'+style.getPropertyValue('--mud-palette-surface');};
     let lastPreviewTheme=previewTheme();
-    const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh();}const user=themeUser();if(user.color!==provider.options.user.color){provider.options.user=user;if(provider.canWrite)provider.awareness.setLocalStateField('user',user);}});
+    const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh();}presenceTheme(root);});
     themeObserver.observe(document.head,{childList:true,subtree:true,characterData:true});
+    themeObserver.observe(document.body,{attributes:true,attributeFilter:['class','style']});
     return {
         suspend(value){suspended=!!value;root.inert=suspended;if(suspended&&root.contains(document.activeElement))document.activeElement.blur();applyAccess();},
         connected:value=>provider.connected(value),
