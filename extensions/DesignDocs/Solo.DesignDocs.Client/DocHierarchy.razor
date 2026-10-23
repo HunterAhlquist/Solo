@@ -2,7 +2,7 @@
 @inject ISoloClientApi Api
 @inject IJSRuntime Js
 <div @ref="_root" class="design-docs-hierarchy">
-    <div data-doc-drop="" class="design-docs-root pa-2">Vault root</div>
+    <div data-doc-drop="" class="design-docs-root pa-2"><span>Vault root</span><MudSpacer /><MudIconButton Icon="@(AllExpanded?Icons.Material.Filled.UnfoldLess:Icons.Material.Filled.UnfoldMore)" Size="Size.Small" aria-label="@(AllExpanded?"Collapse all folders":"Expand all folders")" OnClick="@(()=>OnToggleAll.InvokeAsync())" /></div>
     <MudTreeView T="Guid" Dense="true">
         <DocTreeBranch Entries="Entries" CanWrite="CanWrite" SelectedNoteId="SelectedNoteId" OpenFolders="OpenFolders" OnExpanded="OnExpanded" OnOpen="OnOpen" OnMenu="OnMenu" />
     </MudTreeView>
@@ -15,6 +15,8 @@
     [Parameter] public EventCallback<DocTreeExpansion> OnExpanded {get;set;}
     [Parameter] public EventCallback<Guid> OnOpen {get;set;}
     [Parameter] public EventCallback<DocTreeMenu> OnMenu {get;set;}
+    [Parameter] public EventCallback OnToggleAll {get;set;}
+    private bool AllExpanded=>Entries.Where(e=>e.IsFolder).All(e=>OpenFolders.Contains(e.Id));
     [Parameter] public EventCallback<DocTreeDrop> OnMove {get;set;}
     private ElementReference _root;private IJSObjectReference? _tree;private DotNetObjectReference<DocHierarchy>? _reference;
     protected override async Task OnAfterRenderAsync(bool firstRender){

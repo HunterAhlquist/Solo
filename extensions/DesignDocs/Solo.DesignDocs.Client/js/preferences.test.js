@@ -17,3 +17,17 @@ test('margin width round trips with the other preferences and old cookies use Au
     const {store}=fixture();store.save(vault,{openFolders:[folder],noteId:note,fontScale:150,marginWidth:20});assert.equal(store.load(vault).marginWidth,20);
     store.save(vault,{fontScale:125});assert.equal(store.load(vault).marginWidth,-1);store.save(vault,{marginWidth:999});assert.equal(store.load(vault).marginWidth,-1);
 });
+
+test('browser preferences survive cookie eviction and are isolated by the desktop origin',async()=>{
+    const {loadVaultPreferences,saveVaultPreferences}=await import('./preferences.js');
+    const origins=new Map();let origin='http://localhost:41321';
+    globalThis.document={cookie:''};globalThis.location={protocol:'http:'};
+    globalThis.localStorage={getItem:key=>origins.get(origin)?.get(key)??null,setItem:(key,value)=>{if(!origins.has(origin))origins.set(origin,new Map());origins.get(origin).set(key,value);}};
+    const value={openFolders:[folder],noteId:note,fontScale:150,marginWidth:15};
+    try{
+        saveVaultPreferences(vault,value);document.cookie='';
+        assert.deepEqual(loadVaultPreferences(vault),value);
+        origin='http://localhost:41322';assert.equal(loadVaultPreferences(vault).fontScale,100);
+        origin='http://localhost:41321';assert.deepEqual(loadVaultPreferences(vault),value);
+    }finally{delete globalThis.document;delete globalThis.location;delete globalThis.localStorage;}
+});
