@@ -28,6 +28,9 @@
     [Parameter] public Guid ProjectId {get;set;}
     [Parameter,EditorRequired] public NoteDto Note {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
+    [Parameter] public EventCallback OnReady {get;set;}
+    private bool _ready;
+    [JSInvokable] public async Task Ready(){if(_ready||_disposed)return;_ready=true;await OnReady.InvokeAsync();}
     private ElementReference _root;private IJSObjectReference? _editor;private DotNetObjectReference<NoteEditor>? _reference;
     private IAsyncDisposable? _subscription, _vaultSubscription;private string _status="Connecting…";private bool _disposed;
     private IReadOnlyList<TopicPresenceEntry> _presence=[];
@@ -48,7 +51,7 @@
             },async people=>{_presence=people;if(_editor is not null)await _editor.InvokeVoidAsync("presence",people);await InvokeAsync(StateHasChanged);});
             _vaultSubscription=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(Note.VaultId),async m=>{if(m.Kind=="image"&&_editor is not null)await _editor.InvokeVoidAsync("imagesChanged");});
             Live.ConnectionChanged+=Connection;await Live.SetPresenceAsync(ProjectId,Topic,PresenceMode.Viewing);await Connection();
-        }catch(Exception e){await Status(e.Message);}
+        }catch(Exception e){await Status(e.Message);await Ready();}
     }
     private Task Connection()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
     [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);

@@ -1,0 +1,34 @@
+<main class="design-docs-note" aria-busy="@Busy.ToString().ToLowerInvariant()">
+    @foreach(var surface in Surfaces) {
+        <div @key="surface.Note.Id" class="@($"design-docs-note-surface {(surface.Note.Id==_current?.Id?"is-current":"is-pending")}")" inert="@(Busy?"":null)" aria-hidden="@(surface.Note.Id!=_current?.Id?"true":null)">
+            <MudText Typo="Typo.h4">@surface.Note.Name</MudText>
+            @if(surface.Note.LastEditedAt is {} edited){<MudText Typo="Typo.caption" Class="d-block">Last edited by @surface.Author · @edited.ToLocalTime().ToString("g")</MudText>}
+            <NoteEditor ProjectId="ProjectId" Note="surface.Note" CanWrite="CanWrite" OnReady="@(()=>Ready(surface.Note.Id))" />
+        </div>
+    }
+    @if(Busy){<div class="design-docs-note-loading" role="status" aria-label="Loading note"><MudProgressCircular Indeterminate="true" Color="Color.Primary" /></div>}
+    @if(_current is null){<MudText Class="pa-6" Color="Color.Secondary">Choose a note from the tree.</MudText>}
+</main>
+@code {
+    [Parameter] public Guid ProjectId {get;set;}
+    [Parameter] public NoteDto? Note {get;set;}
+    [Parameter] public string Author {get;set;}="";
+    [Parameter] public bool CanWrite {get;set;}
+    [Parameter] public bool Navigating {get;set;}
+    private NoteDto? _current,_pending;private string _currentAuthor="",_pendingAuthor="";private bool _ready;
+    private bool Busy=>Navigating||_pending is not null||(_current is not null&&!_ready);
+    private IEnumerable<(NoteDto Note,string Author)> Surfaces {
+        get{if(_current is not null)yield return (_current,_currentAuthor);if(_pending is not null)yield return (_pending,_pendingAuthor);}
+    }
+    protected override void OnParametersSet(){
+        if(Note is null)return;
+        if(_current is null){_current=Note;_currentAuthor=Author;}
+        else if(_current.Id==Note.Id){_current=Note;_currentAuthor=Author;_pending=null;}
+        else{_pending=Note;_pendingAuthor=Author;}
+    }
+    private Task Ready(Guid id)=>InvokeAsync(()=>{
+        if(_pending?.Id==id){_current=_pending;_currentAuthor=_pendingAuthor;_pending=null;_ready=true;}
+        else if(_current?.Id==id)_ready=true;
+        StateHasChanged();
+    });
+}
