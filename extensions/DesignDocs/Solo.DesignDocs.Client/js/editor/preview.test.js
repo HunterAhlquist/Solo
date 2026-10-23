@@ -53,3 +53,16 @@ test('an unsupported video stays separate from neighboring supported photos',()=
     const doc='![[one.png]] ![[clip.mp4]] ![[two.png]]\n\nbody',found=widgets(doc,doc.length);
     assert.equal(found.filter(x=>x.widget.constructor.name==='MediaCard').length,2);assert.equal(found.filter(x=>x.widget.kind==='video').length,1);
 });
+
+test('document links stay rendered when the caret is elsewhere on the same line',()=>{
+    for(const link of ['[[Movement]]','[Movement](Movement.md)','[Movement](/docs/note/AaFp_LuhfYeo9qSF7x1Gug)']){
+        const doc='See '+link+' for details.';
+        assert.equal(widgets(doc,doc.length).filter(x=>['WikiLink','Link'].includes(x.widget.constructor.name)).length,1);
+        assert.equal(widgets(doc,6).filter(x=>['WikiLink','Link'].includes(x.widget.constructor.name)).length,0);
+    }
+});
+test('note links support escaped title brackets and markdown paths containing spaces',()=>{
+    const doc='See [Plan \\[v2\\]](/docs/note/AaFp_LuhfYeo9qSF7x1Gug) and [More](<More notes.md>) after.';
+    const links=widgets(doc,doc.length).filter(x=>['WikiLink','Link'].includes(x.widget.constructor.name));
+    assert.deepEqual(links.map(x=>x.widget.label),['Plan [v2]','More']);
+});

@@ -55,7 +55,7 @@ export function mountEditor(root, bridge, options) {
     noteBody?.addEventListener('pointermove',showPalette);root.addEventListener('keydown',typing);
     const preview=livePreview(bridge,images);
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
-        ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Status',message)),
+        ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
         yCollab(provider.doc.getText('markdown'),provider.awareness),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
         EditorView.domEventHandlers({focus:()=>{bridge.invokeMethodAsync('Focus',true);},blur:()=>{bridge.invokeMethodAsync('Focus',false);},
@@ -76,6 +76,14 @@ export function mountEditor(root, bridge, options) {
         }),
 
     ]})});
+    const linkDrop=event=>{
+        if(!provider.canWrite||suspended)return;
+        const {x,y,url,label}=event.detail,position=view.posAtCoords({x,y},false)??view.state.doc.length;
+        const safeLabel=label.replace(/[\\[\]]/g,'\\$&');
+        const markdown=`[${safeLabel}](${url})`;
+        view.dispatch({changes:{from:position,insert:markdown},selection:{anchor:position+markdown.length}});view.focus();
+    };
+    root.addEventListener('solo-note-drop',linkDrop);
     view.scrollDOM.addEventListener('scroll',positionPalette);
     const paletteResize=new ResizeObserver(positionPalette);if(noteBody)paletteResize.observe(noteBody);positionPalette();
     const previewTheme=()=>{const style=getComputedStyle(root);return style.fontFamily+'|'+style.color+'|'+style.getPropertyValue('--mud-palette-surface');};
@@ -102,6 +110,6 @@ export function mountEditor(root, bridge, options) {
         chooseImage:()=>images.choose(),
         imagesChanged:()=>images.refresh(),
         refreshSketches:()=>images.refresh(),
-        dispose(){clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
+        dispose(){root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }

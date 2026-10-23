@@ -7,6 +7,7 @@
 @inject ISoloTaskDrawer TaskDrawer
 @inject ISoloContextMenu Menus
 @inject IDialogService Dialogs
+@inject ISnackbar Snackbar
 <div class="design-docs-note-status">
 @if(_status.Contains("read-only",StringComparison.OrdinalIgnoreCase)){
     <MudAlert Severity="@(_status.StartsWith("Offline",StringComparison.Ordinal)?Severity.Warning:Severity.Info)" Dense="true">@_status</MudAlert>
@@ -39,7 +40,7 @@
             var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
             var hue=slot.Slot*137.508%360;var color=$"oklch(55% .15 {hue.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
             var module=await DesignDocsAssets.ModuleAsync(Js,new DesignDocsApi(Api));_reference=DotNetObjectReference.Create(this);
-            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,icons=new{close=Icons.Material.Filled.Close,previous=Icons.Material.Filled.ChevronLeft,next=Icons.Material.Filled.ChevronRight,edit=Icons.Material.Filled.Edit,remove=Icons.Material.Filled.Delete},fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,color,colorLight=$"oklch(55% .15 {hue.ToString(System.Globalization.CultureInfo.InvariantCulture)} / .2)"}});
+            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,icons=new{close=Icons.Material.Filled.Close,previous=Icons.Material.Filled.ChevronLeft,next=Icons.Material.Filled.ChevronRight,edit=Icons.Material.Filled.Edit,remove=Icons.Material.Filled.Delete,download=Icons.Material.Filled.Download,replace=Icons.Material.Filled.FindReplace},fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,color,colorLight=$"oklch(55% .15 {hue.ToString(System.Globalization.CultureInfo.InvariantCulture)} / .2)"}});
             _subscription=await Live.SubscribeAsync(ProjectId,Topic,async m=>{
                 if(_editor is null||_disposed)return;
                 if(m.Kind is "deleted" or "closed"){await _editor.InvokeVoidAsync("connected",false);await Status("Content unavailable · read-only");return;}
@@ -51,6 +52,7 @@
     }
     private Task Connection()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
     [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);
+    [JSInvokable] public void Notice(string value)=>Snackbar.Add(value,Severity.Info);
     [JSInvokable] public Task Status(string value){_status=value;return InvokeAsync(StateHasChanged);}
     [JSInvokable] public Task Focus(bool focused)=>Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
     [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}

@@ -65,7 +65,7 @@ function build(view, bridge, images) {
     }
     for(const match of doc.toString().matchAll(/\[\[([^\]]+)\]\]/g)){
         if(match.index>0&&doc.sliceString(match.index-1,match.index)==='!')continue;
-        if(cursorLines.has(doc.lineAt(match.index).number))continue;
+        if(view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(r=>r.from<=match.index+match[0].length&&r.to>=match.index))continue;
         let node=syntaxTree(view.state).resolveInner(match.index,1),code=false;for(;node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name)){code=true;break;}if(code)continue;
         const [target,label]=match[1].split('|',2),from=match.index,to=from+match[0].length;
         ranges.push(Decoration.replace({widget:new WikiLink(target,label??target,bridge)}).range(from,to));embedded.push({from,to});
@@ -81,16 +81,17 @@ function build(view, bridge, images) {
             const adjacent=view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(range=>range.from<=node.to&&range.to>=node.from);
             if(!adjacent)ranges.push(Decoration.replace({widget:new ListMarker(doc.sliceString(node.from,node.to)),listMarker:true}).range(node.from,node.to));
         }
+        if (node.name === 'Link' && doc.lineAt(node.to).number === line.number && !(view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(r=>r.from<=node.to&&r.to>=node.from))) {
+            const raw=doc.sliceString(node.from,node.to),match=/^\[((?:\\.|[^\]\\])+)\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)$/.exec(raw);
+            const url=match?.[2]??match?.[3],label=match?.[1].replace(/\\([\\[\]])/g,'$1');
+            if (match && isSafeUrl(url)) { ranges.push(Decoration.replace({widget:(/^[^:#?]+\.md(?:#.*)?$/i.test(url)?new WikiLink(url,label,bridge):new Link(label,url,bridge))}).range(node.from,node.to)); return false; }
+        }
         if (cursorLines.has(line.number)) return;
         if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark)$/.test(node.name)) {
             // An ATX marker's separator belongs to its syntax, not the rendered title.
             const separator=node.name==='HeaderMark'&&/^ATXHeading/.test(node.node.parent?.name??'')&&node.from===line.from
                 ? /^[ \t]*/.exec(doc.sliceString(node.to,line.to))[0].length:0;
             ranges.push(Decoration.replace({}).range(node.from,node.to+separator));
-        }
-        if (node.name === 'Link' && doc.lineAt(node.to).number === line.number) {
-            const raw = doc.sliceString(node.from,node.to), match = /^\[([^\]]+)\]\(([^\s)]+)\)$/.exec(raw);
-            if (match && isSafeUrl(match[2])) { ranges.push(Decoration.replace({widget:(/^[^:#?]+\.md(?:#.*)?$/i.test(match[2])?new WikiLink(match[2],match[1],bridge):new Link(match[1],match[2],bridge))}).range(node.from,node.to)); return false; }
         }
     }});
     return Decoration.set(ranges, true);

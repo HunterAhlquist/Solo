@@ -62,24 +62,3 @@ public sealed partial class VaultTests
         Assert.Empty(await stranger.PostJson<Dictionary<string,string>>("/api/ext/design-docs/links/labels",new LabelsRequest([url])));
     }
 }
-
-public sealed class CompactLinkComponentTests : ComponentTestBase
-{
-    [Fact]
-    public async Task A_compact_note_route_passes_the_resolved_project_and_note_to_the_editor()
-    {
-        var note=Guid.NewGuid();var project=Guid.NewGuid();var vault=Guid.NewGuid();var http=new StubHttp();
-        http.RouteJson($"notes/{note}/locate",new LocateDto(project,"DOCS",vault,note));
-        Services.AddSingleton<ISoloClientApi>(http.CreateClient());
-        ComponentFactories.AddStub<DesignDocsPage>(parameters=>builder=>{
-            builder.OpenElement(0,"span");builder.AddAttribute(1,"data-project",parameters.Get(x=>x.ProjectAlias));
-            builder.AddAttribute(2,"data-note",parameters.Get(x=>x.InitialNoteId));builder.CloseElement();
-        });
-        var cut=Render<NoteLinkPage>(p=>p.Add(x=>x.NoteKey,NoteAddress.Encode(note)));
-        cut.WaitForAssertion(()=>{var target=cut.Find("[data-project]");Assert.Equal("DOCS",target.GetAttribute("data-project"));Assert.Equal(note.ToString(),target.GetAttribute("data-note"));});
-        await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(NoteLinkPage.NoteKey),"not-a-note"}})));
-        Assert.Contains("Note not found",cut.Markup);
-        await cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{{nameof(NoteLinkPage.NoteKey),NoteAddress.Encode(note)}})));
-        cut.WaitForAssertion(()=>Assert.Equal("DOCS",cut.Find("[data-project]").GetAttribute("data-project")));
-    }
-}

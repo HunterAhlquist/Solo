@@ -33,7 +33,10 @@ export function mountTree(root,bridge){
         const destination=press.active&&event.type!=='pointercancel'?dropTarget(document.elementFromPoint(event.clientX,event.clientY)):null;
         const id=press.item.dataset.docTreeId,parent=destination?.dataset.docDrop;
         if(press.active){event.preventDefault();suppressClickUntil=Date.now()+400;}
-        finish();if(destination)bridge.invokeMethodAsync('Move',id,parent||null);
+        const editor=press.active&&event.type!=='pointercancel'&&press.item.dataset.docNote
+            ?document.elementFromPoint(event.clientX,event.clientY)?.closest('.design-docs-editor'):null;
+        const detail={x:event.clientX,y:event.clientY,url:press.item.dataset.docNote,label:press.item.dataset.docName};
+        finish();if(editor)editor.dispatchEvent(new CustomEvent('solo-note-drop',{detail}));else if(destination)bridge.invokeMethodAsync('Move',id,parent||null);
     }
     function click(event){if(Date.now()<suppressClickUntil){suppressClickUntil=0;event.preventDefault();event.stopPropagation();}}
     function context(event){if(intent.press){event.preventDefault();event.stopPropagation();}}

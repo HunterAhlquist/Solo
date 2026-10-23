@@ -1087,3 +1087,41 @@ color. At a 21 px body size, H4 measured 24.15 px and H5 22.575 px. Video embeds
 rendered skipped-video labels; fenced examples stayed source text. Physical iPad,
 Pencil, keyboard, backgrounding, and Force Touch checks remain pending under the
 existing approved exception.
+
+
+## Desktop materials and vault navigation feedback (Codex preview 11)
+
+The workspace owns both vault routes and compact note routes. Moving between notes
+keeps its workspace lease, so an explicitly reopened main sidebar stays open. The
+sidebar vault and the selected hierarchy row use the same primary color, hover
+background, and end border. All Projects receives a project-card contribution;
+closed vaults use an archive expansion panel with Reopen and View actions.
+
+Origin-local persistent storage now owns the vault preferences, with migration
+from the earlier cookie chunks and a cookie fallback when storage is unavailable.
+This separates desktop instances by their stable localhost ports and avoids cookie
+eviction. The font scale, margin width, current note, and expanded folder IDs
+survive leaving the page and restarting the desktop app. Bulk collapse keeps the
+current note's ancestor path open. Folder carets have centered primary-color guides;
+folder and note icons are removed. Dragging a note title into the editor inserts a
+compact document link at the drop position. Document links stay underlined in the
+primary color until the caret touches their source.
+
+Attachment previews use 128×128 contain sizing at 100% and scale with the font
+setting. The viewer supports image replacement, image download, sketch PNG export,
+and backdrop dismissal. Attachment deletion by keyboard remains blocked; its
+explanation is a temporary snackbar. The drawing editor does not close on backdrop
+clicks. Its title follows the core Mac traffic-light inset and Windows overlay
+control insets. Native glass surfaces stay transparent around opaque Markdown
+content and drawing paper. A content filter blurs the underlying layout while a
+viewer or drawing dialog is open; this was needed because the native glass window
+did not visibly apply the otherwise computed backdrop filter.
+
+Validation: 56 extension C# tests pass, including compact-route workspace lifetime
+and preference hydration; 78 JavaScript tests pass. Browser checks cover matching
+sidebar highlights across file switches, note drag insertion, image replacement,
+download/PNG export, backdrop dismissal, temporary warnings, and closed-vault
+reopening. A native Mac desktop fixture verifies glass, title spacing, and
+restoration of a nested note, 125% font scale, 10% margins, and folder states after
+quitting and reopening. Physical Windows titlebar and iPad/Pencil/Force Touch
+checks remain pending under the existing hardware exception.
