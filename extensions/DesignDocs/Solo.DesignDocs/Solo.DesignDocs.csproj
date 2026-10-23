@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Design Docs extension's server half: vaults, folders, notes, sketches,
+       images and each document's update log, in its own ext_design_docs schema,
+       plus the live handler that stores and relays editors' Yjs updates. Built
+       the way Solo.Roadmap is: the contract package and nothing from src/, core
+       read only through ISoloQuery, never a core row written.
+
+       The server never decodes Yjs or parses markdown. It keeps opaque updates in
+       order and the markdown copy writers send it, so it needs no native library.
+
+       Versioned independently of the app. build/pack-design-docs-extension.sh
+       stamps this version into the package filename and checks it against
+       extension.json. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj. The host's
+         copy reaches Solo.DesignDocs.Tests through Solo.Api; the data tests,
+         which have no host, reference the package themselves. -->
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.10.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The browser bundle is built from Solo.DesignDocs.Client/js into content/
+         by npm and is not source. -->
+    <None Remove="content\**" />
+  </ItemGroup>
+
+</Project>

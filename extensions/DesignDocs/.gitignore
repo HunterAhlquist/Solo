@@ -1,0 +1,6 @@
+# Built by Solo.DesignDocs.Client/js (npm run build); the package script and CI build them.
+Solo.DesignDocs/content/design-docs.js
+Solo.DesignDocs/content/design-docs.css
+Solo.DesignDocs/content/silkscreen.woff2
+Solo.DesignDocs/content/silkscreen-LICENSE.txt
+Solo.DesignDocs.Client/js/node_modules/

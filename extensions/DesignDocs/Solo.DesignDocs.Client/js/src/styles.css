@@ -1,0 +1,637 @@
+/* ---------------------------------------------------------------------------
+   The Design Docs extension's styles. Served from the package's content/
+   folder and added by design-docs.js (ensureStyles) the first time any of its
+   components renders.
+
+   Colors come from MudBlazor's palette variables so everything follows the
+   instance theme and its color scheme; nothing depends on core's class names.
+   --------------------------------------------------------------------------- */
+
+:root {
+    --dd-line: var(--mud-palette-lines-default);
+    --dd-muted: var(--mud-palette-text-secondary);
+    --dd-code-bg: color-mix(in srgb, var(--mud-palette-text-primary) 6%, transparent);
+    --dd-card-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
+    --dd-sketch-backdrop: color-mix(in srgb, var(--mud-palette-text-primary) 10%, var(--mud-palette-background));
+}
+
+html[data-color-scheme="dark"] {
+    --dd-code-bg: color-mix(in srgb, var(--mud-palette-text-primary) 9%, transparent);
+    --dd-card-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
+}
+
+/* -- Vault page layout -------------------------------------------------------- */
+
+.dd-vault {
+    display: grid;
+    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+    gap: 0;
+    height: calc(100dvh - var(--mud-appbar-height, 64px) - 2rem);
+    min-height: 420px;
+    border: 1px solid var(--dd-line);
+    border-radius: var(--mud-default-borderradius, 4px);
+    overflow: hidden;
+    background: var(--mud-palette-surface);
+}
+
+.dd-vault__tree {
+    border-right: 1px solid var(--dd-line);
+    overflow: auto;
+    padding: 0.25rem 0;
+    min-width: 0;
+}
+
+.dd-vault__pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.dd-vault__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--dd-line);
+    min-height: 44px;
+}
+
+.dd-vault__title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.dd-vault__body {
+    flex: 1 1 auto;
+    overflow: auto;
+    min-height: 0;
+}
+
+.dd-vault__empty {
+    padding: 2rem;
+    color: var(--dd-muted);
+    text-align: center;
+}
+
+.dd-vault__back {
+    display: none;
+}
+
+/* Narrow screens show the tree or the note, not both. */
+@media (max-width: 760px) {
+    .dd-vault {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dd-vault__tree {
+        border-right: none;
+    }
+
+    .dd-vault--note-open .dd-vault__tree,
+    .dd-vault:not(.dd-vault--note-open) .dd-vault__pane {
+        display: none;
+    }
+
+    .dd-vault__back {
+        display: inline-flex;
+    }
+}
+
+.dd-file-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* -- Tree --------------------------------------------------------------------- */
+
+.dd-tree__row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 32px;
+    padding-right: 0.25rem;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 4px;
+    margin: 0 0.25rem;
+}
+
+.dd-tree__row:hover {
+    background: var(--mud-palette-action-default-hover);
+}
+
+.dd-tree__row--active {
+    background: color-mix(in srgb, var(--mud-palette-primary) 14%, transparent);
+    color: var(--mud-palette-primary);
+}
+
+.dd-tree__row--drop {
+    outline: 2px dashed var(--mud-palette-primary);
+    outline-offset: -2px;
+}
+
+.dd-tree__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dd-tree__menu {
+    opacity: 0;
+}
+
+.dd-tree__row:hover .dd-tree__menu,
+.dd-tree__row:focus-within .dd-tree__menu,
+.dd-tree__row--active .dd-tree__menu {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .dd-tree__menu {
+        opacity: 1;
+    }
+}
+
+/* -- Presence ----------------------------------------------------------------- */
+
+.dd-presence {
+    display: flex;
+    gap: 2px;
+}
+
+.dd-presence__dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    border: 2px solid var(--mud-palette-surface);
+}
+
+.dd-status {
+    font-size: 0.8rem;
+    color: var(--dd-muted);
+    white-space: nowrap;
+}
+
+.dd-status--warning {
+    color: var(--mud-palette-warning);
+}
+
+/* -- Note editor -------------------------------------------------------------- */
+
+.dd-note {
+    height: 100%;
+}
+
+.dd-note .cm-editor {
+    height: 100%;
+    font-family: var(--mud-typography-default-family);
+    font-size: 1rem;
+    color: var(--mud-palette-text-primary);
+    background: transparent;
+}
+
+.dd-note .cm-editor.cm-focused {
+    outline: none;
+}
+
+.dd-note .cm-scroller {
+    line-height: 1.6;
+    font-family: inherit;
+}
+
+.dd-note .cm-content {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 1.25rem 1.25rem 40vh;
+    caret-color: var(--mud-palette-text-primary);
+}
+
+.dd-note .cm-cursor {
+    border-left-color: var(--mud-palette-text-primary);
+}
+
+.dd-note .cm-selectionBackground,
+.dd-note .cm-focused .cm-selectionBackground {
+    background: color-mix(in srgb, var(--mud-palette-primary) 24%, transparent) !important;
+}
+
+.dd-note .cm-placeholder {
+    color: var(--dd-muted);
+}
+
+.dd-note .cm-tooltip-autocomplete {
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--dd-line);
+    color: var(--mud-palette-text-primary);
+}
+
+.dd-note .cm-tooltip-autocomplete li[aria-selected] {
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+}
+
+/* Remote cursors carry their name on hover, as y-codemirror draws them. */
+.dd-note .cm-ySelectionInfo {
+    font-family: var(--mud-typography-default-family);
+    font-size: 0.7rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.dd-h {
+    font-weight: 650;
+    line-height: 1.3;
+}
+
+.dd-h1 { font-size: 1.9em; padding-top: 0.6em; }
+.dd-h2 { font-size: 1.5em; padding-top: 0.5em; }
+.dd-h3 { font-size: 1.25em; padding-top: 0.4em; }
+.dd-h4 { font-size: 1.1em; }
+.dd-h5, .dd-h6 { font-size: 1em; color: var(--dd-muted); }
+
+.dd-em { font-style: italic; }
+.dd-strong { font-weight: 700; }
+.dd-strike { text-decoration: line-through; }
+
+.dd-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: var(--dd-code-bg);
+    border-radius: 3px;
+    padding: 0 0.2em;
+}
+
+.dd-codeblock {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: var(--dd-code-bg);
+    padding-left: 0.75em !important;
+}
+
+.dd-codeblock--fence {
+    color: var(--dd-muted);
+}
+
+.dd-quote {
+    border-left: 3px solid var(--dd-line);
+    padding-left: 0.9em !important;
+    color: var(--dd-muted);
+}
+
+.dd-html {
+    color: var(--dd-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+}
+
+.dd-missing {
+    color: var(--dd-muted);
+}
+
+.dd-link {
+    color: var(--mud-palette-primary);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.dd-link--unsafe {
+    color: var(--dd-muted);
+    cursor: default;
+}
+
+.dd-unresolved {
+    opacity: 0.6;
+    text-decoration-style: dashed;
+}
+
+.dd-wikilink-source {
+    color: var(--dd-muted);
+}
+
+.dd-bullet {
+    display: inline-block;
+    width: 1.1em;
+    text-align: center;
+    color: var(--dd-muted);
+}
+
+.dd-checkbox {
+    vertical-align: -0.15em;
+    margin: 0 0.35em 0 0.1em;
+    width: 1em;
+    height: 1em;
+    accent-color: var(--mud-palette-primary);
+    cursor: pointer;
+}
+
+.dd-rule {
+    display: inline-block;
+    width: 100%;
+    border-top: 1px solid var(--dd-line);
+    vertical-align: middle;
+}
+
+/* -- Images ------------------------------------------------------------------- */
+
+.dd-image {
+    display: inline-block;
+    cursor: zoom-in;
+    vertical-align: bottom;
+}
+
+.dd-image img {
+    display: block;
+    max-width: 100%;
+    border-radius: 3px;
+}
+
+/* A lone image sits on the page like a photo dropped onto it. */
+.dd-image--card {
+    margin: 0.5rem 0.25rem;
+    padding: 6px;
+    background: #fff;
+    box-shadow: var(--dd-card-shadow);
+    transform: rotate(var(--dd-angle, 0deg));
+    max-width: min(100%, 32rem);
+}
+
+.dd-image--card img {
+    max-height: 26rem;
+}
+
+.dd-image--inline img {
+    max-height: 1.6em;
+    display: inline;
+    vertical-align: text-bottom;
+}
+
+.dd-image--missing {
+    min-width: 6rem;
+    min-height: 4rem;
+    background: var(--dd-code-bg);
+}
+
+.dd-stack {
+    position: relative;
+    display: inline-block;
+    width: 15rem;
+    height: 12rem;
+    margin: 0.75rem 0.25rem;
+    cursor: zoom-in;
+}
+
+.dd-stack__card {
+    position: absolute;
+    left: var(--dd-shift, 0);
+    top: 0;
+    padding: 5px;
+    background: #fff;
+    box-shadow: var(--dd-card-shadow);
+    transform: rotate(var(--dd-angle, 0deg));
+}
+
+.dd-stack__card img {
+    display: block;
+    width: 11rem;
+    height: 10rem;
+    object-fit: cover;
+}
+
+.dd-stack__count {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    padding: 0 0.45em;
+    border-radius: 1em;
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.dd-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(0 0 0 / 0.85);
+    touch-action: pan-y;
+}
+
+.dd-lightbox__image {
+    max-width: 94vw;
+    max-height: 86vh;
+    object-fit: contain;
+}
+
+.dd-lightbox__caption {
+    position: absolute;
+    bottom: 1rem;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #eee;
+    font-size: 0.9rem;
+}
+
+.dd-lightbox__close,
+.dd-lightbox__nav {
+    position: absolute;
+    border: none;
+    background: rgb(255 255 255 / 0.12);
+    color: #fff;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    font-size: 1.4rem;
+    cursor: pointer;
+}
+
+.dd-lightbox__close { top: 1rem; right: 1rem; }
+.dd-lightbox__nav--previous { left: 1rem; top: calc(50% - 22px); }
+.dd-lightbox__nav--next { right: 1rem; top: calc(50% - 22px); }
+
+/* -- Task chips --------------------------------------------------------------- */
+
+.dd-task-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35em;
+    max-width: 100%;
+    padding: 0 0.5em;
+    border-radius: 1em;
+    border: 1px solid var(--dd-line);
+    background: var(--mud-palette-surface);
+    cursor: pointer;
+    font-size: 0.9em;
+    vertical-align: baseline;
+}
+
+.dd-task-chip__serial {
+    color: var(--dd-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+}
+
+.dd-task-chip__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dd-task-chip--finished .dd-task-chip__name {
+    text-decoration: line-through;
+    color: var(--dd-muted);
+}
+
+.dd-task-chip--unknown {
+    color: var(--dd-muted);
+    border-style: dashed;
+}
+
+/* -- Sketches ----------------------------------------------------------------- */
+
+.dd-sketch-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+}
+
+.dd-sketch-embed {
+    position: relative;
+    display: inline-block;
+    width: min(100%, 26rem);
+    margin: 0.5rem 0;
+    border: 1px solid var(--dd-line);
+    border-radius: 4px;
+    overflow: hidden;
+    vertical-align: bottom;
+}
+
+.dd-sketch-embed__view {
+    display: block;
+}
+
+.dd-sketch-embed__label {
+    display: block;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.8rem;
+    color: var(--dd-muted);
+    border-top: 1px solid var(--dd-line);
+}
+
+.dd-sketch-embed__edit {
+    position: absolute;
+    right: 0.4rem;
+    bottom: 0.25rem;
+    border: 1px solid var(--dd-line);
+    border-radius: 4px;
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    font: inherit;
+    font-size: 0.8rem;
+    padding: 0.1rem 0.6rem;
+    cursor: pointer;
+}
+
+.dd-sketch-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+    display: flex;
+    flex-direction: column;
+    background: var(--mud-palette-background);
+}
+
+.dd-sketch-overlay__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    padding-top: max(0.25rem, env(safe-area-inset-top));
+    border-bottom: 1px solid var(--dd-line);
+    background: var(--mud-palette-surface);
+}
+
+.dd-sketch-overlay__spacer {
+    flex: 1 1 auto;
+}
+
+.dd-sketch-editor {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    touch-action: none;
+    background: var(--dd-sketch-backdrop);
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.dd-sketch-editor__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+}
+
+.dd-sketch-editor__text {
+    position: absolute;
+    min-width: 6rem;
+    min-height: 2em;
+    padding: 0;
+    border: 1px dashed var(--mud-palette-primary);
+    background: transparent;
+    color: transparent;
+    caret-color: var(--mud-palette-primary);
+    font-family: DesignDocsPixel, monospace;
+    line-height: 1.4;
+    resize: both;
+    outline: none;
+    transform-origin: top left;
+}
+
+.dd-ink-swatch {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--mud-palette-surface);
+    box-shadow: 0 0 0 1px var(--dd-line);
+}
+
+.dd-ink-swatch--active {
+    box-shadow: 0 0 0 2px var(--mud-palette-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dd-image--card,
+    .dd-stack__card {
+        transform: none;
+    }
+}

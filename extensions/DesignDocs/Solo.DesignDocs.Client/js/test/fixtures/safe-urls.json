@@ -1,0 +1,29 @@
+{
+  "comment": "Link destinations and whether core's SoloMarkdownPipeline.IsSafeUrl allows them. Read by js/test/markdown.test.js and Solo.DesignDocs.Tests (SafeUrlParityTests).",
+  "cases": [
+    ["", true],
+    ["   ", true],
+    ["/docs/note/abc", true],
+    ["docs/note/abc#heading", true],
+    ["#heading", true],
+    ["?q=1", true],
+    ["/a:b", true],
+    ["a/b:c", true],
+    ["a?b:c", true],
+    ["a#b:c", true],
+    ["http://example.com", true],
+    ["HTTPS://example.com", true],
+    ["  https://example.com  ", true],
+    ["mailto:someone@example.com", true],
+    ["javascript:alert(1)", false],
+    ["JavaScript:alert(1)", false],
+    ["  javascript:alert(1)", false],
+    ["data:text/html,<script>", false],
+    ["vbscript:msgbox", false],
+    ["file:///etc/passwd", false],
+    ["java\tscript:alert(1)", false],
+    ["ftp://example.com", false],
+    ["about:blank", false],
+    ["blob:https://example.com/x", false]
+  ]
+}

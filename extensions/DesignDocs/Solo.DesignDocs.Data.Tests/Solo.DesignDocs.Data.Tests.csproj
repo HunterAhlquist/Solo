@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Design Docs extension's own tests: its context and update log against a
+       real Postgres, and the live handler's in-memory parts (locks, seed leases,
+       part reassembly, the protocol's shapes). References the server half
+       directly, unlike Solo.DesignDocs.Tests, which loads the package the way a
+       deployment does. No host is involved, so nothing here comes from src/. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.16.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.85" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Solo.DesignDocs keeps its own reference private, so this one is explicit. -->
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.10.0" />
+    <ProjectReference Include="..\Solo.DesignDocs\Solo.DesignDocs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The examples the JS tests read too, so both sides agree on the wire format. -->
+    <None Include="..\Solo.DesignDocs.Client\js\test\fixtures\protocol-examples.json" Link="protocol-examples.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

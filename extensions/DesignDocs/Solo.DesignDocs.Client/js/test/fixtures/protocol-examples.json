@@ -1,0 +1,21 @@
+{
+  "comment": "The relay protocol's messages, as both sides must write and read them. Read by Solo.DesignDocs.Data.Tests (SyncProtocolTests) and js/test/protocol.test.js; change all three together.",
+  "examples": [
+    { "kind": "sync", "data": { "afterSeq": 0 } },
+    { "kind": "sync", "data": { "afterSeq": 1234567890123 } },
+    { "kind": "update", "data": { "id": "c1-7", "data": "AQLpqgEABAEEdGV4dAJoaQA=" } },
+    { "kind": "update", "data": { "id": "c1-8", "data": "AQLpqgEABAEEdGV4dAJoaQA=", "lease": "5b1f4c0e0b4a4a0d9d8b3c3c3a1f2e10" } },
+    { "kind": "update", "data": { "seq": 41, "data": "AQLpqgEABAEEdGV4dAJoaQA=" } },
+    { "kind": "compact", "data": { "uptoSeq": 41, "data": "AQLpqgEABAEEdGV4dAJoaQA=" } },
+    { "kind": "state", "data": { "entries": [[40, "AA=="], [41, "AQLpqgEABAEEdGV4dAJoaQA="]] } },
+    { "kind": "synced", "data": { "seq": 41, "pending": 2 } },
+    { "kind": "ack", "data": { "id": "c1-7", "seq": 41 } },
+    { "kind": "refused", "data": { "id": "c1-7", "reason": "read-only" } },
+    { "kind": "refused", "data": { "id": "c1-8", "reason": "seed-lost" } },
+    { "kind": "seed", "data": { "markdown": "# Imported\n\nText", "lease": "5b1f4c0e0b4a4a0d9d8b3c3c3a1f2e10" } },
+    { "kind": "unseeded", "data": { "markdown": "# Imported\n\nText" } },
+    { "kind": "part", "data": { "k": "update", "id": "9f2c", "i": 0, "n": 2, "d": "{\"id\":\"c1-9\",\"da" } }
+  ],
+  "reasons": ["read-only", "closed", "unseeded", "seed-lost", "malformed"],
+  "chunkLength": 46000
+}

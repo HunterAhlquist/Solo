@@ -1,0 +1,15 @@
+{
+  "comment": "Heading text and the slug js/src/editor/markdown.js gives it, in document order, so repeats number.",
+  "cases": [
+    ["Combat design", "combat-design"],
+    ["  Spaced   out  ", "spaced-out"],
+    ["Dodge & roll!", "dodge--roll"],
+    ["Über Straße", "über-straße"],
+    ["snake_case-and-dash", "snake_case-and-dash"],
+    ["日本語 見出し", "日本語-見出し"],
+    ["Combat design", "combat-design-2"],
+    ["Combat design", "combat-design-3"],
+    ["Version 2.0", "version-20"],
+    ["***", ""]
+  ]
+}
