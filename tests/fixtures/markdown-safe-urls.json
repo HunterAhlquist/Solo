@@ -1,0 +1,9 @@
+[
+ {"url":null,"safe":true},{"url":"","safe":true},{"url":"  ","safe":true},
+ {"url":"/relative/a","safe":true},{"url":"a/b:c","safe":true},{"url":"?a:b","safe":true},{"url":"#a:b","safe":true},
+ {"url":"https://example.test","safe":true},{"url":"HTTP://example.test","safe":true},{"url":"mailto:user@example.test","safe":true},
+ {"url":"javascript:alert(1)","safe":false},{"url":"data:image/svg+xml,x","safe":false},{"url":"vbscript:x","safe":false},{"url":"file:///tmp/x","safe":false},
+ {"url":"java\nscript:x","safe":false},{"url":"a\\b:c","safe":false},
+ {"url":"\u0085https://example.test\u0085","safe":true},{"url":"\ufeffhttps://example.test","safe":false},
+ {"url":"\u00a0https://example.test\u00a0","safe":true},{"url":"\u0001https://example.test","safe":false}
+]

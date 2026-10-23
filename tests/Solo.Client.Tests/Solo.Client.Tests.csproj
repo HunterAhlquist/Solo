@@ -29,4 +29,7 @@
     <ProjectReference Include="..\Solo.Extension.Fixture.Client\Solo.Extension.Fixture.Client.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="../fixtures/markdown-safe-urls.json" Link="markdown-safe-urls.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
