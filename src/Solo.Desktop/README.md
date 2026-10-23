@@ -22,6 +22,22 @@ On first launch a settings window asks for an instance address
 (e.g. `https://solo.example.com`). Settings live in `settings.json` under
 Electron's `userData` directory.
 
+## Preview builds
+
+Prerelease versions install as **Solo (Preview)** with a separate app identifier
+and the icon from `Icons/Solo Preview.icon`. Settings, Chromium cache/storage,
+logs, and crash dumps live under **Solo (Preview)** inside the platform's app-data
+directory (`~/Library/Application Support/Solo (Preview)` on macOS). Stable
+profiles are not copied: add and sign in to the preview's instances once.
+Both channels can run together; occupied local ports are skipped when adding an
+instance. Manual release-workflow builds are previews too.
+
+The desktop client is bundled with the installer. A server can load an extension
+whose client contract is newer than an installed desktop's. Admin settings shows
+that server state separately from the client compatibility warning; install a
+matching desktop preview to use its client pages. Every instance opens a separate
+origin and Blazor runtime, with its own extension catalog and browser storage.
+
 ## Instances
 
 *Solo → Settings…* (`Cmd/Ctrl+,`; under *File* on Windows and Linux) lists the

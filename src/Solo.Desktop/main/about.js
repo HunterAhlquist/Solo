@@ -5,6 +5,7 @@
 // different.
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
+const { identityForVersion } = require('./app-identity');
 
 const isMac = process.platform === 'darwin';
 const WIDTH = 300;
@@ -33,7 +34,7 @@ function openAboutWindow(webPreferences) {
         maximizable: false,
         fullscreenable: false,
         show: false,
-        title: 'About Solo',
+        title: `About ${app.getName()}`,
         // The page's own background, so nothing flashes before it paints.
         backgroundColor: nativeTheme.shouldUseDarkColors ? '#262628' : '#f2f2f4',
         // The native panel has no visible title bar, only the traffic lights.
@@ -54,7 +55,12 @@ function openAboutWindow(webPreferences) {
     win.webContents.on('will-navigate', event => event.preventDefault());
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.loadFile(path.join(__dirname, '..', 'about', 'about.html'), {
-        query: { version: app.getVersion(), copyright: copyright() },
+        query: {
+            version: app.getVersion(),
+            name: app.getName(),
+            copyright: copyright(),
+            preview: identityForVersion(app.getVersion()).preview ? '1' : '0',
+        },
     });
 }
 

@@ -401,10 +401,8 @@
         name.append(element('span', 'Open', 'open-mark'));
       }
 
-      // The local address is the origin a provider other than Google has to
-      // be told about, so it is shown rather than left for settings.json.
       const about = element('div', '', 'about');
-      about.append(name, element('small', instance.url), element('small', `Local address ${instance.origin}`));
+      about.append(name, element('small', instance.url));
 
       const open = element('button', instance.open ? 'Show' : 'Open');
       open.type = 'button';
@@ -511,7 +509,8 @@
     }
   });
 
-  window.soloSettings.get().then(({ instances: current, nativeEffects, backgroundAlpha, platform, firstRun }) => {
+  window.soloSettings.get().then(({ appName, instances: current, nativeEffects, backgroundAlpha, platform, firstRun }) => {
+    document.title = `${appName || 'Solo'} — Settings`;
     instances = current;
     nativeEffectsInput.checked = nativeEffects;
     nativeEffectsSetting.hidden = platform !== 'darwin';
