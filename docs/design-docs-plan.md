@@ -1257,3 +1257,9 @@ circle's near arc is the concave notch, producing one continuous silhouette.
 Geometry tests verify circle contact and perpendicular tangent/radius vectors.
 Local validation passes 58 C# and 92 JavaScript checks. No tag or preview was
 published for this review.
+
+The next local design revision uses a black arrow body and a black I-beam stem,
+with the assigned color confined to their outlines and profile-picture borders.
+A wider colored stroke behind the black I-beam preserves its curved caps. Browser
+style checks confirm both bodies resolve to black and the outlines retain each
+user's assigned color. This revision is also unpublished.
