@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.11.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.12.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -57,3 +57,8 @@ lists, Tab nests them, and Shift-Tab dedents. The insertion palette follows the
 current line at the left text margin. Touch controls only appear on touch-capable
 platforms. Safari Force Touch pressure is supported when exposed by the browser;
 physical trackpad and iPad verification remain pending.
+
+Sketch dialogs suspend Markdown input until they close. Sketch history loads as
+one current state, and held selections use a floating preview beyond the paper
+edge until release. The eraser uses Google's Material Symbols SVG; its attribution
+and Apache 2.0 license are included in the package.

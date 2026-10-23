@@ -13,3 +13,8 @@ https://deltarune.wiki/w/Running_gag#Explosion
 
 The 17 transparent PNG frames were encoded as explosion.gif at 70 ms per frame.
 No frame artwork was generated, painted, or background-removed.
+
+Eraser icon: Google Material Symbols, ink_eraser (Outlined, 24 px).
+https://github.com/google/material-design-icons/blob/master/symbols/web/ink_eraser/materialsymbolsoutlined/ink_eraser_24px.svg
+Copyright Google LLC. Licensed under Apache License 2.0; see MATERIAL-SYMBOLS-LICENSE.txt.
+The original path is scaled into MudIcon's 24-unit view box.

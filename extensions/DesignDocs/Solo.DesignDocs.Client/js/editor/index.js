@@ -10,7 +10,7 @@ import { mediaReference, mediaRange } from '../media/references.js';
 import { caretPalettePosition } from './palette.js';
 import { markdownEditing } from './commands.js';
 export function mountEditor(root, bridge, options) {
-    const readOnly = new Compartment(); let view;
+    const readOnly = new Compartment(); let view,suspended=false;
     const baseUser={...options.user};
     function themeUser(){const probe=document.createElement('span');probe.style.color='var(--mud-palette-background, white)';root.append(probe);const rgb=getComputedStyle(probe).color.match(/[\d.]+/g)?.slice(0,3).map(Number)??[255,255,255];probe.remove();const light=rgb.reduce((a,b)=>a+b,0)<384?'75%':'50%';return {...baseUser,color:baseUser.color.replace(/55%/,light),colorLight:baseUser.colorLight.replace(/55%/,light)};}
     options.user=themeUser();
@@ -18,12 +18,12 @@ export function mountEditor(root, bridge, options) {
     editorRoot.className='design-docs-editor-host';fallback.className = 'design-docs-stored-markdown'; root.append(fallback,editorRoot);
     const provider = new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {
         ...options,
-        writable:value=>{images.canWrite=value;view?.dispatch({effects:readOnly.reconfigure([EditorState.readOnly.of(!value),EditorView.editable.of(value)])});},
+        writable:()=>applyAccess(),
         status:message=>bridge.invokeMethodAsync('Status',message),
         copy:(text,seq)=>bridge.invokeMethodAsync('Copy',text,seq,headings(text)),
         unseeded:markdown=>{fallback.textContent=markdown;editorRoot.hidden=true;},
     });
-    const insert=text=>{if(!provider.canWrite)return;const r=view.state.selection.main;view.dispatch({changes:{from:r.from,to:r.to,insert:text},selection:{anchor:r.from+text.length}});view.focus();};
+    const insert=text=>{if(!provider.canWrite)return;const r=view.state.selection.main;view.dispatch({changes:{from:r.from,to:r.to,insert:text},selection:{anchor:r.from+text.length}});if(!suspended)view.focus();};
     const text=provider.doc.getText('markdown');
     const images=new Images(bridge,options.canWrite,insert,message=>bridge.invokeMethodAsync('Status',message),{
         icons:options.icons,
@@ -36,6 +36,7 @@ export function mountEditor(root, bridge, options) {
             view.dispatch({changes:{...range,insert:''},annotations:mediaEdit.of(true)});return true;
         },
     });
+    function applyAccess(){const editable=provider.canWrite&&!suspended;images.canWrite=editable;view?.dispatch({effects:readOnly.reconfigure([EditorState.readOnly.of(!editable),EditorView.editable.of(editable)])});}
     const noteBody=root.closest('.design-docs-note-body');
     let paletteTimer;
     const palette=noteBody?.querySelector('.design-docs-note-palette');
@@ -82,6 +83,7 @@ export function mountEditor(root, bridge, options) {
     const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh();}const user=themeUser();if(user.color!==provider.options.user.color){provider.options.user=user;if(provider.canWrite)provider.awareness.setLocalStateField('user',user);}});
     themeObserver.observe(document.head,{childList:true,subtree:true,characterData:true});
     return {
+        suspend(value){suspended=!!value;root.inert=suspended;if(suspended&&root.contains(document.activeElement))document.activeElement.blur();applyAccess();},
         connected:value=>provider.connected(value),
         permissions(value){images.canWrite=value;provider.options.canWrite=value;provider.connected(provider.online);},
         async receive(kind,data) {

@@ -52,7 +52,9 @@
     [Parameter,EditorRequired] public SketchDto Sketch {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
     private string _tool="pen",_ink="theme";private int _level;private bool _constrain,_writable,_touchDrawing,_supportsTouch;
-    private static readonly (string Id,string Label,string Icon)[] Tools=[("pen","Pen",Icons.Material.Filled.Edit),("eraser","Eraser",Icons.Material.Filled.AutoFixNormal),("rectangle","Rectangle",Icons.Material.Filled.CropSquare),("ellipse","Ellipse",Icons.Material.Filled.RadioButtonUnchecked),("select","Box select",Icons.Material.Filled.SelectAll),("lasso","Lasso select",Icons.Material.Filled.Gesture),("text","Text",Icons.Material.Filled.TextFields)];
+    private static readonly (string Id,string Label,string Icon)[] Tools=[("pen","Pen",Icons.Material.Filled.Edit),("eraser","Eraser",EraserIcon),("rectangle","Rectangle",Icons.Material.Filled.CropSquare),("ellipse","Ellipse",Icons.Material.Filled.RadioButtonUnchecked),("select","Box select",Icons.Material.Filled.SelectAll),("lasso","Lasso select",Icons.Material.Filled.Gesture),("text","Text",Icons.Material.Filled.TextFields)];
+    // Material Symbols' ink_eraser uses a 960-unit view box; MudIcon uses 24.
+    private const string EraserIcon="<g transform='scale(.025) translate(0 960)'><path d='M690-240h190v80H610l80-80Zm-500 80-85-85q-23-23-23.5-57t22.5-58l440-456q23-24 56.5-24t56.5 23l199 199q23 23 23 57t-23 57L520-160H190Zm296-80 314-322-198-198-442 456 64 64h262Zm-6-240Z' /></g>";
     private static string BrushIcon(int level)=>$"<circle cx='12' cy='12' r='{new[]{1,2,3,5,8}[level]}' />";
     private Task Command(string action,object? value=null)=>_sketch is null?Task.CompletedTask:_sketch.InvokeVoidAsync("command",action,value).AsTask();
     private async Task SetTool(string value){_tool=value;await Command("tool",value);}

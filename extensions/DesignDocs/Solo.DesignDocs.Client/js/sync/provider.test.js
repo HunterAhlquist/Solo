@@ -40,3 +40,29 @@ test('returning from a hidden tab explicitly resynchronizes and releases its lis
         p.dispose();sent.length=0;fake.dispatchEvent(new Event('visibilitychange'));await tick();assert.equal(sent.length,0);
     }finally{p.dispose();delete globalThis.document;}
 });
+
+test('a sketch opens at its current state without replaying visible intermediate history',async()=>{
+    const source=new Y.Doc(),updates=[];source.on('update',update=>updates.push(update));
+    const ops=source.getArray('ops');ops.push([{id:'old'}]);ops.delete(0,1);ops.push([{id:'current'}]);
+    const provider=new Provider({send:async()=>0},{canWrite:false,atomicSync:true});
+    const visible=[];provider.doc.getArray('ops').observe(()=>visible.push(provider.doc.getArray('ops').toArray()));
+    try{
+        provider.connected(true);
+        for(const [index,update]of updates.entries())await provider.receive('update',JSON.stringify({seq:String(index+1),index:0,count:1,data:encode(update)}));
+        assert.deepEqual(visible,[],'loading must not display old/deleted strokes');
+        await provider.receive('synced',JSON.stringify({seq:'3',updates:3,canWrite:false}));
+        assert.deepEqual(visible,[[{id:'current'}]]);
+    }finally{provider.dispose();source.destroy();}
+});
+
+test('an interrupted atomic sketch load resumes from the last applied state, then live updates apply immediately',async()=>{
+    const source=new Y.Doc(),updates=[];source.on('update',update=>updates.push(update));const ops=source.getArray('ops');ops.push([{id:'one'}]);ops.push([{id:'two'}]);
+    const provider=new Provider({send:async()=>0},{canWrite:false,atomicSync:true});
+    const packet=index=>JSON.stringify({seq:String(index+1),index:0,count:1,data:encode(updates[index])});
+    try{
+        provider.connected(true);await provider.receive('update',packet(0));assert.equal(provider.seq,'0');provider.connected(false);provider.connected(true);
+        await provider.receive('update',packet(0));await provider.receive('update',packet(1));await provider.receive('synced',JSON.stringify({seq:'2',updates:2,canWrite:false}));
+        assert.deepEqual(provider.doc.getArray('ops').toArray(),[{id:'one'},{id:'two'}]);assert.equal(provider.seq,'2');
+        ops.push([{id:'live'}]);await provider.receive('update',packet(2));assert.equal(provider.doc.getArray('ops').length,3);assert.equal(provider.seq,'3');
+    }finally{provider.dispose();source.destroy();}
+});
