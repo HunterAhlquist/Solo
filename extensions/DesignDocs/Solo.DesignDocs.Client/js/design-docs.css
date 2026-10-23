@@ -1,6 +1,6 @@
 .design-docs-vault-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; margin:16px 0; }
 .design-docs-page { display:flex; flex-direction:column; flex:1; min-height:0; height:100%; }
-.design-docs-heading { display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-bottom:1px solid var(--mud-palette-lines-default); padding:8px 12px; flex-shrink:0; }
+.design-docs-heading { display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-bottom:1px solid var(--mud-palette-lines-default); padding:8px 12px; flex-shrink:0; background:color-mix(in srgb,var(--mud-palette-background) max(50%,var(--solo-glass-background-alpha,0%)),transparent); }
 .design-docs-transfer { display:flex; align-items:center; gap:8px; padding:0 12px; flex-shrink:0; }
 .design-docs-workspace { display:flex; flex:1; min-height:0; position:relative; overflow:hidden; }
 .design-docs-tree { display:none; width:max-content; min-width:min(260px,85vw); max-width:min(390px,85vw); flex-shrink:0; border-right:1px solid var(--mud-palette-lines-default); padding:8px; overflow:auto; }
@@ -106,7 +106,7 @@
 .design-docs-image-viewer .design-docs-viewer-close,.design-docs-image-viewer .design-docs-viewer-previous,.design-docs-image-viewer .design-docs-viewer-next { font-size:inherit; line-height:normal; padding:12px; }
 .design-docs-image-viewer .mud-svg-icon { width:24px; height:24px; fill:currentColor; }
 .design-docs-sketch-dialog .mud-dialog-content { padding:0; }
-.design-docs-sketch-shell { position:relative; display:flex; flex:1; min-height:0; --design-docs-ink-red:#b52c32; --design-docs-ink-blue:#2164b4; --design-docs-ink-green:#23763e; }
+.design-docs-sketch-shell { position:relative; display:flex; flex:1; min-height:0; --design-docs-ink-red:#b52c32; --design-docs-ink-blue:#2164b4; --design-docs-ink-green:#23763e; --design-docs-ink-purple:#8043ad; }
 .design-docs-sketch-editor { position:relative; width:100%; }
 .design-docs-sketch-palette.mud-paper { position:absolute; z-index:3; display:flex; padding:4px; background:color-mix(in srgb,var(--mud-palette-surface) 50%,transparent); }
 .design-docs-sketch-palette .mud-icon-button { width:40px; height:40px; }
@@ -159,7 +159,7 @@
 .design-docs-hierarchy .mud-treeview-item-content { padding:0; margin-inline-start:4px; width:calc(100% - 4px); }
 .design-docs-tree-row { padding-inline-end:11px; }
 .design-docs-tree-row.is-current { padding-inline-end:9px; }
-.design-docs-hierarchy .mud-treeview-group { border-inline-start:1px solid var(--mud-palette-primary); margin-inline-start:16px; padding-inline-start:0; }
+.design-docs-hierarchy .mud-treeview-group { border-inline-start:1px dotted color-mix(in srgb,var(--mud-palette-primary) 50%,transparent); margin-inline-start:16px; padding-inline-start:0; }
 .design-docs-hierarchy .mud-treeview-item-content:has(> .design-docs-tree-row.is-current) { color:var(--mud-palette-primary); background:var(--mud-palette-action-default-hover); border-inline-end:2px solid var(--mud-palette-primary); border-radius:var(--mud-default-borderradius); }
 .design-docs-tree-row.is-current { background:transparent; }
 .design-docs-wiki-link,.design-docs-editor a:not(.design-docs-task-chip) { color:var(--mud-palette-primary); text-decoration:underline; cursor:pointer; }
