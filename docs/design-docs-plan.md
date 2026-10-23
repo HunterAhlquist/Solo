@@ -937,3 +937,47 @@ continued text selection inside sketch text inputs. Header drag/triple-click att
 produced no text selection in desktop Chrome and Safari. Physical iPad/Pencil palm
 behavior and iPadOS backgrounding still require device retesting; the touch-drawing
 option is retained independently of those checks.
+
+
+### Fourth feedback round
+
+The notes tree sizes to its visible titles between 260 and 390 CSS pixels (the
+user revised the original request to a 1.5× maximum). Nesting uses 12-pixel indents;
+titles align left, and a title itself is the drag source. There are no separate
+grab handles. Overflowing titles use Roadmaps' continuous hover/focus ticker,
+with the same delay and speed, no touch animation, and reduced-motion support.
+Its gesture follows core's board: 320 ms stationary touch hold,
+10-pixel touch slop to preserve scrolling, and a 6-pixel fine-pointer threshold.
+Dragging suppresses the following click so it does not open the moved note.
+
+Folders start collapsed. Per-vault cookies remember expanded folder IDs, the current
+note, and the editor font scale. Explicit note links take precedence over the saved
+note, and saved notes are resolved only from the current authorized vault tree.
+Large folder lists split into bounded cookie chunks. Font sizes from 75% to 200%
+are available in the vault header. Preferences do not change shared Markdown.
+
+Tab/Shift-Tab indent/dedent text and lists. Return continues bullet or numbered
+markup, renumbers following ordered items, and exits an empty list item. Bullet
+markers remain rendered while editing their text; source markers appear only when
+a selection touches the marker itself. The vertical insertion palette aligns its
+first action to the caret's current line and stays beside the left text margin.
+The reading gutter reserves space for it at small viewport widths too.
+
+The touch-drawing toggle only renders when the browser reports touch contacts.
+Safari Force Touch pressure events can feed the same variable-width renderer as
+Pencil, using the browser's click/force-click constants rather than hardcoded
+thresholds. A constant click value from an ordinary mouse does not enable variable
+width. Other browsers retain their existing input behavior. This is a feature-gated
+WebKit integration, not a claim of cross-browser trackpad-pressure support; physical
+Force Touch hardware verification remains pending. Sources: [Apple Force Touch API](https://developer.apple.com/library/archive/documentation/AppleApplications/Conceptual/SafariJSProgTopics/RespondingtoForceTouchEventsfromJavaScript.html),
+[CodeMirror Tab handling](https://codemirror.net/examples/tab/), and [touch capability detection](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/maxTouchPoints).
+
+Validation: 66 JavaScript tests and 44 C# extension tests pass. Tests cover cookie
+round trips, large-tree chunking, corrupt preference recovery, list continuation and
+nesting, marker-adjacent editing, touch hold/cancel behavior, browser timer receiver
+requirements, and Force Touch normalization/brush widths. Browser checks cover
+restoring folders/note/font without a note query, title dragging without changing
+the selected note, adaptive sidebar bounds, left alignment, the moving overflow ticker, and the margin palette.
+The touch toggle is absent on the desktop test platform. Physical iPad touch-drag,
+palm rejection, iPadOS backgrounding, and Force Touch pressure still need hardware
+retesting under the existing approved exception.

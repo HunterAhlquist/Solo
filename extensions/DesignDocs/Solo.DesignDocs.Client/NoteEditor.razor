@@ -16,7 +16,7 @@
 </div>
 </div>
 <div class="design-docs-note-body">
-@if(CanWrite){<MudPaper Class="design-docs-note-palette" Elevation="4" role="toolbar" aria-label="Insert into note" aria-keyshortcuts="Alt+Insert">
+@if(CanWrite){<MudPaper Class="design-docs-note-palette" Elevation="4" role="toolbar" aria-orientation="vertical" aria-label="Insert into note" aria-keyshortcuts="Alt+Insert">
     <MudTooltip Text="Link a task"><MudIconButton Icon="@Icons.Material.Filled.AddLink" OnClick="InsertTask" aria-label="Link a task" /></MudTooltip>
     <MudTooltip Text="New sketch"><MudIconButton Icon="@Icons.Material.Filled.Draw" OnClick="NewSketch" aria-label="New sketch" /></MudTooltip>
     <MudTooltip Text="Add image"><MudIconButton Icon="@Icons.Material.Filled.AddPhotoAlternate" OnClick="AddImage" aria-label="Add image" /></MudTooltip>

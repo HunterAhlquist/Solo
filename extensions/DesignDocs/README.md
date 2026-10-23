@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.10.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.11.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -41,9 +41,19 @@ removal. The sketch Clear action uses the requested Deltarune explosion; asset
 provenance is in `Solo.DesignDocs.Client/js/assets/NOTICE.txt`. Physical iPad/Pencil
 and iPadOS backgrounding checks remain pending.
 
-The insertion palette follows the text caret, with no line-number gutter. Sketch
+The insertion palette follows the current line at the left margin, with no line-number gutter. Sketch
 frames are cached until shared strokes change; active strokes and selection moves
 reuse those bitmaps. Paper is opaque, while its grid, ruled lines, or dots use 50%
 opacity. Touch drawing starts off: one finger pans and Pencil draws. Toggle the
 finger icon to draw with touch. The sketch dialog blocks header text selection
 while preserving selection inside text inputs.
+
+The notes sidebar adapts between 260 and 390 pixels, with compact nesting and
+left-aligned titles. Long titles scroll on hover or keyboard focus, following
+Roadmaps' ticker and reduced-motion behavior. Drag a title to move it; touch uses the same brief hold as the
+board. Folders start collapsed, with per-vault cookies restoring expanded folders,
+the current note, and the header's editor font size. Return continues Markdown
+lists, Tab nests them, and Shift-Tab dedents. The insertion palette follows the
+current line at the left text margin. Touch controls only appear on touch-capable
+platforms. Safari Force Touch pressure is supported when exposed by the browser;
+physical trackpad and iPad verification remain pending.

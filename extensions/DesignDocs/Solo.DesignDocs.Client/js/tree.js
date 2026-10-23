@@ -1,33 +1,43 @@
-// Native drag data is required by Safari/Firefox. A dedicated handle keeps
-// selecting a note and scrolling the tree independent from moving its contents.
+import {TreeDragIntent} from './tree-intent.js';
+import {mountTitleTicker} from './tree-ticker.js';
 export function mountTree(root,bridge){
-    let dragged=null,target=null,touch=null,ghost=null;
+    let target=null,ghost=null,frame=null,suppressClickUntil=0,disposed=false;
     const clearTarget=()=>{target?.classList.remove('is-drop-target');target=null;};
     const dropTarget=node=>{const found=node?.closest?.('[data-doc-drop]');return found&&root.contains(found)?found:null;};
     const highlight=node=>{const next=dropTarget(node);if(next!==target){clearTarget();target=next;target?.classList.add('is-drop-target');}};
-    const finish=()=>{clearTarget();ghost?.remove();ghost=null;dragged=null;touch=null;};
-    async function move(id,parent){try{await bridge.invokeMethodAsync('Move',id,parent||null);}finally{finish();}}
-    function start(event){const handle=event.target.closest('[data-doc-tree-handle]');if(!handle)return;
-        dragged=handle.closest('[data-doc-tree-id]').dataset.docTreeId;
-        event.dataTransfer.setData('application/x-solo-design-doc-tree',dragged);event.dataTransfer.effectAllowed='move';
-    }
-    function over(event){if(!dragged)return;const destination=dropTarget(event.target);if(!destination)return;event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='move';highlight(destination);}
-    function drop(event){if(!dragged)return;const destination=dropTarget(event.target);if(!destination)return;event.preventDefault();event.stopPropagation();move(dragged,destination.dataset.docDrop);}
-    function down(event){if(event.pointerType==='mouse'||!event.target.closest('[data-doc-tree-handle]'))return;
-        event.preventDefault();event.stopPropagation();const row=event.target.closest('[data-doc-tree-id]');
-        touch={id:event.pointerId,x:event.clientX,y:event.clientY,row,active:false};row.setPointerCapture(event.pointerId);
-    }
-    function pointerMove(event){if(touch?.id!==event.pointerId)return;event.preventDefault();
-        if(!touch.active&&Math.hypot(event.clientX-touch.x,event.clientY-touch.y)>6){
-            touch.active=true;dragged=touch.row.dataset.docTreeId;ghost=document.createElement('div');ghost.className='design-docs-tree-ghost';ghost.textContent=touch.row.dataset.docName;document.body.append(ghost);
-        }
-        if(!touch.active)return;
-        ghost.style.left=`${event.clientX+12}px`;ghost.style.top=`${event.clientY+12}px`;highlight(document.elementFromPoint(event.clientX,event.clientY));
+    const intent=new TreeDragIntent(press=>{
+        ghost=document.createElement('div');ghost.className='design-docs-tree-ghost';ghost.textContent=press.item.dataset.docName;document.body.append(ghost);
+        press.item.classList.add('is-dragging');render();
+    });
+    const ticker=mountTitleTicker(root,()=>!!intent.press);
+    function render(){
+        const press=intent.press;if(!press?.active||disposed)return;
+        const [x,y]=press.point;ghost.style.left=(x+12)+'px';ghost.style.top=(y+12)+'px';highlight(document.elementFromPoint(x,y));
         const scroll=root.closest('.design-docs-tree'),bounds=scroll?.getBoundingClientRect();
-        if(bounds){if(event.clientY<bounds.top+36)scroll.scrollTop-=12;else if(event.clientY>bounds.bottom-36)scroll.scrollTop+=12;}
+        if(bounds){if(y<bounds.top+36)scroll.scrollTop-=12;else if(y>bounds.bottom-36)scroll.scrollTop+=12;}
+        frame=requestAnimationFrame(render);
     }
-    function up(event){if(touch?.id!==event.pointerId)return;event.preventDefault();event.stopPropagation();if(event.type!=='pointercancel'&&touch.active&&target)move(dragged,target.dataset.docDrop);else finish();}
-    root.addEventListener('dragstart',start);root.addEventListener('dragover',over);root.addEventListener('drop',drop);root.addEventListener('dragend',finish);
-    root.addEventListener('pointerdown',down,true);root.addEventListener('pointermove',pointerMove);root.addEventListener('pointerup',up);root.addEventListener('pointercancel',up);
-    return {dispose(){finish();root.removeEventListener('dragstart',start);root.removeEventListener('dragover',over);root.removeEventListener('drop',drop);root.removeEventListener('dragend',finish);root.removeEventListener('pointerdown',down,true);root.removeEventListener('pointermove',pointerMove);root.removeEventListener('pointerup',up);root.removeEventListener('pointercancel',up);}};
+    function detach(){document.removeEventListener('touchmove',refuseScroll);window.removeEventListener('pointermove',pointerMove);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);}
+    function finish(){const press=intent.finish();press?.item.classList.remove('is-dragging');if(frame!==null)cancelAnimationFrame(frame);frame=null;clearTarget();ghost?.remove();ghost=null;detach();return press;}
+    function down(event){
+        if(intent.press||event.isPrimary===false||event.button!==0)return;
+        const title=event.target.closest?.('[data-doc-drag]');if(!title||!root.contains(title))return;
+        ticker.stop();
+        intent.begin(event,title.closest('[data-doc-tree-id]'));
+        document.addEventListener('touchmove',refuseScroll,{passive:false});window.addEventListener('pointermove',pointerMove);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);
+    }
+    function pointerMove(event){if(intent.press?.id!==event.pointerId)return;intent.move(event);if(!intent.press)detach();else if(intent.press.active)event.preventDefault();}
+    function refuseScroll(event){if(intent.press?.active)event.preventDefault();}
+    function up(event){
+        const press=intent.press;if(!press||press.id!==event.pointerId)return;
+        const destination=press.active&&event.type!=='pointercancel'?dropTarget(document.elementFromPoint(event.clientX,event.clientY)):null;
+        const id=press.item.dataset.docTreeId,parent=destination?.dataset.docDrop;
+        if(press.active){event.preventDefault();suppressClickUntil=Date.now()+400;}
+        finish();if(destination)bridge.invokeMethodAsync('Move',id,parent||null);
+    }
+    function click(event){if(Date.now()<suppressClickUntil){suppressClickUntil=0;event.preventDefault();event.stopPropagation();}}
+    function context(event){if(intent.press){event.preventDefault();event.stopPropagation();}}
+    const blockNative=event=>{if(event.target.closest?.('[data-doc-drag]'))event.preventDefault();};
+    root.addEventListener('pointerdown',down,true);root.addEventListener('click',click,true);root.addEventListener('contextmenu',context,true);root.addEventListener('dragstart',blockNative);
+    return {dispose(){disposed=true;finish();ticker.dispose();root.removeEventListener('pointerdown',down,true);root.removeEventListener('click',click,true);root.removeEventListener('contextmenu',context,true);root.removeEventListener('dragstart',blockNative);}};
 }

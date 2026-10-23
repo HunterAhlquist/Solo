@@ -34,3 +34,13 @@ test('rendered ATX headings hide the delimiter separator without indenting the t
         assert.deepEqual(hidden,[[0,heading.indexOf('hello')]],heading);
     }
 });
+
+test('list markers stay formatted until the caret directly touches their source characters',()=>{
+    for(const doc of ['- list item','12. numbered item','- parent\n    - child']){
+        const field=livePreview({},{}),make=anchor=>EditorState.create({doc,selection:{anchor},extensions:[markdown(),EditorView.editable.of(true),field]});
+        const markers=state=>{const result=[];state.field(field).between(0,doc.length,(from,to,value)=>{if(value.spec.listMarker)result.push({from,to,raw:value.spec.widget.raw});});return result;};
+        const atEnd=markers(make(doc.length));assert.ok(atEnd.length>0,doc);const marker=atEnd.at(-1);
+        assert.equal(markers(make(marker.from)).length,atEnd.length-1);assert.equal(markers(make(marker.to)).length,atEnd.length-1);
+        assert.equal(markers(make(marker.to+1)).length,atEnd.length);
+    }
+});

@@ -28,6 +28,11 @@ class MediaCard extends WidgetType {
     ignoreEvent(){return true;}
     destroy(dom){this.images.release(dom);}
 }
+class ListMarker extends WidgetType {
+    constructor(raw){super();this.raw=raw;}
+    eq(other){return this.raw===other.raw;}
+    toDOM(){const span=document.createElement('span'),ordered=/^\d/.test(this.raw);span.className='design-docs-list-marker'+(ordered?' is-ordered':'');span.textContent=ordered?this.raw:'•';return span;}
+}
 function build(view, bridge, images) {
     const ranges = [], doc = view.state.doc, cursorLines = new Set();
     if (view.state.facet(EditorView.editable)) for (const r of view.state.selection.ranges) for (let n=doc.lineAt(r.from).number;n<=doc.lineAt(r.to).number;n++) cursorLines.add(n);
@@ -64,6 +69,10 @@ function build(view, bridge, images) {
         if (node.name === 'StrongEmphasis') ranges.push(Decoration.mark({class:'design-docs-strong'}).range(node.from,node.to));
         if (node.name === 'Emphasis') ranges.push(Decoration.mark({class:'design-docs-emphasis'}).range(node.from,node.to));
         if (node.name === 'InlineCode') ranges.push(Decoration.mark({class:'design-docs-code'}).range(node.from,node.to));
+        if(node.name==='ListMark'){
+            const adjacent=view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(range=>range.from<=node.to&&range.to>=node.from);
+            if(!adjacent)ranges.push(Decoration.replace({widget:new ListMarker(doc.sliceString(node.from,node.to)),listMarker:true}).range(node.from,node.to));
+        }
         if (cursorLines.has(line.number)) return;
         if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark)$/.test(node.name)) {
             // An ATX marker's separator belongs to its syntax, not the rendered title.
