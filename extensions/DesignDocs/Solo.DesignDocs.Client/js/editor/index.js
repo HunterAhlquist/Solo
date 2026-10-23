@@ -4,11 +4,14 @@ import { defaultKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import { Provider } from '../sync/provider.js';
-import { livePreview } from './preview.js';
+import { livePreview, refreshSketchPreview } from './preview.js';
 import { headings } from './markdown.js';
 import { Images } from '../media/images.js';
 export function mountEditor(root, bridge, options) {
     const readOnly = new Compartment(); let view;
+    const baseUser={...options.user};
+    function themeUser(){const probe=document.createElement('span');probe.style.color='var(--mud-palette-background, white)';root.append(probe);const rgb=getComputedStyle(probe).color.match(/[\d.]+/g)?.slice(0,3).map(Number)??[255,255,255];probe.remove();const light=rgb.reduce((a,b)=>a+b,0)<384?'75%':'50%';return {...baseUser,color:baseUser.color.replace(/55%/,light),colorLight:baseUser.colorLight.replace(/55%/,light)};}
+    options.user=themeUser();
     const fallback = document.createElement('pre'), editorRoot = document.createElement('div');
     fallback.className = 'design-docs-stored-markdown'; root.append(fallback,editorRoot);
     const provider = new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {
@@ -34,6 +37,8 @@ export function mountEditor(root, bridge, options) {
         }),
         
     ]})});
+    const themeObserver=new MutationObserver(()=>{const user=themeUser();if(user.color!==provider.options.user.color){provider.options.user=user;if(provider.canWrite)provider.awareness.setLocalStateField('user',user);}});
+    themeObserver.observe(document.head,{childList:true,subtree:true,characterData:true});
     return {
         connected:value=>provider.connected(value),
         permissions(value){images.canWrite=value;toolbar.hidden=!value;provider.options.canWrite=value;provider.connected(provider.online);},
@@ -41,7 +46,7 @@ export function mountEditor(root, bridge, options) {
             await provider.receive(kind,data);
             if(kind==='state'||kind==='update'){fallback.textContent='';editorRoot.hidden=false;}
             if(kind==='synced' && options.fragment) {
-                const target=decodeURIComponent(options.fragment.replace(/^#/,'')); options.fragment=null;
+                let target=options.fragment.replace(/^#/,'');try{target=decodeURIComponent(target);}catch{}options.fragment=null;
                 const content=provider.doc.getText('markdown').toString(), list=headings(content);
                 const index=list.findIndex(h=>h.slug===target);
                 if(index<0) bridge.invokeMethodAsync('Status','Heading not found · opened at the top');
@@ -51,6 +56,7 @@ export function mountEditor(root, bridge, options) {
         presence:users=>provider.presence(users),
         insert,
         imagesChanged:()=>images.refresh(),
-        dispose(){images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
+        refreshSketches:()=>Promise.all([...root.querySelectorAll("canvas[data-sketch]")].map(canvas=>refreshSketchPreview(canvas,bridge))),
+        dispose(){themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }

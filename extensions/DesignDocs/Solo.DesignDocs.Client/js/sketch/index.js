@@ -4,7 +4,7 @@ import { pageSize,paint,rasterize,connectedRegion,splitMove,shape } from './rend
 import { loadFont } from './font.js';
 const local=Symbol('local sketch');
 export async function mountSketch(root,bridge,options){
-    const font=await loadFont(options.fontUrl);let canvas,context,active=null,selected=null,editing=null,raster,frame=0,disposed=false,visible=true,penDown=false;
+    const font=await loadFont(options.fontUrl);let frameRequest=null;let canvas,context,active=null,selected=null,editing=null,raster,frame=0,disposed=false,visible=true,penDown=false;
     let pan=[12,12],zoom=1,angle=0,gesture=null;const touches=new Map(),downloads=[];
     const toolbar=document.createElement('div');toolbar.className='design-docs-sketch-tools';
     const viewport=document.createElement('div');viewport.className='design-docs-sketch-viewport';viewport.tabIndex=0;
@@ -45,9 +45,10 @@ export async function mountSketch(root,bridge,options){
         if(selected){context.strokeStyle='#c68a20';context.lineWidth=1;context.setLineDash([3,3]);context.strokeRect(selected.x+selected.dx-4,selected.y+selected.dy-4,8,8);context.setLineDash([]);}
         paper.value=current.pageSize;orientation.value=current.orientation;pattern.value=current.pattern;transform();
     }
-    ops.observe(draw);texts.observeDeep(draw);meta.observe(draw);provider.awareness.on('change',draw);
+    const requestDraw=()=>{if(frameRequest!==null||disposed)return;frameRequest=requestAnimationFrame(()=>{frameRequest=null;draw();});};
+    ops.observe(requestDraw);texts.observeDeep(requestDraw);meta.observe(requestDraw);provider.awareness.on('change',requestDraw);
     const observer=new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;});observer.observe(viewport);
-    const boil=setInterval(()=>{if(visible&&!document.hidden&&!disposed){frame=reduced.matches?0:(frame+1)%3;draw();}},250);
+    const boil=setInterval(()=>{if(visible&&!document.hidden&&!disposed){frame=reduced.matches?0:(frame+1)%3;requestDraw();}},250);
     function point(e){const r=viewport.getBoundingClientRect(),x=(e.clientX-r.left-pan[0])/zoom,y=(e.clientY-r.top-pan[1])/zoom,a=-angle*Math.PI/180;return [Math.cos(a)*x-Math.sin(a)*y,Math.sin(a)*x+Math.cos(a)*y,e.pressure];}
     function updateAwareness(p){if(!provider.canWrite)return;provider.awareness.setLocalStateField('pointer',{x:p[0],y:p[1]});provider.awareness.setLocalStateField('stroke',active&&['pen','eraser'].includes(active.tool)?active:null);}
     function editText(box){editing=box;const text=box.get('text');const input=document.createElement('textarea');input.className='design-docs-sketch-text';input.setAttribute('aria-label','Sketch text');input.value=text.toString();
@@ -75,8 +76,8 @@ export async function mountSketch(root,bridge,options){
     function move(e){if(e.pointerType==='touch'&&penDown)return;
         if(touches.has(e.pointerId))touches.set(e.pointerId,[e.clientX,e.clientY]);
         if(gesture&&touches.size>=2){const [a,b]=[...touches.values()];pan=[gesture.pan[0]+(a[0]+b[0])/2-gesture.mid[0],gesture.pan[1]+(a[1]+b[1])/2-gesture.mid[1]];zoom=Math.max(1,Math.min(8,Math.round(gesture.zoom*Math.hypot(a[0]-b[0],a[1]-b[1])/gesture.distance)));angle=gesture.angle+(Math.atan2(b[1]-a[1],b[0]-a[0])-gesture.rotation)*180/Math.PI;transform();return;}
-        const p=point(e);if(selected?.pointer===e.pointerId){selected.dx=Math.round(p[0]-selected.x);selected.dy=Math.round(p[1]-selected.y);draw();return;}
-        if(active?.pointerId===e.pointerId){for(const sample of e.getCoalescedEvents?.().length?e.getCoalescedEvents():[e])active.points.push(point(sample));active.shift=e.shiftKey;draw();}
+        const p=point(e);if(selected?.pointer===e.pointerId){selected.dx=Math.round(p[0]-selected.x);selected.dy=Math.round(p[1]-selected.y);requestDraw();return;}
+        if(active?.pointerId===e.pointerId){for(const sample of e.getCoalescedEvents?.().length?e.getCoalescedEvents():[e])active.points.push(point(sample));active.shift=e.shiftKey;requestDraw();}
         if(e.pointerType!=='touch')updateAwareness(p);
     }
     function up(e){touches.delete(e.pointerId);if(gesture){if(touches.size<2)gesture=null;return;}
@@ -99,5 +100,5 @@ export async function mountSketch(root,bridge,options){
     }
     paper.onchange=changeMeta;orientation.onchange=changeMeta;pattern.onchange=changeMeta;
     draw();return {connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
-        dispose(){disposed=true;clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('contextmenu',block);root.replaceChildren();}};
+        dispose(){disposed=true;if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('contextmenu',block);root.replaceChildren();}};
 }

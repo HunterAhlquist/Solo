@@ -23,6 +23,7 @@ public sealed class DocLinkLabels(ISoloClientApi api) : ISoloMarkdownLinkProvide
 {
     private sealed class Cache {public Dictionary<(Guid,string),(DateTimeOffset At,string Label)> Values {get;}=[];}
     private static readonly ConditionalWeakTable<ISoloClientApi,Cache> Caches=new();
+    internal static void Invalidate(ISoloClientApi api)=>Caches.Remove(api);
     public bool Claims(string url)=>url.StartsWith("/docs/note/",StringComparison.Ordinal);
     public async ValueTask<IReadOnlyDictionary<string,string>> LabelsAsync(IReadOnlyList<string> urls,CancellationToken ct)
     {

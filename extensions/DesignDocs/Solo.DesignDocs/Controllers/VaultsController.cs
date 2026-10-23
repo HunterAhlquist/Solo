@@ -73,7 +73,8 @@ public sealed class VaultsController(DesignDocsDbContext db, ISoloQuery query, I
         var v=await db.Vaults.AsNoTracking().SingleOrDefaultAsync(v=>v.Id==vaultId&&v.ProjectId==projectId,ct);
         if(v is null) return NotFound();
         return new TreeDto(Dto(v),await db.Folders.Where(f=>f.VaultId==vaultId).OrderBy(f=>f.Name).Select(f=>new FolderDto(f.Id,f.ParentId,f.Name,f.Version)).ToListAsync(ct),
-            (await db.Notes.AsNoTracking().Where(n=>n.VaultId==vaultId).OrderBy(n=>n.Name).ToListAsync(ct)).Select(Dto).ToList());
+            (await db.Notes.AsNoTracking().Where(n=>n.VaultId==vaultId).OrderBy(n=>n.Name)
+                .Select(n=>new Note {Id=n.Id,VaultId=n.VaultId,FolderId=n.FolderId,Name=n.Name,Headings=n.Headings,MarkdownSeq=n.MarkdownSeq,LastEditedBy=n.LastEditedBy,LastEditedAt=n.LastEditedAt,CreatedAt=n.CreatedAt,Version=n.Version}).ToListAsync(ct)).Select(Dto).ToList());
     }
     [HttpGet("{vaultId:guid}/notes/{id:guid}"), Authorize(Policy=SoloPolicies.ProjectRead)]
     public async Task<ActionResult<NoteDto>> Note(Guid projectId, Guid vaultId, Guid id, CancellationToken ct)
@@ -140,8 +141,9 @@ public sealed class VaultsController(DesignDocsDbContext db, ISoloQuery query, I
     {
         if(!await db.Vaults.AnyAsync(v=>v.Id==vaultId&&v.ProjectId==projectId,ct)) return NotFound();
         var n=await db.Notes.SingleOrDefaultAsync(n=>n.Id==id&&n.VaultId==vaultId,ct);if(n is null) return NotFound();
-        var marker="[["+n.Name;
-        return new RenameImpactDto(await db.Notes.CountAsync(x=>x.VaultId==vaultId&&x.Id!=id&&x.Markdown.Contains(marker),ct));
+        var candidates=await db.Notes.Where(x=>x.VaultId==vaultId&&x.Id!=id&&x.Markdown.Contains("[[")&&x.Markdown.Contains(n.Name)).Select(x=>x.Markdown).ToListAsync(ct);
+        return new RenameImpactDto(candidates.Count(markdown=>System.Text.RegularExpressions.Regex.Matches(markdown,@"(?<!!)\[\[([^\]#|]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
+            .Any(match=>{var target=match.Groups[1].Value;if(target.EndsWith(".md",StringComparison.OrdinalIgnoreCase))target=target[..^3];return target==n.Name||target.EndsWith("/"+n.Name,StringComparison.Ordinal);})));
     }
     [HttpPut("{vaultId:guid}/notes/{id:guid}/copy"), Authorize(Policy=SoloPolicies.ProjectWrite)]
     public async Task<IActionResult> Copy(Guid projectId, Guid vaultId, Guid id, CopyRequest r, CancellationToken ct)

@@ -40,3 +40,6 @@
 .design-docs-sketch-viewport canvas { position:absolute; left:0; top:0; image-rendering:pixelated; touch-action:none; user-select:none; }
 .design-docs-sketch-text { position:absolute; z-index:2; min-width:180px; min-height:60px; background:var(--mud-palette-surface); color:inherit; border:1px solid var(--mud-palette-primary); }
 .design-docs-sketch-card { display:inline-block; border:1px solid var(--mud-palette-lines-default); background:var(--mud-palette-surface); color:inherit; padding:16px 24px; cursor:pointer; }
+.design-docs-wiki-link.is-unresolved { color:var(--mud-palette-error); text-decoration:underline dashed; cursor:help; }
+.design-docs-code { font-family:monospace; background:var(--mud-palette-background-gray); border-radius:2px; }
+.design-docs-sketch-card canvas { display:block; width:180px; max-width:100%; height:auto; max-height:250px; object-fit:contain; image-rendering:pixelated; margin-top:8px; }

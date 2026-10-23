@@ -8,25 +8,27 @@ export class Provider {
         this.remote = {}; this.pending = new Map(); this.chunks = new Map(); this.seq = '0'; this.batch = [];
         this.online = false; this.synced = false; this.canWrite = false; this.disposed = false; this.queue = Promise.resolve();
         this.doc.on('update', (update, origin) => {
-            if (origin === this.remote) return;
+            if (this.disposed || origin === this.remote) return;
             this.batch.push(update); clearTimeout(this.copyTimer);
             this.copyTimer = setTimeout(() => { this.copyWanted = true; this.copy(); }, 2000);
             this.batchTimer ??= setTimeout(() => { this.batchTimer = null; this.flush(); }, 50);
         });
         this.awareness.setLocalState(null);
         this.awareness.on('update', (_, origin) => {
-            if (origin === this.remote || !this.canWrite) return;
+            if (this.disposed || origin === this.remote || !this.canWrite) return;
             clearTimeout(this.awarenessTimer);
             this.awarenessTimer = setTimeout(() => this.send('awareness', {data: encode(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]))}), 60);
         });
         this.beforeUnload = e => { if (this.pending.size || this.batch.length) { e.preventDefault(); e.returnValue = ''; } };
         if (typeof window !== 'undefined') window.addEventListener('beforeunload', this.beforeUnload);
+        this.visibility = () => { if (!document.hidden && this.online) this.connected(true); };
+        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.visibility);
     }
     send(kind, value) {
         this.queue = this.queue.catch(() => {}).then(async () => {
             if (!this.online || this.disposed) return;
-            const result = await this.bridge.send(kind, JSON.stringify(value));
-            if (result === 4) { await new Promise(r => setTimeout(r, 100)); if (this.online) return this.bridge.send(kind, JSON.stringify(value)); }
+            let result = await this.bridge.send(kind, JSON.stringify(value));
+            if (result === 4) { await new Promise(r => setTimeout(r, 100)); if (this.online) result = await this.bridge.send(kind, JSON.stringify(value)); }
             if (result !== 0) { this.setWritable(false); this.options.status?.('Sync interrupted; reconnecting…'); clearTimeout(this.retry); this.retry = setTimeout(() => { if (this.online) this.connected(true); }, 1500); }
             await new Promise(r => setTimeout(r, 25));
         });
@@ -107,8 +109,10 @@ export class Provider {
         removeAwarenessStates(this.awareness, gone, this.remote);
     }
     dispose() {
+        if (this.disposed) return;
         this.disposed = true; clearTimeout(this.batchTimer); clearTimeout(this.copyTimer); clearTimeout(this.retry);clearTimeout(this.awarenessTimer);
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', this.beforeUnload);
+        if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.visibility);
         this.awareness.destroy(); this.doc.destroy(); this.chunks.clear();
     }
 }

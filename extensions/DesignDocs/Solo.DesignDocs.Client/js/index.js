@@ -8,3 +8,4 @@ export function ensureStyles(url) {
 }
 export { mountEditor } from './editor/index.js';
 export { mountSketch } from './sketch/index.js';
+export { createTransfer } from './io/vault.js';

@@ -32,3 +32,11 @@ test('multipart state applies only after every reordered part arrives', async ()
         assert.equal(p.doc.getText('markdown').length,80000);assert.equal(p.seq,'7');
     }finally{p.dispose();source.destroy();}
 });
+test('returning from a hidden tab explicitly resynchronizes and releases its listener',async()=>{
+    const fake=new EventTarget();fake.hidden=true;globalThis.document=fake;const sent=[];
+    const p=new Provider({send:async(kind,data)=>{sent.push(kind);return 0;}},{canWrite:false});
+    try{p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:false}));await tick();sent.length=0;
+        fake.hidden=false;fake.dispatchEvent(new Event('visibilitychange'));await tick();assert.ok(sent.includes('sync'));assert.equal(p.synced,false);
+        p.dispose();sent.length=0;fake.dispatchEvent(new Event('visibilitychange'));await tick();assert.equal(sent.length,0);
+    }finally{p.dispose();delete globalThis.document;}
+});
