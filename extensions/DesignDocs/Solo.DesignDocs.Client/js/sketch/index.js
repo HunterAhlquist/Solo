@@ -9,6 +9,7 @@ import { contains,selectPolygon,selectionBounds,shiftRegion } from './selection.
 import { SketchScene } from './scene.js';
 import { SketchInput } from './input.js';
 import { applyTrackpadPressure } from './pressure.js';
+import { strokePresence } from './stroke-presence.js';
 const local=Symbol('local sketch');
 export async function mountSketch(root,bridge,options){
     const font=await loadFont(null,root),shell=root.closest('.design-docs-sketch-shell')??root;
@@ -91,7 +92,7 @@ export async function mountSketch(root,bridge,options){
     const boil=setInterval(()=>{if(visible&&!document.hidden&&!disposed&&!reduced.matches&&ops.length){frame=(frame+1)%3;requestDraw();}},250);
     function localPoint(e){if(!Number.isFinite(e.clientX)||!Number.isFinite(e.clientY))return center();const r=viewport.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];}
     function point(e){return [...pagePoint(currentView(),localPoint(e)),e.pointerType==='mouse'?mousePressure:e.pressure];}
-    function updateAwareness(p,type=lastPointerType){lastPointer=p;lastPointerType=type;if(!provider.canWrite)return;provider.awareness.setLocalStateField('pointer',{x:p[0],y:p[1],tool,width:pressureWidth(level,p[2]??0,type)});provider.awareness.setLocalStateField('stroke',active&&['pen','eraser'].includes(active.tool)?active:null);}
+    function updateAwareness(p,type=lastPointerType){lastPointer=p;lastPointerType=type;if(!provider.canWrite)return;provider.awareness.setLocalStateField('pointer',{x:p[0],y:p[1],tool,width:pressureWidth(level,p[2]??0,type)});provider.awareness.setLocalStateField('stroke',strokePresence(active));}
     function editText(box){
         viewport.querySelector('textarea')?.blur();editing=box;const text=box.get('text'),input=document.createElement('textarea');input.className='design-docs-sketch-text';input.setAttribute('aria-label','Sketch text');input.value=text.toString();input.spellcheck=false;
         viewport.append(input);transform();undo.stopCapturing();

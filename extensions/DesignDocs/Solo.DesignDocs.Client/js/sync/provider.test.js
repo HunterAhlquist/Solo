@@ -94,3 +94,27 @@ test('writable sync creates presence after initialization and every reconnect',a
         }
     }finally{p.dispose();}
 });
+
+test('rejected or failed ephemeral presence never interrupts a writable document',async()=>{
+    for(const failure of [3,4,5,new Error('presence send failed')]){
+        const statuses=[],writable=[],p=new Provider({send:async kind=>{if(kind!=='awareness')return 0;if(failure instanceof Error)throw failure;return failure;}},{canWrite:true,status:message=>statuses.push(message),writable:value=>writable.push(value)});
+        try{
+            p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await p.queue;
+            statuses.length=writable.length=0;
+            await p.send('awareness',{data:'ephemeral'});
+            assert.equal(p.canWrite,true,'losing a cursor preview must not clear an unfinished stroke');
+            assert.ok(!writable.includes(false));assert.ok(!statuses.some(message=>message.includes('interrupted')));
+            p.doc.getArray('ops').push([{id:'retained stroke'}]);p.flush();await p.queue;
+            assert.equal(p.pending.size,1,'durable edits still use the acknowledged update path');
+        }finally{p.dispose();}
+    }
+});
+
+test('a failed durable update still interrupts editing and retains the pending change',async()=>{
+    const p=new Provider({send:async kind=>kind==='update'?5:0},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await p.queue;
+        p.doc.getArray('ops').push([{id:'pending'}]);p.flush();await p.queue;
+        assert.equal(p.canWrite,false);assert.equal(p.pending.size,1);assert.equal(p.doc.getArray('ops').get(0).id,'pending');
+    }finally{p.dispose();}
+});
