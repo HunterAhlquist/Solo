@@ -178,6 +178,33 @@ public class ExtensionBootstrapTests
         Assert.Empty(catalog.Skipped);
     }
 
+    [Fact]
+    public async Task Separate_instances_keep_their_own_extension_catalogs()
+    {
+        var first = new StubHttp()
+            .RouteBytes($"{Inventory}/roadmap/client/{AssemblyName}.dll", AssemblyBytes)
+            .RouteJson(Inventory, new[] { Descriptor("roadmap") });
+        var second = new StubHttp()
+            .RouteBytes($"{Inventory}/design-docs/client/{AssemblyName}.dll", AssemblyBytes)
+            .RouteJson(Inventory, new[] { Descriptor("design-docs"), Descriptor("future", ">=2.0") });
+        var empty = new StubHttp().RouteJson(Inventory, Array.Empty<ClientExtensionDto>());
+        var catalogs = new[] { new ExtensionCatalog(), new ExtensionCatalog(), new ExtensionCatalog() };
+
+        await Task.WhenAll(
+            ExtensionBootstrapper.LoadAsync(catalogs[0], first.CreateClient()),
+            ExtensionBootstrapper.LoadAsync(catalogs[1], second.CreateClient()),
+            ExtensionBootstrapper.LoadAsync(catalogs[2], empty.CreateClient()));
+
+        Assert.Equal("roadmap", Assert.Single(catalogs[0].Loaded).Descriptor.Id);
+        Assert.Equal("design-docs", Assert.Single(catalogs[1].Loaded).Descriptor.Id);
+        Assert.Equal("future", Assert.Single(catalogs[1].Skipped).Id);
+        Assert.Empty(catalogs[0].Skipped);
+        Assert.Empty(catalogs[2].Loaded);
+        Assert.Empty(catalogs[2].Skipped);
+        Assert.DoesNotContain(first.Paths, p => p.Contains("design-docs", StringComparison.Ordinal));
+        Assert.DoesNotContain(second.Paths, p => p.Contains("roadmap", StringComparison.Ordinal));
+    }
+
     private static ClientExtensionDto Descriptor(string id, string clientRange = ">=1.0 <2.0") =>
         new(id, id, "1.0.0", clientRange, AssemblyName,
             [new ClientExtensionNavDto($"/{id}", id, null, "Read")]);

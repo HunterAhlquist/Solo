@@ -77,14 +77,14 @@ const writeFeatures = (iconDir, features) => {
  * Copies ICON_SOURCE to `dest`, keeping only the features the local actool
  * understands. Returns the features that had to be dropped.
  */
-export const stageIcon = (dest = STAGED_ICON) => {
+export const stageIcon = (dest = STAGED_ICON, source = ICON_SOURCE) => {
     if (process.platform !== 'darwin') {
         throw new Error('Staging the icon needs macOS — it compiles through actool.');
     }
 
     fs.rmSync(dest, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.cpSync(ICON_SOURCE, dest, { recursive: true });
+    fs.cpSync(source, dest, { recursive: true });
 
     const declared = JSON.parse(fs.readFileSync(manifestPath(dest), 'utf8')).features ?? [];
     if (declared.length === 0 || compiles(dest, declared)) {
@@ -97,7 +97,7 @@ export const stageIcon = (dest = STAGED_ICON) => {
 
     if (!compiles(dest, supported)) {
         throw new Error(
-            `actool cannot compile ${path.relative(repoRoot, ICON_SOURCE)} even with ` +
+            `actool cannot compile ${path.relative(repoRoot, source)} even with ` +
             `every unsupported feature dropped (${declared.join(', ')}).`);
     }
     return dropped;

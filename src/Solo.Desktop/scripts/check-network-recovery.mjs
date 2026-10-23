@@ -76,6 +76,7 @@ async function runChild({ connectionReset }) {
     const app = Object.assign(new EventEmitter(), {
         focus() {},
         getName: () => 'Solo',
+        getVersion: () => '0.1.0',
         quit() {},
         requestSingleInstanceLock: () => true,
         setPath() {},

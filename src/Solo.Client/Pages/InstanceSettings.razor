@@ -181,6 +181,13 @@ else
                             </MudText>
                         }
 
+                        @if (Catalog?.Skipped.FirstOrDefault(e => e.Id == extension.ExtensionId) is { } skipped)
+                        {
+                            <MudAlert Severity="Severity.Warning" Dense="true" Class="extension-client-warning mt-2">
+                                Client pages unavailable: @skipped.Reason
+                            </MudAlert>
+                        }
+
                         @* Which extensions sit on which write path. Without this,
                            "why can't I move this card?" has no quick answer. *@
                         @if (extension.Hooks.Count > 0)

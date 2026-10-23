@@ -178,13 +178,18 @@ jobs:
 
       # The channel guard already validated this version; a failed stamp must
       # stop the build rather than publish mislabeled installers.
-      - name: Stamp version from tag
+      - name: Stamp release identity
         env:
-          RELEASE_VERSION: ${{ needs.changes.outputs.version }}
-        if: github.event_name == 'push'
+          RELEASE_VERSION: ${{ needs.changes.outputs.version || format('0.0.0-preview.{0}', github.run_number) }}
         run: |
           npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+          node -e 'console.log("DESKTOP_PRODUCT_NAME=" + require("./electron-builder.config.cjs").productName)' >> "$GITHUB_ENV"
         shell: bash
+
+      - name: Verify desktop isolation
+        run: |
+          npm run test:app-identity
+          npm run test:instance-extensions
 
       - name: Publish Blazor client into shell
         run: npm run build:client
@@ -266,7 +271,7 @@ jobs:
       # Security. Add the secrets and the same workflow signs and notarizes
       # with no other changes.
       - name: Package
-        run: npx electron-builder --publish never ${{ matrix.args }}
+        run: npx electron-builder --config electron-builder.config.cjs --publish never ${{ matrix.args }}
 
       # Not electron-builder's `mac.notarize`: that waits on Apple inside the
       # Package step with no time limit and no output, so a slow notary queue
@@ -283,7 +288,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          APP=dist/mac-arm64/Solo.app
+          APP="dist/mac-arm64/${DESKTOP_PRODUCT_NAME}.app"
           ZIP="${RUNNER_TEMP}/Solo.zip"
           LOG="${RUNNER_TEMP}/notarytool.log"
           AUTH=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
@@ -324,7 +329,7 @@ jobs:
       # stapled; the afterAllArtifactBuild hook still re-encodes the image.
       - name: Build disk image
         if: runner.os == 'macOS'
-        run: npx electron-builder --mac --prepackaged dist/mac-arm64/Solo.app --publish never
+        run: npx electron-builder --config electron-builder.config.cjs --mac --prepackaged "dist/mac-arm64/${DESKTOP_PRODUCT_NAME}.app" --publish never
 
       # The runner is ephemeral, but the keychain outlives the job on a
       # self-hosted one and leaving it on the search list breaks later builds.
