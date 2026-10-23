@@ -26,3 +26,11 @@ test('media on separate lines or beside prose is not collected into a carousel',
 test('embed examples in inline and fenced code are not rendered', () => {
     assert.equal(widgets('`![[one.png]]`\n\n```\n![[two.png]]\n```').length, 0);
 });
+
+test('rendered ATX headings hide the delimiter separator without indenting the title', () => {
+    for(const heading of ['# hello','##   hello','###\thello']){
+        const doc=heading+'\n\nbody',field=livePreview({},{}),state=EditorState.create({doc,selection:{anchor:doc.length},extensions:[markdown(),EditorView.editable.of(true),field]});
+        const hidden=[];state.field(field).between(0,heading.length,(from,to,value)=>{if(value.isReplace&&!value.spec.widget)hidden.push([from,to]);});
+        assert.deepEqual(hidden,[[0,heading.indexOf('hello')]],heading);
+    }
+});

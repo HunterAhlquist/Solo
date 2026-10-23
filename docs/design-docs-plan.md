@@ -894,3 +894,46 @@ Physical iPad/Pencil and iPadOS backgrounding checks remain pending.
 The final extension suite passed all 40 C# tests. A screenshot comparison confirmed
 the theme text's glyph geometry stays unchanged after leaving its input. Clear uses
 a same-origin audio URL to preserve the host's existing media CSP.
+
+
+### Third feedback round
+
+The insertion palette follows the Markdown caret below its current line, clamped
+to the visible editor and hidden when the caret scrolls away. Line numbers are
+removed. Rendered ATX headings hide their delimiter's separator as well as the
+hashes, correcting the extra title indent without changing stored Markdown.
+
+The sketch previously rasterized the entire committed scene twice per draw and
+issued one rectangle call per ink pixel. It now caches the three deterministic
+boil frames, reuses the hit mask until strokes change, batches horizontal pixel
+spans, and composites cached selection layers during a drag. Active local/remote
+strokes apply to a copy of the cached raster, preserving eraser ordering. Selection
+layers retain clipped brush edges. Theme changes invalidate the color layers;
+shared stroke/page changes invalidate the scene. Blank or reduced-motion sketches
+no longer request periodic boil repaints. Pan/zoom retain CSS transforms, which let
+the browser use its compositor; actual GPU acceleration is browser/device dependent.
+
+A native Chrome 155 canvas benchmark on this Mac used 200 seeded strokes with 30
+points each, three warm-up draws, and 18 measured draws. Before/after median drawing
+submission time was 170.1/2.9 ms (p95 191.6/3.5 ms); cached idle redraws fell below the
+timer's resolution versus 170 ms before. These are synthetic warm-cache desktop
+measurements, excluding document loading and GPU presentation; they do not establish
+iPad frame rates. The approach follows [MDN's canvas optimization guidance](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas).
+
+Touch drawing is off when opening a sketch: one finger pans and Pencil draws; the
+finger toolbar toggle enables touch drawing. Pencil pointer identity survives an
+unrelated palm's pointerup/cancel. The whole drawing dialog prevents native header
+selection via user-select (including Safari's prefixed property), disables header
+touch gestures/callouts, and guards selectstart outside editable fields. A separate
+capture guard rejects palm interactions during a pen stroke. Opaque paper and
+viewport backgrounds replace the previous transparent paper; only grid/ruled/dot
+patterns render at half opacity.
+
+Validation: 48 JavaScript tests and 40 extension C# tests pass. Pixel comparisons
+cover cached frames, active erasers, scene/theme invalidation, cut-piece movement,
+page-edge movement, and paper/pattern opacity. Browser checks confirmed zero line
+number gutters, heading alignment, caret palette placement, the touch toggle, and
+continued text selection inside sketch text inputs. Header drag/triple-click attempts
+produced no text selection in desktop Chrome and Safari. Physical iPad/Pencil palm
+behavior and iPadOS backgrounding still require device retesting; the touch-drawing
+option is retained independently of those checks.

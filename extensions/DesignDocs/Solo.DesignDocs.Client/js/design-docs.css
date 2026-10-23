@@ -28,8 +28,6 @@
 .design-docs-editor .cm-scroller { overflow:auto; font-family:inherit; }
 .design-docs-editor .cm-editor.cm-focused { outline:none; }
 .design-docs-editor .cm-content { padding:16px 24px 40vh; caret-color:var(--mud-palette-primary); }
-.design-docs-editor .cm-gutters { background:transparent; color:var(--mud-palette-text-secondary); border-color:var(--mud-palette-lines-default); padding-right:8px; }
-.design-docs-editor .cm-activeLineGutter { background:var(--mud-palette-action-default-hover); }
 .design-docs-h1 { font-size:1.8em; font-weight:650; }
 .design-docs-h2 { font-size:1.5em; font-weight:650; }
 .design-docs-h3 { font-size:1.25em; font-weight:650; }
@@ -73,12 +71,12 @@
 .design-docs-code { font-family:monospace; background:var(--mud-palette-background-gray); border-radius:2px; }
 /* The content column follows the reference's wide reading margins, while the
    editor still owns the page and scrolls independently of the app shell. */
-.design-docs-page { background:color-mix(in srgb,var(--mud-palette-background) 50%,transparent); }
+.design-docs-page { background:var(--mud-palette-background); }
 .design-docs-note-body { position:relative; display:flex; flex:1; min-height:0; }
 .design-docs-editor-host { container-type:inline-size; }
 .design-docs-editor .cm-scroller { padding-inline:max(12px,calc((100cqw - 800px)/2)); scrollbar-gutter:stable; }
 .design-docs-editor .cm-content { min-width:0; padding:32px 36px 40vh; }
-.design-docs-note-palette.mud-paper { position:absolute; right:24px; top:12px; z-index:4; display:flex; padding:4px; border-radius:var(--mud-default-borderradius); background:color-mix(in srgb,var(--mud-palette-surface) 50%,transparent); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s; }
+.design-docs-note-palette.mud-paper { position:absolute; left:0; top:0; z-index:4; display:flex; padding:4px; border-radius:var(--mud-default-borderradius); background:color-mix(in srgb,var(--mud-palette-surface) 50%,transparent); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s; }
 .design-docs-note-body.is-pointer-active .design-docs-note-palette,.design-docs-note-palette:focus-within { opacity:1; visibility:visible; pointer-events:auto; }
 .design-docs-leaf > .mud-treeview-item-content > .mud-treeview-item-arrow { visibility:hidden; pointer-events:none; }
 .design-docs-transfer:has(output:empty),.design-docs-transfer:empty { display:none; }
@@ -105,7 +103,7 @@
 .design-docs-swatches,.design-docs-brushes { display:flex; }
 .design-docs-sketch-history-palette { top:12px; right:12px; }
 .design-docs-sketch-zoom-palette { bottom:20px; right:12px; }
-.design-docs-sketch-viewport { border:0; background:color-mix(in srgb,var(--mud-palette-background) 50%,transparent); }
+.design-docs-sketch-viewport { border:0; background:var(--mud-palette-background); }
 .design-docs-sketch-viewport canvas { image-rendering:auto; }
 .design-docs-sketch-text { left:0; top:0; min-width:0; min-height:0; margin:0; padding:0; border:0; outline:1px dashed var(--mud-palette-primary); outline-offset:3px; border-radius:0; resize:none; overflow:hidden; background:transparent; color:transparent; caret-color:var(--mud-palette-text-primary); transform-origin:0 0; white-space:pre; }
 .design-docs-sketch-text::selection { background:color-mix(in srgb,var(--mud-palette-primary) 25%,transparent); color:transparent; }
@@ -116,12 +114,15 @@
 @media(max-width:600px) {
  .design-docs-editor .cm-content { padding-inline:16px; }
  .design-docs-editor .cm-scroller { padding-inline:4px; }
- .design-docs-note-palette.mud-paper { right:8px; }
  .design-docs-sketch-palette .mud-icon-button { width:32px; height:32px; }
  .design-docs-sketch-ink-palette { left:56px; }
  .design-docs-sketch-history-palette { top:auto; bottom:20px; left:12px; right:auto; }
 }
 @media(prefers-reduced-motion:reduce) { .design-docs-note-palette.mud-paper { transition:none; } }
 
-.design-docs-sketch-dialog { background-color:color-mix(in srgb,var(--mud-palette-surface) 50%,transparent); }
+.design-docs-sketch-dialog { background-color:var(--mud-palette-surface); -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+.design-docs-sketch-dialog .mud-dialog-title { touch-action:none; }
+.design-docs-sketch-dialog textarea,.design-docs-sketch-dialog input { -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
 .design-docs-sketch-tool-palette { max-height:calc(100% - 80px); overflow-y:auto; }
+
+.design-docs-note-palette.mud-paper[data-caret-hidden] { opacity:0; visibility:hidden; pointer-events:none; }
