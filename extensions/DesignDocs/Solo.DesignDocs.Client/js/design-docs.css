@@ -88,9 +88,9 @@
 .design-docs-note-body.is-pointer-active .design-docs-note-palette,.design-docs-note-palette:focus-within { opacity:1; visibility:visible; pointer-events:auto; }
 .design-docs-leaf > .mud-treeview-item-content > .mud-treeview-item-arrow { visibility:hidden; pointer-events:none; }
 .design-docs-transfer:has(output:empty),.design-docs-transfer:empty { display:none; }
-.design-docs-image-card,.design-docs-image-stack { height:100px; padding:12px; }
-.design-docs-image-card img,.design-docs-image-stack img { box-sizing:content-box; width:64px; height:64px; max-width:none; max-height:none; object-fit:contain; padding:4px; background:color-mix(in srgb,var(--mud-palette-surface) 50%,transparent); }
-.design-docs-image-card { width:84px; }
+.design-docs-image-card,.design-docs-image-stack { height:calc(164px * var(--design-docs-scale,1)); padding:12px; }
+.design-docs-image-card img,.design-docs-image-stack img { box-sizing:content-box; width:calc(128px * var(--design-docs-scale,1)); height:calc(128px * var(--design-docs-scale,1)); max-width:none; max-height:none; object-fit:contain; padding:4px; background:color-mix(in srgb,var(--mud-palette-surface) 50%,transparent); }
+.design-docs-image-card { width:calc(148px * var(--design-docs-scale,1)); }
 .design-docs-image-stack { max-width:100%; }
 .design-docs-stack-count { bottom:0; right:0; }
 .design-docs-image-viewer { font:inherit; background:color-mix(in srgb,var(--mud-palette-background) 50%,transparent); color:var(--mud-palette-text-primary); }
@@ -148,3 +148,34 @@
 .design-docs-h5 { font-size:1.075em; font-weight:650; }
 .design-docs-h6 { font-size:1em; font-weight:650; }
 .design-docs-unsupported-media { color:var(--mud-palette-text-secondary); font-style:italic; }
+
+.design-docs-root { display:flex; align-items:center; }
+.design-docs-hierarchy .mud-treeview-item-icon { display:none; }
+.design-docs-hierarchy .mud-treeview-item-content { padding:0; }
+.design-docs-hierarchy .mud-treeview-group { border-inline-start:1px solid var(--mud-palette-primary); margin-inline-start:12px; padding-inline-start:0; }
+.design-docs-hierarchy .mud-treeview-item-content:has(> .design-docs-tree-row.is-current) { color:var(--mud-palette-primary); background:var(--mud-palette-action-default-hover); border-inline-end:2px solid var(--mud-palette-primary); border-radius:var(--mud-default-borderradius); }
+.design-docs-tree-row.is-current { background:transparent; }
+.design-docs-wiki-link,.design-docs-editor a:not(.design-docs-task-chip) { color:var(--mud-palette-primary); text-decoration:underline; cursor:pointer; }
+.design-docs-note { background:var(--mud-palette-background); }
+.design-docs-card-link { display:flex; align-items:center; gap:.5rem; padding:.25rem; color:var(--mud-palette-text-primary); }
+.design-docs-card-link:hover { color:var(--mud-palette-primary); background:var(--mud-palette-action-default-hover); }
+html.solo-desktop--glass .design-docs-page { background:transparent; }
+html.solo-desktop--glass .design-docs-sketch-dialog { background:color-mix(in srgb,var(--mud-palette-background) 18%,transparent); }
+html.solo-desktop--glass .design-docs-sketch-viewport { background:transparent; }
+html.solo-desktop--glass .design-docs-image-viewer { background:transparent; }
+html.solo-desktop--glass .design-docs-image-viewer::backdrop { background:color-mix(in srgb,var(--mud-palette-background) 32%,transparent); }
+html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-dialog-title,
+html.solo-desktop--mac:not(.solo-desktop--fullscreen) .design-docs-image-viewer header { padding-left:calc(70px + var(--solo-controls-gap,24px)); min-height:var(--mud-appbar-height,64px); }
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-dialog-title,
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-image-viewer header { padding-right:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,calc(100vw - 140px)) + var(--solo-controls-gap,24px)); min-height:var(--mud-appbar-height,64px); }
+html.solo-desktop--overlay:not(.solo-desktop--fullscreen) .design-docs-sketch-dialog .mud-button-close { right:calc(100vw - env(titlebar-area-x,0px) - env(titlebar-area-width,calc(100vw - 140px)) + 12px); }
+
+.design-docs-nav-current > .mud-nav-link { color:var(--mud-palette-primary); background-color:var(--mud-palette-action-default-hover); border-inline-end:2px solid var(--mud-palette-primary); }
+.design-docs-nav-current > .mud-nav-link .mud-nav-link-icon { color:inherit; }
+
+.design-docs-hierarchy .mud-treeview-item-arrow { width:24px; flex:0 0 24px; margin-inline:0; }
+.design-docs-hierarchy .mud-treeview-item-expand-button { width:24px; padding-inline:0; margin-inline:0; }
+/* Native glass windows do not consistently sample the renderer through a
+   backdrop filter. Blur the underlying layout; the dialog provider is its
+   sibling, so the drawing page and the controls stay sharp and opaque. */
+html.solo-desktop--glass body:has(.design-docs-sketch-dialog, .design-docs-image-viewer[open]) .mud-layout { filter:blur(12px); }

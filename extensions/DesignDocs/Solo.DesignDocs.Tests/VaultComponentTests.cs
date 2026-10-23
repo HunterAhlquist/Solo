@@ -45,8 +45,9 @@ public sealed class VaultComponentTests : ComponentTestBase
     public void Closed_vaults_are_hidden_until_requested() {
         _http.RouteJson("vaults",new VaultListDto(false,[new(Guid.NewGuid(),"Archived",true,DateTimeOffset.UtcNow,1)]));
         var cut=Render<VaultList>(p=>p.Add(x=>x.Project,_project));
-        cut.WaitForAssertion(()=>Assert.Contains("Show closed",cut.Markup));Assert.DoesNotContain("Archived",cut.Markup);
-        cut.Find("input[type=checkbox]").Change(true);Assert.Contains("Archived",cut.Markup);
+        cut.WaitForAssertion(()=>Assert.Contains("Closed design docs (1)",cut.Markup));
+        cut.Find(".mud-expand-panel-header").Click();cut.WaitForAssertion(()=>Assert.Contains("Archived",cut.Markup));
+        Assert.Contains("View",cut.Markup);Assert.DoesNotContain("Reopen",cut.Markup);
     }
     [Fact]
     public void Reader_tree_has_no_mutation_controls() {

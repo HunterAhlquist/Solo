@@ -23,6 +23,7 @@ export class Images {
     get canWrite(){return this._canWrite;}
     set canWrite(value){this._canWrite=value;for(const entry of this.cards??[]){entry.button.draggable=value;for(const image of entry.button.querySelectorAll('img'))image.draggable=value;}
         const remove=this.dialog?.querySelector('[aria-label="Remove attachment from note"]');if(remove)remove.hidden=!value;
+        const replace=this.dialog?.querySelector('[aria-label="Replace image"]');if(replace)replace.hidden=!value||!!this.viewerSketch;
     }
     async resolve(path) {
         if(!this.cache.has(path))this.cache.set(path,(async()=>{
@@ -47,11 +48,11 @@ export class Images {
         button.className=entries.length>1?'design-docs-image-stack':'design-docs-image-card';
         button.setAttribute('aria-label',entries.length>1?`Open ${entries.length} attachments`:`Open ${entries[0].path}`);
         button.draggable=this.canWrite;
-        button.style.width=`${84+Math.min(entries.length-1,7)*24}px`;
+        button.style.width=`calc(${148+Math.min(entries.length-1,7)*24}px * var(--design-docs-scale, 1))`;
         const references=entries.map(e=>this.actions.reference?.(e)??e),entry={button,entries};this.cards.add(entry);
         for(const [index,item] of entries.entries()){
             const img=document.createElement('img');img.alt=item.path;img.draggable=this.canWrite;img.dataset.mediaIndex=String(index);
-            img.style.transform=`translate(${Math.min(index,7)*24}px,${index%2*6}px) rotate(${imageAngle(item.path)*(entries.length>1?2:1)}deg)`;img.style.zIndex=index;
+            img.style.transform=`translate(calc(${Math.min(index,7)*24}px * var(--design-docs-scale, 1)),calc(${index%2*6}px * var(--design-docs-scale, 1))) rotate(${imageAngle(item.path)*(entries.length>1?2:1)}deg)`;img.style.zIndex=index;
             this.resolve(item.path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable: ${item.path}`;});button.append(img);
         }
         if(entries.length>1){const count=document.createElement('span');count.className='design-docs-stack-count';count.textContent=String(entries.length);button.append(count);}
@@ -94,15 +95,21 @@ export class Images {
             if(!this.canWrite||!this.actions.remove?.(items[index]))return;
             items.splice(index,1);if(!items.length){dialog.close();return;}show(Math.min(index,items.length-1));
         });
+        const download=control('download','Download attachment',async()=>{
+            try{const item=items[index],a=document.createElement('a');a.href=await this.resolve(item.path);a.download=item.sketch?item.path.replace(/\.sketch$/i,'.png'):item.path.split('/').at(-1);document.body.append(a);a.click();a.remove();}catch(e){this.status(e.message);}
+        });
+        const replace=control('replace','Replace image',()=>this.choose(items[index].path));
+        this.refreshViewer=()=>show(index);
         const show=async position=>{
-            index=(position+items.length)%items.length;const item=items[index],serial=++request;onSelection(references.indexOf(item));
+            index=(position+items.length)%items.length;const item=items[index],serial=++request;this.viewerSketch=item.sketch;onSelection(references.indexOf(item));
             label.textContent=item.path;counter.textContent=`${index+1} / ${items.length}`;
             image.alt=item.path;image.removeAttribute('src');caption.hidden=true;
-            previous.hidden=next.hidden=items.length<2;edit.hidden=!item.sketch;remove.hidden=!this.canWrite;
+            previous.hidden=next.hidden=items.length<2;edit.hidden=!item.sketch;remove.hidden=!this.canWrite;replace.hidden=!this.canWrite||item.sketch;download.setAttribute('aria-label',item.sketch?'Export sketch PNG':'Download image');download.title=download.getAttribute('aria-label');
             try{const url=await this.resolve(item.path);if(serial===request&&dialog.open)image.src=url;}
             catch(e){if(serial===request){caption.textContent=e.message;caption.hidden=false;}}
         };
-        header.append(label,counter,close);stage.append(previous,image,caption,next);footer.append(edit,remove);dialog.append(header,stage,footer);
+        header.append(label,counter,close);stage.append(previous,image,caption,next);footer.append(download,replace,edit,remove);dialog.append(header,stage,footer);
+        dialog.addEventListener('click',event=>{if(event.target===dialog||event.target===stage)dialog.close();});
         dialog.addEventListener('keydown',event=>{
             if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
                 event.preventDefault();event.stopPropagation();show(index+(event.key==='ArrowLeft'?-1:1));
@@ -111,7 +118,7 @@ export class Images {
         let start;image.addEventListener('pointerdown',event=>{start=event.clientX;image.setPointerCapture(event.pointerId);});
         image.addEventListener('pointerup',event=>{if(start!==undefined&&Math.abs(event.clientX-start)>40)show(index+(event.clientX<start?1:-1));start=undefined;});
         image.addEventListener('pointercancel',()=>{start=undefined;});
-        dialog.addEventListener('close',()=>{++request;dialog.remove();if(this.dialog===dialog)this.dialog=null;},{once:true});
+        dialog.addEventListener('close',()=>{++request;dialog.remove();if(this.dialog===dialog){this.dialog=null;this.refreshViewer=null;}},{once:true});
         document.body.append(dialog);dialog.showModal();await show(0);close.focus();
     }
     choose(replace=null) {
@@ -132,6 +139,7 @@ export class Images {
     }
     async refresh(){
         for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();
+        if(this.dialog?.open)this.refreshViewer?.();
         for(const entry of [...this.cards]){
             if(!entry.button.isConnected){this.cards.delete(entry);continue;}
             const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>this.resolve(item.path).then(url=>{if(images[i])images[i].src=url;}).catch(()=>{}));
