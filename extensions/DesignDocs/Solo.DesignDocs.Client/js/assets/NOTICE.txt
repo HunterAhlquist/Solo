@@ -1,0 +1,15 @@
+Clear-sketch effect requested for this preview:
+
+Deltarune realistic explosion frames and badexplosion.wav, mirrored by the
+Kristal project. These game/stock assets are not covered by Solo's code license.
+Original game: Deltarune, Toby Fox / Royal Sciences LLC; explosion footage
+originates in the Pyromania stock collection.
+
+Source revision: eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7
+https://github.com/KristalTeam/Kristal/tree/eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7/assets/sprites/misc
+https://github.com/KristalTeam/Kristal/blob/eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7/assets/sounds/badexplosion.wav
+https://github.com/KristalTeam/Kristal/blob/eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7/src/engine/objects/explosion.lua
+https://deltarune.wiki/w/Running_gag#Explosion
+
+The 17 transparent PNG frames were encoded as explosion.gif at 70 ms per frame.
+No frame artwork was generated, painted, or background-removed.

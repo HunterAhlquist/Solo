@@ -17,7 +17,7 @@ build/pack-design-docs-extension.sh
 dotnet test extensions/DesignDocs/Solo.DesignDocs.slnx
 ```
 
-The package is `artifacts/solo-design-docs-1.0.8.zip`. Install it in the configured
+The package is `artifacts/solo-design-docs-1.0.9.zip`. Install it in the configured
 extensions directory and restart Solo. For local development,
 `build/dev-design-docs.sh` prints the development directory to configure; assembly
 and static-asset changes require a host restart.
@@ -34,3 +34,9 @@ The preview explains skipped files and conflicts. Browser memory limits are
 uncompressed export. Supported image formats are PNG, JPEG, WebP, and GIF;
 oversized animated GIFs are skipped rather than flattened. Sketches export as
 PNG with rewritten embeds in the exported copy only.
+
+The feedback preview uses the active theme font for sketch text, floating MudBlazor
+palettes, box/lasso multi-selection, live move previews, and viewer-only attachment
+removal. The sketch Clear action uses the requested Deltarune explosion; asset
+provenance is in `Solo.DesignDocs.Client/js/assets/NOTICE.txt`. Physical iPad/Pencil
+and iPadOS backgrounding checks remain pending.

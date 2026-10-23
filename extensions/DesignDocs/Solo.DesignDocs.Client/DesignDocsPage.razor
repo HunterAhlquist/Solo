@@ -23,15 +23,16 @@ else if(VaultId==Guid.Empty) {
         <MudText Typo="Typo.h5">@_tree.Vault.Name</MudText>
         @if(_tree.Vault.IsClosed) { <MudChip T="string" Size="Size.Small">Closed · read-only</MudChip> }
         <MudSpacer />
-        @if(_canManage) {
-            <MudMenu Icon="@Icons.Material.Filled.MoreVert" aria-label="Design doc actions">
+        <MudMenu Icon="@Icons.Material.Filled.MoreVert" aria-label="Design doc actions">
+            <MudMenuItem Icon="@Icons.Material.Filled.Download" OnClick="@(()=>_transfer!.Export())">Export zip</MudMenuItem>
+            @if(_canManage) {
                 <MudMenuItem OnClick="RenameVault">Rename</MudMenuItem>
                 <MudMenuItem OnClick="ToggleClosed">@(_tree.Vault.IsClosed?"Reopen":"Close")</MudMenuItem>
                 @if(_tree.Vault.IsClosed) { <MudMenuItem OnClick="DeleteVault">Delete</MudMenuItem> }
-            </MudMenu>
-        }
+            }
+        </MudMenu>
     </div>
-    <VaultTransfer @key="VaultId" ProjectId="_project.Id" Tree="_tree" />
+    <VaultTransfer @ref="_transfer" @key="VaultId" ProjectId="_project.Id" Tree="_tree" />
     <div class="design-docs-workspace">
         @if(_treeOpen) { <button class="design-docs-tree-backdrop" aria-label="Close note tree" @onclick="@(()=>_treeOpen=false)"></button> }
         <aside class="@($"design-docs-tree {(_treeOpen?"is-open":"")}")" aria-label="Notes">
@@ -64,6 +65,7 @@ else if(VaultId==Guid.Empty) {
     private IDisposable? _workspace;
     private bool _canManage,_disposed;private bool _treeOpen=true;private IAsyncDisposable? _subscription;
     private bool CanEdit=>_project is not null&&(_project.IsOwner||_project.Role==ProjectRole.ReadWrite)&&_tree?.Vault.IsClosed==false;
+    private VaultTransfer? _transfer;
     private string Root=>$"api/ext/design-docs/projects/{_project!.Id}/vaults";
     private string Path=>$"{Root}/{VaultId}";
     private NoteDto? Selected=>NoteId.HasValue?_tree?.Notes.FirstOrDefault(n=>n.Id==NoteId):_tree?.Notes.FirstOrDefault();
@@ -102,7 +104,7 @@ else if(VaultId==Guid.Empty) {
     }
     private async Task Context(DocTreeMenu menu) {
         if(!CanEdit)return;var e=menu.Entry;
-        var items=new List<ContextMenuItem>{new("rename","Rename"),new("move","Move to…"),new("delete","Delete"){Danger=true}};
+        var items=new List<ContextMenuItem>{new("rename","Rename"),new("delete","Delete"){Danger=true}};
         if(e.IsFolder){items.Insert(0,new("note","New note"));items.Insert(1,new("folder","New folder"));}
         var selected=await Menus.ShowAsync(menu.X,menu.Y,items);
         if(selected=="note"||selected=="folder"){await Add(selected=="folder",e.Id);return;}
@@ -113,11 +115,6 @@ else if(VaultId==Guid.Empty) {
                 if(impact.References>0&&!await DocDialogs.Confirm(Dialogs,"Links keep their old path",$"{impact.References} notes may link to this name. Renaming leaves those wiki links unresolved.","Rename"))return;
             }
             await Move(e,e.ParentId,name);DocLinkLabels.Invalidate(Api);
-        } else if(selected=="move") {
-            var excluded=new HashSet<Guid>();if(e.IsFolder)excluded.Add(e.Id);
-            bool grew;do{grew=false;foreach(var f in _tree!.Folders.Where(f=>f.ParentId.HasValue&&excluded.Contains(f.ParentId.Value)))grew|=excluded.Add(f.Id);}while(grew);
-            var d=await Dialogs.ShowAsync<DocMoveDialog>("Move to…",new DialogParameters<DocMoveDialog>{{x=>x.Folders,_tree!.Folders.Where(f=>!excluded.Contains(f.Id)).ToList()}});
-            if(await d.Result is {Canceled:false,Data:Guid target})await Move(e,target==Guid.Empty?null:target);
         } else if(selected=="delete"&&await DocDialogs.Confirm(Dialogs,"Delete "+e.Name,e.IsFolder?"Delete this folder and all of its notes and sketches?":"Delete this note and its sketches?")) {
             await Run(()=>Api.SendAsync(HttpMethod.Delete,$"{Path}/{(e.IsFolder?"folders":"notes")}/{e.Id}?version={e.Version}"));
         }

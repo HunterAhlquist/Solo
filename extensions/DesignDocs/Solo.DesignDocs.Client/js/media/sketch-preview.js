@@ -10,6 +10,6 @@ export async function refreshSketchPreview(canvas,bridge){
         const font=await loadFont(data.fontUrl);
         paint(canvas.getContext('2d'),doc.getArray('ops').toArray(),[...doc.getMap('texts')].map(([id,text])=>({id,...text.toJSON()})),
             {pageSize:data.sketch.pageSize,orientation:data.sketch.orientation,pattern:data.sketch.pattern,...doc.getMap('meta').toJSON()},
-            {font,frame:0,exporting:true});
+            {font,frame:0,themeInk:getComputedStyle(document.body).color,paperColor:getComputedStyle(document.body).getPropertyValue('--mud-palette-surface')||'white',exporting:true});
     }finally{doc.destroy();}
 }
