@@ -29,11 +29,15 @@ export class Provider {
         this.queue = this.queue.catch(() => {}).then(async () => {
             if (!this.online || this.disposed) return;
             let result = await this.bridge.send(kind, JSON.stringify(value));
+            // Presence is disposable. A rejected cursor/brush preview must not
+            // revoke editing and discard the stroke still held under the pen.
+            if (kind === 'awareness' && result !== 0) return;
             if (result === 4) { await new Promise(r => setTimeout(r, 100)); if (this.online) result = await this.bridge.send(kind, JSON.stringify(value)); }
             if (result !== 0) { this.setWritable(false); this.options.status?.('Sync interrupted; reconnecting…'); clearTimeout(this.retry); this.retry = setTimeout(() => { if (this.online) this.connected(true); }, 1500); }
             await new Promise(r => setTimeout(r, 25));
         });
         this.queue = this.queue.catch(() => {
+            if (kind === 'awareness') return;
             this.setWritable(false); this.options.status?.("Connection interrupted · edits retained");
             clearTimeout(this.retry); this.retry = setTimeout(() => { if (this.online) this.connected(true); }, 1500);
         });
