@@ -160,3 +160,27 @@ function close(server) {
         server.close(error => error ? reject(error) : resolve());
     });
 }
+
+
+for (const platform of ['darwin', 'win32']) {
+    const denied = [];
+    const client = new DesktopAuth({
+        platform,
+        appName: 'Solo (Preview)',
+        fetch: async () => { throw new Error('net::ERR_ADDRESS_UNREACHABLE'); },
+        openExternal: () => assert.fail('A failed connection must not open the sign-in page.'),
+    });
+    await client.begin({
+        instanceUrl: 'https://solo-preview.example.test',
+        onSession: () => assert.fail('No session should be created.'),
+        onFailure: message => denied.push(message),
+    });
+    assert.equal(denied.length, 1);
+    assert.match(denied[0], /ERR_ADDRESS_UNREACHABLE/);
+    if (platform === 'darwin') {
+        assert.match(denied[0], /Solo \(Preview\).*Local Network/);
+    } else {
+        assert.doesNotMatch(denied[0], /System Settings/);
+    }
+}
+console.log('Unreachable macOS sign-in explains Local Network access without treating other platforms as macOS.');
