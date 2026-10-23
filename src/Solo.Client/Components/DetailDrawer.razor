@@ -113,7 +113,9 @@
             @* Keyed so switching entity (e.g. via a task link) can't carry a draft across. *@
             <MarkdownEditor @key="@EntityId" Value="@Description" CanWrite="@CanWrite"
                             MaxLength="FieldLimits.Description" OnSave="@OnDescriptionSaved"
-                            OnEditingChanged="@ReportEditingAsync" Class="mb-4" />
+                            OnEditingChanged="@ReportEditingAsync" Class="mb-4"
+                            ProjectId="@Store.Board?.ProjectId" EntityId="@EntityId"
+                            Surface="@(Task is not null ? MarkdownSurface.TaskDescription : MarkdownSurface.EpicDescription)" />
 
             <MudDivider Class="my-4" />
 
@@ -124,7 +126,7 @@
                 <MudDivider Class="my-4" />
             }
 
-            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" CanModerate="@CanModerate"
+            <CommentThread TaskId="@Task?.Id" EpicId="@Epic?.Id" ProjectId="@Store.Board?.ProjectId" CanModerate="@CanModerate"
                            CanComment="@CanComment" />
 
             @if (CanWrite)

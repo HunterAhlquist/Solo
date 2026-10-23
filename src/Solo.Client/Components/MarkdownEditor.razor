@@ -1,15 +1,42 @@
+@using Solo.Client.Extensions
+@using Solo.Shared.Extensibility
 @inject IDialogService Dialogs
 @inject IJSRuntime Js
+@inject MarkdownContributions Contributions
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
 
 @*
     Write/preview toggle. The save event is an explicit Save (or drawer close);
     Esc cancels. Never per keystroke. Reused for descriptions and comments.
 *@
-<div class="@Class">
+<div class="@Class" @ref="_root">
     @if (_editing)
     {
         <MudTabs Elevation="0" Rounded="true" Class="mb-2" @bind-ActivePanelIndex="_tab">
             <MudTabPanel Text="Write" Icon="@Icons.Material.Filled.Edit">
+                @if (_buttons.Count > 0)
+                {
+                    @* What extensions add: each inserts its text at the cursor. *@
+                    <div class="markdown-editor__actions">
+                        @foreach (var (id, button, _) in _buttons)
+                        {
+                            @if (button.Icon is { } icon)
+                            {
+                                <MudTooltip Text="@button.Label">
+                                    <MudIconButton Icon="@icon" Size="Size.Small" aria-label="@button.Label"
+                                                   OnClick="@(() => ChooseAsync(id))" />
+                                </MudTooltip>
+                            }
+                            else
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ChooseAsync(id))">
+                                    @button.Label
+                                </MudButton>
+                            }
+                        }
+                    </div>
+                }
                 @* Immediate keeps the counter honest per keystroke; saving stays explicit. *@
                 <MudTextField @bind-Value="_draft" Lines="@Lines" MaxLines="24" Variant="Variant.Outlined"
                               Margin="Margin.Dense" Immediate="true" MaxLength="@MaxLength" Counter="@MaxLength"
@@ -67,6 +94,23 @@
     private bool _editing;
     private int _tab;
     private string _draft = string.Empty;
+    private ElementReference _root;
+    private IReadOnlyList<ISoloMarkdownEditorAction> _actions = [];
+    private IReadOnlyList<(string Id, MarkdownEditorButton Button, ISoloMarkdownEditorAction Action)> _buttons = [];
+
+    /// <summary>
+    /// The project the edited text belongs to. With <see cref="Surface"/> set as
+    /// well, extensions' editor actions are offered; without, the editor is core's alone.
+    /// </summary>
+    [Parameter]
+    public Guid? ProjectId { get; set; }
+
+    [Parameter]
+    public MarkdownSurface? Surface { get; set; }
+
+    /// <summary>The task or epic whose text this is (for a new comment, its task).</summary>
+    [Parameter]
+    public Guid EntityId { get; set; }
 
     [Parameter]
     public string? Value { get; set; }
@@ -108,14 +152,79 @@
     [Parameter]
     public EventCallback<bool> OnEditingChanged { get; set; }
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         if (AlwaysEditing && !_editing)
         {
             _editing = true;
             _draft = Value ?? string.Empty;
+            await LoadActionsAsync();
         }
     }
+
+    private MarkdownEditorContext? Context(string? selected = null) =>
+        ProjectId is { } projectId && Surface is { } surface
+            ? new MarkdownEditorContext(projectId, surface, EntityId, selected)
+            : null;
+
+    /// <summary>Asks each contributed action for its buttons as the editor opens.</summary>
+    private async Task LoadActionsAsync()
+    {
+        if (Context() is not { } context || Contributions.ActionTypes.Count == 0)
+        {
+            return;
+        }
+
+        await ReleaseActionsAsync();
+        _actions = Contributions.CreateActions();
+        _buttons = await Contributions.ButtonsAsync(_actions, context);
+    }
+
+    private async Task ReleaseActionsAsync()
+    {
+        var actions = _actions;
+        _actions = [];
+        _buttons = [];
+        await MarkdownContributions.DisposeAllAsync(actions);
+    }
+
+    private async Task ChooseAsync(string id)
+    {
+        if (_buttons.FirstOrDefault(b => b.Id == id) is not { Action: { } action, Button: { } button })
+        {
+            return;
+        }
+
+        var selected = await Js.InvokeAsync<string?>("solo.markdown.selectedText", _root);
+        if (Context(selected) is not { } context)
+        {
+            return;
+        }
+
+        string? text;
+        try
+        {
+            text = await action.OnChosenAsync(button.Id, context, CancellationToken.None);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Snackbar.Add($"{button.Label} failed: {e.Message}", Severity.Error);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        var outcome = await Js.InvokeAsync<string>("solo.markdown.insertAtCursor", _root, text, MaxLength);
+        if (outcome == "too-long")
+        {
+            Snackbar.Add($"That doesn't fit: the text can be at most {MaxLength:N0} characters.", Severity.Warning);
+        }
+    }
+
+    public async ValueTask DisposeAsync() => await ReleaseActionsAsync();
 
     private Task ShowCheatsheetAsync() =>
         Dialogs.ShowAsync<MarkdownCheatsheetDialog>("Markdown cheatsheet");
@@ -139,6 +248,7 @@
         _editing = true;
         _tab = 0;
         await OnEditingChanged.InvokeAsync(true);
+        await LoadActionsAsync();
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -162,6 +272,7 @@
         {
             _editing = false;
             await OnEditingChanged.InvokeAsync(false);
+            await ReleaseActionsAsync();
         }
     }
 
@@ -173,6 +284,7 @@
         {
             _editing = false;
             await OnEditingChanged.InvokeAsync(false);
+            await ReleaseActionsAsync();
         }
     }
 }

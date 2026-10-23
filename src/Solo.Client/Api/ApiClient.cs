@@ -38,6 +38,23 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
     Task ISoloClientApi.SendAsync(HttpMethod method, string path, object? body, CancellationToken ct) =>
         SendAsync(method, path, body, ct);
 
+    async Task<SoloBinary> ISoloClientApi.GetBytesAsync(string path, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(path, ct);
+        await EnsureSuccessAsync(response, ct);
+        return new SoloBinary(
+            await response.Content.ReadAsByteArrayAsync(ct), response.Content.Headers.ContentType?.MediaType);
+    }
+
+    async Task<T> ISoloClientApi.SendBytesAsync<T>(
+        HttpMethod method, string path, byte[] content, string contentType, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, path) { Content = new ByteArrayContent(content) };
+        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        using var response = await http.SendAsync(request, ct);
+        return await ReadAsync<T>(response, ct);
+    }
+
     // -- Bootstrap ----------------------------------------------------------
     public Task<AuthConfigDto> GetAuthConfigAsync(CancellationToken ct = default) =>
         GetAsync<AuthConfigDto>("api/config/auth", ct);
@@ -161,8 +178,16 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
         var (title, detail) = await ReadProblemAsync(response, ct);
         throw response.StatusCode == HttpStatusCode.Conflict
             ? new ApiConflictException(title, detail)
-            : new ApiException(response.StatusCode, title, detail);
+            : new ApiException(response.StatusCode, title, detail) { RetryAfter = RetryAfterOf(response) };
     }
+
+    private static TimeSpan? RetryAfterOf(HttpResponseMessage response) =>
+        response.Headers.RetryAfter switch
+        {
+            { Delta: { } delta } => delta,
+            { Date: { } date } => date - DateTimeOffset.UtcNow is { Ticks: > 0 } wait ? wait : TimeSpan.Zero,
+            _ => null,
+        };
 
     internal static async Task<(string? Title, string? Detail)> ReadProblemAsync(
         HttpResponseMessage response, CancellationToken ct)

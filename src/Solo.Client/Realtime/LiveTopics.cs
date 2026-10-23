@@ -30,14 +30,61 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
     private readonly List<Subscriber> _subscribers = [];
     private readonly Dictionary<(Guid, string), TopicPresenceSnapshot> _presence = [];
     private readonly HashSet<(Guid, string)> _reporting = [];
+    private bool _wasConnected;
 
     public LiveTopics(IBoardHubClient hub, UserSession session, ILogger<LiveTopics> logger)
     {
         _hub = hub;
         _session = session;
         _logger = logger;
+        _wasConnected = hub.IsConnected;
         _hub.TopicMessage += OnMessageAsync;
         _hub.TopicPresenceChanged += OnPresenceAsync;
+        _hub.ConnectionStateChanged += OnConnectionStateChangedAsync;
+    }
+
+    public bool IsConnected => _hub.IsConnected;
+
+    public event Func<Task>? ConnectionChanged;
+
+    public async Task<LiveSendResult> SendAsync(
+        Guid projectId, string topic, string kind, string? data = null, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!_hub.IsConnected)
+        {
+            // A connection that stopped retrying stays down until something asks
+            // for it; a page that wants to send is asking.
+            _ = _hub.EnsureConnectedAsync();
+            return LiveSendResult.NotConnected;
+        }
+
+        return await _hub.SendTopicMessage(projectId, topic, kind, data).WaitAsync(ct);
+    }
+
+    /// <summary>
+    /// The hub reports every change of what it holds through the same event, so
+    /// only a change of <see cref="IsConnected"/> is passed on: an extension
+    /// resyncs on this, and a resync per presence report would be a storm.
+    /// </summary>
+    private async Task OnConnectionStateChangedAsync()
+    {
+        var connected = _hub.IsConnected;
+        if (connected == _wasConnected)
+        {
+            return;
+        }
+
+        _wasConnected = connected;
+        if (ConnectionChanged is not { } handlers)
+        {
+            return;
+        }
+
+        foreach (var handler in handlers.GetInvocationList().Cast<Func<Task>>())
+        {
+            await DeliverAsync(handler);
+        }
     }
 
     public async Task<IAsyncDisposable> SubscribeAsync(
@@ -181,6 +228,7 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
     {
         _hub.TopicMessage -= OnMessageAsync;
         _hub.TopicPresenceChanged -= OnPresenceAsync;
+        _hub.ConnectionStateChanged -= OnConnectionStateChangedAsync;
     }
 
     private sealed class Subscription(LiveTopics owner, Subscriber subscriber) : IAsyncDisposable

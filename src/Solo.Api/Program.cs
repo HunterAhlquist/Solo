@@ -149,7 +149,11 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
-builder.Services.AddSignalR();
+// The board hub takes client-sent topic messages (contract 1.10) of up to
+// BoardHubConstants.ClientMessageMaxLength characters plus their envelope;
+// SignalR's 32 KB default would refuse the largest ones.
+builder.Services.AddSignalR()
+    .AddHubOptions<BoardHub>(options => options.MaximumReceiveMessageSize = 64 * 1024);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
 
@@ -199,6 +203,11 @@ builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
     });
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddSingleton<TopicRegistry>();
+// Client-sent topic messages get a bucket per connection, apart from the /api
+// limiter below, so a document being typed into can't starve its tab's REST calls.
+builder.Services.AddSingleton(new LiveRateLimits(
+    builder.Configuration.GetValue("RateLimiting:Live:Burst", 200),
+    builder.Configuration.GetValue("RateLimiting:Live:TokensPerSecond", 50)));
 builder.Services.AddSingleton<SessionConnections>();
 builder.Services.AddScoped<LiveAccess>();
 builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();

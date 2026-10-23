@@ -23,17 +23,28 @@ public sealed class TopicRegistry
     /// <summary>The "project" a user topic is held under. No project has an empty id.</summary>
     public static readonly Guid UserScope = Guid.Empty;
 
-    private sealed record Subscription(Guid UserId, string? DisplayName, PresenceMode Mode);
+    /// <summary>
+    /// One connection's hold on a topic. The role travels with it so a client-sent
+    /// message can name its sender's rights without a database read per message;
+    /// <see cref="LiveAccess"/> refreshes it when the membership changes.
+    /// </summary>
+    public sealed record Subscription(
+        Guid UserId, string? DisplayName, PresenceMode Mode, ProjectRole Role, bool IsOwner);
 
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<(Guid ProjectId, string Topic), Subscription>>
         _connections = new();
 
     /// <summary>False when the connection already holds as many topics as it may.</summary>
-    public bool Subscribe(string connectionId, Guid projectId, string topic, Guid userId, string? displayName)
+    public bool Subscribe(
+        string connectionId, Guid projectId, string topic, Guid userId, string? displayName,
+        ProjectRole role = ProjectRole.Read, bool isOwner = false)
     {
         var topics = _connections.GetOrAdd(connectionId, _ => new());
-        if (topics.ContainsKey((projectId, topic)))
+        if (topics.TryGetValue((projectId, topic), out var existing))
         {
+            // Subscribing again (a reconnect restating its topics) reads the
+            // membership afresh, so it is the newer word on the role.
+            topics[(projectId, topic)] = existing with { Role = role, IsOwner = isOwner };
             return true;
         }
 
@@ -42,8 +53,30 @@ public sealed class TopicRegistry
             return false;
         }
 
-        topics[(projectId, topic)] = new Subscription(userId, displayName, PresenceMode.None);
+        topics[(projectId, topic)] = new Subscription(userId, displayName, PresenceMode.None, role, isOwner);
         return true;
+    }
+
+    /// <summary>The connection's hold on a topic, or null when it doesn't hold it.</summary>
+    public Subscription? Find(string connectionId, Guid projectId, string topic) =>
+        _connections.TryGetValue(connectionId, out var topics) &&
+        topics.TryGetValue((projectId, topic), out var subscription)
+            ? subscription
+            : null;
+
+    /// <summary>Restates a user's role on every topic their connections hold in a project.</summary>
+    public void UpdateRole(Guid userId, Guid projectId, ProjectRole role, bool isOwner)
+    {
+        foreach (var topics in _connections.Values)
+        {
+            foreach (var (key, subscription) in topics)
+            {
+                if (key.ProjectId == projectId && subscription.UserId == userId)
+                {
+                    topics[key] = subscription with { Role = role, IsOwner = isOwner };
+                }
+            }
+        }
     }
 
     /// <summary>True when the connection was present there, so the topic's snapshot changed.</summary>

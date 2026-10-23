@@ -78,6 +78,39 @@ public interface IBoardHubServer
     Task SubscribeUserTopic(string topic);
 
     Task UnsubscribeUserTopic(string topic);
+
+    /// <summary>
+    /// Send a message on a subscribed project topic, for the extension that owns
+    /// the topic to drop, answer or relay (contract 1.10). Holding the topic is
+    /// the access check. Refusals come back as a result rather than an error, so
+    /// a client that must know whether something landed can resend it.
+    /// </summary>
+    Task<LiveSendResult> SendTopicMessage(Guid projectId, string topic, string kind, string? data);
+}
+
+/// <summary>What became of a client-sent topic message.</summary>
+public enum LiveSendResult
+{
+    /// <summary>The owning extension's handler ran to completion.</summary>
+    Accepted = 0,
+
+    /// <summary>This connection doesn't hold the topic, or holds a user topic.</summary>
+    NotSubscribed = 1,
+
+    /// <summary>The topic's extension registered no handler, or is disabled.</summary>
+    NoHandler = 2,
+
+    /// <summary>The kind or the data is longer than allowed; see <see cref="BoardHubConstants.ClientMessageMaxLength"/>.</summary>
+    TooLarge = 3,
+
+    /// <summary>The connection sent faster than its live allowance. Back off and resend.</summary>
+    RateLimited = 4,
+
+    /// <summary>The handler threw or ran out of time.</summary>
+    Failed = 5,
+
+    /// <summary>Client side only: there was no live connection to send it over.</summary>
+    NotConnected = 6,
 }
 
 /// <summary>Entity type names used in change events and presence reports.</summary>
@@ -116,4 +149,14 @@ public static class BoardHubConstants
 
     /// <summary>Topics one connection may hold at once — a page and its sidebar need a handful.</summary>
     public const int TopicsPerConnection = 64;
+
+    /// <summary>Longest kind a client may send on a topic.</summary>
+    public const int ClientMessageKindMaxLength = 64;
+
+    /// <summary>
+    /// Longest data a client may send in one topic message, in characters. Sized
+    /// so a message plus its JSON envelope fits the hub's 64 KB receive limit;
+    /// anything bigger is the sender's to split.
+    /// </summary>
+    public const int ClientMessageMaxLength = 48_000;
 }

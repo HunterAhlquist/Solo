@@ -237,6 +237,43 @@ _inbox = await Live.SubscribeUserAsync("inbox", message => InvokeAsync(ReloadAsy
 
 Solo subscribes the signed-in user to their own topic. A page cannot subscribe to the topic of a different user. A user topic has no presence.
 
+### Messages from clients
+
+A page can also send a message on a topic. Contract 1.10 added this. Solo gives the message to the extension that owns the topic, and the handler of that extension decides what to do: ignore the message, answer the sender, or relay the message to the other people on the topic. Use it for data that changes too quickly for REST calls, such as the cursors and edits of a document that several people edit at the same time.
+
+The extension that owns a topic is the extension whose ID is before the first `:` of the topic. The topic `design-docs:doc:3f2a…` belongs to the extension `design-docs`.
+
+Register one handler in the server half:
+
+```csharp
+services.AddLiveMessageHandler<DocRelay>();
+
+public sealed class DocRelay(DocsDbContext db) : ISoloLiveMessageHandler
+{
+    public async ValueTask HandleAsync(LiveMessage message, ILiveMessageReply reply, CancellationToken ct)
+    {
+        if (message.Kind == "cursor" && message.Sender.CanWrite)
+        {
+            await reply.ToOthersAsync("cursor", message.Data, ct);
+        }
+    }
+}
+```
+
+Send from the client half, on a topic that the page subscribed to:
+
+```csharp
+var result = await Live.SendAsync(Project.Id, topic, "cursor", json);
+```
+
+- **Holding the topic is the access check.** Only a member who subscribed to the topic can send on it. `message.Sender` tells you their role. `CanWrite` is true for a ReadWrite member or an owner. Solo updates it when an owner changes the role of the member.
+- **Only your topics.** A message on a topic of another extension, or of an extension with no handler, gets `NoHandler`.
+- **The result tells you what happened.** `SendAsync` does not throw. It returns `Accepted`, `NotSubscribed`, `NoHandler`, `TooLarge`, `RateLimited`, `Failed` or `NotConnected`. `Accepted` means that your handler ran.
+- **Limits.** `data` has 48,000 characters or less, and `kind` 64 characters or less. Split larger data. Each connection can send a burst of 200 messages, then 50 each second. The server settings `RateLimiting:Live:Burst` and `RateLimiting:Live:TokensPerSecond` change these values.
+- **Time.** A handler that takes longer than 5 seconds, or throws an exception, gets `Failed`.
+- **No request in the handler.** A message does not come through an HTTP request, so `ISoloQuery` and the project policies cannot find a project. Use the data in `message`.
+- **Connection state.** `IsConnected` tells you if the connection is up. `ConnectionChanged` occurs when the connection goes down, and when it comes back with the topics subscribed again. After a gap, get the data again: you did not get the messages that were sent in the gap.
+
 ## Background work
 
 Outside a request, your code has no caller. `ISoloQuery` then returns no data, and you have no credential for the API.

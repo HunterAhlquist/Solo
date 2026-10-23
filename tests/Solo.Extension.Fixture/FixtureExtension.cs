@@ -12,6 +12,7 @@ public sealed class FixtureExtension : ISoloExtension
         services.AddOperationHook<FixtureHook>();
         services.AddEventHandler<FixtureEventHandler>();
         services.AddCredentialIssuer<FixtureCredentialIssuer>();
+        services.AddLiveMessageHandler<FixtureLiveHandler>();
         services.AddSingleton<FixtureEventLog>();
     }
 }

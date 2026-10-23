@@ -187,7 +187,7 @@ public class RoadmapComponentTests : ComponentTestBase
         Assert.Contains((ProjectId, RoadmapTopics.List), _live.Held);
 
         titles = ["After"];
-        await _live.SendAsync(ProjectId, RoadmapTopics.List, RoadmapTopics.ListChanged);
+        await _live.PublishAsync(ProjectId, RoadmapTopics.List, RoadmapTopics.ListChanged);
         section.WaitForAssertion(() => Assert.Contains("After", section.Markup));
 
         await DisposeComponentsOnDispatcherAsync();

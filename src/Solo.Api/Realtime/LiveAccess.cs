@@ -22,11 +22,18 @@ public sealed class LiveAccess(
     HubTickets tickets)
 {
     /// <summary>
-    /// Re-checks every project the user's connections are listening to, and
-    /// takes them out of the ones the user can no longer read. Called after
-    /// anything that can lose someone read access, which today is leaving a
-    /// project. (Super admin grants no read access, so losing it changes nothing here.)
+    /// Re-checks every project the user's connections are listening to, takes
+    /// them out of the ones the user can no longer read, and restates their role
+    /// on the topics they keep. Called after anything that can lose someone read
+    /// access, or change what they may write: leaving a project, or a change to
+    /// their membership. (Super admin grants no read access, so losing it changes
+    /// nothing here.)
     /// </summary>
+    /// <remarks>
+    /// The role matters because a topic remembers it for the messages its holder
+    /// sends (contract 1.10). Without the restatement, someone demoted to Read
+    /// would keep sending edits as a writer until their tab reconnected.
+    /// </remarks>
     public async Task RevalidateAsync(Guid userId, CancellationToken ct)
     {
         var boards = presence.JoinedBy(userId);
@@ -42,8 +49,12 @@ public sealed class LiveAccess(
             .Where(u => u.Id == userId).Select(u => u.IsSuperAdmin).FirstOrDefaultAsync(ct);
         foreach (var projectId in boards.Select(b => b.ProjectId).Concat(held.Select(t => t.ProjectId)).Distinct())
         {
-            if (await ProjectAccessHandler.AllowsAsync(db, userId, isSuperAdmin, projectId, ProjectAccessLevel.Read, ct))
+            var membership = await db.ProjectMembers.AsNoTracking()
+                .FirstOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
+            if (AccessPolicy.Allows(membership?.Role, membership?.IsOwner ?? false, isSuperAdmin, ProjectAccessLevel.Read))
             {
+                topics.UpdateRole(userId, projectId, membership?.Role ?? Solo.Shared.ProjectRole.Read,
+                    membership?.IsOwner ?? false);
                 continue;
             }
 

@@ -15,7 +15,7 @@ lede: The client half is a Razor class library that the browser loads after sign
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
-    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.9.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.10.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
   </ItemGroup>
@@ -214,7 +214,7 @@ Inject these services into a page or a component. They are in `Solo.Shared.Exten
 |---|---|---|
 | `ISoloClientApi` | Call the API. | 1.1 |
 | `ISoloTaskDrawer` | Open the task drawer on your page. | 1.3 |
-| `ISoloLiveTopics` | Get [live updates](hooks-and-events.md#live-updates). | 1.4 |
+| `ISoloLiveTopics` | Get [live updates](hooks-and-events.md#live-updates). Send [messages](hooks-and-events.md#messages-from-clients) since 1.10. | 1.4 |
 | `ISoloTaskPicker` | Let a person select a task. | 1.5 |
 | `ISoloContextMenu` | Show a menu at the pointer. | 1.6 |
 
@@ -293,6 +293,61 @@ private async Task OnRowMenuAsync(MouseEventArgs e, Milestone milestone)
 - A native menu shows only the label. `Icon` and `Danger` have no effect there. Make the label of a destructive command clear.
 - Do not show a command that the person cannot use.
 - A touchscreen has no right-click. Give the same menu a button, or open it after a long press.
+
+### Add buttons to the markdown editor
+
+Contract 1.10 lets an extension add buttons to the markdown editor of Solo: the descriptions of tasks and epics, and comments. A button puts text at the cursor, such as a link to a record of your extension.
+
+```csharp
+[MarkdownEditorAction(Order = 0)]
+public sealed class LinkDocAction(IDialogService dialogs) : ISoloMarkdownEditorAction
+{
+    public ValueTask<IReadOnlyList<MarkdownEditorButton>> ButtonsAsync(
+        MarkdownEditorContext context, CancellationToken ct) =>
+        ValueTask.FromResult<IReadOnlyList<MarkdownEditorButton>>([new MarkdownEditorButton("link", "Link a doc")]);
+
+    public async Task<string?> OnChosenAsync(string buttonId, MarkdownEditorContext context, CancellationToken ct)
+    {
+        // Show your own dialog. Return null if the person cancels it.
+        return "[Combat design](/docs/note/3f2a…)";
+    }
+}
+```
+
+- The text replaces the selection, if there is one. `context.SelectedText` contains it.
+- If the text makes the field too long, Solo does not add it and shows a message.
+- Solo waits for `ButtonsAsync` before it shows the buttons. If the method takes longer than 1 second or throws an exception, Solo omits your buttons.
+
+### Show the current name of a linked record
+
+Contract 1.10 also lets an extension change the label of its own links where Solo shows markdown. A link to a record can then show the current name of that record.
+
+```csharp
+[MarkdownLinkProvider]
+public sealed class DocLinks(ISoloClientApi api) : ISoloMarkdownLinkProvider
+{
+    public bool Claims(string url) => url.StartsWith("/docs/note/", StringComparison.Ordinal);
+
+    public async ValueTask<IReadOnlyDictionary<string, string>> LabelsAsync(
+        IReadOnlyList<string> urls, CancellationToken ct) =>
+        await api.SendAsync<Dictionary<string, string>>(HttpMethod.Post, "api/ext/docs/links/labels", new { urls }, ct);
+}
+```
+
+- `Claims` must be fast. Do not call the API in it.
+- Solo shows the markdown as written first, then again with your labels. If your provider throws an exception or takes longer than 1 second, the links keep their written labels.
+- Solo asks on each render. Keep a cache.
+- Leave out a URL to keep its written label. Do this for a record that the reader cannot see, so that the label does not show that the record exists.
+- Solo shows the label as text. Markdown in it has no effect.
+- If the extension is removed, the links keep their written labels.
+
+### Get and send bytes
+
+`ISoloClientApi.GetBytesAsync` gets a file as bytes, and `SendBytesAsync` sends bytes, such as an image. Contract 1.10 added them. They use the sign-in credential of the person, like the other methods.
+
+An `<img>` element that points to the API does not send the credential. To show an image that only members can see, get the bytes and show them from a `blob:` URL. The content security policy of Solo allows `blob:` images since contract 1.10.
+
+When the server answers 429, `SoloApiException.RetryAfter` tells you how long to wait.
 
 ### Add commands to the task menu
 

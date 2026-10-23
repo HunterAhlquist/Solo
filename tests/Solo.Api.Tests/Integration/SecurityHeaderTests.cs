@@ -55,6 +55,10 @@ public sealed class SecurityHeaderTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.DoesNotContain("ws:", csp);
         Assert.DoesNotContain("wss:", csp);
 
+        // Members-only images are fetched with the credential and shown from
+        // object URLs (contract 1.10).
+        Assert.Contains("img-src 'self' data: https: blob:", csp);
+
         Assert.Equal("nosniff", Assert.Single(response.Headers.GetValues("X-Content-Type-Options")));
         Assert.Equal("DENY", Assert.Single(response.Headers.GetValues("X-Frame-Options")));
         Assert.Equal("strict-origin-when-cross-origin",
@@ -70,5 +74,23 @@ public sealed class SecurityHeaderTests(PostgresFixture postgres) : IAsyncLifeti
         // Private app: every response tells crawlers not to index it.
         Assert.Equal("noindex, nofollow",
             Assert.Single(response.Headers.GetValues("X-Robots-Tag")));
+    }
+
+    /// <summary>
+    /// The desktop shell serves the client from its own origin under its own
+    /// copy of the policy. If the two drift, images break in the desktop app alone.
+    /// </summary>
+    [Fact]
+    public void The_desktop_shell_allows_the_same_images()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Solo.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        Assert.NotNull(directory);
+        var shell = File.ReadAllText(Path.Combine(directory.FullName, "src", "Solo.Desktop", "main", "server.js"));
+        Assert.Contains("\"img-src 'self' data: https: blob:\"", shell);
     }
 }

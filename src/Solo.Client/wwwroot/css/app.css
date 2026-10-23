@@ -228,6 +228,15 @@ code {
     border-color: var(--mud-palette-primary);
 }
 
+/* Extensions' editor actions: a compact row above the text field. */
+.markdown-editor__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.15rem;
+    margin-bottom: 0.25rem;
+}
+
 /* The cheatsheet dialog: keep each syntax sample on one line. */
 .cheatsheet code {
     white-space: nowrap;

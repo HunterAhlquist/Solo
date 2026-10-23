@@ -115,4 +115,66 @@ public class LiveTopicsTests
 
         Assert.True(reached);
     }
+
+    // -- Client-sent messages (contract 1.10) -----------------------------------
+
+    [Fact]
+    public async Task Sending_forwards_to_the_hub_and_returns_its_answer()
+    {
+        _hub.SendResult = LiveSendResult.RateLimited;
+
+        var result = await _topics.SendAsync(Project, "plan:a", "update", "AAEC");
+
+        Assert.Equal(LiveSendResult.RateLimited, result);
+        Assert.Equal([(Project, "plan:a", "update", (string?)"AAEC")], _hub.Sent);
+    }
+
+    [Fact]
+    public async Task Sending_while_disconnected_sends_nothing_and_asks_for_the_connection_back()
+    {
+        _hub.IsConnected = false;
+
+        var result = await _topics.SendAsync(Project, "plan:a", "update", "AAEC");
+
+        Assert.Equal(LiveSendResult.NotConnected, result);
+        Assert.Empty(_hub.Sent);
+        Assert.Equal(1, _hub.ReconnectRequests);
+        Assert.False(_topics.IsConnected);
+    }
+
+    [Fact]
+    public async Task Connection_changes_are_reported_once_per_transition()
+    {
+        var heard = new List<bool>();
+        _topics.ConnectionChanged += () =>
+        {
+            heard.Add(_topics.IsConnected);
+            return Task.CompletedTask;
+        };
+
+        // The hub raises its event for presence and subscriptions too; those
+        // aren't connection changes and an extension would resync on each.
+        await _hub.SetConnectedAsync(true);
+        await _hub.SetConnectedAsync(false);
+        await _hub.SetConnectedAsync(false);
+        await _hub.SetConnectedAsync(true);
+
+        Assert.Equal([false, true], heard);
+    }
+
+    [Fact]
+    public async Task A_failing_connection_listener_does_not_stop_the_next()
+    {
+        var reached = false;
+        _topics.ConnectionChanged += () => throw new InvalidOperationException("boom");
+        _topics.ConnectionChanged += () =>
+        {
+            reached = true;
+            return Task.CompletedTask;
+        };
+
+        await _hub.SetConnectedAsync(false);
+
+        Assert.True(reached);
+    }
 }

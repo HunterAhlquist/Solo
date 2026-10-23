@@ -2,7 +2,7 @@
   "id": "fixture",
   "name": "Test Fixture",
   "version": "1.0.0",
-  "soloApiVersion": ">=1.8 <2.0",
+  "soloApiVersion": ">=1.10 <2.0",
   "soloClientVersion": ">=1.0 <2.0",
   "server": "server/Solo.Extension.Fixture.dll",
   "client": "client/Solo.Extension.Fixture.Client.dll",

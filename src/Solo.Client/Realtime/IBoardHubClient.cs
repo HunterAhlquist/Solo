@@ -34,4 +34,10 @@ public interface IBoardHubClient : IBoardHubServer
     /// stay hidden even though <see cref="IsConnected"/> is false.
     /// </summary>
     bool IsActive { get; }
+
+    /// <summary>
+    /// Restarts a connection that stopped trying to reconnect, restoring what it
+    /// held. Does nothing while it is up or still retrying on its own.
+    /// </summary>
+    Task EnsureConnectedAsync();
 }

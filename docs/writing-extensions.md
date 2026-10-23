@@ -949,3 +949,107 @@ Nothing an extension does today needs 1.9, so leave your ranges where they
 are. There is still no seam for reading the instance's name from a client
 page — an extension's `<PageTitle>` that ends in "Solo" stays that way on a
 named instance.
+
+## Contract 1.10
+
+Both halves changed. Declare `"soloApiVersion": ">=1.10 <2.0"` to register a
+live message handler, and `"soloClientVersion": ">=1.10 <2.0"` to use any of
+the client additions. `extensions/DesignDocs` uses all of it.
+
+### Client-sent live messages
+
+Until 1.10 a topic only carried what the server published. Now a page can send
+on a project topic it holds, and core hands the message to **the extension that
+owns the topic**: the one whose id comes before the topic's first `:`.
+
+```csharp
+// Server half. One handler per extension; a second is a load failure.
+services.AddLiveMessageHandler<DocRelay>();
+
+public sealed class DocRelay(DocsDbContext db) : ISoloLiveMessageHandler
+{
+    public async ValueTask HandleAsync(LiveMessage message, ILiveMessageReply reply, CancellationToken ct)
+    {
+        if (message.Kind != "edit" || !message.Sender.CanWrite)
+        {
+            await reply.ToSenderAsync("refused", message.Data, ct);
+            return;
+        }
+
+        // ... store it ...
+        await reply.ToSenderAsync("ack", message.Data, ct);
+        await reply.ToOthersAsync("edit", message.Data, ct);
+    }
+}
+```
+
+```csharp
+// Client half, on a topic the page subscribed to.
+var result = await Live.SendAsync(projectId, $"docs:doc:{id:N}", "edit", payload);
+if (result != LiveSendResult.Accepted) { /* keep it and resend */ }
+```
+
+- **Holding the topic is the access check.** Subscribing checked read access,
+  and losing it takes the topic away. Whether the sender may *change* anything
+  is the handler's call, from `message.Sender` (`Role`, `IsProjectOwner`,
+  `CanWrite`). Core caches the role when the topic is subscribed and refreshes
+  it when an owner edits or removes the membership, so a demoted member's next
+  message already says `Read`.
+- **Opt-in and scoped.** A topic with no `:` prefix, another extension's
+  prefix, an extension with no handler or a disabled one: `NoHandler`. User
+  topics take no client messages.
+- **Results, not exceptions.** `SendAsync` returns `Accepted` (the handler ran),
+  `NotSubscribed`, `NoHandler`, `TooLarge`, `RateLimited`, `Failed` (it threw or
+  took over ~5 seconds) or `NotConnected`. Something that must land should be
+  kept until the handler acknowledges it, and resent.
+- **Limits.** `kind` is 1–64 characters, `data` at most
+  `BoardHubConstants.ClientMessageMaxLength` (48,000) characters; split anything
+  bigger. The hub's receive limit is 64 KB to fit that plus its envelope. Each
+  connection has its own bucket, apart from `/api`'s: a burst of 200, then 50
+  a second (`RateLimiting:Live:Burst`, `RateLimiting:Live:TokensPerSecond`).
+- **Replies** are ordinary `TopicMessage`s with the sender as `ActorUserId`.
+  `ToOthersAsync` reaches every other connection on the topic, the sender's
+  other tabs included.
+- **No request inside a handler.** A hub invocation has no route, so
+  `ISoloQuery` and the project policies have nothing to resolve. Everything
+  known about the sender is on the message. The handler is resolved from the
+  invocation's scope, so it may take your `DbContext`.
+- **`IsConnected` and `ConnectionChanged`** say when the connection went down
+  or came back with held topics resubscribed. Resync after a gap: anything sent
+  in it was missed. Sending while down returns `NotConnected` and asks a
+  connection that gave up reconnecting (a tablet asleep for a while) to try again.
+
+### Markdown editor actions and link labels
+
+Two classes, found by attribute and created from the host's services, like
+`ISoloTaskMenuContributor`:
+
+| Contract | Attribute | What it does |
+|---|---|---|
+| `ISoloMarkdownEditorAction` | `[MarkdownEditorAction(Order = 0)]` | Buttons above core's markdown editor (task and epic descriptions, comments). The text `OnChosenAsync` returns goes in at the cursor, replacing any selection. |
+| `ISoloMarkdownLinkProvider` | `[MarkdownLinkProvider(Order = 0)]` | Labels for links it `Claims`, wherever core renders markdown. |
+
+- An action gets `MarkdownEditorContext` (project, surface, entity id and the
+  selected text). It is created when an editor opens and disposed when it
+  closes. Text that would take the field past its limit is refused with a
+  message rather than cut.
+- `ButtonsAsync` and `LabelsAsync` each get a second. One that throws or is
+  slow costs only its own buttons or labels.
+- A provider is created once per session, so it can cache, and should: core
+  asks on every render. It only sees ordinary links whose URL core would render
+  as is: not images, not `javascript:`. The label it returns is shown as plain
+  text. Leave a URL out of the answer to keep the label as written, which is
+  also the answer for something the reader can't see.
+- Uninstall the extension and its links render with the labels they were
+  written with.
+
+### Bytes, and `blob:` images
+
+`ISoloClientApi.GetBytesAsync(path)` returns a `SoloBinary` (bytes and content
+type) and `SendBytesAsync<T>(method, path, bytes, contentType)` sends a raw body
+with a JSON answer. Both carry the sign-in credential, which an `<img src>`
+pointing at the API does not, so a members-only image is fetched with
+`GetBytesAsync` and shown from `URL.createObjectURL`. The host's content
+security policy, and the desktop shell's copy of it, admit `blob:` images from
+1.10. A 429 sets `SoloApiException.RetryAfter` from the response, so a bulk
+upload can pace itself by what the server asked for.

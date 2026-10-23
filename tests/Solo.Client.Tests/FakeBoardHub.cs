@@ -98,4 +98,29 @@ internal sealed class FakeBoardHub : IBoardHubClient
         PresenceChanged?.Invoke(snapshot) ?? Task.CompletedTask;
 
     public Task RaiseConnectionStateChanged() => ConnectionStateChanged?.Invoke() ?? Task.CompletedTask;
+
+    public List<(Guid ProjectId, string Topic, string Kind, string? Data)> Sent { get; } = [];
+
+    public LiveSendResult SendResult { get; set; } = LiveSendResult.Accepted;
+
+    public int ReconnectRequests { get; private set; }
+
+    public Task<LiveSendResult> SendTopicMessage(Guid projectId, string topic, string kind, string? data)
+    {
+        Sent.Add((projectId, topic, kind, data));
+        return Task.FromResult(SendResult);
+    }
+
+    public Task EnsureConnectedAsync()
+    {
+        ReconnectRequests++;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Flips the connection and raises the event the way the real client does.</summary>
+    public Task SetConnectedAsync(bool connected)
+    {
+        IsConnected = connected;
+        return ConnectionStateChanged?.Invoke() ?? Task.CompletedTask;
+    }
 }

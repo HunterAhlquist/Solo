@@ -60,10 +60,21 @@ namespace Solo.Shared.Extensibility;
 /// defaults — which core's own client and API use. They are members of a
 /// published assembly all the same, so the number moves with them: a package
 /// reading one needs 1.9 in the range covering the half that does.</para>
+/// <para>1.10.0 is for collaborative content. On the server: client-sent
+/// messages on an extension's own live topics, handed to its
+/// <c>ISoloLiveMessageHandler</c> to drop, answer or relay. In the browser:
+/// <see cref="ISoloLiveTopics.SendAsync"/> with the connection's state,
+/// buttons in core's markdown editor that insert at the cursor
+/// (<see cref="ISoloMarkdownEditorAction"/>), live labels for links an
+/// extension owns (<see cref="ISoloMarkdownLinkProvider"/>), byte-level calls
+/// on <see cref="ISoloClientApi"/> (<see cref="ISoloClientApi.GetBytesAsync"/>,
+/// <see cref="ISoloClientApi.SendBytesAsync{T}"/>), and
+/// <see cref="SoloApiException.RetryAfter"/>. The host's content security
+/// policy now admits <c>blob:</c> images. Both halves changed.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.9.0";
+    public const string Current = "1.10.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

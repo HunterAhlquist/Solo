@@ -66,7 +66,36 @@ public static class ExtensionServiceCollectionExtensions
         services.AddScoped<ISoloCredentialIssuer, TIssuer>();
         return services;
     }
+
+    /// <summary>
+    /// Registers the handler for what clients send on this extension's live
+    /// topics (contract 1.10). One per extension: a second is a load failure,
+    /// since core would otherwise have to choose which one hears a message.
+    /// </summary>
+    public static IServiceCollection AddLiveMessageHandler<THandler>(this IServiceCollection services)
+        where THandler : class, ISoloLiveMessageHandler
+    {
+        var assembly = typeof(THandler).Assembly;
+        if (services.Any(d => d.ServiceType == typeof(LiveMessageHandlerRegistration) &&
+                              d.ImplementationInstance is LiveMessageHandlerRegistration r &&
+                              r.HandlerType.Assembly == assembly))
+        {
+            throw new InvalidOperationException(
+                $"{assembly.GetName().Name} registers more than one {nameof(ISoloLiveMessageHandler)}; " +
+                "an extension has one, which handles all of its topics.");
+        }
+
+        services.AddScoped<THandler>();
+        services.AddSingleton(new LiveMessageHandlerRegistration(typeof(THandler)));
+        return services;
+    }
 }
 
 /// <summary>Records an extension context type so the host can migrate it after Build().</summary>
 public sealed record ExtensionDbContextRegistration(string ExtensionId, string Schema, Type ContextType);
+
+/// <summary>
+/// Records a live message handler's type, so the host can find the one owning a
+/// topic without constructing every extension's handler per message.
+/// </summary>
+public sealed record LiveMessageHandlerRegistration(Type HandlerType);

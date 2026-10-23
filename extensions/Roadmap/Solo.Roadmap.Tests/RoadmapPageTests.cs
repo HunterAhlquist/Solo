@@ -169,7 +169,7 @@ public class RoadmapPageTests : ComponentTestBase
         Assert.Equal(["Save system"], Names(page));
 
         _entries = [.._entries, Entry("Photo mode", 2)];
-        await _live.SendAsync(ProjectId, Topic, RoadmapTopics.EntriesChanged);
+        await _live.PublishAsync(ProjectId, Topic, RoadmapTopics.EntriesChanged);
 
         page.WaitForAssertion(() => Assert.Equal(["Save system", "Photo mode"], Names(page)));
     }
@@ -182,8 +182,8 @@ public class RoadmapPageTests : ComponentTestBase
 
         await page.Instance.OnGesture(true);
         _entries = [.._entries, Entry("Photo mode", 2)];
-        await _live.SendAsync(ProjectId, Topic, RoadmapTopics.TaskChanged, Guid.NewGuid().ToString());
-        await _live.SendAsync(ProjectId, Topic, RoadmapTopics.EntriesChanged);
+        await _live.PublishAsync(ProjectId, Topic, RoadmapTopics.TaskChanged, Guid.NewGuid().ToString());
+        await _live.PublishAsync(ProjectId, Topic, RoadmapTopics.EntriesChanged);
 
         Assert.Equal(reads, TimelineReads);
         Assert.Equal(["Save system"], Names(page));
@@ -201,7 +201,7 @@ public class RoadmapPageTests : ComponentTestBase
     {
         var page = RenderPage();
 
-        await _live.SendAsync(ProjectId, Topic, RoadmapTopics.Deleted);
+        await _live.PublishAsync(ProjectId, Topic, RoadmapTopics.Deleted);
 
         page.WaitForAssertion(() => Assert.Contains("Someone deleted this roadmap", page.Markup));
         Assert.Empty(page.FindAll(".roadmap-timeline"));
@@ -402,7 +402,7 @@ public class RoadmapPageTests : ComponentTestBase
         await page.Instance.OnMarquee(_entries.Select(e => e.Id.ToString()).ToArray(), additive: false);
 
         _entries = [_entries[1]];
-        await _live.SendAsync(ProjectId, Topic, RoadmapTopics.EntriesChanged);
+        await _live.PublishAsync(ProjectId, Topic, RoadmapTopics.EntriesChanged);
         page.WaitForAssertion(() => Assert.Equal(["Photo mode"], Names(page)));
 
         _menu.Next = null;

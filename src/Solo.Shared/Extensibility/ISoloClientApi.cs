@@ -54,7 +54,30 @@ public interface ISoloClientApi
 
     /// <summary>A call whose response body is discarded — a 204, typically.</summary>
     Task SendAsync(HttpMethod method, string path, object? body = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// GET, as bytes (contract 1.10): an image or a file only members may see,
+    /// which a page shows or saves from a <c>blob:</c> URL. Throws
+    /// <see cref="SoloApiException"/> on a non-success status.
+    /// </summary>
+    /// <remarks>
+    /// An <c>&lt;img src&gt;</c> pointing at the API sends no credential, so a
+    /// members-only image has to be fetched here and handed to the page as an
+    /// object URL, which the host's content security policy admits.
+    /// </remarks>
+    Task<SoloBinary> GetBytesAsync(string path, CancellationToken ct = default);
+
+    /// <summary>
+    /// A call whose body is raw bytes, such as an image upload, with a JSON
+    /// response (contract 1.10). Throws <see cref="SoloApiException"/> on a
+    /// non-success status.
+    /// </summary>
+    Task<T> SendBytesAsync<T>(HttpMethod method, string path, byte[] content, string contentType,
+        CancellationToken ct = default);
 }
+
+/// <summary>A response body as bytes, with the type the server said it was.</summary>
+public sealed record SoloBinary(byte[] Content, string? ContentType);
 
 /// <summary>
 /// A non-success response from the Solo API, carrying its ProblemDetails.
@@ -72,4 +95,11 @@ public class SoloApiException(HttpStatusCode statusCode, string? title, string? 
     public string? Title { get; } = title;
 
     public string? Detail { get; } = detail;
+
+    /// <summary>
+    /// How long the server asked the caller to wait, from a 429's
+    /// <c>Retry-After</c> (contract 1.10). Null when it didn't say. A bulk upload
+    /// paces itself by this rather than by guessing.
+    /// </summary>
+    public TimeSpan? RetryAfter { get; init; }
 }

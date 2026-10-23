@@ -1,3 +1,4 @@
+@using Solo.Shared.Extensibility
 @implements IDisposable
 @inject ApiClient Api
 @inject SaveGuard Guard
@@ -45,6 +46,7 @@ else
             {
                 <MarkdownEditor Value="@comment.Body" CanWrite="true" AlwaysEditing="true" Lines="4"
                                 MaxLength="FieldLimits.Comment"
+                                ProjectId="@ProjectId" Surface="MarkdownSurface.Comment" EntityId="@(TaskId ?? EpicId ?? Guid.Empty)"
                                 SaveText="Save" OnSave="@(body => UpdateAsync(comment, body))" />
             }
             else
@@ -66,6 +68,7 @@ else
     {
         <MarkdownEditor CanWrite="true" AlwaysEditing="true" ResetAfterSave="true" Lines="3"
                         MaxLength="FieldLimits.Comment"
+                        ProjectId="@ProjectId" Surface="MarkdownSurface.Comment" EntityId="@(TaskId ?? EpicId ?? Guid.Empty)"
                         Placeholder="Leave a comment…" SaveText="Comment" OnSave="@AddAsync" />
     }
 }
@@ -80,6 +83,10 @@ else
 
     [Parameter]
     public Guid? EpicId { get; set; }
+
+    /// <summary>The project the thread belongs to, for extensions' editor actions in its composer.</summary>
+    [Parameter]
+    public Guid? ProjectId { get; set; }
 
     /// <summary>Project owner or super admin: may delete any comment.</summary>
     [Parameter]

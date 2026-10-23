@@ -128,6 +128,33 @@ window.solo = {
         _lastLinkClick: 0,
 
         wasLinkClick: () => Date.now() - window.solo.markdown._lastLinkClick < 400,
+
+        // The editor's selection, for an extension's editor action to see. A
+        // textarea keeps selectionStart/End after focus moves to a dialog, so
+        // this still answers once the button has taken the focus.
+        selectedText: root => {
+            const area = root?.querySelector('textarea');
+            if (!area || area.selectionStart === area.selectionEnd) return null;
+            return area.value.substring(area.selectionStart, area.selectionEnd);
+        },
+
+        // Puts text at the cursor of the editor inside root, replacing any
+        // selection, then raises `input` so Blazor's Immediate binding sees the
+        // new value as though it had been typed. 'too-long' leaves the field
+        // alone: refusing beats silently cutting a link in half.
+        insertAtCursor: (root, text, maxLength) => {
+            const area = root?.querySelector('textarea');
+            if (!area) return 'missing';
+            const start = area.selectionStart ?? area.value.length;
+            const end = area.selectionEnd ?? start;
+            if (maxLength > 0 && area.value.length - (end - start) + text.length > maxLength) {
+                return 'too-long';
+            }
+            area.setRangeText(text, start, end, 'end');
+            area.dispatchEvent(new Event('input', { bubbles: true }));
+            area.focus();
+            return 'ok';
+        },
     },
 
     auth: {

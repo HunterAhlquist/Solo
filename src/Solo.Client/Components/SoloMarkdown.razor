@@ -11,7 +11,14 @@
     Every render goes through SoloMarkdownPipeline, which strips raw HTML and
     neutralises javascript:/data: destinations — user markdown is hostile input
     and MudMarkdown's default pipeline renders both verbatim.
+
+    Links an extension owns (ISoloMarkdownLinkProvider, contract 1.10) show the
+    label it supplies: the text renders as written first, then again once the
+    providers answer. Without the extension, the label stays as it was written.
 *@
+@using Solo.Client.Extensions
+@using Microsoft.Extensions.DependencyInjection
+@inject IServiceProvider Services
 
 @if (NavigationLocked)
 {
@@ -36,7 +43,33 @@ else
     [Parameter]
     public bool NavigationLocked { get; set; }
 
-    private string Rendered => Value is null ? string.Empty : LinkifySerials(Value);
+    private string? _relabelledFor;
+    private string? _relabelled;
+
+    private string Rendered => Value is null
+        ? string.Empty
+        : _relabelledFor == Value && _relabelled is not null ? _relabelled : LinkifySerials(Value);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Optional: a host that renders markdown without the extension catalog
+        // (a test, say) renders it as written.
+        var contributions = Services.GetService<MarkdownContributions>();
+        if (Value is not { } value || contributions is null || !contributions.HasLinkProviders)
+        {
+            _relabelledFor = null;
+            _relabelled = null;
+            return;
+        }
+
+        // Asked on every render with new text; the providers cache.
+        var relabelled = await contributions.RelabelAsync(LinkifySerials(value));
+        if (Value == value)
+        {
+            _relabelledFor = value;
+            _relabelled = relabelled;
+        }
+    }
 
     /// <summary>Rewrites ||serial|| tokens into markdown links to the board's ?task= route.</summary>
     public static string LinkifySerials(string markdown) =>

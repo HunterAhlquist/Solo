@@ -44,7 +44,7 @@ internal sealed class FakeLiveTopics : ISoloLiveTopics
     }
 
     /// <summary>A message from someone else, as the server would relay it.</summary>
-    public async Task SendAsync(Guid projectId, string topic, string kind, string? data = null)
+    public async Task PublishAsync(Guid projectId, string topic, string kind, string? data = null)
     {
         var message = new TopicMessage(projectId, topic, kind, data, TestData.OtherId);
         foreach (var holder in Matching(projectId, topic))
@@ -64,6 +64,22 @@ internal sealed class FakeLiveTopics : ISoloLiveTopics
             }
         }
     }
+
+    /// <summary>Roadmaps sends nothing on its topics (contract 1.10 added sending); recorded in case it starts.</summary>
+    public List<(Guid ProjectId, string Topic, string Kind, string? Data)> Sent { get; } = [];
+
+    public Task<LiveSendResult> SendAsync(Guid projectId, string topic, string kind, string? data = null,
+        CancellationToken ct = default)
+    {
+        Sent.Add((projectId, topic, kind, data));
+        return Task.FromResult(LiveSendResult.NoHandler);
+    }
+
+    public bool IsConnected => true;
+
+#pragma warning disable CS0067 // Part of the contract; nothing in these tests drops the connection.
+    public event Func<Task>? ConnectionChanged;
+#pragma warning restore CS0067
 
     private List<Holder> Matching(Guid projectId, string topic) =>
         _holders.Where(h => h.ProjectId == projectId && h.Topic == topic).ToList();

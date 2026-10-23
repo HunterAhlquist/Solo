@@ -77,6 +77,7 @@ public static class SoloClientServices
         // Core's task menu, which extensions add to through contributor classes
         // it finds in their assemblies and creates on demand.
         services.AddScoped<TaskMenuService>();
+        services.AddScoped<MarkdownContributions>();
 
         // The site theme arrives with the bootstrap config; the colour scheme is
         // read from localStorage on first render (see SoloThemeProvider).

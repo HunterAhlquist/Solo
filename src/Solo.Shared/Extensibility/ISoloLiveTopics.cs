@@ -45,4 +45,35 @@ public interface ISoloLiveTopics
     /// no presence on a user topic: the only person on it is the one listening.
     /// </remarks>
     Task<IAsyncDisposable> SubscribeUserAsync(string topic, Func<TopicMessage, Task> onMessage);
+
+    /// <summary>
+    /// Sends a message on a subscribed project topic, for its extension's server
+    /// handler (<c>ISoloLiveMessageHandler</c>) to drop, answer or relay
+    /// (contract 1.10). Answers come back to the subscription's
+    /// <c>onMessage</c> like anything the server publishes.
+    /// </summary>
+    /// <remarks>
+    /// <para>Never throws for a refusal or a missing connection; the result says
+    /// what happened, so something that must land can be resent.
+    /// <see cref="LiveSendResult.Accepted"/> means the handler ran, not that it
+    /// agreed: a handler answers in its own words.</para>
+    ///
+    /// <para>While the connection is down this returns
+    /// <see cref="LiveSendResult.NotConnected"/>, and asks a connection that
+    /// gave up reconnecting to try again. <see cref="ConnectionChanged"/> says
+    /// when it's back.</para>
+    /// </remarks>
+    Task<LiveSendResult> SendAsync(Guid projectId, string topic, string kind, string? data = null,
+        CancellationToken ct = default);
+
+    /// <summary>True while the live connection is up (contract 1.10).</summary>
+    bool IsConnected { get; }
+
+    /// <summary>
+    /// The connection went down, or came back with held topics already
+    /// resubscribed (contract 1.10). After a gap, refetch or resync: anything
+    /// published or relayed in it was missed. Raised only when
+    /// <see cref="IsConnected"/> actually changes.
+    /// </summary>
+    event Func<Task>? ConnectionChanged;
 }

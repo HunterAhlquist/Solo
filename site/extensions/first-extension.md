@@ -46,7 +46,7 @@ Create `Hello/Hello.csproj`. The contract package is its only Solo reference.
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.9.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.10.0" />
   </ItemGroup>
 
 </Project>
@@ -130,7 +130,7 @@ Create `Hello.Client/Hello.Client.csproj`:
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
-    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.9.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.10.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
   </ItemGroup>

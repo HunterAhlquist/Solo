@@ -27,12 +27,18 @@ public static class SecurityHeaders
     /// Bare <c>ws:</c>/<c>wss:</c> scheme sources are deliberately avoided:
     /// they permit a socket to <em>any</em> host, which would hand a script
     /// that slipped past the other controls a ready exfiltration channel.</para>
+    ///
+    /// <para><c>blob:</c> under img-src is for images only members may see. An
+    /// <c>&lt;img&gt;</c> pointing at the API carries no credential, so a page
+    /// fetches the bytes with the sign-in credential and shows them from an
+    /// object URL. Only script already running on the page can mint a
+    /// <c>blob:</c> URL, so this admits nothing a page couldn't already draw.</para>
     /// </summary>
     private const string ContentSecurityPolicy =
         "default-src 'self'; " +
         "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com; " +
         "style-src 'self' 'unsafe-inline' https://accounts.google.com; " +
-        "img-src 'self' data: https:; " +
+        "img-src 'self' data: https: blob:; " +
         "font-src 'self' data:; " +
         "connect-src 'self' https://accounts.google.com; " +
         "frame-src https://accounts.google.com; " +
