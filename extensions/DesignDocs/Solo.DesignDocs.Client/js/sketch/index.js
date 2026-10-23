@@ -18,14 +18,15 @@ export async function mountSketch(root,bridge,options){
     const viewport=document.createElement('div');viewport.className='design-docs-sketch-viewport';viewport.tabIndex=0;
     viewport.setAttribute('aria-label','Drawing view. Scroll to pan; Ctrl or Command and scroll to zoom; Space and drag to pan.');
     const canvas=document.createElement('canvas');canvas.setAttribute('aria-label','Collaborative sketch');canvas.style.transformOrigin='0 0';const context=canvas.getContext('2d'),scene=new SketchScene(()=>document.createElement('canvas')),inputMode=new SketchInput();
+    const selectionCanvas=document.createElement('canvas');selectionCanvas.className='design-docs-sketch-selection';selectionCanvas.setAttribute('aria-hidden','true');selectionCanvas.style.transformOrigin='0 0';selectionCanvas.hidden=true;const selectionContext=selectionCanvas.getContext('2d');let selectionPadding=0;
     const status=document.createElement('output');status.className='design-docs-sketch-status';status.setAttribute('aria-live','polite');
-    root.classList.add('design-docs-sketch-editor');root.append(viewport,status);viewport.append(canvas);
+    root.classList.add('design-docs-sketch-editor');root.append(viewport,status);viewport.append(canvas,selectionCanvas);
     const explosion=new Image();explosion.className='design-docs-clear-explosion';explosion.alt='';explosion.hidden=true;viewport.append(explosion);
     const effectReady=fetch(options.explosionUrl).then(response=>response.ok?response.blob():null).catch(()=>null);
     const sound=new Audio(options.explosionSoundUrl);sound.preload='auto';
     const reduced=matchMedia('(prefers-reduced-motion: reduce)');
     const say=message=>{status.textContent=message;};
-    const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,
+    const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,atomicSync:true,
         status:message=>{say(message);if(provider.synced&&provider.canWrite&&!meta.size)provider.doc.transact(()=>Object.entries(options.meta).forEach(([k,v])=>meta.set(k,v)),local);},
         writable:value=>{bridge.invokeMethodAsync('Writable',value);if(!value){active=null;selected=null;marquee=null;viewport.querySelector('textarea')?.blur();requestDraw();}},
     });
@@ -55,6 +56,7 @@ export async function mountSketch(root,bridge,options){
     function transform(){
         const [w,h]=pageSize(getMeta()),value=`translate(${pan[0]}px,${pan[1]}px) rotate(${angle}deg) scale(${zoom})`;
         canvas.style.transform=value;explosion.style.width=w+'px';explosion.style.height=h+'px';explosion.style.transform=value;
+        selectionCanvas.style.transform=value+` translate(${(selected?.dx??0)-selectionPadding}px,${(selected?.dy??0)-selectionPadding}px)`;
         const input=viewport.querySelector('textarea');
         if(input&&editing){const box={...editing.toJSON(),text:editing.get('text').toString()},bounds=font.bounds(context,box);
             input.style.transform=value+` translate(${box.x}px,${box.y}px)`;input.style.font=`${textSize(box)}px ${fontFamily}`;input.style.lineHeight='1.5';
@@ -71,10 +73,11 @@ export async function mountSketch(root,bridge,options){
         if(active)preview.push(active.tool==='rectangle'||active.tool==='ellipse'?{...active,tool:'pen',points:shape(active.tool,active.points[0],active.points.at(-1),constrain||active.shift)}:active);
         const others=[...provider.awareness.getStates()].filter(([id])=>id!==provider.doc.clientID).map(([,state])=>state);
         for(const state of others)if(state.stroke)preview.push(state.stroke);
-        scene.render(context,{texts:getTexts(),extra:preview,selection:selected,font,frame:reduced.matches?0:frame});
+        const floating=scene.render(context,{texts:getTexts(),extra:preview,selection:selected,selectionContext,font,frame:reduced.matches?0:frame});
+        selectionCanvas.hidden=!floating;selectionPadding=floating?.padding??0;
         for(const state of others)if(state.pointer){const {x,y}=state.pointer;context.strokeStyle=state.user?.color??'#b33';context.lineWidth=1;context.strokeRect(x-3,y-3,6,6);context.fillStyle=state.user?.color??'#b33';context.font=`11px ${fontFamily}`;context.fillText(state.user?.name??'Writer',x+6,y-4);}
-        if(selected){const b=selected.bounds,x=b.left+selected.dx,y=b.top+selected.dy;context.strokeStyle=themeInk();context.lineWidth=1/zoom;context.setLineDash([5/zoom,4/zoom]);context.strokeRect(x-3,y-3,b.right-b.left+6,b.bottom-b.top+6);context.setLineDash([]);
-            for(const [cx,cy]of [[x,y],[b.right+selected.dx,y],[x,b.bottom+selected.dy],[b.right+selected.dx,b.bottom+selected.dy]]){context.fillStyle=themeInk();context.fillRect(cx-2/zoom,cy-2/zoom,4/zoom,4/zoom);}}
+        if(selected){const b=selected.bounds,c=floating?selectionContext:context,dx=floating?selectionPadding:selected.dx,dy=floating?selectionPadding:selected.dy,x=b.left+dx,y=b.top+dy;c.strokeStyle=themeInk();c.lineWidth=1/zoom;c.setLineDash([5/zoom,4/zoom]);c.strokeRect(x-3,y-3,b.right-b.left+6,b.bottom-b.top+6);c.setLineDash([]);
+            for(const [cx,cy]of [[x,y],[b.right+dx,y],[x,b.bottom+dy],[b.right+dx,b.bottom+dy]]){c.fillStyle=themeInk();c.fillRect(cx-2/zoom,cy-2/zoom,4/zoom,4/zoom);}}
         if(marquee){const points=marquee.kind==='lasso'?marquee.points:shape('rectangle',marquee.points[0],marquee.points.at(-1));context.strokeStyle=themeInk();context.lineWidth=1/zoom;context.setLineDash([5/zoom,4/zoom]);context.beginPath();points.forEach((p,i)=>i?context.lineTo(...p.slice(0,2)):context.moveTo(...p.slice(0,2)));context.closePath();context.stroke();context.setLineDash([]);}
         transform();
     }

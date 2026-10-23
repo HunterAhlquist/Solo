@@ -55,3 +55,20 @@ test('selection preview keeps clipped stroke edges when moving them back onto th
     const region=connectedRegion(scene.hitRaster(),420,595,5,20),selection={region,ids:new Set(['a']),textIds:new Set(),dx:20,dy:0},target=output();scene.render(target,{selection});
     const parts=splitSelection(ops,region,420,595,20,0,selection.ids);assert.deepEqual(target.buffer,reference(parts.stationary.concat(parts.moved)));
 });
+test('a held selection can leave every page edge and return without losing pixels',()=>{
+    const scene=new SketchScene(bitmapCanvas);scene.setScene([stroke],meta);
+    const selection={region:connectedRegion(scene.hitRaster(),420,595,10,20),ids:new Set(['a']),textIds:new Set(),dx:20,dy:20},target=output();
+    scene.render(target,{selection});const before=target.buffer.slice();
+    for(const [dx,dy]of [[-450,0],[500,0],[0,-650],[0,650],[0,0]]){selection.dx=dx;selection.dy=dy;scene.render(target,{selection});}
+    selection.dx=20;selection.dy=20;scene.render(target,{selection});assert.deepEqual(target.buffer,before);
+    assert.deepEqual(scene.ops,[stroke],'a preview must not mutate shared strokes');
+});
+test('a held selection keeps a complete floating preview outside the paper until release',()=>{
+    const scene=new SketchScene(bitmapCanvas);scene.setScene([stroke],meta);const target=output(),floating=output();
+    const selection={region:connectedRegion(scene.hitRaster(),420,595,10,20),ids:new Set(['a']),textIds:new Set(),dx:-100,dy:0};
+    const placement=scene.render(target,{selection,selectionContext:floating});
+    assert.ok(placement,'the held selection must have a preview independent of the paper clip');
+    assert.ok(floating.buffer.some((v,i)=>i%4===3&&v>0),'off-page movement must retain the complete selection raster');
+    const before=floating.buffer.slice();selection.dx=100;scene.render(target,{selection,selectionContext:floating});assert.deepEqual(floating.buffer,before);
+    assert.equal(scene.render(target,{selection:{...selection,dx:0},selectionContext:floating}),null,'release returns drawing to the page surface');
+});
