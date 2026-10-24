@@ -26,7 +26,7 @@
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
     <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj; Solo.Client
          supplies the host's copy to Solo.Roadmap.Tests. -->

@@ -21,7 +21,7 @@
   <ItemGroup>
     <!-- For `dotnet ef migrations add`. Build-time only: the instance applies
          the migrations, so none of this ships. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

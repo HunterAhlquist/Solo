@@ -39,6 +39,45 @@ public class MarkdownSafetyTests : BunitContext
         Assert.Contains($"&lt;{tag.TrimEnd()}", markup, StringComparison.OrdinalIgnoreCase);
     }
 
+    // MudBlazor.Markdown 9.10 replaced highlight.js with highlighters written in
+    // C#, which build each code block's markup themselves — so a fence's text
+    // reaches the DOM through the package's escaping, not the pipeline's. One
+    // fence per language it highlights, plus one it doesn't, each carrying tags
+    // that would run if a highlighter passed them through, or that close the
+    // <code> element early.
+    [Theory]
+    [InlineData("csharp")]
+    [InlineData("razor")]
+    [InlineData("html")]
+    [InlineData("xml")]
+    [InlineData("json")]
+    [InlineData("yaml")]
+    [InlineData("rust")]
+    [InlineData("go")]
+    [InlineData("kotlin")]
+    [InlineData("sql")]
+    [InlineData("")]
+    public void A_code_fence_renders_its_text_rather_than_markup(string language)
+    {
+        var cut = Render<SoloMarkdown>(p => p.Add(x => x.Value,
+            $"```{language}\n" +
+            "var s = \"<img src=x onerror=alert(1)>\"; // <script>alert(2)</script>\n" +
+            "<svg onload=alert(3)></svg> /* </code></pre><iframe src=x></iframe> */\n" +
+            "```"));
+
+        // Scoped to the block itself: its copy button carries an icon <svg> of
+        // its own. A highlighter may wrap tokens in spans, and nothing else.
+        var code = Assert.Single(cut.FindAll("pre code"));
+        Assert.All(code.QuerySelectorAll("*"), e =>
+        {
+            Assert.Equal("SPAN", e.TagName);
+            Assert.DoesNotContain(e.Attributes, a => a.Name.StartsWith("on", StringComparison.OrdinalIgnoreCase));
+        });
+        Assert.Contains("<img src=x onerror=alert(1)>", code.TextContent, StringComparison.Ordinal);
+        Assert.Contains("</code></pre><iframe src=x></iframe>", code.TextContent, StringComparison.Ordinal);
+        Assert.Empty(cut.FindAll("img, script, iframe"));
+    }
+
     [Theory]
     [InlineData("[click](javascript:alert(1))")]
     [InlineData("[click](JaVaScRiPt:alert(1))")]

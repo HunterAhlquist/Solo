@@ -34,8 +34,8 @@
     "electron-liquid-glass": "1.1.1"
   },
   "devDependencies": {
-    "electron": "^44.9.1",
-    "electron-builder": "^26.17.0"
+    "electron": "^44.9.3",
+    "electron-builder": "^26.18.0"
   },
   "overrides": {
     "global-agent": "^4.1.3"
