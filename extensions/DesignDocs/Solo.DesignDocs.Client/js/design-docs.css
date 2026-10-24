@@ -238,3 +238,5 @@ html.solo-desktop--glass .design-docs-image-viewer:not(.is-presented)::backdrop 
 .design-docs-sketch-peer > .design-docs-cursor { position:absolute; left:-2px; top:-2px; }
 
 .design-docs-image-viewer .design-docs-viewer-remove { color:var(--mud-palette-error); }
+
+.design-docs-spelling-error { text-decoration:underline wavy var(--mud-palette-error); text-underline-offset:3px; cursor:pointer; }

@@ -7,6 +7,8 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await build({ entryPoints: ['index.js'], bundle: true, format: 'esm', target: ['safari15.4', 'chrome111'],
     outfile: `${output}/design-docs.js`, minify: true, legalComments: 'eof' });
+await build({ entryPoints: ['editor/spelling-worker.js'], bundle: true, format: 'esm', target: ['safari15.4', 'chrome111'],
+    loader: {'.aff':'text','.dic':'text'}, outfile: `${output}/spelling-worker.js`, minify: true, legalComments: 'eof' });
 await copyFile('design-docs.css', `${output}/design-docs.css`);
 for(const file of ['explosion.gif','explosion.wav','NOTICE.txt','MATERIAL-SYMBOLS-LICENSE.txt'])await copyFile(`assets/${file}`, `${output}/${file}`);
 
