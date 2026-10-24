@@ -11,6 +11,7 @@ import { protectMedia, mediaEdit } from './media-protection.js';
 import { mediaReference, mediaRange } from '../media/references.js';
 import { caretPalettePosition } from './palette.js';
 import { markdownEditing } from './commands.js';
+import { localSpelling,needsSpellingFallback } from './spelling.js';
 export function mountEditor(root, bridge, options) {
     const readOnly = new Compartment(); let view,suspended=false;
     presenceTheme(root);
@@ -56,6 +57,7 @@ export function mountEditor(root, bridge, options) {
     const preview=livePreview(bridge,images);
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
         EditorView.contentAttributes.of({spellcheck:"true"}),
+        ...(needsSpellingFallback(navigator)?[localSpelling(bridge)]:[]),
         ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
         yCollab(provider.doc.getText('markdown'),provider.awareness),textPresence(provider),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
