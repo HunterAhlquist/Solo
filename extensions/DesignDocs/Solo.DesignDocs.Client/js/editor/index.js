@@ -55,6 +55,7 @@ export function mountEditor(root, bridge, options) {
     noteBody?.addEventListener('pointermove',showPalette);root.addEventListener('keydown',typing);
     const preview=livePreview(bridge,images);
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
+        EditorView.contentAttributes.of({spellcheck:"true"}),
         ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
         yCollab(provider.doc.getText('markdown'),provider.awareness),textPresence(provider),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
