@@ -9,7 +9,7 @@ public sealed class MarkdownEditorActionAttribute : Attribute
 /// <summary>Contributes insertion actions to descriptions and comments (contract 1.10).</summary>
 public interface ISoloMarkdownEditorAction
 {
-    /// <summary>Cheap buttons for this editor; a failure or more than one second omits this contributor.</summary>
+    /// <summary>The host omits failed contributors or those that exceed one second.</summary>
     ValueTask<IReadOnlyList<MarkdownEditorButton>> ButtonsAsync(MarkdownEditorContext context, CancellationToken ct);
 
     /// <summary>Text to replace the selection, or null to leave the editor unchanged.</summary>
@@ -30,12 +30,12 @@ public sealed class MarkdownLinkProviderAttribute : Attribute
     public int Order { get; set; }
 }
 
-/// <summary>Supplies current labels for an extension's links. Core calls on every render; providers own caching.</summary>
+/// <summary>Supplies link labels on each render. Providers control their caches.</summary>
 public interface ISoloMarkdownLinkProvider
 {
-    /// <summary>Cheap and synchronous; never do I/O here.</summary>
+    /// <summary>Claims a URL without I/O.</summary>
     bool Claims(string url);
 
-    /// <summary>Plain-text labels keyed by URL; omitted URLs retain their written labels.</summary>
+    /// <summary>Returns plain-text labels by URL. Omitted URLs retain their written labels.</summary>
     ValueTask<IReadOnlyDictionary<string, string>> LabelsAsync(IReadOnlyList<string> urls, CancellationToken ct);
 }

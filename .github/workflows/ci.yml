@@ -118,6 +118,8 @@ jobs:
             src/Solo.Extensibility src/Solo.Shared extensions/nuget.config
             extensions/DesignDocs/Solo.DesignDocs extensions/DesignDocs/Solo.DesignDocs.Client
             build/pack-design-docs-extension.sh
+            ":(exclude)extensions/DesignDocs/Solo.DesignDocs/README.md"
+            ":(exclude)extensions/DesignDocs/Solo.DesignDocs.Client/README.md"
           )
 
           # Nearest earlier tag in this series that HEAD descends from. The
@@ -163,8 +165,11 @@ jobs:
           fi
 
           if git diff --quiet "${PREVIOUS}" HEAD -- "${DESIGN_DOCS_PATHS[@]}"; then
+            echo "::notice::No Design Docs package inputs changed since ${PREVIOUS}; skipping extension publication."
             echo "design_docs=false" >> "$GITHUB_OUTPUT"
           else
+            echo "Design Docs package inputs changed since ${PREVIOUS}:"
+            git diff --name-only "${PREVIOUS}" HEAD -- "${DESIGN_DOCS_PATHS[@]}"
             echo "design_docs=true" >> "$GITHUB_OUTPUT"
           fi
 

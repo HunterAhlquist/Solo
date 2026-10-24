@@ -10,8 +10,7 @@ export function presenceAvatar(user){
     if(user.avatarUrl&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(user.userId??'')){const image=document.createElement('img');image.src=`api/users/${user.userId}/avatar`;image.alt='';image.referrerPolicy='no-referrer';image.addEventListener('error',()=>image.remove(),{once:true});avatar.append(image);}
     return avatar;
 }
-// The photo border and the arrow notch share this circle. Both outer edges
-// meet it tangentially, so there is no separate pointer tail behind the photo.
+// The arrow edges meet the profile circle at their tangent points.
 export function pointerOutline(tip=[2,2],center=[23,27],radius=11){
     const [vx,vy]=[tip[0]-center[0],tip[1]-center[1]],distance=vx*vx+vy*vy;
     if(distance<=radius*radius)throw new RangeError('The cursor tip must lie outside the profile circle.');
@@ -27,7 +26,6 @@ export function presenceCursor(kind,user){
     const outline=kind==='text'?'M2 2 Q6 4 10 2 M6 3 V21 M2 22 Q6 20 10 22':pointerOutline().path;
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',outline);svg.append(path);
     if(kind==='text'){
-        // A wider colored stroke behind the black stem outlines the thin I-beam.
         const body=document.createElementNS('http://www.w3.org/2000/svg','path');body.setAttribute('d',outline);body.classList.add('design-docs-caret-body');svg.append(body);
     }
     cursor.append(svg,presenceAvatar(user));return cursor;

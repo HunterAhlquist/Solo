@@ -1,17 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
-  <!-- The client half runs in browser-wasm, so it references Shared, never
-       Extensibility. Its ES module and CSS ship in the package's content folder. -->
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <Version>1.0.19</Version>
-    <!-- content/ (the stylesheet and the pointer-event module) ships in the
-         package and is fetched from /api/extensions/design-docs/content/, not
-         through the host's static-web-asset pipeline. -->
+    <Version>1.0.20</Version>
+    <!-- The extension serves its own content outside Static Web Assets. -->
     <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
   </PropertyGroup>
 
@@ -19,8 +14,6 @@
     <SupportedPlatform Include="browser" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
-    <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj; Solo.Client
-         supplies the host's copy to Solo.DesignDocs.Tests. -->
     <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.11.0" PrivateAssets="all" />
   </ItemGroup>
 

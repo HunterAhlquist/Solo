@@ -72,7 +72,7 @@ export function createTransfer(bridge,options){let plan,disposed=false;const url
             for(const image of plan.images){if(disposed)return;await bridge.invokeMethodAsync('Image',image.path,image.type,encode(image.bytes));done++;await bridge.invokeMethodAsync('Progress',`Imported ${done} of ${total} files`);await new Promise(r=>setTimeout(r,125));}
             plan=null;
         },
-        async export(manifest){const files=Object.create(null);let bytes=0;const font=await loadFont(options.fontUrl);
+        async export(manifest){const files=Object.create(null);let bytes=0;const font=await loadFont();
             for(const note of manifest.notes){if(disposed)return;const state=await bridge.invokeMethodAsync('State',note.id);let markdown=markdownFromState(state);
                 for(const sketch of manifest.sketches.filter(s=>s.noteId===note.id)){
                     const state=await bridge.invokeMethodAsync('State',sketch.id),doc=new Y.Doc();try{for(const update of state.updates)Y.applyUpdate(doc,decode(update.data));

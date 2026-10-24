@@ -1,29 +1,5 @@
 #!/usr/bin/env bash
-#
-# Packages the Design Docs extension — both halves — as an installable Solo package:
-#
-#   solo-design-docs-<version>.zip
-#   ├── extension.json
-#   ├── server/Solo.DesignDocs.dll         loaded in-process by the API
-#   ├── client/Solo.DesignDocs.Client.dll  downloaded by the browser, handed to the router
-#   └── content/design-docs.css, .js        served at /api/extensions/design-docs/content/
-#
-# The manifest's version is the package's identity — the host records it, the
-# downgrade guard compares against it, and it names this file — so the script
-# refuses to run when the manifest and either project disagree about it.
-#
-# Only assemblies the host does NOT already provide are packaged. Shipping a
-# private copy of Solo.Shared, MudBlazor or the framework is the classic plugin
-# bug: those resolve from the host, so a copy in the package is either ignored
-# or, worse, loaded as a second distinct set of types. The filter below mirrors
-# ExtensionLoadContext.IsShared on the server, and what the browser has already
-# loaded on the client.
-#
-# Both halves build from the contract packages, through extensions/nuget.config,
-# so build/pack-contract.sh has to have packed them first.
-#
 # Usage: build/pack-design-docs-extension.sh [output-directory]
-
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,9 +30,6 @@ for project in "$server/Solo.DesignDocs.csproj" "$client/Solo.DesignDocs.Client.
     fi
 done
 
-# Restore would fail on its own without the packages, but naming the step is
-# kinder than NU1101. artifacts/nuget is the source extensions/nuget.config
-# maps them to.
 contract=$(sed -n 's/.*Include="HunterAhlquist\.Solo\.Extensibility" Version="\([^"]*\)".*/\1/p' \
     "$server/Solo.DesignDocs.csproj" | head -1)
 for id in Extensibility Shared; do
@@ -66,7 +39,6 @@ for id in Extensibility Shared; do
     fi
 done
 
-# Dependency versions and their licenses are pinned in package-lock.json.
 (cd "$client/js" && npm ci && npm test && npm run build)
 
 staging=$(mktemp -d)
@@ -74,7 +46,7 @@ trap 'rm -rf "$staging"' EXIT
 package="$staging/package"
 mkdir -p "$package/server" "$package/client"
 
-# Copies every published assembly the host does not already have loaded.
+# Exclude assemblies that the host supplies to avoid duplicate type identities.
 stage_private_assemblies() {
     local from="$1" to="$2" main="$3"
     for dll in "$from"/*.dll; do
@@ -106,9 +78,9 @@ if [ -d "$server/content" ]; then
 fi
 
 mkdir -p "$output"
+output="$(cd "$output" && pwd)"
 archive="$output/solo-design-docs-$version.zip"
 rm -f "$archive"
-# -X drops extra file attributes so the same input produces the same bytes.
 (cd "$package" && zip -qrX "$archive" .)
 
 if [ -n "${SOLO_DEVELOPMENT_PACKAGE:-}" ]; then

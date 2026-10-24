@@ -12,7 +12,7 @@ import { applyTrackpadPressure } from './pressure.js';
 import { strokePresence } from './stroke-presence.js';
 const local=Symbol('local sketch');
 export async function mountSketch(root,bridge,options){
-    const font=await loadFont(null,root),shell=root.closest('.design-docs-sketch-shell')??root;
+    const font=await loadFont(root),shell=root.closest('.design-docs-sketch-shell')??root;
     let frameRequest=null,active=null,selected=null,marquee=null,editing=null,frame=0,disposed=false,visible=true;
     let pan=[12,12],zoom=1,angle=0,gesture=null,dragPan=null,space=false,safariGesture=null,fitPending=true;
     let mousePressure=0,lastPointer=null,lastPointerType='mouse';
@@ -225,9 +225,7 @@ export async function mountSketch(root,bridge,options){
     const dialog=root.closest('.design-docs-sketch-dialog');
     const editable=target=>target?.closest?.('textarea,input,[contenteditable=true]');
     const preventSelection=event=>{if(!editable(event.target))event.preventDefault();};
-    // iPadOS can recognize rapid Pencil taps as native text selection without
-    // dispatching selectstart. Cancel the native touch defaults as well as pointer
-    // defaults; keep Pointer Events as the single drawing/gesture input stream.
+    // iPadOS can select text without selectstart. Cancel native touch defaults too.
     const clearNativeSelection=()=>{const selection=document.getSelection();if(!editable(document.activeElement)&&selection?.rangeCount)selection.removeAllRanges();};
     const preventNativeTouch=event=>{if(!editable(event.target)){event.preventDefault();clearNativeSelection();}};
     const nativeTouchOptions={capture:true,passive:false};

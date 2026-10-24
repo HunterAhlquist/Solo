@@ -3,10 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-// Electron's prebuilt launchers all share LC_UUID. macOS uses the responsible
-// executable UUID for Local Network privacy, even across different bundle IDs
-// (Apple TN3178/TN3179). Change launchers before signing; leave the framework
-// and its symbol UUID alone. The stock launcher's dSYM no longer matches.
+// macOS associates Local Network permission with the launcher UUID (Apple TN3178/TN3179).
+// Assign unique UUIDs before signing. Preserve framework UUIDs and their debug symbols.
 export default async function afterPack(context) {
     if (context.electronPlatformName !== 'darwin') return;
     const app = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app');

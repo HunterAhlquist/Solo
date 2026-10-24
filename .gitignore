@@ -81,17 +81,6 @@ site/.jekyll-metadata
 site/assets/screenshots/
 site/assets/favicon.svg
 
-# Design Docs' bundled module, styles, and dependency installation.
+# Generated Design Docs assets and JavaScript dependencies.
 extensions/DesignDocs/Solo.DesignDocs.Client/js/node_modules/
-extensions/DesignDocs/Solo.DesignDocs/content/design-docs.js
-extensions/DesignDocs/Solo.DesignDocs/content/design-docs.css
-extensions/DesignDocs/Solo.DesignDocs/content/THIRD-PARTY-LICENSES.txt
-
-extensions/DesignDocs/Solo.DesignDocs/content/pixel-font.png
-
-# Generated copies of the sketch clear effect; source assets live beside JS.
-extensions/DesignDocs/Solo.DesignDocs/content/explosion.gif
-extensions/DesignDocs/Solo.DesignDocs/content/explosion.wav
-extensions/DesignDocs/Solo.DesignDocs/content/NOTICE.txt
-
-extensions/DesignDocs/Solo.DesignDocs/content/MATERIAL-SYMBOLS-LICENSE.txt
+extensions/DesignDocs/Solo.DesignDocs/content/

@@ -39,8 +39,7 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
                     DocProtocol.Serialize(new {markdown=lease.Connection==m.Sender.ConnectionId?seed:null,seedToken=lease.Token}),ct);return;
             }
             await tx.CommitAsync(ct);
-            // Send the snapshot before its retained tail, even though its identity
-            // is newer. ThroughSeq describes its coverage, not its row identity.
+            // Snapshot identities are newer than the tail they precede.
             foreach(var row in rows.OrderByDescending(u=>u.IsSnapshot).ThenBy(u=>u.Seq))
                 await Chunks(reply,"state",row.Seq,row.Data,ct);
             await reply.ToSenderAsync("synced",DocProtocol.Serialize(new {seq=(rows.Count==0?0:rows.Max(u=>u.Seq)).ToString(),updates=rows.Count(u=>!u.IsSnapshot),canWrite=writer}),ct);return;

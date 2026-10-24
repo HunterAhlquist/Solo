@@ -1,26 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The server half owns ext_design_docs and references only the contract package.
-       PrivateAssets prevents host tests from loading a second contract copy. -->
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <Version>1.0.19</Version>
+    <Version>1.0.20</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj. The host's
-         copy reaches Solo.DesignDocs.Tests through Solo.Api; Solo.DesignDocs.Data.Tests,
-         which has no host, references the package itself. -->
     <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Migrations are scaffolded at build time by the extension author, exactly
-         as core's are; the host only applies them. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

@@ -14,9 +14,11 @@ A simple project management tool for small teams: Kanban boards with epics/tasks
   <img alt="A Solo board for the fictional game Regulatory Capture Quest: epic groups and epics as swim lanes across Unstarted, In Progress and Finished columns, with labels, deadline rings, sub-task progress and assignee avatars" src="docs/images/screenshots/board-light.png">
 </picture>
 
-First-party extensions, included in the server release downloads:
-- MCP
-- Roadmaps
+First-party extensions are available in the release downloads:
+
+- [MCP](#mcp-server-bundled-extension)
+- [Roadmaps](#roadmaps-bundled-extension)
+- [Design Docs](#design-docs-bundled-extension)
 
 **Stack:** ASP.NET Core Web API · EF Core + PostgreSQL · SignalR · OIDC (Google, Microsoft Entra, or any compliant issuer). The Blazor WASM client is served by the same host; one container + Postgres is the whole deployment.
 
@@ -264,8 +266,7 @@ the extension is still loaded.
 
 ### MCP server (bundled extension)
 
-One of the two extensions this repo ships is **`solo-mcp`** ([extensions/Mcp](extensions/Mcp)),
-which lets an LLM client read and edit Solo's boards. It is a package like any
+**`solo-mcp`** ([extensions/Mcp](extensions/Mcp)) lets an LLM client read and edit Solo's boards. It is a package like any
 other, not part of the image: download `solo-mcp-<version>.zip` from the
 [releases](../../releases), copy it into the extensions directory, and restart.
 `build/pack-mcp-extension.sh` builds the same archive locally.
@@ -299,8 +300,7 @@ one person, and an emergency **Revoke all** for cutting off the instance.
 
 ### Roadmaps (bundled extension)
 
-The other is **`solo-roadmap`** ([extensions/Roadmap](extensions/Roadmap)), which
-adds timelines. A roadmap gathers tasks from any of a project's boards into one
+**`solo-roadmap`** ([extensions/Roadmap](extensions/Roadmap)) adds timelines. A roadmap gathers tasks from any of a project's boards into one
 row each, drawn as a bar from start date to deadline over a day grid with
 sprint stripes. Dragging a bar reschedules the task itself, so the board and
 the roadmap never disagree about a date. Milestones mark dates that belong to
@@ -313,6 +313,21 @@ Install it like the MCP package: `solo-roadmap-<version>.zip` from the
 full feature list is in [its README](extensions/Roadmap/Solo.Roadmap/README.md).
 
 ![The Road to Next Fest roadmap: bars for tasks across the Vertical Slice, Art & Audio and Bugs boards, today's column highlighted, dotted milestone lines for the vertical slice playtest and the publisher pitch, the overdue battle-theme bar in red, and the Missed deadlines table below](docs/images/screenshots/roadmap.png)
+
+### Design Docs (bundled extension)
+
+**`solo-design-docs`** ([source](extensions/DesignDocs)) adds project vaults with
+folders, collaborative Markdown, task links, images, and sketches.
+People can write together and see each other's profile cursors.
+Images and sketches form stacks that open in an attachment viewer.
+The fullscreen sketch editor supports Pencil input, selection tools, and PNG export.
+
+Import an Obsidian ZIP when creating a vault, or export an existing vault as
+Markdown and images. Notes and attachments stay in PostgreSQL.
+Install `solo-design-docs-<version>.zip` from a compatible release and restart Solo.
+See the [user guide](site/guide/design-docs.md) and [build instructions](extensions/DesignDocs/README.md).
+
+![A Design Docs vault with folders, Markdown notes, task links, and stacked attachments](docs/images/screenshots/design-docs-notes.png)
 
 ## Desktop app
 
