@@ -73,12 +73,28 @@ public sealed class ProviderTokenTests(PostgresFixture postgres) : IAsyncLifetim
         return Task.CompletedTask;
     }
 
-    private static string IdToken(string subject, string email) =>
-        new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+    /// <summary>
+    /// A provider ID token, valid for this instance unless an override says
+    /// otherwise — the negative tests change one property at a time.
+    /// </summary>
+    private static string IdToken(
+        string subject,
+        string email,
+        string issuer = Issuer,
+        string audience = ClientId,
+        SecurityKey? key = null,
+        DateTime? expires = null)
+    {
+        var expiry = expires ?? DateTime.UtcNow.AddMinutes(10);
+        return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
-            Issuer = Issuer,
-            Audience = ClientId,
-            Expires = DateTime.UtcNow.AddMinutes(10),
+            Issuer = issuer,
+            Audience = audience,
+            // Explicit, so a token can be minted already expired: left unset,
+            // the handler stamps nbf with now, and refuses an exp before it.
+            IssuedAt = expiry.AddHours(-1),
+            NotBefore = expiry.AddHours(-1),
+            Expires = expiry,
             Claims = new Dictionary<string, object>
             {
                 ["sub"] = subject,
@@ -86,8 +102,9 @@ public sealed class ProviderTokenTests(PostgresFixture postgres) : IAsyncLifetim
                 ["email_verified"] = true,
                 ["name"] = subject,
             },
-            SigningCredentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256),
+            SigningCredentials = new SigningCredentials(key ?? SigningKey, SecurityAlgorithms.HmacSha256),
         });
+    }
 
     private HttpClient WithBearer(string token)
     {
@@ -141,6 +158,45 @@ public sealed class ProviderTokenTests(PostgresFixture postgres) : IAsyncLifetim
         // A token that isn't for this instance gets nowhere at all.
         using var forged = WithBearer("eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0.");
         Assert.Equal(HttpStatusCode.Unauthorized, (await forged.GetAsync("/api/extensions")).StatusCode);
+    }
+
+    /// <summary>
+    /// A well-formed, properly signed token is still refused when any one of
+    /// the checks fails — even naming a provisioned user. The audience is the
+    /// one that matters most in practice: an ID token Google issued for some
+    /// other app's client ID is a genuine Google token, and must not sign
+    /// anyone in here.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_token_failing_any_validation_check_is_refused()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        using var admin = WithBearer(IdToken("admin-sub", "admin@example.com"));
+        await admin.PostAsJsonAsync("/api/setup/complete", new
+        {
+            setupUsername = SoloApiFactory.SetupUsername,
+            setupPassword = SoloApiFactory.SetupPassword,
+        }, TestClients.Json);
+        // The same identity with every check passing gets in, so each refusal
+        // below is down to the one property changed.
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/settings")).StatusCode);
+
+        string[] refused =
+        [
+            IdToken("admin-sub", "admin@example.com", audience: "some-other-client"),
+            IdToken("admin-sub", "admin@example.com", issuer: "https://other-issuer.example.com"),
+            IdToken("admin-sub", "admin@example.com", key: new SymmetricSecurityKey(RandomNumberGenerator.GetBytes(32))),
+            // Past the handler's five-minute clock skew allowance.
+            IdToken("admin-sub", "admin@example.com", expires: DateTime.UtcNow.AddMinutes(-10)),
+        ];
+        foreach (var token in refused)
+        {
+            using var client = WithBearer(token);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/settings")).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await client.PostAsJsonAsync("/api/auth/sessions", new { }, TestClients.Json)).StatusCode);
+        }
     }
 
     /// <summary>
