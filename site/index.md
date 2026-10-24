@@ -14,7 +14,7 @@ Solo is a Kanban board for a small team. A project holds boards. A board holds e
 - **An audit log.** Solo records each changed field, the person who changed it, and the value it replaced.
 - **Single sign-on.** People sign in with your identity provider: Google, Microsoft Entra ID, or another OIDC issuer.
 - **Themes.** A theme sets the colours, fonts and sign-in screen of the instance. Three themes come with Solo.
-- **Extensions.** A package adds endpoints, data, hooks and pages without a change to Solo. Two extensions come with the server release: Roadmaps and an MCP server.
+- **Extensions.** A package adds endpoints, data, hooks and pages without a change to Solo. First-party extensions include [Design Docs](guide/design-docs.md), Roadmaps, and an MCP server.
 
 One container and a PostgreSQL database are the full deployment.
 

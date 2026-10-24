@@ -1,15 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The Design Docs extension's tests, against the real host: the package loaded,
-       migrated and called over HTTP and SignalR, and its pages rendered under
-       bUnit. Its internals are tested without a host in Solo.DesignDocs.Data.Tests.
-
-       This is where the extension's build reaches into src/: for the host the
-       package runs in, and for the harnesses core's own tests use. The
-       extension projects themselves stay on the contract packages, kept private
-       so this project sees only the host's Solo.Extensibility and Solo.Shared —
-       the copies the package binds to once loaded. -->
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -39,18 +29,11 @@
     <ProjectReference Include="..\..\..\src\Solo.Api\Solo.Api.csproj" />
     <ProjectReference Include="..\..\..\tests\Solo.Api.Testing\Solo.Api.Testing.csproj" />
     <ProjectReference Include="..\..\..\tests\Solo.Client.Testing\Solo.Client.Testing.csproj" />
-    <!-- Built and staged, never referenced: a reference would load the server
-         half into the default context, and the loader would never be exercised. -->
+    <!-- Load the server package through the host, outside the default assembly context. -->
     <ProjectReference Include="..\Solo.DesignDocs\Solo.DesignDocs.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
-    <!-- Referenced: bUnit renders its components directly. The host never loads
-         a client half itself, only serves it. -->
     <ProjectReference Include="..\Solo.DesignDocs.Client\Solo.DesignDocs.Client.csproj" />
   </ItemGroup>
-
-  <!-- Lay the package out under the test output as a release ships it — both
-       halves plus content/ — so Extensions:DevelopmentDirectories can point at
-       it, and the tests exercise the archive a release actually ships. -->
   <Target Name="StageDesignDocsExtension" AfterTargets="Build">
     <MSBuild Projects="..\Solo.DesignDocs\Solo.DesignDocs.csproj" Targets="GetTargetPath">
       <Output TaskParameter="TargetOutputs" ItemName="DesignDocsAssembly" />

@@ -1,8 +1,6 @@
 import * as Y from 'yjs';
 
-// A viewer can stay open while collaborators type before its embeds. Relative
-// positions keep Remove and drag/drop attached to that occurrence, even when
-// the same image appears several times in a note.
+// Relative positions track the selected embed while collaborators edit the note.
 export function mediaReference(text, entry) {
     return {...entry, start:Y.createRelativePositionFromTypeIndex(text,entry.from,0), end:Y.createRelativePositionFromTypeIndex(text,entry.to,-1)};
 }

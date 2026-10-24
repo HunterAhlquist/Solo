@@ -7,7 +7,6 @@ using Solo.Shared.Extensibility;
 
 namespace Solo.DesignDocs.Client;
 
-/// <summary>Owns one browser transfer, including cancellation and its temporary object URLs.</summary>
 internal sealed class VaultTransferSession(ISoloClientApi api, IJSRuntime js, Guid projectId,
     string name, Func<string, Task> progress) : IAsyncDisposable
 {
@@ -23,8 +22,7 @@ internal sealed class VaultTransferSession(ISoloClientApi api, IJSRuntime js, Gu
         var assets = new DesignDocsApi(api);
         var module = await DesignDocsAssets.ModuleAsync(js, assets);
         _reference = DotNetObjectReference.Create(this);
-        return _transfer = await module.InvokeAsync<IJSObjectReference>("createTransfer", _reference,
-            new { name, fontUrl = assets.Content("pixel-font.png").ToString() });
+        return _transfer = await module.InvokeAsync<IJSObjectReference>("createTransfer", _reference, new { name });
     }
 
     public async Task<ImportSummary?> InspectAsync() =>

@@ -147,8 +147,7 @@ export class Images {
                 const url=await this.resolve(item.path);if(serial!==request||!dialog.open||closing)return;
                 image.src=url;await image.decode();if(serial!==request||!dialog.open||closing)return;
                 if(!presented){
-                    // Promote the selected paper before the wash starts, then animate the
-                    // pixels in the top layer so the rest of the stack never jumps above it.
+                    // Raise the selected preview before the background starts to fade.
                     const transform=sourceTransform();await new Promise(requestAnimationFrame);
                     if(closed||closing)return;
                     presented=true;dialog.dataset.phase='opening';dialog.classList.add('is-presented');

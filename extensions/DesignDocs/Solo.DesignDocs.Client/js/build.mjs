@@ -1,17 +1,15 @@
 import { build } from 'esbuild';
-import { buildFont } from './sketch/build-font.mjs';
-import { readFile, writeFile, copyFile, mkdir, readdir } from 'node:fs/promises';
+import { readFile, writeFile, copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const output = '../../Solo.DesignDocs/content';
+await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-await buildFont(output);
 await build({ entryPoints: ['index.js'], bundle: true, format: 'esm', target: ['safari15.4', 'chrome111'],
     outfile: `${output}/design-docs.js`, minify: true, legalComments: 'eof' });
 await copyFile('design-docs.css', `${output}/design-docs.css`);
 for(const file of ['explosion.gif','explosion.wav','NOTICE.txt','MATERIAL-SYMBOLS-LICENSE.txt'])await copyFile(`assets/${file}`, `${output}/${file}`);
 
-// Include the dependency notices in the installable package, not just the source checkout.
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
 const notices = [];
 for (const path of Object.keys(lock.packages).filter(p => p.startsWith('node_modules/'))) {

@@ -4,7 +4,7 @@ export function textLayout(context,box,family){
     context.font=`${size}px ${family}`;
     return {size,lineHeight,lines,width:Math.max(1,...lines.map(line=>context.measureText(line).width)),height:lines.length*lineHeight};
 }
-export async function loadFont(_url,root=document.body){
+export async function loadFont(root=document.body){
     await document.fonts.ready;
     const font=(context,box)=>{
         const family=getComputedStyle(root).fontFamily,layout=textLayout(context,box,family);

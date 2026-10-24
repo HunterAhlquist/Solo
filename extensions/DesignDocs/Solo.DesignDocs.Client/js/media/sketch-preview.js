@@ -7,7 +7,7 @@ export async function refreshSketchPreview(canvas,bridge){
     if(!data)throw new Error('Sketch not found in this note.');
     const doc=new Y.Doc();try{
         for(const update of data.updates)Y.applyUpdate(doc,decode(update));
-        const font=await loadFont(data.fontUrl);
+        const font=await loadFont();
         paint(canvas.getContext('2d'),doc.getArray('ops').toArray(),[...doc.getMap('texts')].map(([id,text])=>({id,...text.toJSON()})),
             {pageSize:data.sketch.pageSize,orientation:data.sketch.orientation,pattern:data.sketch.pattern,...doc.getMap('meta').toJSON()},
             {font,frame:0,themeInk:getComputedStyle(document.body).color,paperColor:getComputedStyle(document.body).getPropertyValue('--mud-palette-surface')||'white',exporting:true});

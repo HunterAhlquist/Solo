@@ -50,7 +50,9 @@ If you remove the selected theme, Solo uses the default theme.
 
 ## Install an extension
 
-Two extensions come with each server release: `solo-mcp` and `solo-roadmap`. Download their `.zip` files from the [releases page](https://github.com/HunterAhlquist/Solo/releases). Use a release with a name that starts with `server-v`.
+First-party packages include `solo-mcp`, `solo-roadmap`, and [Design Docs](../guide/design-docs.md), named `solo-design-docs`.
+Download compatible `.zip` files from the [releases page](https://github.com/HunterAhlquist/Solo/releases).
+A release includes only the packages that changed. Check each package's required Solo version before installation.
 
 1. Copy the `.zip` file into the extensions directory:
 

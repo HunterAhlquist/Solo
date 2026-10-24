@@ -1,8 +1,8 @@
 # Design Docs: build plan
 
-> **Status (2026-10-22):** A1–A5 and B0–B9 implemented on `codex/design-docs-prerelease`; physical device acceptance is pending. Original plan grounded in `d6357e1`; lifecycle behavior checked against merged PR #29 (`843a19c`).
+> **Status:** A1–A5 and B0–B9 are implemented. Physical device checks remain pending under the approved gate exception.
 >
-> **Verified correction:** B2's original acceptance sentence denied vault lifecycle to non-member super admins, contradicting its policy table and settled PR #29 behavior. `AccessPolicy.Allows(..., Owner)` admits super admins; `Read` still requires membership. The B2 acceptance sentence now matches those rules. Physical iPad/Pencil checks remain required; no result is inferred from a desktop browser test. Safari selection retention and actual Electron ZIP downloads passed the final checks recorded below.
+> This document preserves the original build plan. The [implementation summary](#implementation-summary) records later decisions. See the [user guide](../site/guide/design-docs.md) for current behavior.
 >
 > **Where the decisions come from:** the feasibility review, [Design Docs extension: feasibility review](https://claude.ai/artifact/RxZ5kdcCkJZN7LZunHY1CL), and Hunter's answers in its comment threads (2026-10-22). Treat the decisions in §1 as settled. Anything this plan had to decide on its own is listed in §5, so Hunter can overrule it before or during the build.
 
@@ -359,29 +359,14 @@ Copy from Roadmap: the csproj comments and package references (contract `1.10.0`
 
 #### B0 findings (2026-10-22)
 
-The throwaway implementation is on `codex/design-docs-prototype`; it is not part
-of the extension implementation branch. Built package and browser evidence are
-under `artifacts/` (ignored). A disposable Postgres database and synthetic local
-sessions were used, with no access to a secrets store.
+The prototype loaded through the extension host and existing content security policy.
+Local writer and reader tabs converged after concurrent changes and a simulated gap.
+Browser navigation disposed the editor and restored its document on return.
+These checks do not measure remote latency or server capacity.
 
-- The package loaded through the real extension host under the existing CSP.
-- Three writer tabs each inserted 200 changes at 10 ms intervals, batched at
-  50 ms. All three and a Read member converged on exactly 3,276 characters.
-  The observed p95 acknowledgment was 11–12 ms and delivery was 9–12 ms on
-  localhost; writers sent 40–45 messages including startup traffic. There were
-  zero failures and zero outstanding acknowledgments. This is a local latency
-  measurement, not a remote-network or server capacity benchmark.
-- A simulated gap made one editor read-only. Another writer added 1,092
-  characters; reconnect restored identical 4,368-character text in all tabs.
-  The test drops traffic at the prototype bridge, not at the network layer.
-- Blazor navigation away and back disposed/recreated CodeMirror and resynced
-  its text without browser warnings or errors. Extension assemblies and static assets are cached at startup; the development package workflow requires a restart. In-place extension hot reload is not supported by the existing loader.
-- Four JS tests cover reordered/duplicated updates and resync, byte encoding,
-  pressure mapping, and deterministic stamp jitter. Hardware pressure, Scribble,
-  coalesced events, palm rejection and iPadOS lock/resume remain unverified.
-- **User-approved gate exception:** continue B1–B9 with the physical device
-  checks explicitly pending. These results do not waive final device acceptance.
-  Safari selection retention and desktop blob downloads also remain pending.
+The user approved B1–B9 work with physical device checks pending.
+This exception does not waive final device acceptance.
+Extension updates still require a host restart.
 
 ### B1. Data model (`ext_design_docs`)
 
@@ -715,556 +700,44 @@ Research: Healey, C. G. (1996). [Choosing Effective Colours for Data Visualizati
 
 Bug reports and forums, for browser behavior with no official page: [Apple Developer Forums: 240 Hz Apple Pencil input in JavaScript](https://developer.apple.com/forums/thread/689375), [WebKit bug 292350: HEIC transcoding on upload](https://bugs.webkit.org/show_bug.cgi?id=292350).
 
-## Implementation findings: durable relay
-
-- The database enforces cross-vault folder/note parents, unique root names
-  (`NULLS NOT DISTINCT`), and cascade ownership of both note and sketch logs.
-  `Sketches.VaultId` enforces its vault-wide name namespace. Exclusive nullable
-  `DocUpdates.NoteId` / `SketchId` foreign keys enforce log cleanup without a
-  foreign key into core.
-- Vault-row locks serialize closure/deletion with content writes and tree moves.
-  Lifecycle state is read under that lock instead of caching closed status;
-  this avoids an authorization window after closing a vault.
-- Snapshots retain `ThroughSeq` separately from their new database identity.
-  Replay sends the snapshot first and then its retained tail. Sync currently
-  replays that full compacted state, making recovery robust to reordered live
-  delivery; `afterSeq` is a future bandwidth optimization.
-- `compact-part` extends the multipart envelope for snapshots that exceed one
-  hub message. It uses the same bounded, expiring per-connection buffer as updates.
-- Seeding uses a lease token and persists `Notes.SeededByToken`. A delayed seed
-  from an expired lease is refused; retrying an accepted seed gets its ack
-  without appending it twice. This closes a race the original envelope did not
-  distinguish from an ordinary edit.
-- B1 constraints/cascades: 10 database tests passed. B2 and durable relay: 10
-  host tests passed, including recorded Yjs bytes through the real hub. B4: five
-  component tests passed; browser creation of a vault, folder and nested note
-  appeared immediately in a Read member's open page, with no mutation controls.
-- Browser verification exposed an A2 implementation bug: the existing hub's
-  state notification also fires for presence/subscription changes. Forwarding
-  every notification as `ConnectionChanged` made focusing CodeMirror initiate a
-  resync and remove focus. A regression test reproduced two false connection
-  events; LiveTopics now filters by actual transport-state transitions. All
-  eight LiveTopics tests pass, and sustained browser typing works with normal
-  presence reporting. Temporary focus/status experiments were removed.
-- B6: 19 extension host/client tests passed. In the browser, the core markdown
-  action opened the extension picker, inserted a stable note GUID link into a
-  comment editor, and returned focus to the selection. The linked-task route
-  opened core's own drawer. A literal Razor chip URL found during this check was
-  corrected to a bound URL.
-- B7: four host tests passed for membership, isolated image responses, replacement
-  concurrency, reader restrictions, SVG rejection and invalid paths. Browser
-  upload converted a synthetic PNG to WebP and inserted its embed. Authenticated
-  bytes displayed through a blob URL; a two-image paragraph formed a stack and
-  opened the carousel. iPad photo decoding and touch gestures remain pending.
-  Header checks follow [PNG IHDR](https://www.w3.org/TR/png-3/) and
-  [WebP RIFF](https://developers.google.com/speed/webp/docs/riff_container).
-- B8's move representation rewrites the selected stroke into remaining and moved
-  segments in one local Yjs transaction; eraser operations keep their original
-  order, and moved visible pieces are appended after them. A pixel-level test
-  caught residual jitter fragments at the original location and now verifies
-  they are cleared. Eight-neighbor selection and connected stamp interpolation
-  keep thin diagonals selectable.
-- B8 verification: 13 JS tests passed, including pressure, seeded raster frames,
-  erasing, cut-piece movement and malformed-coordinate bounds; the sketch
-  lifecycle/ownership host test passed. Browser drawing, rectangle, text, eraser,
-  undo, cut-piece move and PNG download were exercised. Two open clients exported
-  byte-identical still PNGs after edits from both. The PNG is 595×842 for A4.
-  Hardware pressure, Scribble, palm rejection and multi-touch remain pending.
-- The bitmap atlas is the original Solo Tiny 5 font, dedicated under CC0; its
-  editable glyph rows and build script ship in source, and the PNG and license
-  ship in the package. Basic ASCII glyphs are supported; other characters stay
-  in the text data and render as a question-mark glyph.
-
-- A4 exposes optional `SoloApiException.RetryAfter` so B9 can honor server
-  pacing without bypassing the authenticated API. JSON and binary calls preserve
-  both delta-seconds and HTTP-date headers; 14 API client tests passed.
-
-
-## Implementation findings: import/export and final validation
-
-- B9 imports UTF-8 notes without changing their text, including a BOM, CRLF,
-  front matter, and dataview blocks. The browser preview lists skipped files
-  and conflicts before any writes. Notes are sent in batches of at most 100
-  and 5 MB; image uploads are paced and honor `Retry-After` on 429 responses.
-- The browser-to-.NET transfer bridge uses JSON text and base64 image data;
-  the authenticated HTTP requests still send UTF-8 JSON or raw image bytes.
-  Browser verification caught and removed a failing optimized byte-array bridge.
-- Import has explicit browser memory limits: 100 MB ZIP, 256 MB expanded,
-  1 MB per note, and 25 MB per image before conversion. Export stops at
-  512 MB uncompressed. Non-UTF-8 notes and unsupported paths are reported as
-  skipped. Images already within upload limits preserve their original format
-  and bytes; oversized raster images are resized in that format. Oversized
-  animated GIFs are skipped with an explanation.
-- Super admins with Read membership can import through dedicated import
-  endpoints, matching B9's explicit exception. Non-member admins still cannot
-  read or import vault content. Ordinary image uploads remain ProjectWrite.
-- The browser round trip imported two notes and one embedded PNG, skipping
-  settings, a canvas file, and an unused image. Both exported `.md` files and
-  the PNG matched the input byte for byte. A wiki link with an alias and heading
-  navigated to the correct note and fragment; Unicode content remained intact.
-- The actual Electron shell, using an isolated synthetic profile, rendered the
-  authenticated blob image and saved the blob ZIP through the macOS Save panel.
-  Its exported note and image bytes also matched after first opening the notes.
-  No desktop download change was required. Sketch PNG downloads were verified
-  in the browser; physical device input remains pending.
-- Final local automated results: core 778 tests (777 in the full run plus the
-  shared URL-parity fixture), Design Docs 38 C# tests and 24 JavaScript tests,
-  MCP 86 tests, Roadmap 202 tests. No skipped tests in those runs. Contract
-  packaging, sample builds, and template option builds passed. The existing
-  SignalR.Common 10.0.12 NU1903 advisory warning remains in restore output.
-- Inline sketch cards show a still preview, refreshed when their editor closes.
-  The sketch editor provides live collaboration and animated boil. The tiny
-  bitmap font currently renders basic ASCII; other characters remain in the
-  collaborative data and use a placeholder glyph.
-- Pending device acceptance: Apple Pencil pressure/latency/coalesced events,
-  Scribble, palm rejection, multi-touch view gestures, iPad photo decoding,
-  and iPadOS lock/background/resume. These pending checks are not claimed as passed by desktop results.
-
-- Final task-link checks: replacing a nonempty selection through the picker
-  preserved the surrounding text and restored focus in both the in-app browser
-  and native Safari. A 32-digit task GUID rendered the current serial/title and
-  opened the core drawer without leaving the note.
-
-- Final review found that repeated image basenames made note-relative embeds
-  ambiguous in the editor. Image resolution now uses the note directory after
-  exact vault paths and before a unique basename; its regression test also
-  rejects external targets. Package 1.0.7 is included in preview build 2.
-
-## First feedback round — Codex preview
-
-The feedback build moves to client contract 1.11 for a general-purpose workspace
-lease and initial task-picker filters. Design Docs remains removable: the host
-layout names no extension. The editor uses the available page width and height,
-with line-number gutters and its own scroll area; entering a vault collapses
-main navigation, and the normal navigation button can reopen it.
-
-Vault lists refresh for local mutations and navigation as well as remote live
-messages. Creation uses the same sidebar link treatment as boards/roadmaps.
-Obsidian ZIP selection, review, and import happen only inside the new design doc
-dialog; existing vaults offer export only.
-
-Media remains rendered on the selected line. Media-only lines form photo/sketch
-stacks, with a fullscreen viewer, previous/next buttons at opposite edges,
-Left/Right keys, swipe navigation, and removal of the selected embed. Removal
-keeps the stored attachment so undo restores it. Relative Yjs positions keep
-viewer actions attached to the correct occurrence during concurrent editing.
-Cards can be dragged to move their embeds; notes and folders have drag handles
-with native mouse dragging and touch dragging, including a root drop target.
-
-Sketch editing is fullscreen with only the top-right close control. The view
-supports continuous zoom and rotation, superseding B8's original integer zoom
-rule: scroll pans, Ctrl/Cmd + scroll zooms, Alt + scroll rotates, Shift + scroll
-pans horizontally, and Space + drag pans. Two-finger transforms and Safari's
-trackpad gesture events use the same anchored transform. Physical iPad/Pencil,
-Scribble, palm rejection, and backgrounding checks remain pending under the
-previously approved hardware exception.
-
-Browser automation confirmed native hierarchy moves and photo moves. A separate
-sketch drag out of a mixed stack still needs manual confirmation: the automation
-started the native drag but did not deliver a drop event at the target.
-
-### Second feedback round
-
-The user supplied an Obsidian reference for reading margins and requested a floating
-insertion palette, MudBlazor controls, 64-pixel attachment previews, wider image fans,
-viewer-only removal, and export in the header menu. The note tree keeps disclosure
-carets only for folders; the redundant Move to menu entry is removed.
-
-The sketch view uses tool/color/brush palettes at the upper left, history at the
-upper right, and zoom/fit icons at the lower right. Page settings use a dialog.
-Fit reserves room for these overlays; the separate Rotate view button is removed,
-while continuous touch/trackpad rotation remains available. Theme-font text is
-painted live under its transparent input, so committing text does not switch its
-font or layout. Box and lasso selection show bounds and preview moved content
-before the drag is committed. Paper and floating surfaces use 50% backgrounds.
-
-Clear plays the user-requested transparent Deltarune explosion and sound, clears
-ink/text halfway through its 1.19-second animation, and remains undoable. Reduced
-motion skips the animation. Source revision and attribution are packaged in
-`NOTICE.txt`; these game assets are separate from Solo's code license.
-
-Validation: 38 JavaScript tests cover media deletion guards, box/lasso selection,
-and moving selected cut pieces without changing unrelated objects. Browser checks
-confirmed the reading margins, 64×64 contain sizing, pointer/typing palette behavior,
-folder-only disclosure carets, menu actions, theme-font live text, multi-object move
-bounds, page settings, and the transparent Clear animation. API readback confirmed
-Clear changed two strokes and one text object to zero, and Undo restored all three.
-Physical iPad/Pencil and iPadOS backgrounding checks remain pending.
-
-The final extension suite passed all 40 C# tests. A screenshot comparison confirmed
-the theme text's glyph geometry stays unchanged after leaving its input. Clear uses
-a same-origin audio URL to preserve the host's existing media CSP.
-
-
-### Third feedback round
-
-The insertion palette follows the Markdown caret below its current line, clamped
-to the visible editor and hidden when the caret scrolls away. Line numbers are
-removed. Rendered ATX headings hide their delimiter's separator as well as the
-hashes, correcting the extra title indent without changing stored Markdown.
-
-The sketch previously rasterized the entire committed scene twice per draw and
-issued one rectangle call per ink pixel. It now caches the three deterministic
-boil frames, reuses the hit mask until strokes change, batches horizontal pixel
-spans, and composites cached selection layers during a drag. Active local/remote
-strokes apply to a copy of the cached raster, preserving eraser ordering. Selection
-layers retain clipped brush edges. Theme changes invalidate the color layers;
-shared stroke/page changes invalidate the scene. Blank or reduced-motion sketches
-no longer request periodic boil repaints. Pan/zoom retain CSS transforms, which let
-the browser use its compositor; actual GPU acceleration is browser/device dependent.
-
-A native Chrome 155 canvas benchmark on this Mac used 200 seeded strokes with 30
-points each, three warm-up draws, and 18 measured draws. Before/after median drawing
-submission time was 170.1/2.9 ms (p95 191.6/3.5 ms); cached idle redraws fell below the
-timer's resolution versus 170 ms before. These are synthetic warm-cache desktop
-measurements, excluding document loading and GPU presentation; they do not establish
-iPad frame rates. The approach follows [MDN's canvas optimization guidance](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas).
-
-Touch drawing is off when opening a sketch: one finger pans and Pencil draws; the
-finger toolbar toggle enables touch drawing. Pencil pointer identity survives an
-unrelated palm's pointerup/cancel. The whole drawing dialog prevents native header
-selection via user-select (including Safari's prefixed property), disables header
-touch gestures/callouts, and guards selectstart outside editable fields. A separate
-capture guard rejects palm interactions during a pen stroke. Opaque paper and
-viewport backgrounds replace the previous transparent paper; only grid/ruled/dot
-patterns render at half opacity.
-
-Validation: 48 JavaScript tests and 40 extension C# tests pass. Pixel comparisons
-cover cached frames, active erasers, scene/theme invalidation, cut-piece movement,
-page-edge movement, and paper/pattern opacity. Browser checks confirmed zero line
-number gutters, heading alignment, caret palette placement, the touch toggle, and
-continued text selection inside sketch text inputs. Header drag/triple-click attempts
-produced no text selection in desktop Chrome and Safari. Physical iPad/Pencil palm
-behavior and iPadOS backgrounding still require device retesting; the touch-drawing
-option is retained independently of those checks.
-
-
-### Fourth feedback round
-
-The notes tree sizes to its visible titles between 260 and 390 CSS pixels (the
-user revised the original request to a 1.5× maximum). Nesting uses 12-pixel indents;
-titles align left, and a title itself is the drag source. There are no separate
-grab handles. Overflowing titles use Roadmaps' continuous hover/focus ticker,
-with the same delay and speed, no touch animation, and reduced-motion support.
-Its gesture follows core's board: 320 ms stationary touch hold,
-10-pixel touch slop to preserve scrolling, and a 6-pixel fine-pointer threshold.
-Dragging suppresses the following click so it does not open the moved note.
-
-Folders start collapsed. Per-vault cookies remember expanded folder IDs, the current
-note, and the editor font scale. Explicit note links take precedence over the saved
-note, and saved notes are resolved only from the current authorized vault tree.
-Large folder lists split into bounded cookie chunks. Font sizes from 75% to 200%
-are available in the vault header. Preferences do not change shared Markdown.
-
-Tab/Shift-Tab indent/dedent text and lists. Return continues bullet or numbered
-markup, renumbers following ordered items, and exits an empty list item. Bullet
-markers remain rendered while editing their text; source markers appear only when
-a selection touches the marker itself. The vertical insertion palette aligns its
-first action to the caret's current line and stays beside the left text margin.
-The reading gutter reserves space for it at small viewport widths too.
-
-The touch-drawing toggle only renders when the browser reports touch contacts.
-Safari Force Touch pressure events can feed the same variable-width renderer as
-Pencil, using the browser's click/force-click constants rather than hardcoded
-thresholds. A constant click value from an ordinary mouse does not enable variable
-width. Other browsers retain their existing input behavior. This is a feature-gated
-WebKit integration, not a claim of cross-browser trackpad-pressure support; physical
-Force Touch hardware verification remains pending. Sources: [Apple Force Touch API](https://developer.apple.com/library/archive/documentation/AppleApplications/Conceptual/SafariJSProgTopics/RespondingtoForceTouchEventsfromJavaScript.html),
-[CodeMirror Tab handling](https://codemirror.net/examples/tab/), and [touch capability detection](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/maxTouchPoints).
-
-Validation: 66 JavaScript tests and 44 C# extension tests pass. Tests cover cookie
-round trips, large-tree chunking, corrupt preference recovery, list continuation and
-nesting, marker-adjacent editing, touch hold/cancel behavior, browser timer receiver
-requirements, and Force Touch normalization/brush widths. Browser checks cover
-restoring folders/note/font without a note query, title dragging without changing
-the selected note, adaptive sidebar bounds, left alignment, the moving overflow ticker, and the margin palette.
-The touch toggle is absent on the desktop test platform. Physical iPad touch-drag,
-palm rejection, iPadOS backgrounding, and Force Touch pressure still need hardware
-retesting under the existing approved exception.
-
-### Sketch follow-up fixes
-
-Opening a sketch now suspends the underlying Markdown view with both CodeMirror's
-read-only/editable facets and DOM `inert`. Permission updates cannot re-enable it
-while the dialog is open; closing the dialog restores current permissions rather
-than assuming write access. An asynchronous insertion can finish without stealing
-focus from sketch text. Desktop typing did not reproduce the reported leakage,
-but the baseline check confirmed the underlying view remained editable while the
-dialog was open; the fixed browser check requires it to be noneditable and inert.
-Physical iPad keyboard behavior still needs retesting.
-
-The sketch provider buffers sync history until `synced`, then merges it into one
-Yjs update. A failing replay test previously exposed an old stroke, its deletion,
-and the current stroke as three visible states. Initial loading now exposes only
-the current state, while subsequent live updates still apply immediately.
-Interrupted loads resume from the last applied sequence, without skipping buffered
-history.
-
-A moving selection has a separate transparent canvas in the viewport. Its full
-cut raster and bounding box travel beyond the paper edge until release; only the
-committed drawing is clipped to the paper. The original raster already survived a
-held off-page-and-back round trip in the unit harness; the missing behavior was a
-preview independent of the paper clip. Tests now require that independent layer
-and preservation of its pixels through movement. Real iPad pointer behavior remains
-a device check.
-
-The eraser uses Google's outlined `ink_eraser` Material Symbol, scaled from its
-960-unit view box into MudIcon's 24-unit view box. Its Apache 2.0 license and source
-attribution ship with the package. Source: [Google Material Symbols SVG](https://github.com/google/material-design-icons/blob/master/symbols/web/ink_eraser/materialsymbolsoutlined/ink_eraser_24px.svg).
-
-Validation: 70 JavaScript tests and 44 C# extension tests pass. Browser checks
-confirm sketch typing, a noneditable/inert background view, and restored editing
-after closing. Reconstructing the saved Yjs document confirms its Markdown stayed
-byte-for-byte unchanged after sketch typing and close. Preview 6's actions
-were canceled before deployment; its immutable tag is retained. Preview 7 carries
-these changes and Design Docs 1.0.12.
-
-
-### Preference, URL, and import follow-up
-
-A deterministic component test reproduced preference loss: rerender the vault while
-`loadVaultPreferences` is pending, and the old implementation writes empty folders
-and 100% font scale before hydration completes. This can overwrite valid cookies
-on theme/auth rerenders. The page now gates saves and controls until preferences
-are loaded; asynchronous responses from an old vault cannot replace a newer view.
-Cookies still hold folder IDs, the selected note, and font size, with the new margin
-width added. Old cookies default margins to Auto. Explicit widths of 0%, 5%, 10%,
-15%, and 20% are available beside font scale; Auto preserves the existing reading
-width behavior. The current note is marked with `aria-current=page` and the theme's
-primary color. H4/H5/H6 have explicit heading styles.
-
-Note URLs encode the complete 128-bit GUID as 22 unpadded base64url characters.
-The GUID and all database keys remain unchanged. Canonical `/docs/note/<key>` URLs
-render the vault directly instead of redirecting to a long vault/query URL. Old
-GUID note links and old vault query links still open; newly generated note links
-use compact keys. Label resolution, linked-doc extraction, wiki links, heading
-fragments, and membership checks support both encodings. This is an encoding, not
-an authorization token, and deliberately avoids a truncated 11-character ID.
-
-Video files are filtered before decompression/import and generate a video warning.
-Their Markdown references are preserved byte-for-byte. The editor recognizes video
-embeds, including ones imported by older previews, without sending them to the
-image endpoint; it displays a skipped-video label away from the editing cursor.
-Unsupported attachments also avoid the image loader. Common metadata is ignored
-silently: AppleDouble files, `__MACOSX`, `.DS_Store`, macOS indexing/trash metadata,
-Obsidian settings, source-control metadata, `Thumbs.db`, and `desktop.ini`. Genuine
-unsupported content such as canvas/Excalidraw files still appears in the report.
-
-#### Storage and a future video option
-
-The hierarchy is represented by `Vaults`, `Folders`, and `Notes` rows in the
-extension's `ext_design_docs` PostgreSQL schema. Notes have a text Markdown copy;
-collaborative Yjs updates and compacted snapshots are binary `DocUpdates` rows.
-Export reconstructs current text from that log. Images are `bytea` values in the
-extension's `Images` table. No Markdown files or image files are edited on disk by
-the current design.
-
-Videos are not inherently incompatible with PostgreSQL binary storage, but the
-current image endpoint materializes a whole blob and is not a video-streaming
-implementation. For larger or numerous videos, a future implementation could use
-a separate media dataset mounted outside PostgreSQL's data directory, or object
-storage. Keep vault/project ownership, MIME type, byte length, checksum, and a
-server-generated storage key in PostgreSQL. Serve content through the existing
-project authorization model with HTTP Range support for seeking. Coordinate database
-and media backups and handle orphan-file cleanup. This is a design note only; this
-preview neither adds a media mount nor imports/stores video bytes. The database
-storage mechanics are described in [PostgreSQL's TOAST documentation](https://www.postgresql.org/docs/17/storage-toast.html),
-and [S3's GetObject API](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
-is one example of object storage supporting byte-range reads. The suggested split
-is an architectural recommendation, not a measured size threshold for this setup.
-
-
-Validation for this follow-up: 56 C# extension tests and 75 JavaScript tests pass.
-The preference lifecycle test was run red before the hydration guard and green
-afterward. Import/video tests were also run red before the fix. Browser verification
-used an isolated fake identity and PostgreSQL fixture: changed the instance theme
-from Ahlquist Interactive to Blueprint, signed out and returned with the fixture
-identity, restarted the server against the same database, and reloaded the vault
-without a note query. Expanded folders, the remembered note, 150% font scale, and
-10% margins persisted. A legacy GUID link became a 22-character note route while
-retaining its heading fragment. The current note color matched the active primary
-color. At a 21 px body size, H4 measured 24.15 px and H5 22.575 px. Video embeds
-rendered skipped-video labels; fenced examples stayed source text. Physical iPad,
-Pencil, keyboard, backgrounding, and Force Touch checks remain pending under the
-existing approved exception.
-
-
-## Desktop materials and vault navigation feedback (Codex preview 11)
-
-The workspace owns both vault routes and compact note routes. Moving between notes
-keeps its workspace lease, so an explicitly reopened main sidebar stays open. The
-sidebar vault and the selected hierarchy row use the same primary color, hover
-background, and end border. All Projects receives a project-card contribution;
-closed vaults use an archive expansion panel with Reopen and View actions.
-
-Origin-local persistent storage now owns the vault preferences, with migration
-from the earlier cookie chunks and a cookie fallback when storage is unavailable.
-This separates desktop instances by their stable localhost ports and avoids cookie
-eviction. The font scale, margin width, current note, and expanded folder IDs
-survive leaving the page and restarting the desktop app. Bulk collapse keeps the
-current note's ancestor path open. Folder carets have centered primary-color guides;
-folder and note icons are removed. Dragging a note title into the editor inserts a
-compact document link at the drop position. Document links stay underlined in the
-primary color until the caret touches their source.
-
-Attachment previews use 128×128 contain sizing at 100% and scale with the font
-setting. The viewer supports image replacement, image download, sketch PNG export,
-and backdrop dismissal. Attachment deletion by keyboard remains blocked; its
-explanation is a temporary snackbar. The drawing editor does not close on backdrop
-clicks. Its title follows the core Mac traffic-light inset and Windows overlay
-control insets. Native glass surfaces stay transparent around opaque Markdown
-content and drawing paper. A content filter blurs the underlying layout while a
-viewer or drawing dialog is open; this was needed because the native glass window
-did not visibly apply the otherwise computed backdrop filter.
-
-Validation: 56 extension C# tests pass, including compact-route workspace lifetime
-and preference hydration; 78 JavaScript tests pass. Browser checks cover matching
-sidebar highlights across file switches, note drag insertion, image replacement,
-download/PNG export, backdrop dismissal, temporary warnings, and closed-vault
-reopening. A native Mac desktop fixture verifies glass, title spacing, and
-restoration of a nested note, 125% font scale, 10% margins, and folder states after
-quitting and reopening. Physical Windows titlebar and iPad/Pencil/Force Touch
-checks remain pending under the existing hardware exception.
-
-
-## Layout and loading feedback (Codex preview 12)
-
-The displayed vault identity is separate from incoming route parameters. Compact
-note resolution no longer falls through to the vault list while awaiting the API.
-The previous note stays mounted beneath a darkened blur and circular progress
-indicator confined to the Markdown pane. A hidden incoming editor becomes visible
-only after its sync completes; keyed surfaces avoid remounting it at that point.
-Late sync completion from a superseded navigation cannot select an older note.
-
-Hierarchy caret buttons have square hit areas and round hover backgrounds. Row
-highlights have a small left inset from the folder guide, include that inset in
-their total width, and retain their selected edge inside the sidebar. Action
-buttons align with the root's expand/collapse control. Add Note/Folder is centered.
-Native modal titles and right controls share the desktop's 70-pixel titlebar axis.
-
-The attachment viewer expands the clicked photo or sketch from its thumbnail,
-then returns to the current thumbnail on dismissal. The background wash and native
-content blur fade with the movement. The selected thumbnail moves to the front
-before the wash appears; the full-size image stays hidden until the first animation
-frame, avoiding an intervening flash. Closing during opening reverses from its
-current transform. Reduced-motion preferences disable the transitions.
-
-Validation: 57 C# extension tests and 78 JavaScript tests pass. The compact-route
-loading regression failed before the fix and passes afterward, including retaining
-the editor until sync and ignoring a late superseded sync. Browser checks use an
-artificially delayed note lookup to verify that the tree and vault header stay
-visible while only the content pane is covered. Measured caret buttons are 24×24;
-all hierarchy action centers align with the root control, with the selected edge
-inside the sidebar. Browser and native Mac checks cover thumbnail expansion,
-return dismissal, carousel keys, and opening the sketch editor after dismissal.
-Native screenshots verify the sketch title and close button in the header row.
-Physical Windows titlebar and iPad/Pencil checks remain pending.
-
-
-## Final appearance and desktop rotation feedback (Codex preview 13)
-
-Folder guides use a dotted 1px primary-color border at 50% opacity. The vault
-header background uses `max(50%, --solo-glass-background-alpha)` so it stays at
-least half opaque and follows higher desktop settings. Purple is available in
-the sketch palette and both raster/text rendering, including cached frames,
-previews, and exported PNGs.
-
-The desktop rotation failure was a missing transport: the sketch listened for
-Safari DOM gestures, while Electron reports AppKit rotation on BrowserWindow.
-The shell now sends a generic native rotation event through preload as plain
-numeric DOM event data. It retains incremental degree values and the zero end
-marker, converts screen coordinates to renderer CSS coordinates at the current
-page zoom, and leaves all Electron objects in the isolated context. The sketch
-only consumes the event over its drawing viewport, ignores text inputs, keeps
-its anchor fixed during a gesture, and detaches on disposal. AppKit's angle sign
-is converted to CSS's clockwise convention. This requires the updated desktop
-installer; the extension remains independent of core's projects and schema.
-
-Validation: 57 C# and 81 JavaScript tests pass. A regression driving the real
-instance-window registration and preload failed with zero renderer events before
-the bridge and passes afterward. Viewport tests cover fractional deltas in both
-directions, anchor preservation, gesture end, invalid data, input/viewport
-exclusions, and disposal. The purple render test compares live cached output
-with exported pixels for strokes and text. Browser computed styles confirm
-header alpha values 0.5/0.5/0.5/0.75/1 at settings 0/25/50/75/100%, and a dotted
-1px guide with alpha 0.5. The native Mac fixture displays the palette and updated
-vault surfaces. The user reported rotation working during verification.
-
-
-### Pencil selection interruption follow-up (Codex preview 14)
-
-The user's iPad recording shows the system Copy/Translate/Copy Link with Highlight
-menu appearing repeatedly during rapid handwriting, including strokes away from
-the header and without a palm resting on the screen. The existing pointer-default,
-CSS and selectstart guards were therefore insufficient on the device.
-
-A mountSketch regression fixture exercises the production DOM listeners, raster
-renderer, Yjs document, and outgoing sync updates. Before the change, native
-touchstart remained uncanceled and selectionchange left a native range intact.
-The regression reports both failures. This reproduces missing safeguards, not the
-iPadOS native recognizer itself; the recording remains the hardware evidence.
-
-The viewport now cancels touchstart/move/end through non-passive capture listeners,
-without adding a second touch drawing path. Pointer Events still own drawing,
-one-finger panning and two-finger navigation. Selectionchange removes stray ranges
-while the modal is mounted, except when a text field has focus. Context menus are
-blocked across the modal except inside editable fields. Compatibility mouse
-selection defaults are blocked on the viewport; explicit WebKit selection and
-callout properties cover the paper and header descendants. Every new listener is
-removed on disposal. Toolbar touch defaults remain available for normal clicks.
-
-Five regression checks cover 40 rapid strokes committed once each, native selection
-cleanup with text-field exceptions, cancellation recovery and palm priority,
-Pointer Event pan/zoom, toolbar taps and disposal. The cancellation/recovery check
-already passed with the earlier input state machine; it did not need another
-state-machine change. Actual iPad Pencil/Scribble behavior requires retesting.
-
-Apple's [canvas input guidance](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/HTML-canvas-guide/AddingMouseandTouchControlstoCanvas/AddingMouseandTouchControlstoCanvas.html)
-describes canceling native touch defaults. [WebKit issue 249223](https://bugs.webkit.org/show_bug.cgi?id=249223)
-reports native iOS selections despite event cancellation. These sources support
-the extra safeguards; they do not establish the exact internal cause on the
-user's current iPadOS version.
-
-### Presence follow-up — local design review, not published
-
-Presence updates were discarded because initialization and disconnect set the
-Yjs Awareness state to null, and setLocalStateField cannot recreate a null state.
-Writable sync now creates a local state with the assigned user profile. The
-awareness sender also throttles rather than debounces: continuous Pencil motion
-or typing must not postpone every packet. Topic presence changes reannounce the
-current state to newly joined collaborators without waiting for another movement.
-Regression checks isolate initialization/reconnect, continuous movement, and
-stationary late joins; both timing checks still failed after initialization alone
-was repaired.
-
-The user requested profile pictures joined to pointer arrows and I-beam carets,
-with the assigned project color outlining both shapes. The implemented local
-review uses those cursors, a brush-footprint ring, and profile-picture rosters in
-both Markdown and the sketch header. Pictures use the receiving instance's avatar
-proxy, never another desktop client's localhost address. Missing pictures fall
-back to initials. Persistent color slots drive cursor, selection and avatar
-borders; a shared CSS lightness variable adapts them to the local background.
-
-A local two-client relay fixture runs the production editor, sketch, Yjs provider
-and cursor components. It verifies both text and brush cursors arrive, all demo
-profile pictures load, and pointer tips align with brush footprints. The review
-shows enlarged examples alongside the actual-size editor rendering. The user
-explicitly requested reviewing this design after the presence repair and before
-publishing a preview; this follow-up remains unpublished pending that review.
-
-The pointer's two edges are true tangents to the avatar's border circle; that
-circle's near arc is the concave notch, producing one continuous silhouette.
-Geometry tests verify circle contact and perpendicular tangent/radius vectors.
-Local validation passes 58 C# and 92 JavaScript checks. No tag or preview was
-published for this review.
-
-The next local design revision uses a black arrow body and a black I-beam stem,
-with the assigned color confined to their outlines and profile-picture borders.
-A wider colored stroke behind the black I-beam preserves its curved caps. Browser
-style checks confirm both bodies resolve to black and the outlines retain each
-user's assigned color. This revision is also unpublished.
-
-The user approved the black-body, assigned-color-outline cursor design for the
-next preview. Codex preview 15 packages the presence repair and approved cursor
-components as Design Docs 1.0.18. The prior local-review records above describe
-the review stage; approval permits the prerelease and isolated preview deployment.
+## Implementation summary
+
+The [extension README](../extensions/DesignDocs/README.md) contains build instructions.
+The [user guide](../site/guide/design-docs.md) describes the current UI.
+This section records constraints that differ from the original plan.
+
+- `LiveSender.ConnectionId` identifies a connection for multipart buffers and seed leases. It is not a credential.
+- Snapshot coverage uses `ThroughSeq`. Replaying a snapshot precedes its retained update tail, regardless of row identity.
+- The provider applies sketch history together before showing the current state.
+- Durable updates require acknowledgments. Rejected presence packets cannot revoke write access or clear a held stroke.
+- Live stroke previews use at most 128 samples. Saved strokes retain every input sample.
+- Sketch text uses the theme font. The package no longer contains the earlier bitmap-font prototype.
+- Font scale, margins, expanded folders, and the current note use origin-local storage. Existing cookies migrate on read.
+- Notes use 22-character addresses that encode all GUID bits. Legacy GUID links remain valid.
+- The native Mac rotation bridge supplies gestures that Chromium does not expose as Safari events.
+- Mac preview launchers use distinct executable UUIDs for Local Network permission. Preview profiles remain separate from stable profiles.
+
+### Storage and future video support
+
+The hierarchy, notes, collaborative updates, sketches, and image bytes belong to the `ext_design_docs` PostgreSQL schema.
+Solo does not edit Markdown or attachment files on disk.
+A ZIP export reconstructs the current notes and renders sketches as PNG.
+
+Solo does not import videos. Import reports skipped videos and preserves their Markdown references.
+A future implementation could store large media in a separate dataset or object store.
+PostgreSQL would retain ownership, type, size, checksum, and storage keys.
+Authorized responses would need byte-range reads for seeking.
+Database and media backups would need a coordinated restore process.
+This is a design option, not a measured size threshold or implemented feature.
+See [PostgreSQL storage](https://www.postgresql.org/docs/17/storage-toast.html) and
+[S3 byte-range reads](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html).
+
+### Validation
+
+Automated checks cover authorization, storage, relay recovery, Markdown, media, selection, and continuous Pencil strokes.
+Browser checks use disposable PostgreSQL data and fictional users.
+They cover preferences, hierarchy changes, note links, image replacement, attachment navigation, sketch editing, and export.
+Desktop checks cover preview isolation, extension catalogs, Mac permissions, and rotation.
+
+Physical iPad/Pencil acceptance, iPadOS background recovery, Mac trackpad pressure, and Windows titlebar checks remain pending.
+No desktop or synthetic input test substitutes for those checks.

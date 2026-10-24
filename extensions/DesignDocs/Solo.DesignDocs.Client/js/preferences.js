@@ -24,8 +24,7 @@ export class VaultPreferences {
 const browserPreferences=()=>new VaultPreferences(
     name=>document.cookie.split(';').map(part=>part.trim()).find(part=>part.startsWith(name+'='))?.slice(name.length+1),
     (name,value)=>{document.cookie=name+'='+(value??'')+'; Path=/docs; SameSite=Lax; Max-Age='+(value===null?0:31536000)+(location.protocol==='https:'?'; Secure':'');});
-// Cookies share a host across ports; desktop instances deliberately use separate
-// origins. Durable origin storage also avoids per-host cookie count eviction.
+// Origin storage isolates desktop instances and avoids cookie eviction.
 export function loadVaultPreferences(vault){
     const legacy=browserPreferences(),key=legacy.key(vault);
     try{const stored=localStorage.getItem(key);if(stored!==null)return viewPreferences(JSON.parse(stored));}catch{}

@@ -14,6 +14,12 @@
       icon: task-alt
     - path: guide/roadmaps.md
       icon: timeline
+    - path: guide/design-docs.md
+      icon: text-fields
+    - path: guide/design-docs-sketches.md
+      icon: palette
+    - path: guide/design-docs-import-export.md
+      icon: archive
     - path: guide/mcp.md
       icon: smart-toy
     - path: guide/desktop.md

@@ -16,8 +16,7 @@ export class Provider {
         this.awareness.setLocalState(null);
         this.awareness.on('update', (_, origin) => {
             if (this.disposed || origin === this.remote || !this.canWrite) return;
-            // Throttle the latest state. Debouncing here starves remote cursors
-            // for as long as a Pencil or text caret keeps moving.
+            // A debounce prevents presence updates during continuous drawing.
             this.awarenessTimer ??= setTimeout(() => {this.awarenessTimer=null;this.send('awareness', {data: encode(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]))});}, 60);
         });
         this.beforeUnload = e => { if (this.pending.size || this.batch.length) { e.preventDefault(); e.returnValue = ''; } };
@@ -29,8 +28,7 @@ export class Provider {
         this.queue = this.queue.catch(() => {}).then(async () => {
             if (!this.online || this.disposed) return;
             let result = await this.bridge.send(kind, JSON.stringify(value));
-            // Presence is disposable. A rejected cursor/brush preview must not
-            // revoke editing and discard the stroke still held under the pen.
+            // A failed presence packet must not clear the held stroke.
             if (kind === 'awareness' && result !== 0) return;
             if (result === 4) { await new Promise(r => setTimeout(r, 100)); if (this.online) result = await this.bridge.send(kind, JSON.stringify(value)); }
             if (result !== 0) { this.setWritable(false); this.options.status?.('Sync interrupted; reconnecting…'); clearTimeout(this.retry); this.retry = setTimeout(() => { if (this.online) this.connected(true); }, 1500); }
@@ -77,8 +75,7 @@ export class Provider {
             item.values[p.index] = p.data;
             if (Array.from(item.values).some(v => v === undefined)) return;
             const update=decode(item.values.join(''));this.chunks.delete(key);
-            // A sketch's sync stream is history, not an animation. Keep its old
-            // states invisible until the server marks the replay complete.
+            // Apply sketch history together to prevent visible replay.
             if(this.options.atomicSync&&!this.synced)this.loading.push(update);
             else{Y.applyUpdate(this.doc,update,this.remote);this.seq=sequence(this.seq,p.seq);}
         } else if (kind === 'synced') {

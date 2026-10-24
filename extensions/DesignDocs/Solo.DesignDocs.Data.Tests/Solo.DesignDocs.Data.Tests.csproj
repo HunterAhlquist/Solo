@@ -1,13 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The Design Docs extension's own tests: its context against a real Postgres,
-       and the update log, constraints and cascades. References the
-       server half directly — unlike Solo.DesignDocs.Tests, which loads the package
-       the way a deployment does — because these test its internals, not its
-       loading. No host is involved, so nothing here comes from src/: the
-       contract arrives as the package, the same one the server half builds
-       against. -->
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -29,7 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Solo.DesignDocs keeps its own reference private, so this one is explicit. -->
     <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.0" />
     <ProjectReference Include="..\Solo.DesignDocs\Solo.DesignDocs.csproj" />
   </ItemGroup>

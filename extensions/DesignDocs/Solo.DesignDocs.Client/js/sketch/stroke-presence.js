@@ -1,6 +1,4 @@
-// Presence repeatedly sends the current preview, so its size must stay bounded
-// even when Pencil coalesces thousands of samples into one held stroke. Keep
-// the complete samples locally; only the disposable remote preview is sampled.
+// Bound presence packets without changing the samples in the saved stroke.
 export function strokePresence(stroke) {
     if(!stroke||!['pen','eraser'].includes(stroke.tool))return null;
     const limit=128,source=stroke.points;

@@ -5,7 +5,7 @@ namespace Solo.Extensibility;
 /// <summary>Receives client messages on the registering extension's project topics (contract 1.10).</summary>
 public interface ISoloLiveMessageHandler
 {
-    /// <summary>Runs once per message. Not calling reply drops it; honor the invocation's cancellation.</summary>
+    /// <summary>Handles one message. Send replies explicitly and honor cancellation.</summary>
     ValueTask HandleAsync(LiveMessage message, ILiveMessageReply reply, CancellationToken ct);
 }
 
@@ -14,7 +14,7 @@ public sealed record LiveMessage(Guid ProjectId, string Topic, string Kind, stri
 /// <summary>Identity and access resolved at subscription, refreshed when membership changes.</summary>
 public sealed record LiveSender(Guid UserId, string? DisplayName, ProjectRole Role, bool IsProjectOwner)
 {
-    /// <summary>An opaque connection key for bounded multipart state and leases; never an authentication credential.</summary>
+    /// <summary>An opaque connection key for multipart state and leases. It is not a credential.</summary>
     public string ConnectionId { get; init; } = string.Empty;
 }
 

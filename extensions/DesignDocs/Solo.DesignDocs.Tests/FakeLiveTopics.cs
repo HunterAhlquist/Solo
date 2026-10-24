@@ -4,10 +4,6 @@ using Solo.Shared.Hubs;
 
 namespace Solo.DesignDocs.Tests;
 
-/// <summary>
-/// The host's live topics with no connection behind them: records what a
-/// component held and reported, and lets a test speak for the server.
-/// </summary>
 internal sealed class FakeLiveTopics : ISoloLiveTopics
 {
     public bool IsConnected => true;
@@ -38,7 +34,6 @@ internal sealed class FakeLiveTopics : ISoloLiveTopics
         return Task.FromResult<IAsyncDisposable>(new Release(() => _holders.Remove(holder)));
     }
 
-    /// <summary>Design Docs holds no user topics; held under an empty project, as the host does.</summary>
     public Task<IAsyncDisposable> SubscribeUserAsync(string topic, Func<TopicMessage, Task> onMessage) =>
         SubscribeAsync(Guid.Empty, topic, onMessage);
 
@@ -48,7 +43,6 @@ internal sealed class FakeLiveTopics : ISoloLiveTopics
         return Task.CompletedTask;
     }
 
-    /// <summary>A message from someone else, as the server would relay it.</summary>
     public async Task SendAsync(Guid projectId, string topic, string kind, string? data = null)
     {
         var message = new TopicMessage(projectId, topic, kind, data, TestData.OtherId);
@@ -58,7 +52,6 @@ internal sealed class FakeLiveTopics : ISoloLiveTopics
         }
     }
 
-    /// <summary>Who else is on the topic, the signed-in user already left out.</summary>
     public async Task PresentAsync(Guid projectId, string topic, params TopicPresenceEntry[] others)
     {
         foreach (var holder in Matching(projectId, topic))
