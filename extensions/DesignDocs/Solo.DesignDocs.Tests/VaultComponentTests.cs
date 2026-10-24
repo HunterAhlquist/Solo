@@ -10,6 +10,7 @@ using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
 namespace Solo.DesignDocs.Tests;
 
+[Collection("design-docs-navigation")]
 public sealed class VaultComponentTests : ComponentTestBase
 {
     private readonly StubHttp _http=new();private readonly FakeLiveTopics _live=new();

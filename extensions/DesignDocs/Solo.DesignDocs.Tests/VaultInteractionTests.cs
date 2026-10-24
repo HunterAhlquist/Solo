@@ -14,6 +14,7 @@ using Solo.Shared.Extensibility;
 
 namespace Solo.DesignDocs.Tests;
 
+[Collection("design-docs-navigation")]
 public sealed class VaultInteractionTests : ComponentTestBase
 {
     [Theory]

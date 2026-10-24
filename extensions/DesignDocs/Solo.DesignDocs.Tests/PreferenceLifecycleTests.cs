@@ -9,6 +9,8 @@ using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
 namespace Solo.DesignDocs.Tests;
 
+// These app contexts share the WASM runtime's static navigation state.
+[Collection("design-docs-navigation")]
 public sealed class PreferenceLifecycleTests : ComponentTestBase
 {
     [Fact]
