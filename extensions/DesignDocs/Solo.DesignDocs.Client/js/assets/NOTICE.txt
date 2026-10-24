@@ -4,7 +4,7 @@ The explosion footage and sound originate in Pyromania, a 1990s stock
 explosion collection. Deltarune (Toby Fox) uses the same stock footage, but
 neither Toby Fox nor Royal Sciences LLC owns it. These stock assets are not
 covered by Solo's code license; if you hold rights to them and object to their
-use here, open an issue and they will be removed.
+use here, contact @hunter.ahlquist.me on Bluesky and they will be removed.
 
 The files were taken from the Kristal project's mirror.
 Source revision: eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7
