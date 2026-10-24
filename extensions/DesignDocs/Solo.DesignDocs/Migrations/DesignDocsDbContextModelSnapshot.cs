@@ -18,7 +18,7 @@ namespace Solo.DesignDocs.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("ext_design_docs")
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -282,10 +282,10 @@ namespace Solo.DesignDocs.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NoteId", "VaultId");
-
-                    b.HasIndex("VaultId", "Name")
+                    b.HasIndex("NoteId", "Name")
                         .IsUnique();
+
+                    b.HasIndex("NoteId", "VaultId");
 
                     b.ToTable("Sketches", "ext_design_docs");
                 });

@@ -22,6 +22,35 @@ public sealed partial class VaultTests
         Assert.Equal(HttpStatusCode.Conflict,(await _writer.PutAsync(path+"/"+image.Id+"?version="+image.Version,new ByteArrayContent(Pixel))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden,(await _reader.PostAsync(path+"?path=no.png",new ByteArrayContent(Pixel))).StatusCode);
     }
+    [SkippableFact]
+    public async Task Note_uploads_keep_filenames_separate_and_repeated_uploads_do_not_replace_images()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var vault = await Vault();
+        var a = await NewNote(vault);
+        var b = await _writer.PostJson<NoteDto>($"{Root}/{vault.Id}/notes", new ItemChange("Other", null));
+        var root = $"{Root}/{vault.Id}/images";
+        async Task<ImageDto> Upload(Guid note)
+        {
+            var response = await _writer.PostAsync($"{root}/notes/{note}?path=plan.png", new ByteArrayContent(Pixel));
+            response.EnsureSuccessStatusCode();
+            return (await response.Content.ReadFromJsonAsync<ImageDto>(TestClients.Json))!;
+        }
+        var first = await Upload(a.Id);
+        var second = await Upload(b.Id);
+        var repeated = await Upload(a.Id);
+        Assert.Equal(AttachmentPaths.ForNote(a.Id, "plan.png"), first.Path);
+        Assert.Equal(AttachmentPaths.ForNote(b.Id, "plan.png"), second.Path);
+        Assert.Equal(AttachmentPaths.ForNote(a.Id, "plan-2.png"), repeated.Path);
+        foreach (var image in new[] { first, second, repeated })
+            Assert.Equal(Pixel, await _reader.GetByteArrayAsync($"{root}/{image.Id}"));
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await _writer.PostAsync($"{root}/notes/{Guid.NewGuid()}?path=plan.png", new ByteArrayContent(Pixel))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await _reader.PostAsync($"{root}/notes/{a.Id}?path=plan.png", new ByteArrayContent(Pixel))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _writer.PostAsync($"{root}/notes/{a.Id}?path=../plan.png", new ByteArrayContent(Pixel))).StatusCode);
+    }
     [SkippableTheory]
     [InlineData("attachments/bad.svg","<svg></svg>")]
     [InlineData("../escape.png","bad")]

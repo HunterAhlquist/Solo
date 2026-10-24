@@ -24,5 +24,8 @@ public sealed record CopyRequest([Required(AllowEmptyStrings=true), StringLength
 public sealed record LabelsRequest([MaxLength(200)] IReadOnlyList<string> Urls);
 public sealed record RenameImpactDto(int References);
 public sealed record ImageDto(Guid Id,string Path,string ContentType,int Width,int Height,int Bytes,uint Version);
-public sealed record SketchDto(Guid Id,Guid NoteId,string Name,string PageSize,string Orientation,string Pattern,Guid? LastEditedBy,DateTimeOffset? LastEditedAt,uint Version);
+public sealed record SketchDto(Guid Id,Guid NoteId,string Name,string PageSize,string Orientation,string Pattern,Guid? LastEditedBy,DateTimeOffset? LastEditedAt,uint Version)
+{
+    public string Path => AttachmentPaths.ForNote(NoteId, Name + ".sketch");
+}
 public sealed record SketchChange(string Name,string PageSize,string Orientation,string Pattern,uint Version);

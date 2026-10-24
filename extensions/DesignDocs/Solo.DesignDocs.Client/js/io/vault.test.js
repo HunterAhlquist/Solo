@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {zipSync} from 'fflate';import * as Y from 'yjs';
-import { inspectZip,batches,markdownFromState } from './vault.js';import { resolvePath } from '../media/vault-paths.js';import {encode} from '../sync/protocol.js';
+import { inspectZip,batches,markdownFromState,exportSketch } from './vault.js';import { resolvePath } from '../media/vault-paths.js';import {encode} from '../sync/protocol.js';
 const utf8=new TextEncoder();
 test('import keeps BOM, CRLF, front matter and dataview text unchanged',()=>{
     const original='\uFEFF---\r\ntitle: Café\r\n---\r\n# Note\r\n```dataview\r\nLIST\r\n```\r\n';
@@ -35,4 +35,17 @@ test('video imports warn once and never classify the embed as a missing photo',(
 test('common vault and OS metadata is silently ignored, including AppleDouble notes',()=>{
     const entries={'Note.md':utf8.encode('Keep this')};for(const path of ['.DS_Store','__MACOSX/._Note.md','Nested/._Note.md','Nested/.DS_Store','.obsidian/workspace.json','.git/config','Thumbs.db','desktop.ini','.AppleDouble/Note.md'])entries[path]=new Uint8Array([0]);
     const plan=inspectZip(zipSync(entries));assert.deepEqual(plan.notes.map(n=>n.path),['Note.md']);assert.deepEqual(plan.skipped,[]);
+});
+
+test('same-named sketches export into separate note paths with legacy and full embeds intact',()=>{
+    const first={name:'Plan',path:'attachments/first/Plan.sketch'},second={name:'Plan',path:'attachments/second/Plan.sketch'};
+    const text='![[Plan.sketch]] ![[attachments/first/Plan.sketch|Plan]] ![Plan](<attachments/first/Plan.sketch>) ![Plan](Plan.sketch)\n`![[Plan.sketch]]`\n```\n![[Plan.sketch]]\n```';
+    const a=exportSketch(text,first),b=exportSketch('![[Plan.sketch]]',second);
+    assert.notEqual(a.path,b.path);
+    assert.equal(exportSketch('![Plan](Plan.sketch)',first,'Folder/Note.md').markdown,`![Plan](../${a.path})`);
+    assert.equal(a.path,'attachments/first/Plan.sketch.png');
+    assert.ok(a.markdown.startsWith(`![[${a.path}]] ![[${a.path}|Plan]] ![Plan](<${a.path}>) ![Plan](${a.path})`));
+    assert.ok(a.markdown.endsWith('`![[Plan.sketch]]`\n```\n![[Plan.sketch]]\n```'));
+    assert.equal(b.markdown,`![[${b.path}]]`);
+    assert.equal(exportSketch('![[attachments/first/Plan.sketch]]',second).markdown,'![[attachments/first/Plan.sketch]]');
 });

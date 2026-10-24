@@ -1,5 +1,6 @@
 import { refreshSketchPreview } from './sketch-preview.js';
 import { decode } from '../sync/protocol.js';
+import { attachmentName } from './vault-paths.js';
 export async function prepareImage(file) {
     if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name ?? '')) throw new Error('SVG images are not supported.');
     const source = URL.createObjectURL(file);
@@ -51,14 +52,14 @@ export class Images {
     card(entries) {
         const button=document.createElement('button');button.type='button';
         button.className=entries.length>1?'design-docs-image-stack':'design-docs-image-card';
-        button.setAttribute('aria-label',entries.length>1?`Open ${entries.length} attachments`:`Open ${entries[0].path}`);
+        button.setAttribute('aria-label',entries.length>1?`Open ${entries.length} attachments`:`Open ${attachmentName(entries[0].path)}`);
         button.draggable=this.canWrite;
         button.style.width=`calc(${148+Math.min(entries.length-1,7)*24}px * var(--design-docs-scale, 1))`;
         const references=entries.map(e=>this.actions.reference?.(e)??e),entry={button,entries};this.cards.add(entry);
         for(const [index,item] of entries.entries()){
-            const img=document.createElement('img');img.alt=item.path;img.draggable=this.canWrite;img.dataset.mediaIndex=String(index);
+            const img=document.createElement('img');img.alt=attachmentName(item.path);img.draggable=this.canWrite;img.dataset.mediaIndex=String(index);
             img.style.transform=`translate(calc(${Math.min(index,7)*24}px * var(--design-docs-scale, 1)),calc(${index%2*6}px * var(--design-docs-scale, 1))) rotate(${imageAngle(item.path)*(entries.length>1?2:1)}deg)`;img.style.zIndex=index;
-            this.resolve(item.path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable: ${item.path}`;});button.append(img);
+            this.resolve(item.path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable: ${attachmentName(item.path)}`;});button.append(img);
         }
         if(entries.length>1){const count=document.createElement('span');count.className='design-docs-stack-count';count.textContent=String(entries.length);button.append(count);}
         let front=entries.length-1;
@@ -148,7 +149,7 @@ export class Images {
         });
         remove.classList.add('design-docs-viewer-remove');
         const download=control('download','Download attachment',async()=>{
-            try{const item=items[index],a=document.createElement('a');a.href=await this.resolve(item.path);a.download=item.sketch?item.path.replace(/\.sketch$/i,'.png'):item.path.split('/').at(-1);document.body.append(a);a.click();a.remove();}catch(e){this.status(e.message);}
+            try{const item=items[index],a=document.createElement('a');a.href=await this.resolve(item.path);a.download=item.sketch?attachmentName(item.path).replace(/\.sketch$/i,'.png'):attachmentName(item.path);document.body.append(a);a.click();a.remove();}catch(e){this.status(e.message);}
         });
         const replace=control('replace','Replace image',()=>this.choose(items[index].path));
         this.refreshViewer=matches=>{if(matches(items[index].path))return show(index);};
@@ -156,8 +157,8 @@ export class Images {
             if(closing||closed)return;
             if(presented){flight?.cancel();restoreSource();dialog.dataset.phase='open';}
             index=(position+items.length)%items.length;const item=items[index],serial=++request;this.viewerSketch=item.sketch;onSelection(references.indexOf(item));
-            label.textContent=item.path;counter.textContent=`${index+1} / ${items.length}`;
-            image.alt=item.path;image.style.visibility='hidden';caption.hidden=true;
+            label.textContent=attachmentName(item.path);counter.textContent=`${index+1} / ${items.length}`;
+            image.alt=attachmentName(item.path);image.style.visibility='hidden';caption.hidden=true;
             previous.hidden=next.hidden=items.length<2;edit.hidden=!item.sketch;remove.hidden=!this.canWrite;replace.hidden=!this.canWrite||item.sketch;download.setAttribute('aria-label',item.sketch?'Export sketch PNG':'Download image');download.title=download.getAttribute('aria-label');
             try{
                 const url=await this.resolve(item.path);if(serial!==request||!dialog.open||closing)return;
@@ -198,10 +199,10 @@ export class Images {
         try{
             const image=await prepareImage(file);if(this.disposed)return;
             const name=(file.name??'image').replace(/\.[^.]+$/,'').replace(/[^\p{L}\p{N}_-]/gu,'-').slice(0,80)||'image';
-            const path=replace??`attachments/${name}-${crypto.randomUUID().slice(0,8)}.${image.extension}`;
-            await this.bridge.invokeMethodAsync('UploadImage',image.bytes,image.type,path,!!replace);
+            const path=replace??`${name}.${image.extension}`;
+            const stored=await this.bridge.invokeMethodAsync('UploadImage',image.bytes,image.type,path,!!replace);
             if(this.disposed)return;
-            if(!replace)this.insert(`![[${path}]]`);else await this.refresh(item=>item===path);
+            if(!replace)this.insert(`![[${stored}]]`);else await this.refresh(item=>item===path);
         }catch(e){if(!this.disposed)this.status(e.message);}
     }
     async refresh(matches=()=>true){

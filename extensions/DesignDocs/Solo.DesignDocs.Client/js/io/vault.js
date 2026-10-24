@@ -1,4 +1,5 @@
 import { unzipSync,zipSync } from 'fflate';
+import { parser } from '@lezer/markdown';
 import * as Y from 'yjs';
 import { decode,encode } from '../sync/protocol.js';
 import { normalizePath,resolvePath,imageTargets,mediaType } from '../media/vault-paths.js';
@@ -45,6 +46,15 @@ export function inspectZip(bytes,existing=[]){
 }
 export function batches(notes){const result=[];let current=[];for(const note of notes){const next=current.concat(note);if(current.length&&(next.length>100||encoder.encode(JSON.stringify({notes:next})).length>5*1024*1024)){result.push(current);current=[];}current.push(note);}if(current.length)result.push(current);return result;}
 export function markdownFromState(state){if(!state.updates.length)return state.seedMarkdown??'';const doc=new Y.Doc();try{for(const update of state.updates)Y.applyUpdate(doc,typeof update.data==='string'?decode(update.data):update.data);return doc.getText('markdown').toString();}finally{doc.destroy();}}
+export function exportSketch(markdown,sketch,notePath=''){
+    const path=sketch.path+'.png',tree=parser.parse(markdown);
+    markdown=markdown.replace(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/g,(raw,wiki,angled,plain,offset)=>{
+        for(let node=tree.resolveInner(offset,1);node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name))return raw;
+        const target=(wiki??angled??plain).split('|')[0];let decoded;try{decoded=decodeURIComponent(target);}catch{return raw;}
+        return decoded===sketch.path||decoded===sketch.name+'.sketch'?raw.replace(target,wiki?path:'../'.repeat(Math.max(0,notePath.split('/').length-1))+path):raw;
+    });
+    return {path,markdown};
+}
 async function originalImage(image){
     const type=/\.png$/i.test(image.path)?'image/png':/\.jpe?g$/i.test(image.path)?'image/jpeg':/\.gif$/i.test(image.path)?'image/gif':'image/webp';
     const source=URL.createObjectURL(new Blob([image.bytes],{type}));
@@ -77,8 +87,7 @@ export function createTransfer(bridge,options){let plan,disposed=false;const url
                 for(const sketch of manifest.sketches.filter(s=>s.noteId===note.id)){
                     const state=await bridge.invokeMethodAsync('State',sketch.id),doc=new Y.Doc();try{for(const update of state.updates)Y.applyUpdate(doc,decode(update.data));
                         const meta={pageSize:sketch.pageSize,orientation:sketch.orientation,pattern:sketch.pattern,...doc.getMap('meta').toJSON()},canvas=document.createElement('canvas');pageSize(meta);paint(canvas.getContext('2d'),doc.getArray('ops').toArray(),[...doc.getMap('texts')].map(([id,text])=>({id,...text.toJSON()})),meta,{font,frame:0,exporting:true});
-                        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png')),data=new Uint8Array(await blob.arrayBuffer());files[`${sketch.name}.sketch.png`]=data;bytes+=data.length;
-                        markdown=markdown.split(`![[${sketch.name}.sketch]]`).join(`![[${sketch.name}.sketch.png]]`);
+                        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png')),data=new Uint8Array(await blob.arrayBuffer());const exported=exportSketch(markdown,sketch,note.path);files[exported.path]=data;bytes+=data.length;markdown=exported.markdown;
                     }finally{doc.destroy();}}
                 const content=encoder.encode(markdown);files[note.path]=content;bytes+=content.length;await bridge.invokeMethodAsync('Progress',`Exporting ${note.path}`);
             }

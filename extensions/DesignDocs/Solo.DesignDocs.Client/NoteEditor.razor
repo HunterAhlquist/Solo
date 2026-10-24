@@ -55,7 +55,7 @@
     [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);
     [JSInvokable] public void Notice(string value)=>Snackbar.Add(value,Severity.Info);
     [JSInvokable] public Task<bool> ConfirmRemoveAttachment(string path,bool sketch)=>CanWrite
-        ?DocDialogs.Confirm(Dialogs,sketch?"Remove sketch":"Remove image",$"Remove “{path}” from this note? The attachment will remain stored in the vault.","Remove")
+        ?DocDialogs.Confirm(Dialogs,sketch?"Remove sketch":"Remove image",$"Remove “{AttachmentPaths.FileName(path)}” from this note? The attachment will remain stored in the vault.","Remove")
         :Task.FromResult(false);
     [JSInvokable] public Task Status(string value){_status=value;return InvokeAsync(StateHasChanged);}
     [JSInvokable] public Task Focus(bool focused)=>Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
@@ -84,23 +84,24 @@
         return images.SingleOrDefault(i=>i.Path==resolved)??throw new InvalidOperationException("Image not found or ambiguous.");
     }
     [JSInvokable] public async Task<object> Image(string path){var image=await FindImage(path);var bytes=await Api.GetBytesAsync(ImageRoot+"/"+image.Id);return new{base64=Convert.ToBase64String(bytes.Content),image.ContentType,image.Version};}
-    [JSInvokable] public async Task UploadImage(byte[] bytes,string contentType,string path,bool replace){
+    [JSInvokable] public async Task<string> UploadImage(byte[] bytes,string contentType,string path,bool replace){
         if(replace){var image=await FindImage(path);await Api.SendBytesAsync<ImageDto>(HttpMethod.Put,ImageRoot+"/"+image.Id+"?version="+image.Version,bytes,contentType);}
-        else await Api.SendBytesAsync<ImageDto>(HttpMethod.Post,ImageRoot+"?path="+Uri.EscapeDataString(path),bytes,contentType);
+        else return (await Api.SendBytesAsync<ImageDto>(HttpMethod.Post,ImageRoot+"/notes/"+Note.Id+"?path="+Uri.EscapeDataString(path),bytes,contentType)).Path;
+        return path;
     }
     [JSInvokable] public async Task<bool> ImageMenu(string path,double x,double y)=>CanWrite&&await Menus.ShowAsync(x,y,[new("replace","Replace image")])=="replace";
     private async Task NewSketch(){var name=await DocDialogs.Name(Dialogs,"New sketch");if(name is null||_editor is null)return;
         try{var sketch=await Api.SendAsync<SketchDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches/notes/{Note.Id}",new NameRequest(name));
-            await _editor.InvokeVoidAsync("insert",$"![[{sketch.Name}.sketch]]");await OpenSketch(sketch.Name);
+            await _editor.InvokeVoidAsync("insert",$"![[{sketch.Path}]]");await OpenSketch(sketch.Path[..^7]);
         }catch(SoloApiException e){await Status(e.Message);}}
     private bool _sketchOpen;
     [JSInvokable]public async Task OpenSketch(string name){
         if(_sketchOpen||_editor is null)return;_sketchOpen=true;
         try{var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");
-            var sketch=sketches.SingleOrDefault(s=>s.Name==name&&s.NoteId==Note.Id);if(sketch is null){await Status("Sketch not found in this note.");return;}
+            var sketch=sketches.SingleOrDefault(s=>s.NoteId==Note.Id&&(s.Name==name||s.Path==name+".sketch"));if(sketch is null){await Status("Sketch not found in this note.");return;}
             await _editor.InvokeVoidAsync("suspend",true);
             var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullScreen=true,CloseButton=true,CloseOnEscapeKey=true,BackdropClick=false});
-            await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches",name);
+            await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches",new object[]{new[]{sketch.Name,sketch.Path[..^7]}});
         }catch(SoloApiException e){await Status(e.Message);}
         finally{_sketchOpen=false;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("suspend",false);}}
     [JSInvokable]public async Task<object?> ResolveWiki(string target){
@@ -115,7 +116,7 @@
         return note is null?null:new{url=NoteAddress.Url(note.Id),note.Headings};
     }
     [JSInvokable]public async Task<object?> SketchPreview(string name){
-        var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");var sketch=sketches.SingleOrDefault(s=>s.Name==name&&s.NoteId==Note.Id);if(sketch is null)return null;
+        var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");var sketch=sketches.SingleOrDefault(s=>s.NoteId==Note.Id&&(s.Name==name||s.Path==name+".sketch"));if(sketch is null)return null;
         var state=await Api.GetAsync<System.Text.Json.JsonElement>($"api/ext/design-docs/projects/{ProjectId}/documents/{sketch.Id}");
         return new{sketch,updates=state.GetProperty("updates").EnumerateArray().Select(u=>u.GetProperty("data").GetString()).ToArray()};
     }
