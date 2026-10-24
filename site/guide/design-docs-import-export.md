@@ -6,8 +6,9 @@ lede: Move notes and images between an Obsidian vault and Solo.
 
 ## Import an Obsidian vault
 
-Only a super admin with project membership can import a vault.
-Import is available during [design doc creation](design-docs.md#open-or-create-a-design-doc).
+Only a super admin with project membership can use the import dialog.
+Import is available only during [design doc creation](design-docs.md#open-or-create-a-design-doc).
+The UI does not import into an existing vault.
 
 {% include shot.html width="1275" height="988" src="design-docs-import.png" alt="The creation dialog shows the fictional game name and an Obsidian ZIP summary with two notes and one image." %}
 
@@ -32,8 +33,10 @@ Solo skips videos and shows a warning.
 Their Markdown references remain in the notes, but Solo does not import the video files or play them.
 Obsidian Canvas and Excalidraw content are also unsupported.
 
-If an import stops after creation, Solo keeps the vault and content already imported.
-Open the vault to review that content before you retry in another new vault.
+During import, select **Cancel** to stop the remaining transfers.
+Solo keeps the created vault and content already imported.
+Select **Open design doc** to review that content.
+If an import fails, review its completed content before you retry in another new vault.
 
 ## Import limits
 

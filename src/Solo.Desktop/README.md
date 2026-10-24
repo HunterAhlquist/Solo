@@ -218,9 +218,9 @@ it is opt-in. Either way `complete` requires the ID token's `nonce` to be the
 flow's state.
 
 For **other OIDC providers** (code + PKCE redirect) the flow runs in-app:
-add the instance's local address — Settings shows it under each instance,
-`http://localhost:41321` for the first — plus `/authentication/login-callback`
-as a redirect URI.
+expand **Details** under the instance in **Settings**.
+Register the displayed **OIDC redirect URI** with your provider.
+Details also shows the local origin. Its port can differ between stable and preview profiles.
 These providers redirect the whole window rather than a popup; whether that
 works depends on the provider's webview policy.
 

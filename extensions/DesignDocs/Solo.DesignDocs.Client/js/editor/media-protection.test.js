@@ -15,3 +15,15 @@ test('normal text deletion and explicit viewer removal still work',()=>{
     const next=s.update({changes:{from:6,to:16},userEvent:'delete.selection',annotations:mediaEdit.of(true)}).state;
     assert.ok(!next.doc.toString().includes('a.png'));
 });
+
+test('typing, paste, drop, and IME cannot replace a selection containing attachments',()=>{
+    for(const userEvent of ['input.type','input.paste','input.drop','input.type.compose']){
+        const s=state();assert.equal(s.update({changes:{from:0,to:s.doc.length,insert:'Replacement'},userEvent}).state.doc.toString(),s.doc.toString(),userEvent);
+        assert.equal(s.update({changes:{from:0,to:5,insert:'Hi'},userEvent}).state.doc.toString(),'Hi ![[a.png]] ![[Map.sketch]] end');
+    }
+});
+test('explicit media moves and remote changes still apply',()=>{
+    const s=state(),changes=[{from:6,to:16,insert:''},{from:s.doc.length,insert:' ![[a.png]]'}];
+    assert.equal(s.update({changes,userEvent:'input.drop',annotations:mediaEdit.of(true)}).state.doc.toString(),'Hello  ![[Map.sketch]] end ![[a.png]]');
+    assert.equal(s.update({changes:{from:0,to:s.doc.length,insert:'Remote'}}).state.doc.toString(),'Remote');
+});

@@ -154,6 +154,10 @@
       white-space: nowrap;
     }
 
+    #instances details { margin-top: 0.35rem; }
+    #instances summary { color: var(--dim); cursor: pointer; font-size: 0.68rem; }
+    #instances code { display: block; font-size: 0.68rem; overflow-wrap: anywhere; user-select: text; }
+
     #instances strong {
       font-size: 0.8rem;
     }
@@ -403,6 +407,13 @@
 
       const about = element('div', '', 'about');
       about.append(name, element('small', instance.url));
+      if (instance.origin) {
+        const details = document.createElement('details');
+        details.append(element('summary', 'Details'), element('small', 'Local origin'),
+          element('code', instance.origin), element('small', 'OIDC redirect URI'),
+          element('code', `${instance.origin}/authentication/login-callback`));
+        about.append(details);
+      }
 
       const open = element('button', instance.open ? 'Show' : 'Open');
       open.type = 'button';

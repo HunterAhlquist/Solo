@@ -13,26 +13,27 @@ export class VaultPreferences {
         if(!Number.isInteger(count)||count<1||count>32)return viewPreferences();
         try{return viewPreferences(JSON.parse(decodeURIComponent(Array.from({length:count},(_,i)=>this.read(key+'-'+i)??'').join(''))));}catch{return viewPreferences();}
     }
-    save(vault,value){
-        const key=this.key(vault),encoded=encodeURIComponent(JSON.stringify(viewPreferences(value))),count=Math.ceil(encoded.length/3000),old=Number(this.read(key+'-count'))||0;
-        // Split large trees so a cookie never silently exceeds the browser's size limit.
-        if(count>32)throw new Error('Too many expanded folders to remember');
-        for(let i=0;i<count;i++)this.write(key+'-'+i,encoded.slice(i*3000,(i+1)*3000));
-        this.write(key+'-count',String(count));for(let i=count;i<Math.min(old,32);i++)this.write(key+'-'+i,null);
+    clear(vault){
+        const key=this.key(vault);
+        for(const name of [key+'-count',...Array.from({length:32},(_,i)=>key+'-'+i)])if(this.read(name)!==undefined)this.write(name,null);
     }
 }
-const browserPreferences=()=>new VaultPreferences(
-    name=>document.cookie.split(';').map(part=>part.trim()).find(part=>part.startsWith(name+'='))?.slice(name.length+1),
-    (name,value)=>{document.cookie=name+'='+(value??'')+'; Path=/docs; SameSite=Lax; Max-Age='+(value===null?0:31536000)+(location.protocol==='https:'?'; Secure':'');});
+const browserPreferences=()=>{
+    const cookies=new Map(document.cookie.split(';').map(part=>part.trim()).filter(part=>part.includes('=')).map(part=>{const at=part.indexOf('=');return [part.slice(0,at),part.slice(at+1)];}));
+    return new VaultPreferences(name=>cookies.get(name),(name,value)=>{
+        document.cookie=name+'='+(value??'')+'; Path=/docs; SameSite=Lax; Max-Age=0'+(location.protocol==='https:'?'; Secure':'');cookies.delete(name);
+    });
+};
 // Origin storage isolates desktop instances and avoids cookie eviction.
 export function loadVaultPreferences(vault){
     const legacy=browserPreferences(),key=legacy.key(vault);
-    try{const stored=localStorage.getItem(key);if(stored!==null)return viewPreferences(JSON.parse(stored));}catch{}
-    const value=legacy.load(vault);
-    try{localStorage.setItem(key,JSON.stringify(value));}catch{}
+    let value;
+    try{const stored=localStorage.getItem(key);if(stored!==null)value=viewPreferences(JSON.parse(stored));}catch{}
+    value??=legacy.load(vault);
+    try{localStorage.setItem(key,JSON.stringify(value));legacy.clear(vault);}catch{}
     return value;
 }
 export function saveVaultPreferences(vault,value){
     const legacy=browserPreferences(),key=legacy.key(vault),clean=viewPreferences(value);
-    try{localStorage.setItem(key,JSON.stringify(clean));}catch{legacy.save(vault,clean);}
+    try{localStorage.setItem(key,JSON.stringify(clean));legacy.clear(vault);}catch{}
 }

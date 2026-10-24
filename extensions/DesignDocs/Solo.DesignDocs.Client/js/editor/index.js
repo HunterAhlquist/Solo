@@ -4,7 +4,7 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { yCollab } from 'y-codemirror.next';
 import { Provider } from '../sync/provider.js';
-import { livePreview, refreshSketchPreview } from './preview.js';
+import { livePreview } from './preview.js';
 import { headings } from './markdown.js';
 import { Images } from '../media/images.js';
 import { protectMedia, mediaEdit } from './media-protection.js';
@@ -23,7 +23,7 @@ export function mountEditor(root, bridge, options) {
         copy:(text,seq)=>bridge.invokeMethodAsync('Copy',text,seq,headings(text)),
         unseeded:markdown=>{fallback.textContent=markdown;editorRoot.hidden=true;bridge.invokeMethodAsync('Ready');},
     });
-    const insert=text=>{if(!provider.canWrite)return;const r=view.state.selection.main;view.dispatch({changes:{from:r.from,to:r.to,insert:text},selection:{anchor:r.from+text.length}});if(!suspended)view.focus();};
+    const insert=text=>{if(!provider.canWrite)return;const r=view.state.selection.main;view.dispatch({changes:{from:r.from,to:r.to,insert:text},userEvent:'input',selection:{anchor:r.from+text.length}});if(!suspended)view.focus();};
     const text=provider.doc.getText('markdown');
     const images=new Images(bridge,options.canWrite,insert,message=>bridge.invokeMethodAsync('Status',message),{
         icons:options.icons,
@@ -88,7 +88,7 @@ export function mountEditor(root, bridge, options) {
     const paletteResize=new ResizeObserver(positionPalette);if(noteBody)paletteResize.observe(noteBody);positionPalette();
     const previewTheme=()=>{const style=getComputedStyle(root);return style.fontFamily+'|'+style.color+'|'+style.getPropertyValue('--mud-palette-surface');};
     let lastPreviewTheme=previewTheme();
-    const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh();}presenceTheme(root);});
+    const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh(path=>/\.sketch$/i.test(path));}presenceTheme(root);});
     themeObserver.observe(document.head,{childList:true,subtree:true,characterData:true});
     themeObserver.observe(document.body,{attributes:true,attributeFilter:['class','style']});
     return {
@@ -110,8 +110,8 @@ export function mountEditor(root, bridge, options) {
         presence:users=>provider.presence(users),
         insert,
         chooseImage:()=>images.choose(),
-        imagesChanged:()=>images.refresh(),
-        refreshSketches:()=>images.refresh(),
+        imagesChanged:()=>images.refresh(path=>!/\.sketch$/i.test(path)),
+        refreshSketches:name=>images.refresh(path=>path===name+'.sketch'),
         dispose(){root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }

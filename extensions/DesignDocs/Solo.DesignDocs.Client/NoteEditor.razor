@@ -97,7 +97,7 @@
             var sketch=sketches.SingleOrDefault(s=>s.Name==name&&s.NoteId==Note.Id);if(sketch is null){await Status("Sketch not found in this note.");return;}
             await _editor.InvokeVoidAsync("suspend",true);
             var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullScreen=true,CloseButton=true,CloseOnEscapeKey=true,BackdropClick=false});
-            await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches");
+            await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches",name);
         }catch(SoloApiException e){await Status(e.Message);}
         finally{_sketchOpen=false;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("suspend",false);}}
     [JSInvokable]public async Task<object?> ResolveWiki(string target){

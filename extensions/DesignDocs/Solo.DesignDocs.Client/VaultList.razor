@@ -64,12 +64,11 @@ else {
     }
     private bool _disposed;
     private void Changed(Guid projectId){if(projectId==Project.Id)_=Refresh();}
-    private void Navigated(object? sender,LocationChangedEventArgs e)=>_=Refresh();
+    private void Navigated(object? sender,LocationChangedEventArgs e)=>_=InvokeAsync(()=>{if(!_disposed)StateHasChanged();});
     private Task Refresh()=>InvokeAsync(async()=>{if(_disposed)return;await Load();if(!_disposed)StateHasChanged();});
     private async Task Create() {
         var dialog=await Dialogs.ShowAsync<CreateVaultDialog>("New design doc",new DialogParameters<CreateVaultDialog>{{x=>x.ProjectId,Project.Id}});
         if(await dialog.Result is not {Canceled:false,Data:VaultDto vault})return;
-        DesignDocsNavEvents.Raise(Project.Id);
         Navigation.NavigateTo(Href(vault.Id));
     }
     public async ValueTask DisposeAsync(){_disposed=true;DesignDocsNavEvents.Changed-=Changed;Navigation.LocationChanged-=Navigated;if(_subscription is not null)await _subscription.DisposeAsync();}

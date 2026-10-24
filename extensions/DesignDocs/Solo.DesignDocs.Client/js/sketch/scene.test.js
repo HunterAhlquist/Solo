@@ -81,3 +81,19 @@ test('purple strokes and text retain their color in the scene and exported paint
     const pixel=(x,y)=>[...exported.buffer.slice((y*420+x)*4,(y*420+x)*4+4)];
     assert.deepEqual(pixel(20,20),[128,67,173,255]);assert.deepEqual(pixel(100,100),[128,67,173,255]);
 });
+
+test('live pen feedback does not copy committed rasters or allocate a page-sized overlay',()=>{
+    const canvases=[],scene=new SketchScene(()=>{const canvas=bitmapCanvas();canvases.push(canvas);return canvas;});scene.setScene([stroke],{pageSize:'A3'});
+    const target=output();scene.render(target);let copied=0;
+    for(const raster of Object.values(scene.frame(0).raster)){const slice=raster.slice.bind(raster);raster.slice=(...args)=>{copied+=raster.byteLength;return slice(...args);};}
+    scene.render(target,{extra:[{...stroke,points:[[100,100,1],[150,120,1]]}]});
+    assert.equal(copied,0,'Pencil feedback must not copy the committed page');
+    const overlay=canvases.at(-1);assert.ok(overlay.width*overlay.height<5000,'only the live stroke bounds need raster painting');
+    scene.render(target,{extra:[{...stroke,tool:'eraser',points:[[30,0,1],[30,40,1]]}]});
+    assert.equal(copied,842*1191,'eraser feedback can copy pixels but never owner identities');
+});
+test('bounded live pen layers agree with full replay across colors, frames, and page edges',()=>{
+    const extra=[{...stroke,ink:'blue',points:[[-8,20,1],[45,25,1]]},{...stroke,ink:'purple',points:[[20,10,1],[55,35,1]]}];
+    const scene=new SketchScene(bitmapCanvas);scene.setScene([stroke],meta);const target=output();
+    for(const frame of [0,1,2]){scene.render(target,{extra,frame});const direct=output();paint(direct,[stroke,...extra],[],meta,{frame});assert.deepEqual(target.buffer,direct.buffer);}
+});

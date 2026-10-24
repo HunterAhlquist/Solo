@@ -29,7 +29,7 @@
     <ProjectReference Include="..\..\..\src\Solo.Api\Solo.Api.csproj" />
     <ProjectReference Include="..\..\..\tests\Solo.Api.Testing\Solo.Api.Testing.csproj" />
     <ProjectReference Include="..\..\..\tests\Solo.Client.Testing\Solo.Client.Testing.csproj" />
-    <!-- Load the server package through the host, outside the default assembly context. -->
+    <!-- Build without loading into the default context. The host owns the extension load context. -->
     <ProjectReference Include="..\Solo.DesignDocs\Solo.DesignDocs.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\Solo.DesignDocs.Client\Solo.DesignDocs.Client.csproj" />

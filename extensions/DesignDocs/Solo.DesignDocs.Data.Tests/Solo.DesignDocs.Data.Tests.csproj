@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Without a host, these tests need their own contract reference. -->
     <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.0" />
     <ProjectReference Include="..\Solo.DesignDocs\Solo.DesignDocs.csproj" />
   </ItemGroup>

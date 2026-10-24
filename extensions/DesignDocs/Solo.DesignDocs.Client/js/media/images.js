@@ -125,7 +125,7 @@ export class Images {
         const next=control('next','Next attachment',()=>show(index+1));next.classList.add('design-docs-viewer-next');
         const edit=control('edit','Edit sketch',async()=>{
             const path=items[index].path;
-            await dismiss();if(this.disposed)return;await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));await this.refresh();
+            await dismiss();if(this.disposed)return;await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));
         });
         const remove=control('remove','Remove attachment from note',()=>{
             if(!this.canWrite||!this.actions.remove?.(items[index]))return;
@@ -135,7 +135,7 @@ export class Images {
             try{const item=items[index],a=document.createElement('a');a.href=await this.resolve(item.path);a.download=item.sketch?item.path.replace(/\.sketch$/i,'.png'):item.path.split('/').at(-1);document.body.append(a);a.click();a.remove();}catch(e){this.status(e.message);}
         });
         const replace=control('replace','Replace image',()=>this.choose(items[index].path));
-        this.refreshViewer=()=>show(index);
+        this.refreshViewer=matches=>{if(matches(items[index].path))return show(index);};
         const show=async position=>{
             if(closing||closed)return;
             if(presented){flight?.cancel();restoreSource();dialog.dataset.phase='open';}
@@ -185,15 +185,15 @@ export class Images {
             const path=replace??`attachments/${name}-${crypto.randomUUID().slice(0,8)}.${image.extension}`;
             await this.bridge.invokeMethodAsync('UploadImage',image.bytes,image.type,path,!!replace);
             if(this.disposed)return;
-            if(!replace)this.insert(`![[${path}]]`);await this.refresh();
+            if(!replace)this.insert(`![[${path}]]`);else await this.refresh(item=>item===path);
         }catch(e){if(!this.disposed)this.status(e.message);}
     }
-    async refresh(){
-        for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();
-        if(this.dialog?.open)this.refreshViewer?.();
+    async refresh(matches=()=>true){
+        for(const [path,promise] of this.cache)if(matches(path)){this.cache.delete(path);promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});}
+        if(this.dialog?.open)this.refreshViewer?.(matches);
         for(const entry of [...this.cards]){
             if(!entry.button.isConnected){this.cards.delete(entry);continue;}
-            const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>this.resolve(item.path).then(url=>{if(images[i])images[i].src=url;}).catch(()=>{}));
+            const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>{if(matches(item.path))this.resolve(item.path).then(url=>{if(images[i])images[i].src=url;}).catch(()=>{});});
         }
     }
     dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.closeViewer?.();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();}

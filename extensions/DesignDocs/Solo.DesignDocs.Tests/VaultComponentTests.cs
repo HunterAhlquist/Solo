@@ -1,6 +1,8 @@
 using System.Net;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Components.Web;
+using MudBlazor;
 using Solo.DesignDocs.Client;
 using Solo.DesignDocs.Contracts;
 using Solo.Shared;
@@ -32,14 +34,19 @@ public sealed class VaultComponentTests : ComponentTestBase
         await DisposeComponentsOnDispatcherAsync();Assert.Empty(_live.Held);
     }
     [Fact]
-    public void Sidebar_refreshes_after_navigation_without_a_remote_echo() {
-        VaultListDto list=new(false,[]);_http.Route("vaults",HttpStatusCode.OK,()=>list);
+    public async Task Creating_a_vault_refreshes_the_sidebar_without_navigation_or_a_remote_echo() {
+        var vault=new VaultDto(Guid.NewGuid(),"Combat design",false,null,1);
+        VaultListDto list=new(true,[]);_http.Route("vaults",HttpStatusCode.OK,()=>list,HttpMethod.Get);
+        _http.Route("vaults",HttpStatusCode.OK,()=>{list=new(true,[vault]);return vault;},HttpMethod.Post);
+        var host=Render<MudDialogProvider>();
         var cut=Render<VaultList>(p=>p.Add(x=>x.Project,_project).Add(x=>x.Compact,true));
         cut.WaitForAssertion(()=>Assert.Contains("No open design docs",cut.Markup));
-        list=new(false,[new(Guid.NewGuid(),"Combat design",false,null,1)]);
-        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().NavigateTo("/docs/DOCS");
+        cut.FindAll(".mud-nav-link").Single(a=>a.TextContent.Contains("New design doc")).Click();
+        host.WaitForAssertion(()=>Assert.Single(host.FindAll("input")));host.Find("input").Input("Combat design");
+        await host.FindAll("button").Single(b=>b.TextContent.Trim()=="Create").ClickAsync(new MouseEventArgs());
         cut.WaitForAssertion(()=>Assert.Contains("Combat design",cut.Markup));
         Assert.DoesNotContain("No open design docs",cut.Markup);
+        Assert.Equal(2,_http.Requests.Count(r=>r.Method==HttpMethod.Get&&r.RequestUri!.AbsolutePath.EndsWith("/vaults")));
     }
     [Fact]
     public void Closed_vaults_are_hidden_until_requested() {
