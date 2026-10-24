@@ -25,6 +25,11 @@ export class Images {
         const remove=this.dialog?.querySelector('[aria-label="Remove attachment from note"]');if(remove)remove.hidden=!value;
         const replace=this.dialog?.querySelector('[aria-label="Replace image"]');if(replace)replace.hidden=!value||!!this.viewerSketch;
     }
+    async remove(reference) {
+        if(!this.canWrite||this.disposed)return false;
+        if(!await this.bridge.invokeMethodAsync('ConfirmRemoveAttachment',reference.path,!!reference.sketch))return false;
+        return this.canWrite&&!this.disposed&&!!this.actions.remove?.(reference);
+    }
     async resolve(path) {
         if(!this.cache.has(path))this.cache.set(path,(async()=>{
             let blob;
@@ -127,10 +132,21 @@ export class Images {
             const path=items[index].path;
             await dismiss();if(this.disposed)return;await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));
         });
-        const remove=control('remove','Remove attachment from note',()=>{
-            if(!this.canWrite||!this.actions.remove?.(items[index]))return;
-            items.splice(index,1);if(!items.length){dismiss();return;}show(Math.min(index,items.length-1));
+        let confirming=false;
+        const remove=control('remove','Remove attachment from note',async()=>{
+            if(!this.canWrite||confirming||closing||closed)return;
+            const item=items[index];confirming=true;remove.disabled=true;let removed=false;
+            // A native modal would cover MudBlazor's confirmation dialog.
+            dialog.close();dialog.show();
+            try{removed=await this.remove(item);}catch(e){if(!this.disposed)this.status(e.message);}
+            finally{
+                confirming=false;remove.disabled=false;
+                if(!closed&&!closing){dialog.close();dialog.showModal();remove.focus();}
+            }
+            if(!removed||closing||closed)return;
+            items.splice(items.indexOf(item),1);if(!items.length){dismiss();return;}show(Math.min(index,items.length-1));
         });
+        remove.classList.add('design-docs-viewer-remove');
         const download=control('download','Download attachment',async()=>{
             try{const item=items[index],a=document.createElement('a');a.href=await this.resolve(item.path);a.download=item.sketch?item.path.replace(/\.sketch$/i,'.png'):item.path.split('/').at(-1);document.body.append(a);a.click();a.remove();}catch(e){this.status(e.message);}
         });
@@ -169,7 +185,7 @@ export class Images {
         let start;image.addEventListener('pointerdown',event=>{start=event.clientX;image.setPointerCapture(event.pointerId);});
         image.addEventListener('pointerup',event=>{if(start!==undefined&&Math.abs(event.clientX-start)>40)show(index+(event.clientX<start?1:-1));start=undefined;});
         image.addEventListener('pointercancel',()=>{start=undefined;});
-        dialog.addEventListener('close',cleanup,{once:true});
+        dialog.addEventListener('close',()=>{if(!dialog.open)cleanup();});
         document.body.append(dialog);dialog.showModal();close.focus();await show(initialIndex);
     }
     choose(replace=null) {
