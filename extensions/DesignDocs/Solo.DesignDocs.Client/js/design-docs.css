@@ -55,7 +55,7 @@
 .design-docs-media-tools { display:flex; padding:4px 0; flex-shrink:0; }
 .design-docs-media-tools button { font:inherit; border:1px solid var(--mud-palette-lines-default); color:inherit; background:transparent; padding:4px 10px; border-radius:4px; cursor:pointer; }
 .design-docs-image-card,.design-docs-image-stack { display:inline-block; position:relative; border:0; background:none; cursor:zoom-in; padding:12px; vertical-align:middle; max-width:100%; }
-.design-docs-image-card img,.design-docs-image-stack img { display:block; max-width:min(240px,60vw); max-height:180px; object-fit:contain; padding:6px; background:white; border:1px solid #bbb; box-shadow:1px 2px 5px #0003; }
+.design-docs-image-card img,.design-docs-image-stack img { display:block; max-width:min(240px,60vw); max-height:180px; object-fit:contain; padding:6px; background:transparent; border:0; box-shadow:1px 2px 5px #0003; }
 .design-docs-image-stack { width:min(270px,65vw); height:210px; }
 .design-docs-image-stack img { position:absolute; top:12px; left:12px; }
 .design-docs-stack-count { position:absolute; bottom:8px; right:8px; z-index:100; border-radius:12px; padding:0 8px; color:var(--mud-palette-primary-text); background:var(--mud-palette-primary); font:500 12px/24px sans-serif; }
@@ -98,7 +98,7 @@
 .design-docs-leaf > .mud-treeview-item-content > .mud-treeview-item-arrow { visibility:hidden; pointer-events:none; }
 .design-docs-transfer:has(output:empty),.design-docs-transfer:empty { display:none; }
 .design-docs-image-card,.design-docs-image-stack { height:calc(164px * var(--design-docs-scale,1)); padding:12px; }
-.design-docs-image-card img,.design-docs-image-stack img { box-sizing:content-box; width:calc(128px * var(--design-docs-scale,1)); height:calc(128px * var(--design-docs-scale,1)); max-width:none; max-height:none; object-fit:contain; padding:4px; background:color-mix(in srgb,var(--mud-palette-surface) 50%,transparent); }
+.design-docs-image-card img,.design-docs-image-stack img { box-sizing:content-box; width:calc(128px * var(--design-docs-scale,1)); height:calc(128px * var(--design-docs-scale,1)); max-width:none; max-height:none; object-fit:contain; padding:4px; }
 .design-docs-image-card { width:calc(148px * var(--design-docs-scale,1)); }
 .design-docs-image-stack { max-width:100%; }
 .design-docs-stack-count { bottom:0; right:0; }
