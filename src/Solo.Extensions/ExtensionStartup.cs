@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -140,18 +142,13 @@ public static class ExtensionStartup
 
                 try
                 {
-                    // Bracketing the noise: EF probes the history table before it
-                    // exists, so a first install logs a failed SELECT from the
-                    // extension's __EFMigrationsHistory — at Error level, right
-                    // between these two lines. That is the probe finding the table
-                    // absent, not a failure; core's own first migration does the
-                    // same thing against public. This line and the one after it
-                    // are what actually report the outcome.
                     logger.LogInformation(
                         "Extension '{Id}': applying migrations to schema {Schema}.",
                         registration.ExtensionId, registration.Schema);
 
                     var context = (DbContext)scope.ServiceProvider.GetRequiredService(registration.ContextType);
+                    // Avoid Npgsql's failed history-table probe on first install.
+                    await context.GetService<IHistoryRepository>().CreateIfNotExistsAsync();
                     await context.Database.MigrateAsync();
                     logger.LogInformation(
                         "Extension '{Id}' migrated into schema {Schema}.",
