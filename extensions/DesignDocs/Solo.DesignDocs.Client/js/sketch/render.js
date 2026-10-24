@@ -19,7 +19,7 @@ export function applyStrokes(raster,ops,width,height,frame=0,ownerOffset=0){cons
     ops.forEach((stroke,owner)=>{let index=0,previous,paintBudget=262144;for(const [x,y,p] of samples(stroke)){
         if(paintBudget<=0)break;const [dx,dy]=jitter(stroke.seed,index++,frame),size=pressureWidth(stroke.level,p,stroke.pointerType);
         const target=[x+dx,y+dy],start=previous??target,steps=Math.min(4096,Math.max(1,Math.ceil(Math.hypot(target[0]-start[0],target[1]-start[1]))));
-        for(let n=0;n<=steps&&paintBudget-->0;n++)stamp(start[0]+(target[0]-start[0])*n/steps,start[1]+(target[1]-start[1])*n/steps,size,(px,py)=>{if(px<0||py<0||px>=width||py>=height)return;const at=py*width+px;pixels[at]=stroke.tool==='eraser'?0:({theme:1,red:2,blue:3,green:4,purple:5}[stroke.ink]??1);owners[at]=pixels[at]?owner+ownerOffset+1:0;});
+        for(let n=0;n<=steps&&paintBudget-->0;n++)stamp(start[0]+(target[0]-start[0])*n/steps,start[1]+(target[1]-start[1])*n/steps,size,(px,py)=>{if(px<0||py<0||px>=width||py>=height)return;const at=py*width+px;pixels[at]=stroke.tool==='eraser'?0:({theme:1,red:2,blue:3,green:4,purple:5}[stroke.ink]??1);if(owners)owners[at]=pixels[at]?owner+ownerOffset+1:0;});
         previous=target;
     }});return raster;
 }

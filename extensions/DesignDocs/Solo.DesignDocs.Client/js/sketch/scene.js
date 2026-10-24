@@ -29,24 +29,41 @@ export class SketchScene {
         }
         return value;
     }
+    paintExtra(context,extra,frame){
+        let left=this.width,top=this.height,right=0,bottom=0;
+        for(const stroke of extra)for(const point of stroke.points??[])if(Number.isFinite(point?.[0])&&Number.isFinite(point?.[1])){
+            left=Math.min(left,Math.floor(point[0])-8);top=Math.min(top,Math.floor(point[1])-8);
+            right=Math.max(right,Math.ceil(point[0])+9);bottom=Math.max(bottom,Math.ceil(point[1])+9);
+        }
+        left=Math.max(0,left);top=Math.max(0,top);right=Math.min(this.width,right);bottom=Math.min(this.height,bottom);
+        const width=right-left,height=bottom-top;if(width<=0||height<=0)return;
+        const canvas=this.previewCanvas??=this.createCanvas(),overlay=canvas.getContext('2d'),length=width*height;
+        if(canvas.width!==width)canvas.width=width;if(canvas.height!==height)canvas.height=height;
+        overlay.clearRect(0,0,width,height);
+        if(!this.previewPixels||this.previewPixels.length<length)this.previewPixels=new Uint8Array(Math.max(length,(this.previewPixels?.length??256)*2));
+        const pixels=this.previewPixels.subarray(0,length);pixels.fill(0);
+        applyStrokes({pixels},extra.map(stroke=>({...stroke,points:(stroke.points??[]).map(point=>Array.isArray(point)?point.map((value,index)=>index===0?value-left:index===1?value-top:value):point)})),width,height,frame);
+        paintPixels(overlay,{pixels},width,height,this.style.themeInk);context.drawImage(canvas,left,top);
+    }
     render(context,{frame=0,texts=[],extra=[],selection=null,selectionContext=null,font}={}){
-        const {width:w,height:h}=this,moving=selection&&(selection.dx||selection.dy);
+        const {width:w,height:h}=this,moving=selection&&(selection.dx||selection.dy),erasing=extra.some(stroke=>stroke.tool==='eraser');
         if(context.canvas.width!==w)context.canvas.width=w;if(context.canvas.height!==h)context.canvas.height=h;
         context.clearRect(0,0,w,h);context.imageSmoothingEnabled=false;
         let raster;
         if(moving){
             const value=this.dragFrame(selection,frame);
-            if(!extra.length){context.drawImage(value.canvas,0,0);if(!selectionContext)context.drawImage(value.overlay,selection.dx-value.padding,selection.dy-value.padding);}
+            if(!erasing){context.drawImage(value.canvas,0,0);if(!selectionContext)context.drawImage(value.overlay,selection.dx-value.padding,selection.dy-value.padding);}
             else{
-                raster={pixels:value.base.pixels.slice(),owners:value.base.owners.slice()};
+                raster={pixels:value.base.pixels.slice()};
                 if(!selectionContext)for(let y=0;y<value.height;y++){const targetY=y+selection.dy-value.padding;if(targetY<0||targetY>=h)continue;
                     for(let x=0;x<value.width;x++){const targetX=x+selection.dx-value.padding,ink=value.moving.pixels[y*value.width+x];if(ink&&targetX>=0&&targetX<w)raster.pixels[targetY*w+targetX]=ink;}}
             }
         }else{
             this.drag=null;const value=this.frame(frame);
-            if(!extra.length)context.drawImage(value.canvas,0,0);else raster={pixels:value.raster.pixels.slice(),owners:value.raster.owners.slice()};
+            if(!erasing)context.drawImage(value.canvas,0,0);else raster={pixels:value.raster.pixels.slice()};
         }
         if(raster){applyStrokes(raster,extra,w,h,frame,this.ops.length);paint(context,[],[],this.meta,{...this.style,raster});}
+        else if(extra.length)this.paintExtra(context,extra,frame);
         const boxes=moving?(selectionContext?texts.filter(t=>!selection.textIds.has(t.id)):texts.map(t=>selection.textIds.has(t.id)?{...t,x:t.x+selection.dx,y:t.y+selection.dy}:t)):texts;
         paintTexts(context,boxes,{...this.style,font});
         if(moving&&selectionContext){
@@ -60,5 +77,5 @@ export class SketchScene {
         }
         return null;
     }
-    dispose(){this.frames.clear();this.drag=null;this.ops=[];}
+    dispose(){this.frames.clear();this.drag=null;this.ops=[];this.previewCanvas=this.previewPixels=null;}
 }

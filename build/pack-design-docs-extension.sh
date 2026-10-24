@@ -15,6 +15,7 @@ version_of_project() {
     sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' "$1" | head -1
 }
 
+# The loader uses the manifest version for package identity and downgrade checks.
 version=$(version_of_manifest "$server/extension.json")
 if [ -z "$version" ]; then
     echo "error: no \"version\" in $server/extension.json" >&2
@@ -46,7 +47,7 @@ trap 'rm -rf "$staging"' EXIT
 package="$staging/package"
 mkdir -p "$package/server" "$package/client"
 
-# Exclude assemblies that the host supplies to avoid duplicate type identities.
+# Mirror ExtensionLoadContext.IsShared to preserve the host's shared type identities.
 stage_private_assemblies() {
     local from="$1" to="$2" main="$3"
     for dll in "$from"/*.dll; do
@@ -81,6 +82,7 @@ mkdir -p "$output"
 output="$(cd "$output" && pwd)"
 archive="$output/solo-design-docs-$version.zip"
 rm -f "$archive"
+# Exclude extra file attributes to keep ZIP bytes reproducible for identical inputs.
 (cd "$package" && zip -qrX "$archive" .)
 
 if [ -n "${SOLO_DEVELOPMENT_PACKAGE:-}" ]; then

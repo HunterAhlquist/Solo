@@ -20,7 +20,7 @@
         <MudText Typo="Typo.caption" role="status">@_progress</MudText>
     </DialogContent>
     <DialogActions>
-        <MudButton Disabled="@_busy" OnClick="Dialog.Cancel">Cancel</MudButton>
+        <MudButton Disabled="@(_busy&&_created is null)" OnClick="Cancel">Cancel</MudButton>
         <MudButton Color="Color.Primary" Disabled="@(_busy||string.IsNullOrWhiteSpace(_name)||(_summary is {Notes:0}&&_created is null))" OnClick="Create">@(_created is not null?"Open design doc":"Create")</MudButton>
     </DialogActions>
 </MudDialog>
@@ -46,9 +46,12 @@
             DesignDocsNavEvents.Raise(ProjectId);
             if(_summary is not null&&_transfer is not null)await _transfer.ImportAsync(_created.Id);
             Dialog.Close(DialogResult.Ok(_created));
-        }catch(Exception e)when(e is SoloApiException or JSException or HttpRequestException or OperationCanceledException){
+        }catch(OperationCanceledException){
+            _progress="Import canceled. The design doc and files already imported were kept.";
+        }catch(Exception e)when(e is SoloApiException or JSException or HttpRequestException){
             _error=_created is null?e.Message:"Import stopped. The design doc and files already imported were kept. Open it to review them.";
         }finally{_busy=false;}
     }
+    private void Cancel(){if(_busy)_transfer?.Cancel();else Dialog.Cancel();}
     public async ValueTask DisposeAsync(){if(_transfer is not null)await _transfer.DisposeAsync();}
 }

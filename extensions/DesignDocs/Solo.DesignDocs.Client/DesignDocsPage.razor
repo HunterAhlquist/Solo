@@ -97,7 +97,7 @@ else if(_activeVaultId==Guid.Empty) {
         }
 
         var key=$"{alias}/{vaultId}";
-        if(_loaded==key){_routeNoteId=requestedNote;_navigating=false;if(_preferencesLoaded)await RememberNote();return;}
+        if(_loaded==key){_error=null;_routeNoteId=requestedNote;_navigating=false;if(_preferencesLoaded)await RememberNote();return;}
         _loaded=key;var generation=++_loadGeneration;_preferencesLoaded=false;
         _activeVaultId=vaultId;_activeAlias=alias;_routeNoteId=requestedNote;
         var previous=_subscription;_subscription=null;if(previous is not null)await previous.DisposeAsync();

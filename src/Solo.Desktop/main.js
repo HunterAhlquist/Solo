@@ -172,6 +172,8 @@ function instanceList() {
             ? `${instance.name} (${settingsStore.instanceAddress(instance.url)})`
             : instance.name,
         url: instance.url,
+        // Non-Google OIDC clients need this origin for redirect registration.
+        origin: localOrigin(instance),
         open: windowFor(instance) !== null,
     }));
 }
