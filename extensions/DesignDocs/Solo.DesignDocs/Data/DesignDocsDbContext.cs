@@ -42,10 +42,9 @@ public sealed class DesignDocsDbContext(DbContextOptions<DesignDocsDbContext> op
         });
         b.Entity<Sketch>(e => {
             e.ToTable("Sketches"); e.Property(x => x.Name).HasMaxLength(200);
-            // VaultId makes the vault-wide embed namespace enforceable by Postgres.
             e.HasOne<Note>().WithMany().HasForeignKey(x => new { x.NoteId, x.VaultId })
                 .HasPrincipalKey(x => new { x.Id, x.VaultId }).OnDelete(DeleteBehavior.Cascade);
-            e.HasIndex(x => new { x.VaultId, x.Name }).IsUnique(); e.Property(x => x.Version).IsRowVersion();
+            e.HasIndex(x => new { x.NoteId, x.Name }).IsUnique(); e.Property(x => x.Version).IsRowVersion();
         });
         b.Entity<DocUpdate>(e => {
             e.ToTable("DocUpdates", t => t.HasCheckConstraint("CK_DocUpdates_Document",

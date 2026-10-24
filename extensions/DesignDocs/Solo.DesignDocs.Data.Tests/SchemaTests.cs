@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Solo.DesignDocs.Data;
 
 namespace Solo.DesignDocs.Data.Tests;
@@ -33,6 +35,28 @@ public sealed class SchemaTests(PostgresFixture postgres)
         };
         db.Add(Row()); await db.SaveChangesAsync(); db.Add(Row());
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [SkippableFact]
+    public async Task Note_scoped_names_migration_preserves_existing_sketches_and_their_updates()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await using var db = PostgresFixture.Context(await postgres.CreateDatabaseAsync());
+        var migrator = db.GetService<IMigrator>();
+        await migrator.MigrateAsync("20261022214826_SeedLeaseIdentity");
+        var vault = new Vault { Name = "Design" };
+        var note = new Note { VaultId = vault.Id, Name = "First" };
+        var sketch = new Sketch { VaultId = vault.Id, NoteId = note.Id, Name = "Plan" };
+        db.AddRange(vault, note, sketch, new DocUpdate { DocumentId = sketch.Id, SketchId = sketch.Id, Data = [1, 2] });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        await migrator.MigrateAsync();
+        var other = new Note { VaultId = vault.Id, Name = "Second" };
+        db.AddRange(other, new Sketch { VaultId = vault.Id, NoteId = other.Id, Name = "Plan" });
+        await db.SaveChangesAsync();
+        Assert.Equal(2, await db.Sketches.CountAsync());
+        Assert.Equal(note.Id, (await db.Sketches.FindAsync(sketch.Id))!.NoteId);
+        Assert.Equal(new byte[] { 1, 2 }, (await db.DocUpdates.SingleAsync()).Data);
     }
 
     [SkippableFact]

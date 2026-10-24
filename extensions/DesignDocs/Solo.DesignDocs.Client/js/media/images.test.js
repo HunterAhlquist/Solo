@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { imageAngle,Images } from './images.js';
+import { attachmentName } from './vault-paths.js';
 test('paper angles are stable and bounded per image path',()=>{
     for(let n=0;n<1000;n++){const path=`attachments/${n}.webp`;assert.equal(imageAngle(path),imageAngle(path));assert.ok(Math.abs(imageAngle(path))<=3.5);}
     assert.notEqual(imageAngle('a.webp'),imageAngle('b.webp'));
@@ -34,4 +35,10 @@ test('pending confirmation cannot remove attachments after editing is disabled o
         const pending=images.remove({path:'photo.png'});stop(images);approve(true);
         assert.equal(await pending,false);assert.equal(removed,0);
     }
+});
+
+test('attachment display names and downloads exclude the owning note path',()=>{
+    assert.equal(attachmentName('attachments/note/Plan.sketch'),'Plan.sketch');
+    assert.equal(attachmentName('attachments/note/photo.png'),'photo.png');
+    assert.equal(attachmentName('legacy.png'),'legacy.png');
 });

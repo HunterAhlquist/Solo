@@ -1,4 +1,5 @@
 import { parser } from '@lezer/markdown';
+export const attachmentName=path=>path.split('/').at(-1);
 export function mediaType(target){
     let path=String(target).split('|')[0].split(/[?#]/)[0];try{path=decodeURIComponent(path);}catch{}
     if(/\.sketch$/i.test(path))return 'sketch';

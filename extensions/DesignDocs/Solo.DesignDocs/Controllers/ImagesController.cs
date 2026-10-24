@@ -33,6 +33,12 @@ public sealed class ImagesController(DesignDocsDbContext db,ISoloQuery query,ISo
     }
     [HttpPost,Authorize(Policy=SoloPolicies.ProjectWrite),RequestSizeLimit(Limit)]
     public Task<ActionResult<ImageDto>> Upload(Guid projectId,Guid vaultId,[FromQuery]string path,CancellationToken ct)=>Store(projectId,vaultId,null,path,null,ct);
+    [HttpPost("notes/{noteId:guid}"),Authorize(Policy=SoloPolicies.ProjectWrite),RequestSizeLimit(Limit)]
+    public async Task<ActionResult<ImageDto>> UploadToNote(Guid projectId,Guid vaultId,Guid noteId,[FromQuery]string path,CancellationToken ct)
+    {
+        if(!VaultsController.ValidName(path))return BadRequest();
+        return await Store(projectId,vaultId,null,path.Trim(),null,ct,noteId);
+    }
     [HttpPost("import"),Authorize(Policy=SoloPolicies.ProjectRead),RequestSizeLimit(Limit)]
     public async Task<ActionResult<ImageDto>> Import(Guid projectId,Guid vaultId,[FromQuery]string path,CancellationToken ct)
     {
@@ -41,12 +47,21 @@ public sealed class ImagesController(DesignDocsDbContext db,ISoloQuery query,ISo
     }
     [HttpPut("{id:guid}"),Authorize(Policy=SoloPolicies.ProjectWrite),RequestSizeLimit(Limit)]
     public Task<ActionResult<ImageDto>> Replace(Guid projectId,Guid vaultId,Guid id,[FromQuery]uint version,CancellationToken ct)=>Store(projectId,vaultId,id,null,version,ct);
-    private async Task<ActionResult<ImageDto>> Store(Guid projectId,Guid vaultId,Guid? id,string? path,uint? version,CancellationToken ct)
+    private async Task<ActionResult<ImageDto>> Store(Guid projectId,Guid vaultId,Guid? id,string? path,uint? version,CancellationToken ct,Guid? noteId=null)
     {
         if(id is null&&(string.IsNullOrWhiteSpace(path)||path.Length>1024||path.StartsWith('/')||path.Contains('\\')||path.Split('/').Any(p=>p is "" or "." or ".."||p.Any(char.IsControl))))return BadRequest();
         await using var transaction=await db.Database.BeginTransactionAsync(ct);
         var vault=(await db.Vaults.FromSqlInterpolated($"SELECT *, xmin FROM ext_design_docs.\"Vaults\" WHERE \"Id\"={vaultId} AND \"ProjectId\"={projectId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
         if(vault is null)return NotFound();if(vault.IsClosed)return Problem(statusCode:409,title:"Design doc is closed");
+        if(noteId is {} owner)
+        {
+            if(!await db.Notes.AnyAsync(n=>n.Id==owner&&n.VaultId==vaultId,ct))return NotFound();
+            var original=AttachmentPaths.ForNote(owner,path!);
+            path=original;
+            var extension=Path.GetExtension(original);
+            var stem=original[..^extension.Length];
+            for(var number=2;await db.Images.AnyAsync(i=>i.VaultId==vaultId&&i.Path==path,ct);number++)path=$"{stem}-{number}{extension}";
+        }
         DocImage image;
         if(id is {} existing){image=await db.Images.SingleOrDefaultAsync(i=>i.Id==existing&&i.VaultId==vaultId,ct)??null!;if(image is null)return NotFound();db.Entry(image).Property(i=>i.Version).OriginalValue=version!.Value;}
         else {image=new(){VaultId=vaultId,Path=path!};db.Add(image);}
