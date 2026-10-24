@@ -1,10 +1,12 @@
-Clear-sketch effect requested for this preview:
+Clear-sketch effect (explosion.gif, explosion.wav):
 
-Deltarune realistic explosion frames and badexplosion.wav, mirrored by the
-Kristal project. These game/stock assets are not covered by Solo's code license.
-Original game: Deltarune, Toby Fox / Royal Sciences LLC; explosion footage
-originates in the Pyromania stock collection.
+The explosion footage and sound originate in Pyromania, a 1990s stock
+explosion collection. Deltarune (Toby Fox) uses the same stock footage, but
+neither Toby Fox nor Royal Sciences LLC owns it. These stock assets are not
+covered by Solo's code license; if you hold rights to them and object to their
+use here, open an issue and they will be removed.
 
+The files were taken from the Kristal project's mirror.
 Source revision: eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7
 https://github.com/KristalTeam/Kristal/tree/eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7/assets/sprites/misc
 https://github.com/KristalTeam/Kristal/blob/eaf9e0ef4472f2a8090a76fc8b6194230c3e30f7/assets/sounds/badexplosion.wav
