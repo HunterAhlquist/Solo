@@ -1,4 +1,7 @@
 using System.Net;
+using System.Text.Json;
+using Microsoft.AspNetCore.Components;
+using Solo.Client.Api;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Components.Web;
@@ -20,8 +23,59 @@ public sealed class VaultComponentTests : ComponentTestBase
     public void Only_super_admins_see_create(bool manage) {
         _http.RouteJson("vaults",new VaultListDto(manage,[]));
         var cut=Render<VaultList>(p=>p.Add(x=>x.Project,_project));
-        cut.WaitForAssertion(()=>Assert.Contains("No open design docs",cut.Markup));
-        Assert.Equal(manage,cut.Markup.Contains("New design doc"));
+        cut.WaitForAssertion(()=>Assert.Contains("No design docs yet.",cut.Markup));
+        Assert.Equal(manage,cut.Markup.Contains("Create one"));
+    }
+    [Theory][InlineData(false)][InlineData(true)]
+    public void Home_cards_open_docs_and_offer_management_only_to_admins(bool manage) {
+        var vault=new VaultDto(Guid.NewGuid(),"Movement",false,null,4);
+        _http.RouteJson("vaults",new VaultListDto(manage,[vault]));
+        var cut=Render<DesignDocsHomeSection>(p=>p.Add(x=>x.Project,_project).Add(x=>x.CanWrite,true));
+        cut.WaitForAssertion(()=>Assert.Single(cut.FindAll(".mud-card")));
+        Assert.Equal(manage,cut.Markup.Contains("Rename"));Assert.Equal(manage,cut.Markup.Contains("Close"));
+        Assert.Equal(manage,cut.FindAll("[aria-label='New design doc']").Count==1);
+        cut.Find(".design-docs-vault-open").Click();
+        Assert.EndsWith($"/docs/DOCS/{vault.Id}",Services.GetRequiredService<NavigationManager>().Uri);
+    }
+    [Theory][InlineData(false)][InlineData(true)]
+    public async Task Rename_uses_the_card_version_and_refreshes_on_conflict(bool conflict) {
+        var vault=new VaultDto(Guid.NewGuid(),"Movement",false,null,4);VaultChange? sent=null;
+        _http.Route("vaults",HttpStatusCode.OK,()=>new VaultListDto(true,[vault]),HttpMethod.Get);
+        _http.Route("vaults/",()=>{
+            sent=JsonSerializer.Deserialize<VaultChange>(_http.Bodies.Last(),SoloJson.Options)!;
+            vault=vault with{Name=conflict?"Remote edit":sent.Name,Version=5};
+            return(conflict?HttpStatusCode.Conflict:HttpStatusCode.OK,(object)vault);
+        },HttpMethod.Put);
+        var dialogs=Render<MudDialogProvider>();
+        var cut=Render<VaultList>(p=>p.Add(x=>x.Project,_project));
+        cut.WaitForAssertion(()=>Assert.Single(cut.FindAll(".mud-card")));
+        var renaming=cut.FindAll("button").Single(b=>b.TextContent.Trim()=="Rename").ClickAsync(new MouseEventArgs());
+        dialogs.WaitForAssertion(()=>Assert.Single(dialogs.FindAll("input")));dialogs.Find("input").Input("Movement revised");
+        await dialogs.FindAll("button").Single(b=>b.TextContent.Trim()=="Save").ClickAsync(new MouseEventArgs());
+        await renaming;
+        cut.WaitForAssertion(()=>Assert.Contains(conflict?"Remote edit":"Movement revised",cut.Markup));
+        Assert.Equal(new VaultChange("Movement revised",false,4),sent);
+        if(conflict)Assert.Contains(Services.GetRequiredService<ISnackbar>().ShownSnackbars,s=>s.Severity==Severity.Warning);
+    }
+    [Fact]
+    public async Task Close_and_reopen_update_the_home_and_sidebar_using_current_versions() {
+        var vault=new VaultDto(Guid.NewGuid(),"Movement",false,null,4);var changes=new List<VaultChange>();
+        _http.Route("vaults",HttpStatusCode.OK,()=>new VaultListDto(true,[vault]),HttpMethod.Get);
+        _http.Route("vaults/",HttpStatusCode.OK,()=>{
+            var change=JsonSerializer.Deserialize<VaultChange>(_http.Bodies.Last(),SoloJson.Options)!;changes.Add(change);
+            vault=vault with{Name=change.Name,IsClosed=change.IsClosed,Version=vault.Version+1};return vault;
+        },HttpMethod.Put);
+        var home=Render<VaultList>(p=>p.Add(x=>x.Project,_project));
+        var sidebar=Render<VaultList>(p=>p.Add(x=>x.Project,_project).Add(x=>x.Compact,true));
+        home.WaitForAssertion(()=>Assert.Single(home.FindAll(".mud-card")));
+        await home.FindAll("button").Single(b=>b.TextContent.Trim()=="Close").ClickAsync(new MouseEventArgs());
+        home.WaitForAssertion(()=>Assert.Empty(home.FindAll(".mud-card")));
+        sidebar.WaitForAssertion(()=>Assert.DoesNotContain("Movement",sidebar.Markup));
+        home.Find(".mud-expand-panel-header").Click();
+        await home.FindAll("button").Single(b=>b.TextContent.Trim()=="Reopen").ClickAsync(new MouseEventArgs());
+        home.WaitForAssertion(()=>Assert.Single(home.FindAll(".mud-card")));
+        sidebar.WaitForAssertion(()=>Assert.Contains("Movement",sidebar.Markup));
+        Assert.Equal(new[]{new VaultChange("Movement",true,4),new VaultChange("Movement",false,5)},changes);
     }
     [Fact]
     public async Task Lists_follow_live_changes_and_release_their_subscription() {

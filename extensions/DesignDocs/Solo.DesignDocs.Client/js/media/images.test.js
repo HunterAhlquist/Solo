@@ -19,3 +19,19 @@ test('targeted refresh preserves unrelated cache entries, thumbnails, and the op
     assert.equal(images.cache.get('photo.png'),old[0]);assert.equal(images.cache.get('Other.sketch'),old[2]);
     assert.deepEqual(thumbnails.map(img=>img.src),['blob:photo.png','new:Plan.sketch','blob:Other.sketch']);assert.equal(viewerRefreshes,0);
 });
+
+for(const sketch of [false,true])test(`${sketch?'sketch':'image'} removal requires confirmation`,async()=>{
+    const entry={path:sketch?'Plan.sketch':'photo.png',sketch},removed=[],calls=[];let approved=false;
+    const images=new Images({invokeMethodAsync:async(...args)=>{calls.push(args);return approved;}},true,()=>{},()=>{},{remove:item=>{removed.push(item);return true;}});
+    assert.equal(await images.remove(entry),false);assert.deepEqual(removed,[]);
+    approved=true;assert.equal(await images.remove(entry),true);assert.deepEqual(removed,[entry]);
+    assert.deepEqual(calls,[['ConfirmRemoveAttachment',entry.path,sketch],['ConfirmRemoveAttachment',entry.path,sketch]]);
+});
+test('pending confirmation cannot remove attachments after editing is disabled or the editor is disposed',async()=>{
+    for(const stop of [images=>{images.canWrite=false;},images=>{images.disposed=true;}]){
+        let approve,removed=0;
+        const images=new Images({invokeMethodAsync:()=>new Promise(resolve=>{approve=resolve;})},true,()=>{},()=>{},{remove:()=>{removed++;return true;}});
+        const pending=images.remove({path:'photo.png'});stop(images);approve(true);
+        assert.equal(await pending,false);assert.equal(removed,0);
+    }
+});

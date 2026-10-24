@@ -54,6 +54,9 @@
     private Task Connection()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
     [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);
     [JSInvokable] public void Notice(string value)=>Snackbar.Add(value,Severity.Info);
+    [JSInvokable] public Task<bool> ConfirmRemoveAttachment(string path,bool sketch)=>CanWrite
+        ?DocDialogs.Confirm(Dialogs,sketch?"Remove sketch":"Remove image",$"Remove “{path}” from this note? The attachment will remain stored in the vault.","Remove")
+        :Task.FromResult(false);
     [JSInvokable] public Task Status(string value){_status=value;return InvokeAsync(StateHasChanged);}
     [JSInvokable] public Task Focus(bool focused)=>Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
     [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}

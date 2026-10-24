@@ -9,18 +9,50 @@
 @if(_error is not null) { <MudText Typo="Typo.caption" Color="Color.Error" Class="px-4 py-1 d-block">@_error</MudText> }
 else if(_list is null) { <MudProgressLinear Indeterminate="true" /> }
 else {
-    <div class="@(Compact||Card?"":"design-docs-vault-list")">
-    @foreach(var vault in _list.Vaults.Where(v=>!v.IsClosed)) {
-        @if(Compact) {
-            <MudNavLink Href="@Href(vault.Id)" Match="NavLinkMatch.All" Class="@(IsCurrent(vault.Id)?"design-docs-nav-current":null)" aria-current="@(IsCurrent(vault.Id)?"page":null)" Icon="@Icons.Material.Filled.Description">@vault.Name</MudNavLink>
-        } else if(Card) {
-            <a class="design-docs-card-link" href="@Href(vault.Id)"><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Color="Color.Primary" /><span class="text-truncate">@vault.Name</span></a>
-        } else {
-            <MudPaper Class="pa-4" Outlined="true" Elevation="0"><MudLink Href="@Href(vault.Id)">@vault.Name</MudLink></MudPaper>
+    @if(Compact||Card) {
+        @foreach(var vault in _list.Vaults.Where(v=>!v.IsClosed)) {
+            @if(Compact) {
+                <MudNavLink Href="@Href(vault.Id)" Match="NavLinkMatch.All" Class="@(IsCurrent(vault.Id)?"design-docs-nav-current":null)" aria-current="@(IsCurrent(vault.Id)?"page":null)" Icon="@Icons.Material.Filled.Description">@vault.Name</MudNavLink>
+            } else {
+                <a class="design-docs-card-link" href="@Href(vault.Id)"><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Color="Color.Primary" /><span class="text-truncate">@vault.Name</span></a>
+            }
         }
+        @if(!_list.Vaults.Any(v=>!v.IsClosed)) { <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1 d-block">No open design docs.</MudText> }
+        @if(_list.CanManage&&Compact) { <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__muted" OnClick="Create">New design doc</MudNavLink> }
+    } else if(!_list.Vaults.Any(v=>!v.IsClosed)) {
+        <MudPaper Elevation="0" Class="design-docs-vault-empty">
+            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.body1" Color="Color.Secondary">No design docs yet.</MudText>
+            @if(_list.CanManage) {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Create">Create one</MudButton>
+            }
+        </MudPaper>
+    } else {
+        <div class="design-docs-vault-list"><MudGrid>
+            @foreach(var vault in _list.Vaults.Where(v=>!v.IsClosed)) {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="1">
+                        <MudCardContent Class="design-docs-vault-open" @onclick="@(()=>Navigation.NavigateTo(Href(vault.Id)))">
+                            <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" />
+                            <MudText Typo="Typo.h4" Class="text-truncate flex-grow-1">@vault.Name</MudText>
+                        </MudCardContent>
+                        @if(_list.CanManage) {
+                            <MudCardActions>
+                                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit" OnClick="@(()=>Rename(vault))">Rename</MudButton>
+                                <MudSpacer />
+                                <MudButton Size="Size.Small" OnClick="@(()=>Change(vault,vault.Name,true))">Close</MudButton>
+                            </MudCardActions>
+                        }
+                    </MudCard>
+                </MudItem>
+            }
+            @if(_list.CanManage) {
+                <MudItem xs="12" sm="6" md="4"><MudTooltip Text="New design doc" RootClass="h-100">
+                    <button type="button" class="design-docs-vault-add" aria-label="New design doc" @onclick="Create"><MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Large" /></button>
+                </MudTooltip></MudItem>
+            }
+        </MudGrid></div>
     }
-    </div>
-    @if(!_list.Vaults.Any(v=>!v.IsClosed)) { <MudText Typo="Typo.caption" Color="Color.Secondary" Class="px-4 py-1 d-block">No open design docs.</MudText> }
     @if(!Compact&&!Card&&_list.Vaults.Any(v=>v.IsClosed)) {
         <MudExpansionPanels Class="mt-6" Elevation="0"><MudExpansionPanel Style="opacity:.65">
             <TitleContent><div class="d-flex align-center" style="gap:.5rem"><MudIcon Icon="@Icons.Material.Filled.Archive" Size="Size.Small" /><MudText Typo="Typo.body2">Closed design docs (@_list.Vaults.Count(v=>v.IsClosed))</MudText></div></TitleContent>
@@ -28,17 +60,14 @@ else {
                 @foreach(var vault in _list.Vaults.Where(v=>v.IsClosed)) {
                     <MudListItem T="string" Icon="@Icons.Material.Filled.Description"><div class="d-flex align-center">
                         <MudText Typo="Typo.body2" Class="flex-grow-1">@vault.Name</MudText>
-                        @if(_list.CanManage){<MudButton Size="Size.Small" Color="Color.Primary" OnClick="@(()=>Reopen(vault))">Reopen</MudButton>}
+                        @if(_list.CanManage){<MudButton Size="Size.Small" Color="Color.Primary" OnClick="@(()=>Change(vault,vault.Name,false))">Reopen</MudButton>}
                         <MudButton Size="Size.Small" Href="@Href(vault.Id)">View</MudButton>
                     </div></MudListItem>
                 }
             </MudList></ChildContent>
         </MudExpansionPanel></MudExpansionPanels>
     }
-    @if(_list.CanManage&&!Card) {
-        @if(Compact) { <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__muted" OnClick="Create">New design doc</MudNavLink> }
-        else { <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="Create">New design doc</MudButton> }
-    }
+
 }
 @code {
     [Parameter,EditorRequired] public ProjectSummaryDto Project {get;set;}=null!;
@@ -47,9 +76,14 @@ else {
     private VaultListDto? _list;private string? _error;private Guid _loaded;private IAsyncDisposable? _subscription;
     private string Root=>$"api/ext/design-docs/projects/{Project.Id}/vaults";
     private bool IsCurrent(Guid id){var path=Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0];return path.Equals(Href(id).TrimStart('/'),StringComparison.OrdinalIgnoreCase)||path.StartsWith("docs/note/",StringComparison.OrdinalIgnoreCase)&&DesignDocsNavEvents.ActiveVault==id;}
-    private async Task Reopen(VaultDto vault){
-        try{await Api.SendAsync(HttpMethod.Put,Root+"/"+vault.Id,new VaultChange(vault.Name,false,vault.Version));DesignDocsNavEvents.Raise(Project.Id);await Load();}
-        catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);}
+    private async Task Rename(VaultDto vault) {
+        var name=await DocDialogs.Name(Dialogs,"Rename design doc",vault.Name);
+        if(name is not null&&name!=vault.Name)await Change(vault,name,vault.IsClosed);
+    }
+    private async Task Change(VaultDto vault,string name,bool closed) {
+        try{await Api.SendAsync(HttpMethod.Put,Root+"/"+vault.Id,new VaultChange(name,closed,vault.Version));DesignDocsNavEvents.Raise(Project.Id);}
+        catch(SoloApiException e)when(e.StatusCode==HttpStatusCode.Conflict){await Load();Snackbar.Add("Someone else changed this design doc first. It's been refreshed; try again.",Severity.Warning);}
+        catch(Exception e)when(e is SoloApiException or HttpRequestException){Snackbar.Add(e.Message,Severity.Error);}
     }
     private string Href(Guid id)=>$"/docs/{Project.Alias}/{id}";
     protected override async Task OnParametersSetAsync() {
