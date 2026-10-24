@@ -1,0 +1,264 @@
+{
+  "features" : [
+    "refractivity"
+  ],
+  "fill-specializations" : [
+    {
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.83264,1.00000,0.84017,1.00000",
+          "display-p3:0.76004,0.85236,0.56098,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "linear-gradient" : [
+          "display-p3:0.14478,0.06283,0.15612,1.00000",
+          "display-p3:0.07875,0.06341,0.19438,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "blur-material" : 0.1,
+      "layers" : [
+        {
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "YAY.png",
+          "name" : "YAY",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 1.5,
+            "translation-in-points" : [
+              307.5033947222223,
+              269.8498902
+            ]
+          }
+        }
+      ],
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "refractivity" : {
+        "depth" : 0.6270703125,
+        "enabled" : true,
+        "strength" : 0.4542578125
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : 0.1,
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode" : "screen",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.23241,0.89735,0.94039,1.00000",
+                  "display-p3:0.10343,0.25658,1.00000,1.00000"
+                ]
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.07548,1.00000,0.97622,1.00000",
+                  "display-p3:0.07609,0.40943,0.06928,1.00000"
+                ]
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "Rounded Rectangle.svg",
+          "name" : "Rounded Rectangle",
+          "opacity-specializations" : [
+            {
+              "value" : 0.2
+            },
+            {
+              "appearance" : "dark",
+              "value" : 0.3
+            }
+          ],
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              -503.24305155555567
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "refractivity" : {
+        "depth" : 0.08515625,
+        "enabled" : true,
+        "strength" : 0.34546875
+      },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.4
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : 0.1,
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode" : "screen",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.13493,0.84949,0.94039,1.00000",
+                  "display-p3:0.06397,0.07965,1.00000,1.00000"
+                ]
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.09899,0.94885,1.00000,1.00000",
+                  "display-p3:0.07674,0.40943,0.08592,1.00000"
+                ]
+              }
+            }
+          ],
+          "image-name" : "Rounded Rectangle2 2.svg",
+          "name" : "Rounded Rectangle2 2",
+          "opacity" : 0.6,
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              -252.24305955555565
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "refractivity" : {
+        "depth" : 0.08515625,
+        "enabled" : true,
+        "strength" : 0.34546875
+      },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.4
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : 0.1,
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode" : "screen",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.14218,0.88641,0.94039,1.00000",
+                  "display-p3:0.08953,0.10712,1.00000,1.00000"
+                ]
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.13634,0.94940,1.00000,1.00000",
+                  "display-p3:0.09108,0.40943,0.05746,1.00000"
+                ]
+              }
+            }
+          ],
+          "image-name" : "Rounded Rectangle3.svg",
+          "name" : "Rounded Rectangle3",
+          "opacity" : 0.8,
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0.5034722222221717,
+              -10.243055555555543
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "position" : {
+        "scale" : 0.9,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "refractivity" : {
+        "depth" : 0.08515625,
+        "enabled" : true,
+        "strength" : 0.34546875
+      },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.4
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
