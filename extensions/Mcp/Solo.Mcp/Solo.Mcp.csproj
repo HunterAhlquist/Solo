@@ -18,7 +18,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <Version>1.6.1</Version>
+    <Version>1.6.2</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,7 +31,7 @@
          own Solo.Extensibility through Solo.Api — the copy this binds to at
          runtime. The src project and the package share an ID, and left to
          itself NuGet can settle on the package there instead. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.0" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.1" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
