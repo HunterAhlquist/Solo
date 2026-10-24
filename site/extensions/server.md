@@ -201,7 +201,7 @@ public sealed class RoadmapDesignTimeFactory : IDesignTimeDbContextFactory<Roadm
 Add the design package to the project:
 
 ```xml
-<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
   <PrivateAssets>all</PrivateAssets>
 </PackageReference>
 ```

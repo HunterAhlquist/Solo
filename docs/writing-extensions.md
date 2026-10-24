@@ -39,7 +39,7 @@ A folder beside the solution, its own repository, or alongside core under `src/`
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
@@ -260,7 +260,7 @@ A Razor Class Library. Its `@page` routes join the app's router automatically, a
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
     <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.7.0" />
   </ItemGroup>

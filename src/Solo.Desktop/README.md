@@ -290,11 +290,13 @@ command after changing either, or after `build:icon`, since it draws
 `build/icon.png`. Electron can't start inside a sandboxed shell, so run it from
 an ordinary terminal.
 
-electron-builder's `latest` dist-tag on npm sits at 26.15.3 while the newest
-published 26.x is 26.17.0 (tagged `v26`), so `npm outdated` reports the pinned
-version as *ahead* of latest and a bare `npm install electron-builder@latest`
-would quietly downgrade it. The floor here is `^26.17.0` so the range itself
-refuses the older build; `npm ci` follows the lockfile either way.
+electron-builder's `latest` dist-tag on npm has lagged the newest 26.x before
+(it sat at 26.15.3 while `v26` was at 26.17.0). When it does, `npm outdated`
+reports the pinned version as *ahead* of latest and a bare
+`npm install electron-builder@latest` quietly downgrades it, so check
+`npm view electron-builder dist-tags` before bumping. The floor here is
+`^26.18.0` so the range itself refuses an older build; `npm ci` follows the
+lockfile either way.
 
 CI does this automatically: pushing a `desktop-v*` tag runs
 [release-desktop.yml](../../.github/workflows/release-desktop.yml), which
