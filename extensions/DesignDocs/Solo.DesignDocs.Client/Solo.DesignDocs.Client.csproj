@@ -15,7 +15,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
     <!-- Keep the contract package out of host tests, which must bind to the host's assembly. -->
-    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.11.0" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.11.1" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

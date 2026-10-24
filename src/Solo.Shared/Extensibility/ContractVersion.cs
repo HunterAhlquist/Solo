@@ -68,7 +68,7 @@ namespace Solo.Shared.Extensibility;
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.11.0";
+    public const string Current = "1.11.1";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than
