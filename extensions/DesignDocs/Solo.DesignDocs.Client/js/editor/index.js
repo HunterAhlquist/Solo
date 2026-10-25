@@ -110,6 +110,7 @@ export function mountEditor(root, bridge, options) {
                 else view.dispatch({effects:EditorView.scrollIntoView(list[index].from,{y:'start'})});
             }
         },
+        waitForSave:timeout=>provider.waitForSave(timeout),
         presence:users=>provider.presence(users),
         insert,
         chooseImage:()=>images.choose(),

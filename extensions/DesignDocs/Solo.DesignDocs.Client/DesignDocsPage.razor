@@ -155,7 +155,7 @@ else if(_activeVaultId==Guid.Empty) {
     private async Task SetExpanded(DocTreeExpansion change){if(change.Expanded)_openFolders.Add(change.Id);else _openFolders.Remove(change.Id);await SavePreferences();}
     private async Task SetFontScale(int scale){_fontScale=scale;await SavePreferences();}
     private async Task SetMarginWidth(int width){_marginWidth=width;await SavePreferences();}
-    private async Task Open(Guid id){_rememberedNote=id;await SavePreferences();var module=await DesignDocsAssets.ModuleAsync(Js,new(Api));if(await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;Navigation.NavigateTo(NoteAddress.Url(id));}
+    private async Task Open(Guid id){var module=await DesignDocsAssets.ModuleAsync(Js,new(Api));if(await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;Navigation.NavigateTo(NoteAddress.Url(id));}
     private async Task Run(Func<Task> action){try{await action();await Load();}catch(SoloApiException e){Snackbar.Add(e.Message,Severity.Error);await Load();}}
     private async Task Add(bool folder,Guid? parent) {
         var name=await DocDialogs.Name(Dialogs,folder?"New folder":"New note");if(name is null)return;

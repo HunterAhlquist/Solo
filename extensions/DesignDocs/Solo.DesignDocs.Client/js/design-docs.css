@@ -240,3 +240,5 @@ html.solo-desktop--glass .design-docs-image-viewer:not(.is-presented)::backdrop 
 .design-docs-image-viewer .design-docs-viewer-remove { color:var(--mud-palette-error); }
 
 .design-docs-spelling-error { text-decoration:underline wavy var(--mud-palette-error); text-underline-offset:3px; cursor:pointer; }
+
+.design-docs-save-wait { position:fixed; right:24px; bottom:24px; z-index:2000; display:flex; gap:12px; align-items:center; padding:12px 16px; }

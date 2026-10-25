@@ -1,0 +1,34 @@
+@implements IDisposable
+@inject ISnackbar Snackbar
+<NavigationLock OnBeforeInternalNavigation="Navigating" />
+@if(_saving is not null){
+    <MudPaper Class="design-docs-save-wait" Elevation="4" role="status" aria-label="Saving changes before leaving">
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+        <MudText>Saving changes before leaving…</MudText>
+    </MudPaper>
+}
+@code {
+    [Parameter,EditorRequired] public Func<Task<bool>> Save {get;set;}=null!;
+    [Parameter] public string ContentName {get;set;}="document";
+    [Parameter] public EventCallback OnNavigating {get;set;}
+    private Task<bool>? _saving;
+    private bool _disposed;
+    public async Task<bool> TryLeaveAsync(){
+        if(_saving is {} active)return await active;
+        var completion=new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _saving=completion.Task;StateHasChanged();
+        try{
+            var saved=await Save();
+            if(!saved&&!_disposed)Snackbar.Add($"This {ContentName} is still syncing. It stays open so your changes are retained. Try again when saving is available.",Severity.Warning);
+            completion.TrySetResult(saved);return saved;
+        }catch(JSException){
+            if(!_disposed)Snackbar.Add($"Could not finish syncing this {ContentName}. It stays open. Try again when saving is available.",Severity.Warning);
+            completion.TrySetResult(false);return false;
+        }finally{completion.TrySetResult(false);_saving=null;if(!_disposed)StateHasChanged();}
+    }
+    private async Task Navigating(LocationChangingContext context){
+        if(!await TryLeaveAsync()){context.PreventNavigation();return;}
+        if(!context.CancellationToken.IsCancellationRequested)await OnNavigating.InvokeAsync();
+    }
+    public void Dispose()=>_disposed=true;
+}

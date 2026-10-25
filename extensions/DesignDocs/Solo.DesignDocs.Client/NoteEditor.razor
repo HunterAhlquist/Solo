@@ -8,6 +8,7 @@
 @inject ISoloContextMenu Menus
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+<SaveBeforeLeave Save="SaveBeforeNavigation" ContentName="note" />
 <div class="design-docs-note-status">
 @if(_status.Contains("read-only",StringComparison.OrdinalIgnoreCase)){
     <MudAlert Severity="@(_status.StartsWith("Offline",StringComparison.Ordinal)?Severity.Warning:Severity.Info)" Dense="true">@_status</MudAlert>
@@ -16,9 +17,9 @@
 </div>
 <div class="design-docs-note-body">
 @if(CanWrite){<MudPaper Class="design-docs-note-palette" Elevation="4" role="toolbar" aria-orientation="vertical" aria-label="Insert into note" aria-keyshortcuts="Alt+Insert">
-    <MudTooltip Text="Link a task"><MudIconButton Icon="@Icons.Material.Filled.AddLink" OnClick="InsertTask" aria-label="Link a task" /></MudTooltip>
-    <MudTooltip Text="New sketch"><MudIconButton Icon="@Icons.Material.Filled.Draw" OnClick="NewSketch" aria-label="New sketch" /></MudTooltip>
-    <MudTooltip Text="Add image"><MudIconButton Icon="@Icons.Material.Filled.AddPhotoAlternate" OnClick="AddImage" aria-label="Add image" /></MudTooltip>
+    <MudTooltip Text="Link a task"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.AddLink" OnClick="InsertTask" aria-label="Link a task" /></MudTooltip>
+    <MudTooltip Text="New sketch"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.Draw" OnClick="NewSketch" aria-label="New sketch" /></MudTooltip>
+    <MudTooltip Text="Add image"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.AddPhotoAlternate" OnClick="AddImage" aria-label="Add image" /></MudTooltip>
 </MudPaper>}
 <EditorSurface Ready="Mount" />
 </div>
@@ -50,6 +51,13 @@
             _vaultSubscription=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(Note.VaultId),async m=>{if(m.Kind=="image"&&_editor is not null)await _editor.InvokeVoidAsync("imagesChanged");});
             Live.ConnectionChanged+=Connection;await Live.SetPresenceAsync(ProjectId,Topic,PresenceMode.Viewing);await Connection();
         }catch(Exception e){await Status(e.Message);await Ready();}
+    }
+    private bool _leaving;
+    private async Task<bool> SaveBeforeNavigation(){
+        if(_editor is null)return true;
+        _leaving=true;await InvokeAsync(StateHasChanged);
+        try{await _editor.InvokeVoidAsync("suspend",true);return await _editor.InvokeAsync<bool>("waitForSave",10000);}
+        finally{_leaving=false;if(!_disposed&&_editor is not null){await _editor.InvokeVoidAsync("suspend",_sketchOpen);await InvokeAsync(StateHasChanged);}}
     }
     private Task Connection()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
     [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);
@@ -108,7 +116,7 @@
         try{var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");
             var sketch=sketches.SingleOrDefault(s=>s.NoteId==Note.Id&&(s.Name==name||s.Path==name+".sketch"));if(sketch is null){await Status("Sketch not found in this note.");return;}
             await _editor.InvokeVoidAsync("suspend",true);
-            var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullScreen=true,CloseButton=true,CloseOnEscapeKey=true,BackdropClick=false});
+            var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullScreen=true,CloseButton=false,CloseOnEscapeKey=false,BackdropClick=false});
             await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches",new object[]{new[]{sketch.Name,sketch.Path[..^7]}});
         }catch(SoloApiException e){await Status(e.Message);}
         finally{_sketchOpen=false;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("suspend",false);}}

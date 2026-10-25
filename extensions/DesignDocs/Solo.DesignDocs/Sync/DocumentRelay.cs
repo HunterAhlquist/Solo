@@ -31,18 +31,30 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
             return;
         }
         if(m.Kind=="sync") {
-            var rows=await db.DocUpdates.AsNoTracking().Where(u=>u.DocumentId==id).OrderBy(u=>u.Seq).ToListAsync(ct);
-            if(note?.SeedMarkdown is {} seed&&rows.Count==0) {
+            var history=db.DocUpdates.AsNoTracking().Where(u=>u.DocumentId==id);
+            var head=await history.MaxAsync(u=>(long?)u.Seq,ct)??0;
+            if(note?.SeedMarkdown is {} seed&&head==0) {
                 if(!writer){await reply.ToSenderAsync("unseeded",DocProtocol.Serialize(new {markdown=seed}),ct);return;}
                 var lease=memory.Seed(id,m.Sender.ConnectionId);
                 await reply.ToSenderAsync(lease.Connection==m.Sender.ConnectionId?"seed":"seeding",
                     DocProtocol.Serialize(new {markdown=lease.Connection==m.Sender.ConnectionId?seed:null,seedToken=lease.Token}),ct);return;
             }
+            var after=r.Batch&&long.TryParse(r.AfterSeq,out var checkpoint)&&checkpoint>=0&&checkpoint<=head?checkpoint:0;
+            var updates=await history.CountAsync(u=>!u.IsSnapshot,ct);
+            var rows=await history.Where(u=>u.Seq>after).OrderByDescending(u=>u.IsSnapshot).ThenBy(u=>u.Seq).ToListAsync(ct);
             await tx.CommitAsync(ct);
-            // Snapshot identities are newer than the tail they precede.
-            foreach(var row in rows.OrderByDescending(u=>u.IsSnapshot).ThenBy(u=>u.Seq))
-                await Chunks(reply,"state",row.Seq,row.Data,ct);
-            await reply.ToSenderAsync("synced",DocProtocol.Serialize(new {seq=(rows.Count==0?0:rows.Max(u=>u.Seq)).ToString(),updates=rows.Count(u=>!u.IsSnapshot),canWrite=writer}),ct);return;
+            if(r.Batch){
+                var group=new List<byte[]>();var length=4;long seq=0;
+                foreach(var row in rows){
+                    if(group.Count>0&&length+row.Data.Length+4>1024*1024){await Chunks(reply,"state-batch",seq,DocProtocol.Pack(group),ct,syncId:r.SyncId);group.Clear();length=4;seq=0;}
+                    group.Add(row.Data);length+=row.Data.Length+4;seq=Math.Max(seq,row.Seq);
+                }
+                if(group.Count>0)await Chunks(reply,"state-batch",seq,DocProtocol.Pack(group),ct,syncId:r.SyncId);
+            }else{
+                // Older clients still receive their original replay format.
+                foreach(var row in rows)await Chunks(reply,"state",row.Seq,row.Data,ct);
+            }
+            await reply.ToSenderAsync("synced",DocProtocol.Serialize(new {seq=head.ToString(),updates,canWrite=writer,syncId=r.Batch?r.SyncId:null}),ct);return;
         }
         if(!writer){await Refuse(vault.IsClosed?"closed":"read-only");return;}
         if(m.Kind is not ("update" or "update-part" or "compact" or "compact-part"))return;
@@ -62,13 +74,18 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
                 db.Add(new DocUpdate {DocumentId=id,NoteId=note?.Id,SketchId=sketch?.Id,IsSnapshot=true,ThroughSeq=upto,Data=data,UserId=m.Sender.UserId});
                 await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);return;
             }
+            var accepted=await db.DocUpdates.AsNoTracking().SingleOrDefaultAsync(u=>u.DocumentId==id&&u.ClientUpdateId==r.Id,ct);
+            if(accepted is not null){
+                if(!accepted.Data.AsSpan().SequenceEqual(data)){await Refuse("invalid-id");return;}
+                await tx.CommitAsync(ct);await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=accepted.Seq.ToString()}),ct);return;
+            }
             if(r.SeedToken is {} token&&note?.SeededByToken==token) {
                 var seq=await db.DocUpdates.Where(u=>u.DocumentId==id).MaxAsync(u=>(long?)u.Seq,ct)??0;
                 await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=seq.ToString()}),ct);return;
             }
             if(r.SeedToken is not null&&(note?.SeedMarkdown is null||!memory.HoldsSeed(id,m.Sender.ConnectionId,r.SeedToken.Value))) {await Refuse("seed-expired");return;}
             if(note?.SeedMarkdown is not null&&(r.SeedToken is null||!memory.HoldsSeed(id,m.Sender.ConnectionId,r.SeedToken.Value))) {await Refuse("seeding");return;}
-            var update=new DocUpdate {DocumentId=id,NoteId=note?.Id,SketchId=sketch?.Id,Data=data,UserId=m.Sender.UserId};db.Add(update);
+            var update=new DocUpdate {DocumentId=id,NoteId=note?.Id,SketchId=sketch?.Id,ClientUpdateId=r.Id,Data=data,UserId=m.Sender.UserId};db.Add(update);
             if(note?.SeedMarkdown is not null){note.SeedMarkdown=null;note.SeededByToken=r.SeedToken;}
             if(sketch is not null){sketch.LastEditedBy=m.Sender.UserId;sketch.LastEditedAt=DateTimeOffset.UtcNow;}
             await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);memory.Seeded(id);
@@ -76,11 +93,11 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
             await Chunks(reply,"update",update.Seq,data,ct,others:true);
         }catch(FormatException){await Refuse("invalid-payload");}
     }
-    private static async Task Chunks(ILiveMessageReply reply,string kind,long seq,byte[] bytes,CancellationToken ct,bool others=false)
+    private static async Task Chunks(ILiveMessageReply reply,string kind,long seq,byte[] bytes,CancellationToken ct,bool others=false,Guid? syncId=null)
     {
         var data=Convert.ToBase64String(bytes);var count=(data.Length+DocProtocol.ChunkLength-1)/DocProtocol.ChunkLength;
         for(var i=0;i<count;i++) {
-            var json=DocProtocol.Serialize(new {seq=seq.ToString(),index=i,count,data=data.Substring(i*DocProtocol.ChunkLength,Math.Min(DocProtocol.ChunkLength,data.Length-i*DocProtocol.ChunkLength))});
+            var json=DocProtocol.Serialize(new {seq=seq.ToString(),syncId,index=i,count,data=data.Substring(i*DocProtocol.ChunkLength,Math.Min(DocProtocol.ChunkLength,data.Length-i*DocProtocol.ChunkLength))});
             if(others)await reply.ToOthersAsync(kind,json,ct);else await reply.ToSenderAsync(kind,json,ct);
         }
     }

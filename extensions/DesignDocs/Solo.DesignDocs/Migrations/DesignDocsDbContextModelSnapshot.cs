@@ -85,6 +85,9 @@ namespace Solo.DesignDocs.Migrations
                     b.Property<DateTimeOffset>("At")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ClientUpdateId")
+                        .HasColumnType("uuid");
+
                     b.Property<byte[]>("Data")
                         .IsRequired()
                         .HasColumnType("bytea");
@@ -112,6 +115,9 @@ namespace Solo.DesignDocs.Migrations
                     b.HasIndex("NoteId");
 
                     b.HasIndex("SketchId");
+
+                    b.HasIndex("DocumentId", "ClientUpdateId")
+                        .IsUnique();
 
                     b.HasIndex("DocumentId", "Seq");
 

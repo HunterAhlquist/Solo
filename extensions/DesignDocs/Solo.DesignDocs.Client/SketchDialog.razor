@@ -5,9 +5,10 @@
 @inject IDialogService Dialogs
 <MudDialog Class="design-docs-sketch-dialog">
     <TitleContent>
-        <div class="design-docs-sketch-title"><MudText Typo="Typo.h6">@Sketch.Name</MudText><DocPresenceStrip ProjectId="ProjectId" Entries="_presence" /></div>
+        <div class="design-docs-sketch-title"><MudText Typo="Typo.h6">@Sketch.Name</MudText><DocPresenceStrip ProjectId="ProjectId" Entries="_presence" /><MudIconButton Class="mud-button-close" Icon="@Icons.Material.Filled.Close" OnClick="RequestClose" aria-label="Close" /></div>
     </TitleContent>
     <DialogContent>
+        <SaveBeforeLeave @ref="_saveGuard" Save="SaveBeforeClose" ContentName="sketch" OnNavigating="CloseSaved" />
         <div class="design-docs-sketch-shell">
             <EditorSurface Ready="Mount" />
             <MudPaper Class="design-docs-sketch-palette design-docs-sketch-tool-palette" Elevation="4" role="toolbar" aria-label="Drawing tools">
@@ -55,6 +56,11 @@
     [Parameter,EditorRequired] public SketchDto Sketch {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
     private string _tool="pen",_ink="theme";private int _level;private bool _constrain,_writable,_touchDrawing,_supportsTouch;
+    private SaveBeforeLeave? _saveGuard;
+    private Task<bool> SaveBeforeClose()=>_sketch is null?Task.FromResult(true):_sketch.InvokeAsync<bool>("waitForSave",10000).AsTask();
+    private async Task RequestClose(){if(_saveGuard is not null&&await _saveGuard.TryLeaveAsync())CloseSaved();}
+    private void CloseSaved(){if(!_disposed)Dialog.Close();}
+    [JSInvokable] public Task Close()=>RequestClose();
     private static readonly (string Id,string Label,string Icon)[] Tools=[("pen","Pen",Icons.Material.Filled.Edit),("eraser","Eraser",EraserIcon),("rectangle","Rectangle",Icons.Material.Filled.CropSquare),("ellipse","Ellipse",Icons.Material.Filled.RadioButtonUnchecked),("select","Box select",Icons.Material.Filled.SelectAll),("lasso","Lasso select",Icons.Material.Filled.Gesture),("text","Text",Icons.Material.Filled.TextFields)];
     // Material Symbols' ink_eraser uses a 960-unit view box; MudIcon uses 24.
     private const string EraserIcon="<g transform='scale(.025) translate(0 960)'><path d='M690-240h190v80H610l80-80Zm-500 80-85-85q-23-23-23.5-57t22.5-58l440-456q23-24 56.5-24t56.5 23l199 199q23 23 23 57t-23 57L520-160H190Zm296-80 314-322-198-198-442 456 64 64h262Zm-6-240Z' /></g>";
