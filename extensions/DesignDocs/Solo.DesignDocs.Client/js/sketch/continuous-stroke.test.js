@@ -54,3 +54,50 @@ test('a continuous coalesced Pencil stroke stays writable and saves every sample
     assert.ok(packets.every(packet=>packet.size<=hubLimit),'all live messages must fit the hub envelope');
     assert.ok(!writable.includes(false),'saving the full stroke must stay writable');
 });
+
+test('closing commits a held Pencil stroke and waits for its acknowledgment; timeout keeps it editable',async t=>{
+    const dom=installDOM(),remote=new Y.Doc(),pending=[];let sketch;
+    const bridge={invokeMethodAsync:async(method,kind,raw)=>{
+        if(method==='Send'&&kind==='update'){const packet=JSON.parse(raw);pending.push(packet);Y.applyUpdate(remote,decode(packet.data));}
+        return 0;
+    }};
+    sketch=await mountSketch(dom.root,bridge,{canWrite:true,meta:{pageSize:'A5',pattern:'dots'},explosionUrl:'/unused'});
+    t.after(()=>{try{sketch.dispose();remote.destroy();}finally{dom.restore();}});
+    sketch.connected(true);await sketch.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await wait(90);
+    await sketch.receive('ack',JSON.stringify({id:pending.shift().id,seq:'1'}));
+    const canvas=dom.root.querySelector('canvas'),viewport=dom.root.querySelector('.design-docs-sketch-viewport');
+    const point={pointerType:'pen',pointerId:7,button:0,clientX:200,clientY:200,pressure:.6};
+    canvas.emit('pointerdown',point);viewport.emit('pointermove',{...point,clientX:240});
+    assert.equal(await sketch.waitForSave(40),false);
+    assert.equal(remote.getArray('ops').length,1,'closing commits the unfinished stroke before draining');
+    let finished=false;const saved=sketch.waitForSave(1000).then(value=>{finished=true;return value;});await wait(40);
+    assert.equal(finished,false);await sketch.receive('ack',JSON.stringify({id:pending.shift().id,seq:'2'}));assert.equal(await saved,true);
+});
+
+test('a disconnect retains the active stroke and resends it when writing resumes',async t=>{
+    const dom=installDOM(),remote=new Y.Doc();let sketch;
+    const bridge={invokeMethodAsync:async(method,kind,raw)=>{
+        if(method==='Send'&&kind==='update'){const packet=JSON.parse(raw);Y.applyUpdate(remote,decode(packet.data));await sketch.receive('ack',JSON.stringify({id:packet.id,seq:'2'}));}
+        return 0;
+    }};
+    sketch=await mountSketch(dom.root,bridge,{canWrite:true,meta:{pageSize:'A5',pattern:'dots'},explosionUrl:'/unused'});
+    t.after(()=>{try{sketch.dispose();remote.destroy();}finally{dom.restore();}});
+    sketch.connected(true);await sketch.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await wait(90);
+    const canvas=dom.root.querySelector('canvas'),viewport=dom.root.querySelector('.design-docs-sketch-viewport');
+    const point={pointerType:'pen',pointerId:7,button:0,clientX:200,clientY:200,pressure:.6};
+    canvas.emit('pointerdown',point);viewport.emit('pointermove',{...point,clientX:240});sketch.connected(false);
+    assert.equal(await sketch.waitForSave(30),false);
+    sketch.connected(true);await sketch.receive('synced',JSON.stringify({seq:'1',updates:1,canWrite:true}));
+    assert.equal(await sketch.waitForSave(1000),true);assert.equal(remote.getArray('ops').length,1);
+});
+
+test('Escape from the canvas or text tool requests a guarded close and removes its handler on dispose',async()=>{
+    const dom=installDOM(),calls=[];let sketch;
+    try{
+        sketch=await mountSketch(dom.root,{invokeMethodAsync:async method=>{calls.push(method);return 0;}},{canWrite:true,meta:{pageSize:'A5',pattern:'dots'},explosionUrl:'/unused'});
+        const canvas=dom.root.querySelector('canvas');const text=dom.document.createElement('textarea');dom.root.append(text);
+        for(const target of [canvas,text]){const event=target.emit('keydown',{key:'Escape'});assert.equal(event.defaultPrevented,true);}
+        assert.equal(calls.filter(method=>method==='Close').length,2);
+        sketch.dispose();sketch=null;canvas.emit('keydown',{key:'Escape'});assert.equal(calls.filter(method=>method==='Close').length,2);
+    }finally{sketch?.dispose();dom.restore();}
+});

@@ -118,3 +118,100 @@ test('a failed durable update still interrupts editing and retains the pending c
         assert.equal(p.canWrite,false);assert.equal(p.pending.size,1);assert.equal(p.doc.getArray('ops').get(0).id,'pending');
     }finally{p.dispose();}
 });
+
+test('slow acknowledgments leave one packet in flight and merge later edits',async()=>{
+    const sent=[],p=new Provider({send:async(kind,raw)=>{sent.push([kind,JSON.parse(raw)]);return 0;}},{canWrite:true});
+    const remote=new Y.Doc();
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+        p.doc.getText('markdown').insert(0,'First');p.flush();await p.queue;
+        for(let i=0;i<12;i++){p.doc.getText('markdown').insert(p.doc.getText('markdown').length,' next');p.flush();}
+        assert.equal(p.pending.size,1,'unsent edits must not become a growing packet queue');
+        const first=sent.find(([kind])=>kind==='update')[1];Y.applyUpdate(remote,decode(first.data));
+        await p.receive('ack',JSON.stringify({id:first.id,seq:'1'}));await p.queue;
+        const packets=sent.filter(([kind])=>kind==='update');assert.equal(packets.length,2);
+        Y.applyUpdate(remote,decode(packets[1][1].data));assert.equal(remote.getText('markdown').toString(),p.doc.getText('markdown').toString());
+    }finally{p.dispose();remote.destroy();}
+});
+test('leaving waits for the last server acknowledgment, including edits made behind an in-flight packet',async()=>{
+    const sent=[],p=new Provider({send:async(kind,raw)=>{sent.push([kind,JSON.parse(raw)]);return 0;}},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+        p.doc.getText('markdown').insert(0,'First');let finished=false;
+        const saved=p.waitForSave(1500).then(value=>{finished=true;return value;});await tick();
+        p.doc.getText('markdown').insert(5,' and second');
+        await p.receive('ack',JSON.stringify({id:sent.find(([kind])=>kind==='update')[1].id,seq:'1'}));await tick();
+        assert.equal(finished,false,'a first ack cannot discard the later unsent edit');
+        const last=sent.filter(([kind])=>kind==='update').at(-1)[1];
+        await p.receive('ack',JSON.stringify({id:last.id,seq:'2'}));assert.equal(await saved,true);
+    }finally{p.dispose();}
+});
+test('a save timeout retains unacknowledged edits and a later retry can finish',async()=>{
+    const p=new Provider({send:async()=>0},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+        p.doc.getArray('ops').push([{id:'retained'}]);
+        assert.equal(await p.waitForSave(30),false);assert.equal(p.pending.size,1);assert.equal(p.doc.getArray('ops').get(0).id,'retained');
+        const saved=p.waitForSave(1000);await p.receive('ack',JSON.stringify({id:[...p.pending.keys()][0],seq:'1'}));assert.equal(await saved,true);
+    }finally{p.dispose();}
+});
+
+test('reconnect resumes only from a completed replay, never from a later acknowledgment',async()=>{
+    const sent=[],p=new Provider({send:async(kind,raw)=>{sent.push([kind,JSON.parse(raw)]);return 0;}},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'5',updates:5,canWrite:true,syncId:p.syncId}));
+        p.doc.getText('markdown').insert(0,'local');p.flush();
+        await p.receive('ack',JSON.stringify({id:[...p.pending.keys()][0],seq:'8'}));
+        p.connected(false);p.connected(true);await p.queue;
+        assert.equal(sent.filter(([kind])=>kind==='sync').at(-1)[1].afterSeq,'5','sequences 6 and 7 may belong to a collaborator');
+        const current=p.syncId;p.connected(true);
+        await p.receive('synced',JSON.stringify({seq:'99',updates:99,canWrite:true,syncId:current}));
+        assert.equal(p.synced,false);assert.equal(p.checkpoint,'5');
+    }finally{p.dispose();}
+});
+
+function packUpdates(updates){
+    const bytes=new Uint8Array(4+updates.reduce((sum,u)=>sum+4+u.length,0)),view=new DataView(bytes.buffer);
+    view.setUint32(0,updates.length,true);let offset=4;
+    for(const update of updates){view.setUint32(offset,update.length,true);offset+=4;bytes.set(update,offset);offset+=update.length;}
+    return bytes;
+}
+test('batched multipart replay merges many updates and preserves atomic sketch loading',async()=>{
+    const source=new Y.Doc(),updates=[];source.on('update',u=>updates.push(u));
+    for(let i=0;i<20;i++)source.getArray('ops').push([{id:i,points:'x'.repeat(2000)}]);
+    const p=new Provider({send:async()=>0},{canWrite:false,atomicSync:true});
+    try{
+        p.connected(true);const chunks=parts(encode(packUpdates(updates)));
+        for(let i=chunks.length-1;i>=0;i--)await p.receive('state-batch',JSON.stringify({seq:'20',syncId:p.syncId,index:i,count:chunks.length,data:chunks[i]}));
+        assert.equal(p.doc.getArray('ops').length,0);
+        await p.receive('synced',JSON.stringify({seq:'20',updates:20,canWrite:false,syncId:p.syncId}));
+        assert.deepEqual(p.doc.getArray('ops').toArray(),source.getArray('ops').toArray());
+    }finally{p.dispose();source.destroy();}
+});
+test('presence coalesces behind a slow send instead of extending the durable queue',async()=>{
+    let release;const sent=[],blocked=new Promise(resolve=>release=resolve);
+    const p=new Provider({send:async(kind,raw)=>{sent.push([kind,JSON.parse(raw)]);if(kind==='update')await blocked;return 0;}},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await p.queue;
+        p.doc.getText('markdown').insert(0,'pending');p.flush();await new Promise(r=>setTimeout(r,0));
+        for(let i=0;i<100;i++)p.send('awareness',{data:String(i)});
+        release();await p.queue;
+        assert.deepEqual(sent.filter(([kind])=>kind==='awareness').map(([,p])=>p.data),['99']);
+    }finally{release();p.dispose();}
+});
+
+test('acknowledgment retries reuse the packet ID and start only after a slow send finishes',async t=>{
+    const sent=[];let release;const blocked=new Promise(resolve=>release=resolve);
+    const p=new Provider({send:async(kind,raw)=>{sent.push([kind,JSON.parse(raw)]);if(kind==='update')await blocked;return 0;}},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await p.queue;
+        t.mock.timers.enable({apis:['setTimeout']});
+        p.doc.getText('markdown').insert(0,'retry me');p.flush();await new Promise(setImmediate);
+        t.mock.timers.tick(6000);await new Promise(setImmediate);
+        assert.equal(sent.filter(([kind])=>kind==='update').length,1,'a blocked multipart send must not accumulate retries');
+        release();await new Promise(setImmediate);t.mock.timers.tick(25);await p.queue;
+        t.mock.timers.tick(5000);await new Promise(setImmediate);t.mock.timers.tick(25);await p.queue;
+        const packets=sent.filter(([kind])=>kind==='update');assert.equal(packets.length,2);assert.equal(packets[0][1].id,packets[1][1].id);
+        await p.receive('ack',JSON.stringify({id:packets[1][1].id,seq:'1'}));assert.equal(await p.waitForSave(),true);
+    }finally{release();p.dispose();t.mock.timers.reset();}
+});

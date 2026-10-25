@@ -51,6 +51,7 @@ public sealed class DesignDocsDbContext(DbContextOptions<DesignDocsDbContext> op
                 "(\"NoteId\" IS NOT NULL AND \"SketchId\" IS NULL AND \"DocumentId\" = \"NoteId\") OR (\"NoteId\" IS NULL AND \"SketchId\" IS NOT NULL AND \"DocumentId\" = \"SketchId\")"));
             e.HasKey(x => x.Seq); e.Property(x => x.Seq).UseIdentityAlwaysColumn();
             e.HasIndex(x => new { x.DocumentId, x.Seq });
+            e.HasIndex(x => new { x.DocumentId, x.ClientUpdateId }).IsUnique();
             // The exclusive FKs let the database cascade a polymorphic log without core references.
             e.HasOne<Note>().WithMany().HasForeignKey(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<Sketch>().WithMany().HasForeignKey(x => x.SketchId).OnDelete(DeleteBehavior.Cascade);
@@ -122,6 +123,7 @@ public sealed class DocUpdate
     public Guid DocumentId { get; set; }
     public Guid? NoteId { get; set; }
     public Guid? SketchId { get; set; }
+    public Guid? ClientUpdateId { get; set; }
     public bool IsSnapshot { get; set; }
     // A compacted row receives a new sequence identity, but covers only this prefix.
     public long ThroughSeq { get; set; }

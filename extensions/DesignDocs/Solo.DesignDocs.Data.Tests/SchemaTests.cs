@@ -47,8 +47,9 @@ public sealed class SchemaTests(PostgresFixture postgres)
         var vault = new Vault { Name = "Design" };
         var note = new Note { VaultId = vault.Id, Name = "First" };
         var sketch = new Sketch { VaultId = vault.Id, NoteId = note.Id, Name = "Plan" };
-        db.AddRange(vault, note, sketch, new DocUpdate { DocumentId = sketch.Id, SketchId = sketch.Id, Data = [1, 2] });
+        db.AddRange(vault, note, sketch);
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO ext_design_docs.\"DocUpdates\" (\"DocumentId\", \"SketchId\", \"Data\", \"UserId\", \"IsSnapshot\", \"ThroughSeq\", \"At\") VALUES ({sketch.Id}, {sketch.Id}, {new byte[]{1,2}}, {Guid.Empty}, FALSE, 0, NOW())");
         db.ChangeTracker.Clear();
         await migrator.MigrateAsync();
         var other = new Note { VaultId = vault.Id, Name = "Second" };
@@ -57,6 +58,7 @@ public sealed class SchemaTests(PostgresFixture postgres)
         Assert.Equal(2, await db.Sketches.CountAsync());
         Assert.Equal(note.Id, (await db.Sketches.FindAsync(sketch.Id))!.NoteId);
         Assert.Equal(new byte[] { 1, 2 }, (await db.DocUpdates.SingleAsync()).Data);
+        Assert.Null((await db.DocUpdates.SingleAsync()).ClientUpdateId);
     }
 
     [SkippableFact]

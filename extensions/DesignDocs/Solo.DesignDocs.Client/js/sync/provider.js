@@ -1,11 +1,11 @@
 import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
-import { encode, decode, parts, sequence } from './protocol.js';
+import { encode, decode, parts, sequence, unpackUpdates } from './protocol.js';
 
 export class Provider {
     constructor(bridge, options = {}) {
         this.bridge = bridge; this.options = options; this.doc = new Y.Doc(); this.awareness = new Awareness(this.doc);
-        this.remote = {}; this.pending = new Map(); this.chunks = new Map(); this.seq = '0'; this.batch = [];this.loading=[];
+        this.remote = {}; this.pending = new Map(); this.chunks = new Map(); this.seq = '0'; this.batch = [];this.loading=[];this.checkpoint='0';this.epoch=0;this.waiters=new Set();
         this.online = false; this.synced = false; this.canWrite = false; this.disposed = false; this.queue = Promise.resolve();
         this.doc.on('update', (update, origin) => {
             if (this.disposed || origin === this.remote) return;
@@ -19,44 +19,81 @@ export class Provider {
             // A debounce prevents presence updates during continuous drawing.
             this.awarenessTimer ??= setTimeout(() => {this.awarenessTimer=null;this.send('awareness', {data: encode(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]))});}, 60);
         });
-        this.beforeUnload = e => { if (this.pending.size || this.batch.length) { e.preventDefault(); e.returnValue = ''; } };
+        this.beforeUnload = e => { if (this.hasPending || this.options.hasDraft?.()) { e.preventDefault(); e.returnValue = ''; } };
         if (typeof window !== 'undefined') window.addEventListener('beforeunload', this.beforeUnload);
         this.visibility = () => { if (!document.hidden && this.online) this.connected(true); };
         if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.visibility);
     }
+    get hasPending(){return this.pending.size>0||this.batch.length>0;}
     send(kind, value) {
+        const epoch=this.epoch;
+        if(kind==='awareness'){
+            this.latestAwareness=value;
+            if(this.awarenessQueued)return this.queue;
+            this.awarenessQueued=true;
+        }
         this.queue = this.queue.catch(() => {}).then(async () => {
-            if (!this.online || this.disposed) return;
+            if (!this.online || this.disposed||epoch!==this.epoch) return;
+            if(kind==='awareness'){value=this.latestAwareness;this.awarenessQueued=false;this.latestAwareness=null;}
             let result = await this.bridge.send(kind, JSON.stringify(value));
-            // A failed presence packet must not clear the held stroke.
+            if(epoch!==this.epoch||this.disposed)return;
+            // Presence is disposable; document writes remain pending until acknowledged.
             if (kind === 'awareness' && result !== 0) return;
-            if (result === 4) { await new Promise(r => setTimeout(r, 100)); if (this.online) result = await this.bridge.send(kind, JSON.stringify(value)); }
-            if (result !== 0) { this.setWritable(false); this.options.status?.('Sync interrupted; reconnecting…'); clearTimeout(this.retry); this.retry = setTimeout(() => { if (this.online) this.connected(true); }, 1500); }
+            if (result === 4) { await new Promise(r => setTimeout(r, 100)); if (this.online&&epoch===this.epoch) result = await this.bridge.send(kind, JSON.stringify(value)); }
+            if(epoch!==this.epoch||this.disposed)return;
+            if (result !== 0) this.interrupted();
             await new Promise(r => setTimeout(r, 25));
-        });
-        this.queue = this.queue.catch(() => {
-            if (kind === 'awareness') return;
-            this.setWritable(false); this.options.status?.("Connection interrupted · edits retained");
-            clearTimeout(this.retry); this.retry = setTimeout(() => { if (this.online) this.connected(true); }, 1500);
-        });
+        }).catch(() => {if(epoch===this.epoch&&kind!=='awareness'&&!this.disposed)this.interrupted();});
         return this.queue;
     }
+    interrupted(){
+        this.setWritable(false);this.synced=false;
+        this.options.status?.('Sync interrupted; edits retained…');clearTimeout(this.retry);
+        this.retry=setTimeout(()=>{if(this.online)this.connected(true);},1500);
+    }
     flush() {
-        clearTimeout(this.batchTimer); this.batchTimer = null;
-        if (!this.batch.length) return;
-        const packet = {id: crypto.randomUUID(), data: encode(Y.mergeUpdates(this.batch)), seedToken: this.seedToken};
-        this.batch = []; this.pending.set(packet.id, packet); if (this.synced) this.transmit(packet);
+        clearTimeout(this.batchTimer);this.batchTimer=null;
+        if(!this.batch.length||this.pending.size||!this.synced||!this.canWrite)return;
+        let size=0,count=0;
+        do{size+=this.batch[count++].byteLength;}while(count<this.batch.length&&size+this.batch[count].byteLength<=1024*1024);
+        const packet={id:crypto.randomUUID(),data:encode(Y.mergeUpdates(this.batch.splice(0,count))),seedToken:this.seedToken};
+        this.pending.set(packet.id,packet);this.options.status?.('Saving…');this.transmit(packet);
     }
     transmit(packet) {
-        const chunks = parts(packet.data);
-        if (chunks.length === 1) this.send('update', packet);
-        else chunks.forEach((data, index) => this.send('update-part', {...packet, data, index, count: chunks.length}));
+        const chunks=parts(packet.data);
+        if(chunks.length===1)this.send('update',packet);
+        else chunks.forEach((data,index)=>this.send('update-part',{...packet,data,index,count:chunks.length}));
+        const epoch=this.epoch;
+        return this.queue.then(()=>{
+            if(this.disposed||epoch!==this.epoch||!this.online||!this.synced||this.pending.get(packet.id)!==packet)return;
+            clearTimeout(this.ackRetry);
+            this.ackRetry=setTimeout(()=>this.transmit(packet),5000);
+        });
     }
+
     connected(value) {
-        this.online = value; this.synced = false; this.setWritable(false);
-        this.loading=[];
-        this.options.status?.(value ? 'Synchronizing…' : 'Offline · read-only');
-        if (value) this.send('sync', {afterSeq: this.seq});
+        this.online=value;this.synced=false;this.epoch++;this.queue=Promise.resolve();
+        this.awarenessQueued=false;this.latestAwareness=null;clearTimeout(this.ackRetry);clearTimeout(this.retry);
+        this.setWritable(false);this.loading=[];this.chunks.clear();
+        this.syncId=crypto.randomUUID();
+        this.options.status?.(value?'Synchronizing…':'Offline · changes retained');
+        if(value)this.send('sync',{afterSeq:this.checkpoint,batch:true,syncId:this.syncId});
+    }
+    waitForSave(timeout=10000){
+        this.flush();
+        if(!this.hasPending)return Promise.resolve(true);
+        return new Promise(resolve=>{
+            const waiter={finish:value=>{clearTimeout(waiter.timer);this.waiters.delete(waiter);resolve(value);}};
+            waiter.timer=setTimeout(()=>waiter.finish(false),Math.max(0,timeout));this.waiters.add(waiter);
+        });
+    }
+    saved(){if(!this.hasPending)for(const waiter of [...this.waiters])waiter.finish(true);}
+    compact(){
+        if(!this.canWrite||this.hasPending||!(this.updates>=500)||this.compactedThrough===this.checkpoint)return;
+        this.compactedThrough=this.checkpoint;
+        const data=encode(Y.encodeStateAsUpdate(this.doc)),chunks=parts(data),id=crypto.randomUUID();
+        if(chunks.length===1)this.send('compact',{uptoSeq:this.checkpoint,data});
+        else chunks.forEach((data,index)=>this.send('compact-part',{id,uptoSeq:this.checkpoint,index,count:chunks.length,data}));
     }
     setWritable(value) {
         this.canWrite = value && this.online && !!this.options.canWrite;
@@ -68,39 +105,43 @@ export class Provider {
     async receive(kind, raw) {
         if (!raw || this.disposed) return;
         const p = JSON.parse(raw);
-        if (kind === 'state' || kind === 'update') {
+        if (kind === 'state' || kind === 'state-batch' || kind === 'update') {
+            if(p.syncId&&p.syncId!==this.syncId)return;
             if (!Number.isInteger(p.count) || p.count < 1 || p.count > 512 || p.index < 0 || p.index >= p.count) return;
             const key = `${kind}:${p.seq}`; let item = this.chunks.get(key);
             if (!item) { if (this.chunks.size > 512) this.chunks.clear(); item = {values: new Array(p.count), at: Date.now()}; this.chunks.set(key, item); }
             item.values[p.index] = p.data;
             if (Array.from(item.values).some(v => v === undefined)) return;
-            const update=decode(item.values.join(''));this.chunks.delete(key);
+            const bytes=decode(item.values.join(''));this.chunks.delete(key);
+            const update=kind==='state-batch'?Y.mergeUpdates(unpackUpdates(bytes)):bytes;
             // Apply sketch history together to prevent visible replay.
             if(this.options.atomicSync&&!this.synced)this.loading.push(update);
             else{Y.applyUpdate(this.doc,update,this.remote);this.seq=sequence(this.seq,p.seq);}
         } else if (kind === 'synced') {
+            if(p.syncId&&p.syncId!==this.syncId)return;
+            if([...this.chunks.keys()].some(key=>key.startsWith('state'))){this.interrupted();return;}
             if(this.loading.length){Y.applyUpdate(this.doc,Y.mergeUpdates(this.loading),this.remote);this.loading=[];}
-            this.seq = sequence(this.seq, p.seq); this.synced = true; this.setWritable(p.canWrite);
-            this.options.status?.(this.canWrite ? 'Saved online' : 'Read-only');
-            this.flush(); for (const packet of this.pending.values()) this.transmit(packet);
-            if (this.canWrite && p.updates >= 500 && !this.pending.size) {
-                const data = encode(Y.encodeStateAsUpdate(this.doc)), chunks = parts(data), id = crypto.randomUUID();
-                if (chunks.length === 1) this.send('compact', {uptoSeq:p.seq, data});
-                else chunks.forEach((data,index) => this.send('compact-part', {id,uptoSeq:p.seq,index,count:chunks.length,data}));
-            }
-            this.copy();
+            // A write acknowledgment can skip unseen collaborator updates; only a completed replay is a checkpoint.
+            this.seq=sequence(this.seq,p.seq);this.checkpoint=p.seq;this.updates=p.updates;
+            this.synced=true;this.setWritable(p.canWrite);
+            if(this.pending.size)for(const packet of this.pending.values())this.transmit(packet);else this.flush();
+            this.options.status?.(this.hasPending?'Saving…':this.canWrite?'Saved online':'Read-only');
+            this.compact();this.copy();this.saved();
         } else if (kind === 'ack') {
-            this.pending.delete(p.id); this.seq = sequence(this.seq, p.seq); this.seedToken = null; this.copy();
-            this.options.status?.(this.pending.size ? 'Saving…' : 'Saved online');
+            if(!this.pending.delete(p.id))return;
+            clearTimeout(this.ackRetry);this.seq=sequence(this.seq,p.seq);this.seedToken=null;
+            this.flush();this.copy();this.compact();this.saved();
+            this.options.status?.(this.hasPending?'Saving…':'Saved online');
         } else if (kind === 'seed') {
             this.seedToken = p.seedToken; this.synced = true;
             if (!this.pending.size && !this.doc.getText('markdown').length) this.doc.getText('markdown').insert(0, p.markdown);
-            this.flush();
+            const seedUpdate=Y.mergeUpdates(this.batch.splice(0));
+            if(!this.pending.size&&seedUpdate.length>2){const packet={id:crypto.randomUUID(),data:encode(seedUpdate),seedToken:p.seedToken};this.pending.set(packet.id,packet);this.transmit(packet);}
             // An empty seed still needs a Yjs update to relinquish the lease.
             if (!this.pending.size) { const packet = {id: crypto.randomUUID(),data: encode(Y.encodeStateAsUpdate(this.doc)),seedToken:p.seedToken};this.pending.set(packet.id,packet);this.transmit(packet); }
-            this.send('sync', {afterSeq:'0'});
+            this.send('sync', {afterSeq:'0',batch:true,syncId:this.syncId});
         } else if (kind === 'seeding') {
-            clearTimeout(this.retry); this.retry = setTimeout(() => this.send('sync', {afterSeq:'0'}), 1000);
+            clearTimeout(this.retry); this.retry = setTimeout(() => this.send('sync', {afterSeq:'0',batch:true,syncId:this.syncId}), 1000);
         } else if (kind === 'unseeded') this.options.unseeded?.(p.markdown);
         else if (kind === 'awareness') applyAwarenessUpdate(this.awareness, decode(p.data), this.remote);
         else if (kind === 'refused') {
@@ -109,7 +150,7 @@ export class Provider {
         }
     }
     copy() {
-        if (!this.copyWanted || !this.synced || this.pending.size || !this.canWrite) return;
+        if (!this.copyWanted || !this.synced || this.hasPending || !this.canWrite) return;
         this.copyWanted = false; this.options.copy?.(this.doc.getText('markdown').toString(), this.seq);
     }
     presence(users) {
@@ -122,7 +163,8 @@ export class Provider {
     }
     dispose() {
         if (this.disposed) return;
-        this.disposed = true; clearTimeout(this.batchTimer); clearTimeout(this.copyTimer); clearTimeout(this.retry);clearTimeout(this.awarenessTimer);
+        this.disposed = true; clearTimeout(this.batchTimer); clearTimeout(this.copyTimer); clearTimeout(this.retry);clearTimeout(this.awarenessTimer);clearTimeout(this.ackRetry);
+        for(const waiter of [...this.waiters])waiter.finish(false);
         if (typeof window !== 'undefined') window.removeEventListener('beforeunload', this.beforeUnload);
         if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.visibility);
         this.awareness.destroy(); this.doc.destroy(); this.chunks.clear();this.loading=[];

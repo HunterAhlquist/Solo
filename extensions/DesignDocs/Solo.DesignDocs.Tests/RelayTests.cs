@@ -80,4 +80,42 @@ public sealed partial class VaultTests
         await b.Send("sync",new{afterSeq="0"});Assert.Equal(Updates[0],(await b.Next("state")).GetProperty("data").GetString());
         Assert.Equal(1,(await b.Next("synced")).GetProperty("updates").GetInt32());
     }
+    private static byte[][] Unpack(JsonElement payload)
+    {
+        using var stream=new MemoryStream(Convert.FromBase64String(payload.GetProperty("data").GetString()!));
+        using var reader=new BinaryReader(stream);
+        var count=reader.ReadInt32();var updates=new byte[count][];
+        for(var i=0;i<count;i++)updates[i]=reader.ReadBytes(reader.ReadInt32());
+        Assert.Equal(stream.Length,stream.Position);return updates;
+    }
+    [SkippableFact]
+    public async Task Batched_replay_resumes_from_checkpoint_and_includes_compacted_snapshots()
+    {
+        postgres.SkipUnlessDockerAvailable();var v=await Vault();var n=await NewNote(v);await using var p=await Connect(n.Id);
+        await p.Send("update",new{id=Guid.NewGuid(),data=Updates[0]});var checkpoint=(await p.Next("ack")).GetProperty("seq").GetString();
+        await p.Send("update",new{id=Guid.NewGuid(),data=Updates[1]});var head=(await p.Next("ack")).GetProperty("seq").GetString();
+        var syncId=Guid.NewGuid();await p.Send("sync",new{afterSeq="0",batch=true,syncId});
+        var batch=await p.Next("state-batch");Assert.Equal(syncId,batch.GetProperty("syncId").GetGuid());
+        Assert.Equal(Updates,Unpack(batch).Select(Convert.ToBase64String));await p.Next("synced");
+        await p.Send("sync",new{afterSeq=checkpoint,batch=true,syncId});
+        Assert.Equal(Updates[1],Convert.ToBase64String(Assert.Single(Unpack(await p.Next("state-batch")))));
+        Assert.Equal(head,(await p.Next("synced")).GetProperty("seq").GetString());
+        await p.Send("compact",new{uptoSeq=checkpoint,data=Updates[0]});
+        await p.Send("sync",new{afterSeq=checkpoint,batch=true,syncId});
+        Assert.Equal(Updates,Unpack(await p.Next("state-batch")).Select(Convert.ToBase64String));
+        var marker=await p.Next("synced");Assert.Equal(1,marker.GetProperty("updates").GetInt32());
+        await p.Send("sync",new{afterSeq=marker.GetProperty("seq").GetString(),batch=true,syncId});
+        Assert.Equal(marker.GetProperty("seq").GetString(),(await p.Next("synced")).GetProperty("seq").GetString());
+    }
+    [SkippableFact]
+    public async Task Lost_ack_retry_returns_the_same_sequence_without_duplicate_history()
+    {
+        postgres.SkipUnlessDockerAvailable();var v=await Vault();var n=await NewNote(v);await using var p=await Connect(n.Id);
+        var id=Guid.NewGuid();await p.Send("update",new{id,data=Updates[0]});var first=await p.Next("ack");
+        await p.Send("update",new{id,data=Updates[0]});Assert.Equal(first.GetProperty("seq").GetString(),(await p.Next("ack")).GetProperty("seq").GetString());
+        await p.Send("update",new{id,data=Updates[1]});Assert.Equal("invalid-id",(await p.Next("refused")).GetProperty("reason").GetString());
+        await p.Send("sync",new{afterSeq="0",batch=true});
+        Assert.Single(Unpack(await p.Next("state-batch")));Assert.Equal(1,(await p.Next("synced")).GetProperty("updates").GetInt32());
+    }
+
 }

@@ -16,7 +16,8 @@ export async function mountSketch(root,bridge,options){
     let frameRequest=null,active=null,selected=null,marquee=null,editing=null,frame=0,disposed=false,visible=true;
     let pan=[12,12],zoom=1,angle=0,gesture=null,dragPan=null,space=false,safariGesture=null,fitPending=true;
     let mousePressure=0,lastPointer=null,lastPointerType='mouse';
-    let tool='pen',ink='theme',level=0,constrain=false,clearing=false;
+    let tool='pen',ink='theme',level=0,constrain=false,clearing=false,closing=false;
+    const commands=new Set();
     const touches=new Map(),downloads=[],timers=new Set();
     const viewport=document.createElement('div');viewport.className='design-docs-sketch-viewport';viewport.tabIndex=0;
     viewport.setAttribute('aria-label','Drawing view. Scroll to pan; Ctrl or Command and scroll to zoom; Space and drag to pan.');
@@ -30,9 +31,9 @@ export async function mountSketch(root,bridge,options){
     const sound=new Audio(options.explosionSoundUrl);sound.preload='auto';
     const reduced=matchMedia('(prefers-reduced-motion: reduce)');
     const say=message=>{status.textContent=message;};
-    const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,atomicSync:true,
+    const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,atomicSync:true,hasDraft:()=>!!active||(selected?.pointer!==undefined&&(selected.dx!==0||selected.dy!==0))||clearing||commands.size>0,
         status:message=>{say(message);if(provider.synced&&provider.canWrite&&!meta.size)provider.doc.transact(()=>Object.entries(options.meta).forEach(([k,v])=>meta.set(k,v)),local);},
-        writable:value=>{bridge.invokeMethodAsync('Writable',value);if(!value){active=null;selected=null;marquee=null;viewport.querySelector('textarea')?.blur();requestDraw();}},
+        writable:value=>{bridge.invokeMethodAsync('Writable',value&&!closing);if(!value){finishStroke();if(selected?.pointer!==undefined)up({pointerId:selected.pointer,type:'pointerup'},true);selected=null;marquee=null;viewport.querySelector('textarea')?.blur();requestDraw();}},
     });
     const ops=provider.doc.getArray('ops'),texts=provider.doc.getMap('texts'),meta=provider.doc.getMap('meta');
     const undo=new Y.UndoManager([ops,texts,meta],{trackedOrigins:new Set([local])});
@@ -102,7 +103,7 @@ export async function mountSketch(root,bridge,options){
         text.observe(reflect);input.addEventListener('blur',()=>{text.unobserve(reflect);input.remove();editing=null;undo.stopCapturing();draw();},{once:true});input.focus();draw();
     }
     function down(e){
-        if(e.target.closest('textarea')||e.button>1||clearing)return;
+        if(e.target.closest('textarea')||e.button>1||clearing||closing)return;
         if(e.pointerType==='mouse')mousePressure=0;
         const mode=inputMode.start(e);if(mode==='ignore'){e.preventDefault();return;}
         if(e.pointerType==='pen'){touches.clear();gesture=null;dragPan=null;if(active?.pointerType==='touch'){active=null;provider.awareness.setLocalStateField('stroke',null);}}
@@ -135,7 +136,7 @@ export async function mountSketch(root,bridge,options){
         if(active?.pointerId===e.pointerId){const samples=e.getCoalescedEvents?.();for(const sample of samples?.length?samples:[e])active.points.push(point(sample));active.shift=e.shiftKey;requestDraw();}
         if(e.pointerType!=='touch')updateAwareness(p,e.pointerType);
     }
-    function up(e){
+    function up(e,retainDraft=false){
         if(inputMode.finish(e)){touches.delete(e.pointerId);return;}
         touches.delete(e.pointerId);if(gesture){if(touches.size===0)gesture=null;return;}if(dragPan?.pointer===e.pointerId){dragPan=null;return;}
         const [w,h]=pageSize(getMeta());
@@ -147,7 +148,7 @@ export async function mountSketch(root,bridge,options){
             }marquee=null;draw();return;
         }
         if(selected?.pointer===e.pointerId){
-            const value=selected;if(provider.canWrite&&e.type!=='pointercancel'&&(value.dx||value.dy)){
+            const value=selected;if((provider.canWrite||retainDraft)&&e.type!=='pointercancel'&&(value.dx||value.dy)){
                 undo.stopCapturing();let moved=[];
                 provider.doc.transact(()=>{
                     for(const id of value.textIds){const box=texts.get(id);if(box){box.set('x',box.get('x')+value.dx);box.set('y',box.get('y')+value.dy);}}
@@ -159,11 +160,28 @@ export async function mountSketch(root,bridge,options){
             value.dx=value.dy=0;delete value.pointer;draw();return;
         }
         if(active?.pointerId!==e.pointerId){return;}
-        active.points.push(point(e));if(provider.canWrite&&e.type!=='pointercancel'){
+        active.points.push(point(e));finishStroke(e.type!=='pointercancel');
+    }
+    function finishStroke(commit=true){
+        if(!active)return;
+        if(options.canWrite&&commit){
             let stroke=active;if(stroke.tool==='rectangle'||stroke.tool==='ellipse')stroke={...stroke,tool:'pen',points:shape(stroke.tool,stroke.points[0],stroke.points.at(-1),constrain||stroke.shift)};
             provider.doc.transact(()=>ops.push([stroke]),local);undo.stopCapturing();
         }
-        active=null;provider.awareness.setLocalStateField('stroke',null);if(e.pointerType!=='mouse'){lastPointer=null;provider.awareness.setLocalStateField('pointer',null);}draw();
+        const pointerType=active.pointerType;inputMode.finish(active);active=null;
+        provider.awareness.setLocalStateField('stroke',null);if(pointerType!=='mouse'){lastPointer=null;provider.awareness.setLocalStateField('pointer',null);}draw();
+    }
+    async function waitForSave(timeout=10000){
+        const deadline=Date.now()+timeout;
+        finishStroke();
+        if(selected?.pointer!==undefined)up({pointerId:selected.pointer,type:'pointerup'},true);
+        viewport.querySelector('textarea')?.blur();closing=true;
+        await bridge.invokeMethodAsync('Writable',false);
+        try{
+            while((commands.size||clearing)&&Date.now()<deadline&&!disposed)await new Promise(resolve=>setTimeout(resolve,25));
+            if(commands.size||clearing||disposed)return false;
+            return await provider.waitForSave(Math.max(0,deadline-Date.now()));
+        }finally{closing=false;if(!disposed)await bridge.invokeMethodAsync('Writable',provider.canWrite);}
     }
     async function changeMeta(next){
         const [w,h]=pageSize(next),[oldW,oldH]=pageSize(getMeta());
@@ -185,7 +203,7 @@ export async function mountSketch(root,bridge,options){
         explosion.hidden=false;transform();delay(erase,595);delay(()=>{explosion.hidden=true;explosion.removeAttribute('src');URL.revokeObjectURL(url);clearing=false;},1190);
     }
     async function command(action,value){
-        if(disposed)return;
+        if(disposed||closing)return;
         if(action==='touchDrawing'){inputMode.touchDrawing=!!value;return;}
         if(action==='zoomIn'){setView(anchoredView(currentView(),center(),zoom*1.25));return;}
         if(action==='zoomOut'){setView(anchoredView(currentView(),center(),zoom/1.25));return;}
@@ -230,6 +248,8 @@ export async function mountSketch(root,bridge,options){
     const preventNativeTouch=event=>{if(!editable(event.target)){event.preventDefault();clearNativeSelection();}};
     const nativeTouchOptions={capture:true,passive:false};
     const preventPalm=event=>{if(event.pointerType==='touch'&&inputMode.penId!==null&&!event.target.closest('textarea')){event.preventDefault();event.stopPropagation();}};
+    const closeKey=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();bridge.invokeMethodAsync('Close');}};
+    dialog?.addEventListener('keydown',closeKey,true);
     dialog?.addEventListener('selectstart',preventSelection,true);
     dialog?.addEventListener('contextmenu',preventSelection,true);
     document.addEventListener('selectionchange',clearNativeSelection);
@@ -243,6 +263,6 @@ export async function mountSketch(root,bridge,options){
     viewport.addEventListener('gesturestart',gestureStart,{passive:false});viewport.addEventListener('gesturechange',gestureChange,{passive:false});viewport.addEventListener('gestureend',gestureEnd,{passive:false});
     const stopDesktopRotation=bindDesktopRotation(viewport,currentView,view=>{if(!active&&!marquee&&!dragPan&&inputMode.penId===null)setView(view);});
     const resize=new ResizeObserver(()=>{if(fitPending&&viewport.clientWidth&&viewport.clientHeight)resetView();});resize.observe(viewport);
-    draw();return {command,connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
-        dispose(){disposed=true;peerCursors.dispose();stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('pointerleave',leavePointer);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
+    draw();return {waitForSave,command:(...args)=>{const task=command(...args);commands.add(task);task.finally(()=>commands.delete(task)).catch(()=>{});return task;},connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
+        dispose(){disposed=true;dialog?.removeEventListener('keydown',closeKey,true);peerCursors.dispose();stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('pointerleave',leavePointer);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
 }
