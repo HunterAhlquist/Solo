@@ -32,17 +32,36 @@ export function presenceCursor(kind,user){
 }
 export function viewportPoint(view,point){const a=view.angle*Math.PI/180;return [view.pan[0]+(Math.cos(a)*point[0]-Math.sin(a)*point[1])*view.zoom,view.pan[1]+(Math.sin(a)*point[0]+Math.cos(a)*point[1])*view.zoom];}
 export class SketchPresence {
-    constructor(viewport){this.layer=document.createElement('div');this.layer.className='design-docs-sketch-presence-layer';this.layer.setAttribute('aria-hidden','true');viewport.append(this.layer);this.markers=new Map();}
+    constructor(viewport){this.layer=document.createElement('div');this.layer.className='design-docs-sketch-presence-layer';this.layer.setAttribute('aria-hidden','true');viewport.append(this.layer);this.markers=new Map();this.frame=null;this.reduced=matchMedia('(prefers-reduced-motion: reduce)');}
+    advance(entry,now){
+        const progress=this.reduced.matches?1:Math.min(1,(now-entry.started)/80),blend=progress*(2-progress);
+        entry.point=entry.target.map((value,i)=>entry.from[i]+(value-entry.from[i])*blend);
+        return progress<1;
+    }
+    paint(entry){
+        const [x,y]=viewportPoint(this.view,entry.point);entry.root.style.transform=`translate(${x}px,${y}px)`;
+        const size=Math.max(2,Math.min(256,(entry.width??1)*this.view.zoom));entry.ring.style.width=entry.ring.style.height=size+'px';
+    }
+    animate(){
+        if(this.frame!==null)return;
+        this.frame=requestAnimationFrame(()=>{
+            this.frame=null;const now=performance.now();let moving=false;
+            for(const entry of this.markers.values()){moving=this.advance(entry,now)||moving;this.paint(entry);}
+            if(moving)this.animate();
+        });
+    }
     render(states,view){
-        const held=new Set();
+        this.view=view;const held=new Set(),now=performance.now();let moving=false;
         for(const [id,state]of states){
             const p=state.pointer;if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!state.user)continue;
             held.add(id);let entry=this.markers.get(id);const key=JSON.stringify(state.user);
-            if(!entry||entry.key!==key){entry?.root.remove();const root=document.createElement('span');root.className='design-docs-sketch-peer';const ring=document.createElement('span');ring.className='design-docs-brush-footprint';root.append(ring,presenceCursor('pointer',state.user));this.layer.append(root);entry={root,ring,key};this.markers.set(id,entry);}
-            const [x,y]=viewportPoint(view,[p.x,p.y]);entry.root.style.transform=`translate(${x}px,${y}px)`;entry.root.style.setProperty('--design-docs-user-color',state.user.color??'#a252d6');
-            const size=Math.max(2,Math.min(256,(p.width??1)*view.zoom));entry.ring.hidden=!['pen','eraser'].includes(p.tool);entry.ring.style.width=entry.ring.style.height=size+'px';
+            if(!entry||entry.key!==key){entry?.root.remove();const root=document.createElement('span');root.className='design-docs-sketch-peer';const ring=document.createElement('span');ring.className='design-docs-brush-footprint';root.append(ring,presenceCursor('pointer',state.user));this.layer.append(root);entry={root,ring,key,point:[p.x,p.y],from:[p.x,p.y],target:[p.x,p.y],started:now-80};this.markers.set(id,entry);}
+            if(entry.target[0]!==p.x||entry.target[1]!==p.y){this.advance(entry,now);entry.from=entry.point;entry.target=[p.x,p.y];entry.started=now;}
+            moving=this.advance(entry,now)||moving;entry.width=p.width;entry.ring.hidden=!['pen','eraser'].includes(p.tool);
+            entry.root.style.setProperty('--design-docs-user-color',state.user.color??'#a252d6');this.paint(entry);
         }
         for(const [id,entry]of this.markers)if(!held.has(id)){entry.root.remove();this.markers.delete(id);}
+        if(moving)this.animate();else if(this.frame!==null){cancelAnimationFrame(this.frame);this.frame=null;}
     }
-    dispose(){this.markers.clear();this.layer.remove();}
+    dispose(){if(this.frame!==null)cancelAnimationFrame(this.frame);this.frame=null;this.markers.clear();this.layer.remove();}
 }
