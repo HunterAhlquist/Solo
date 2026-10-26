@@ -2,8 +2,8 @@
 @inject ISoloClientApi HostApi
 <span class="design-docs-presence" aria-label="People in this document">
     @foreach(var person in Entries.DistinctBy(p=>p.UserId)){
-        <MudTooltip Text="@($"{person.DisplayName??"Someone"} · {person.Mode}")">
-            <MudAvatar Size="Size.Small" Class="design-docs-presence-avatar" Style="@($"--design-docs-user-color:{Color(person.UserId)}")">
+        <MudTooltip Text="@(person.DisplayName??"Someone")">
+            <MudAvatar Size="Size.Small" Class="design-docs-presence-avatar" role="img" aria-label="@(person.DisplayName??"Someone")" tabindex="0" Style="@($"--design-docs-user-color:{Color(person.UserId)}")">
                 @if(!_failed.Contains(person.UserId)){
                     <img src="@Api.Resolve($"api/users/{person.UserId}/avatar")" alt="@(person.DisplayName??"Someone")" @onerror="@(()=>_failed.Add(person.UserId))" />
                 }else{@Initials(person.DisplayName)}
