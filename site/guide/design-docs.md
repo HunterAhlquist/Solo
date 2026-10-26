@@ -97,9 +97,44 @@ Profile pictures identify people who view or edit the same note or sketch.
 Each person has a project color. The same color outlines their picture and cursor.
 Changes appear without a page reload.
 
-The editor becomes read-only while disconnected.
+An editor without a local download becomes read-only while disconnected.
 It synchronizes again when the connection returns.
-Keep the page open while edits are pending.
+Closing an editor waits for saving. If saving fails, the editor stays open.
+
+## Work offline
+
+Select **Keep this vault offline** in the vault header while connected.
+Wait until the synchronization menu says **ready offline**.
+The download includes every note, sketch, image, and the files needed to open the app.
+Offline use requires a Solo client build with offline support.
+
+Downloaded vaults support creating, reading, editing, moving, renaming, and deleting content without a connection.
+Changes save on the device before the editor closes.
+Queued document updates combine into larger packages when synchronization resumes.
+The synchronization agent uploads them while the app is open, including while you view other pages.
+Reopen the app after reconnecting to resume uploads.
+
+The app-bar synchronization menu lists downloaded vaults and pending changes.
+Use **Open downloaded vault** to return to a local vault.
+**Saved on this device** means local storage completed. It does not mean the server received the change.
+
+Concurrent text edits merge automatically.
+Conflicting metadata changes remain queued for review.
+Queued deletions stop if remote content changed.
+Use **Review pending changes** to retry a change or discard a queued metadata action.
+Export a recovery ZIP before discarding work you need.
+The ZIP contains readable files and the original synchronization data.
+
+Downloads belong to an account and instance.
+Signing out keeps queued data for that account but stops its synchronization.
+A new account cannot upload another account's queue.
+A server permission change can prevent uploads. The local work remains available for recovery.
+
+Safari can remove website storage under disk pressure.
+Solo requests persistent storage, but a download does not replace a backup.
+See [WebKit's storage policy](https://webkit.org/blog/14403/updates-to-storage-policy/).
+**Remove download** is available after pending changes finish synchronizing.
+Close the vault editor before removing its download.
 
 ## Close a design doc
 

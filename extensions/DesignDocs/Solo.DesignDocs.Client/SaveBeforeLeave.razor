@@ -19,10 +19,10 @@
         _saving=completion.Task;StateHasChanged();
         try{
             var saved=await Save();
-            if(!saved&&!_disposed)Snackbar.Add($"This {ContentName} is still syncing. It stays open so your changes are retained. Try again when saving is available.",Severity.Warning);
+            if(!saved&&!_disposed)Snackbar.Add($"This {ContentName} did not finish saving. It stays open so your changes are retained. Try again when saving is available.",Severity.Warning);
             completion.TrySetResult(saved);return saved;
         }catch(JSException){
-            if(!_disposed)Snackbar.Add($"Could not finish syncing this {ContentName}. It stays open. Try again when saving is available.",Severity.Warning);
+            if(!_disposed)Snackbar.Add($"Could not finish saving this {ContentName}. It stays open. Try again when saving is available.",Severity.Warning);
             completion.TrySetResult(false);return false;
         }finally{completion.TrySetResult(false);_saving=null;if(!_disposed)StateHasChanged();}
     }

@@ -15,7 +15,7 @@ for(const file of ['explosion.gif','explosion.wav','NOTICE.txt','MATERIAL-SYMBOL
 const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
 const notices = [];
 for (const path of Object.keys(lock.packages).filter(p => p.startsWith('node_modules/'))) {
-    if (path.includes('@esbuild/')) continue;
+    if (path.includes('@esbuild/') || lock.packages[path].dev) continue;
     const pkg = JSON.parse(await readFile(join(path, 'package.json'), 'utf8'));
     const files = await readdir(path);
     const license = files.find(f => /^licen[sc]e(\.|$)/i.test(f));

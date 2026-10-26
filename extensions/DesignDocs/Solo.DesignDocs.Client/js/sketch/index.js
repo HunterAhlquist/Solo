@@ -1,3 +1,4 @@
+import {sketchStrokes} from './objects.js';
 import { presenceTheme,SketchPresence } from '../presence.js';
 import { bindDesktopRotation } from './rotation.js';
 import * as Y from 'yjs';
@@ -31,12 +32,12 @@ export async function mountSketch(root,bridge,options){
     const sound=new Audio(options.explosionSoundUrl);sound.preload='auto';
     const reduced=matchMedia('(prefers-reduced-motion: reduce)');
     const say=message=>{status.textContent=message;};
-    const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,atomicSync:true,hasDraft:()=>!!active||(selected?.pointer!==undefined&&(selected.dx!==0||selected.dy!==0))||clearing||commands.size>0,
+    const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,documentId:options.documentId,projectId:options.projectId,vaultId:options.vaultId,atomicSync:true,hasDraft:()=>!!active||(selected?.pointer!==undefined&&(selected.dx!==0||selected.dy!==0))||clearing||commands.size>0,
         status:message=>{say(message);if(provider.synced&&provider.canWrite&&!meta.size)provider.doc.transact(()=>Object.entries(options.meta).forEach(([k,v])=>meta.set(k,v)),local);},
         writable:value=>{bridge.invokeMethodAsync('Writable',value&&!closing);if(!value){finishStroke();if(selected?.pointer!==undefined)up({pointerId:selected.pointer,type:'pointerup'},true);selected=null;marquee=null;viewport.querySelector('textarea')?.blur();requestDraw();}},
     });
-    const ops=provider.doc.getArray('ops'),texts=provider.doc.getMap('texts'),meta=provider.doc.getMap('meta');
-    const undo=new Y.UndoManager([ops,texts,meta],{trackedOrigins:new Set([local])});
+    const ops=provider.doc.getArray('ops'),texts=provider.doc.getMap('texts'),meta=provider.doc.getMap('meta'),cuts=provider.doc.getMap('cuts');
+    const undo=new Y.UndoManager([ops,texts,meta,cuts],{trackedOrigins:new Set([local])});
     const getMeta=()=>({...options.meta,...meta.toJSON()});
     const getTexts=()=>[...texts].map(([id,value])=>({id,...value.toJSON()}));
     let inkColor,fontFamily,paperColor,themeKey;
@@ -72,7 +73,7 @@ export async function mountSketch(root,bridge,options){
     function textBoxes(){return getTexts().map(t=>({...t,bounds:font.bounds(context,t)}));}
     function selection(region,textIds=new Set()){
         const [w]=pageSize(getMeta()),bounds=selectionBounds(region,w,textBoxes().filter(t=>textIds.has(t.id)).map(t=>t.bounds));
-        return bounds?{region,textIds,bounds,ids:new Set([...region.owners].map(n=>ops.get(n-1)?.id)),dx:0,dy:0}:null;
+        return bounds?{region,textIds,bounds,ids:new Set([...region.owners].map(n=>sketchStrokes(provider.doc)[n-1]?.id)),dx:0,dy:0}:null;
     }
     function draw(){
         if(disposed)return;const preview=[];
@@ -87,8 +88,8 @@ export async function mountSketch(root,bridge,options){
         transform();
     }
     const requestDraw=()=>{if(frameRequest!==null||disposed)return;frameRequest=requestAnimationFrame(()=>{frameRequest=null;draw();});};
-    const sceneChanged=()=>{scene.setScene(ops.toArray(),getMeta());requestDraw();};
-    ops.observe(sceneChanged);texts.observeDeep(requestDraw);meta.observe(()=>{sceneChanged();if(fitPending)resetView();});sceneChanged();provider.awareness.on('change',requestDraw);
+    const sceneChanged=()=>{scene.setScene(sketchStrokes(provider.doc),getMeta());requestDraw();};
+    ops.observe(sceneChanged);cuts.observe(sceneChanged);texts.observeDeep(requestDraw);meta.observe(()=>{sceneChanged();if(fitPending)resetView();});sceneChanged();provider.awareness.on('change',requestDraw);
     const observer=new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;});observer.observe(viewport);
     const boil=setInterval(()=>{if(visible&&!document.hidden&&!disposed&&!reduced.matches&&ops.length){frame=(frame+1)%3;requestDraw();}},250);
     function localPoint(e){if(!Number.isFinite(e.clientX)||!Number.isFinite(e.clientY))return center();const r=viewport.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];}
@@ -152,7 +153,12 @@ export async function mountSketch(root,bridge,options){
                 undo.stopCapturing();let moved=[];
                 provider.doc.transact(()=>{
                     for(const id of value.textIds){const box=texts.get(id);if(box){box.set('x',box.get('x')+value.dx);box.set('y',box.get('y')+value.dy);}}
-                    if(value.region.owners.size){const parts=splitSelection(ops.toArray(),value.region,w,h,value.dx,value.dy,value.ids);moved=parts.moved;ops.delete(0,ops.length);ops.insert(0,parts.stationary.concat(moved));}
+                    if(value.region.owners.size){
+                        for(const stroke of sketchStrokes(provider.doc).filter(s=>value.ids.has(s.id)&&s.tool!=='eraser')){
+                            const parts=splitSelection([stroke],value.region,w,h,value.dx,value.dy,value.ids);
+                            cuts.set(stroke.id,parts.stationary.concat(parts.moved));moved.push(...parts.moved);
+                        }
+                    }
                 },local);undo.stopCapturing();
                 value.region=shiftRegion(value.region,w,h,value.dx,value.dy);value.ids=new Set(moved.map(s=>s.id));
                 value.bounds={left:value.bounds.left+value.dx,top:value.bounds.top+value.dy,right:value.bounds.right+value.dx,bottom:value.bounds.bottom+value.dy};
@@ -209,7 +215,7 @@ export async function mountSketch(root,bridge,options){
         if(action==='zoomOut'){setView(anchoredView(currentView(),center(),zoom/1.25));return;}
         if(action==='fit'){resetView();return;}
         if(action==='export'){
-            const output=document.createElement('canvas');paint(output.getContext('2d'),ops.toArray(),getTexts(),getMeta(),{font,paperColor,themeInk:themeInk(),frame:0,exporting:true});
+            const output=document.createElement('canvas');paint(output.getContext('2d'),sketchStrokes(provider.doc),getTexts(),getMeta(),{font,paperColor,themeInk:themeInk(),frame:0,exporting:true});
             output.toBlob(blob=>{if(!blob||disposed)return;const url=URL.createObjectURL(blob);downloads.push(url);const a=document.createElement('a');a.href=url;a.download=options.name+'.png';document.body.append(a);a.click();a.remove();},'image/png');return;
         }
         if(!provider.canWrite||clearing)return;
@@ -263,6 +269,7 @@ export async function mountSketch(root,bridge,options){
     viewport.addEventListener('gesturestart',gestureStart,{passive:false});viewport.addEventListener('gesturechange',gestureChange,{passive:false});viewport.addEventListener('gestureend',gestureEnd,{passive:false});
     const stopDesktopRotation=bindDesktopRotation(viewport,currentView,view=>{if(!active&&!marquee&&!dragPan&&inputMode.penId===null)setView(view);});
     const resize=new ResizeObserver(()=>{if(fitPending&&viewport.clientWidth&&viewport.clientHeight)resetView();});resize.observe(viewport);
+    const removeSaveGuard=globalThis.solo?.offline?.guard(waitForSave);
     draw();return {waitForSave,command:(...args)=>{const task=command(...args);commands.add(task);task.finally(()=>commands.delete(task)).catch(()=>{});return task;},connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
-        dispose(){disposed=true;dialog?.removeEventListener('keydown',closeKey,true);peerCursors.dispose();stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('pointerleave',leavePointer);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
+        dispose(){disposed=true;removeSaveGuard?.();dialog?.removeEventListener('keydown',closeKey,true);peerCursors.dispose();stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('pointerleave',leavePointer);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
 }

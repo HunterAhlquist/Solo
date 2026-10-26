@@ -1,5 +1,5 @@
 @implements IAsyncDisposable
-@inject ISoloClientApi Api
+@inject ISoloClientApi HostApi
 @inject IJSRuntime Js
 <div @ref="_root" class="design-docs-hierarchy">
     <div data-doc-drop="" class="design-docs-root pa-2"><span>Vault root</span><MudSpacer /><MudIconButton Icon="@(AllExpanded?Icons.Material.Filled.UnfoldLess:Icons.Material.Filled.UnfoldMore)" Size="Size.Small" aria-label="@(AllExpanded?"Collapse all folders":"Expand all folders")" OnClick="@(()=>OnToggleAll.InvokeAsync())" /></div>
@@ -8,6 +8,7 @@
     </MudTreeView>
 </div>
 @code {
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [Parameter] public IReadOnlyList<DocTreeEntry> Entries {get;set;}=[];
     [Parameter] public bool CanWrite {get;set;}
     [Parameter] public Guid? SelectedNoteId {get;set;}

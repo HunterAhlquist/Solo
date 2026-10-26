@@ -1,0 +1,65 @@
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [AppBarExtension(Order=20)]
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject IJSRuntime Js
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider Auth
+@inject NavigationManager Navigation
+<MudMenu Icon="@(_status.Conflicts>0?Icons.Material.Filled.SyncProblem:_status.Online?Icons.Material.Filled.CloudDone:Icons.Material.Filled.CloudOff)" aria-label="Offline vault synchronization">
+    <MudText Class="px-4 py-2" Typo="Typo.body2">@Label</MudText>
+    @if(!string.IsNullOrEmpty(_status.Message)){<MudText Class="px-4 py-2" Typo="Typo.caption">@_status.Message</MudText>}
+    <MudMenuItem Icon="@Icons.Material.Filled.Sync" OnClick="Sync">Sync now</MudMenuItem>
+    @foreach(var vault in _status.Vaults){
+        <MudMenuItem Href="@($"/docs/{vault.ProjectAlias}/{vault.Id}")" Disabled="@(!vault.Ready)">Open downloaded vault</MudMenuItem>
+        <MudText Class="px-4 pt-2" Typo="Typo.subtitle2">@vault.Name @(!vault.Ready?"· download incomplete":vault.Pending>0?$"· {vault.Pending} pending":"· ready offline")</MudText>
+        <MudMenuItem OnClick="@(()=>Export(vault.Id))">Export recovery zip</MudMenuItem>
+        @if(vault.Conflicts>0){<MudMenuItem OnClick="@(()=>Problems(vault.Id))">Review pending changes</MudMenuItem>}
+        @if(vault.Pending==0){<MudMenuItem OnClick="@(()=>Forget(vault.Id))">Remove download</MudMenuItem>}
+    }
+</MudMenu>
+@code{
+    private static readonly JsonSerializerOptions Json=new(JsonSerializerDefaults.Web);
+    private readonly CancellationTokenSource _stop=new();
+    private string? _email;
+    private SyncStatus _status=new();private IJSObjectReference? _module,_agent;private DotNetObjectReference<OfflineSync>? _reference;private bool _disposed;
+    private string Label=>_status.Conflicts>0?$"{_status.Conflicts} changes need attention. Local work is retained.":_status.Pending>0?$"{(_status.Online?"Syncing":"Offline")} · {_status.Pending} pending changes":_status.Online?"Downloaded vaults are synced":"Offline · saved on this device";
+    protected override async Task OnInitializedAsync(){Auth.AuthenticationStateChanged+=AccountChanged;await Start();}
+    private async Task Start(){
+        _email=(await Auth.GetAuthenticationStateAsync()).User.FindFirst("email")?.Value;
+        var user=await Api.GetAsync<UserDto>("api/users/me");if(_disposed||_stop.IsCancellationRequested)return;_email=user.Email;_module=await DesignDocsAssets.ModuleAsync(Js,new(Api));if(_disposed||_stop.IsCancellationRequested)return;_reference??=DotNetObjectReference.Create(this);
+        _agent=await _module.InvokeAsync<IJSObjectReference>("startOffline",_reference,new{instance=Api.ResolveExternal("/").ToString(),userId=user.Id,assets=new[]{"design-docs.js","design-docs.css","spelling-worker.js","explosion.gif","explosion.wav"}.Select(file=>new DesignDocsApi(Api).Content(file).ToString()).Append(Api.Resolve("api/extensions/design-docs/content/spelling-worker.js").ToString()).ToArray()});
+    }
+    private async void AccountChanged(Task<AuthenticationState> state){
+        try{
+            var identity=(await state).User;
+            if(identity.Identity?.IsAuthenticated==true&&string.Equals(identity.FindFirst("email")?.Value,_email,StringComparison.OrdinalIgnoreCase))return;
+            _stop.Cancel();if(_agent is not null)await _agent.InvokeVoidAsync("dispose");
+            if(identity.Identity?.IsAuthenticated==true&&!_disposed)Navigation.NavigateTo("/",forceLoad:true);
+        }catch(JSException){}catch(TaskCanceledException){}
+    }
+    [JSInvokable] public Task Changed(SyncStatus status){_status=status;foreach(var project in status.Vaults.Select(v=>v.ProjectId).Distinct()){OfflineEvents.Raise(project);DesignDocsNavEvents.Raise(project);}return _disposed?Task.CompletedTask:InvokeAsync(StateHasChanged);}
+    [JSInvokable] public async Task<object> Request(string method,string path,string? body,bool binary,byte[]? bytes){
+        using var request=CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);request.CancelAfter(TimeSpan.FromSeconds(15));
+        try{
+            if(binary){var result=await Api.GetBytesAsync(path,request.Token);return new{status=200,bytes=result.Content};}
+            if(method=="GET")return new{status=200,value=await Api.GetAsync<JsonElement>(path,request.Token)};
+            if(path.EndsWith("/copy")){await Api.SendAsync(new(method),path,JsonSerializer.Deserialize<JsonElement>(body??"null"),request.Token);return new{status=204};}
+            return new{status=200,value=await Api.SendAsync<JsonElement>(new(method),path,JsonSerializer.Deserialize<JsonElement>(body??"null"),request.Token)};
+        }catch(SoloApiException e){return new{status=(int)e.StatusCode,error=e.Message,retryAfter=e.RetryAfter?.TotalMilliseconds};}
+        catch(HttpRequestException){return new{status=0};}
+        catch(TaskCanceledException){return new{status=0};}
+    }
+    private Task Sync()=>_agent is null?Task.CompletedTask:_agent.InvokeVoidAsync("sync").AsTask();
+    private async Task Problems(string id)=>await Dialogs.ShowAsync<OfflineProblems>("Pending offline changes",new DialogParameters<OfflineProblems>{{x=>x.VaultId,id}},new DialogOptions{CloseButton=true,MaxWidth=MaxWidth.Small,FullWidth=true});
+    private async Task Forget(string id){
+        if(_module is null||!await DocDialogs.Confirm(Dialogs,"Remove download","Remove this device's downloaded vault? The server keeps its copy.","Remove"))return;
+        try{await _module.InvokeVoidAsync("offlineAction","forget",null,id);}catch(JSException e){Snackbar.Add(e.Message,Severity.Warning);}
+    }
+    private Task Export(string id)=>_module is null?Task.CompletedTask:_module.InvokeVoidAsync("offlineAction","export",null,id).AsTask();
+    public async ValueTask DisposeAsync(){_disposed=true;Auth.AuthenticationStateChanged-=AccountChanged;_stop.Cancel();if(_agent is not null){await _agent.InvokeVoidAsync("dispose");await _agent.DisposeAsync();}_reference?.Dispose();_stop.Dispose();}
+    public sealed class SyncStatus{public int Pending{get;set;}public int Conflicts{get;set;}public bool Online{get;set;}=true;public string? Message{get;set;}public List<DownloadedVault> Vaults{get;set;}=[];}
+    public sealed class DownloadedVault{public string Id{get;set;}="";public Guid ProjectId{get;set;}public string ProjectAlias{get;set;}="";public string Name{get;set;}="";public bool Ready{get;set;}public int Pending{get;set;}public int Conflicts{get;set;}}
+}

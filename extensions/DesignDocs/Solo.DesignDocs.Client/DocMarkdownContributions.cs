@@ -1,4 +1,5 @@
 using MudBlazor;
+using Microsoft.JSInterop;
 using Solo.Shared.Dtos;
 using Solo.Shared.Extensibility;
 using System.Runtime.CompilerServices;
@@ -19,7 +20,7 @@ public sealed class DocLinkAction(IDialogService dialogs) : ISoloMarkdownEditorA
 }
 
 [MarkdownLinkProvider(Order=20)]
-public sealed class DocLinkLabels(ISoloClientApi api) : ISoloMarkdownLinkProvider
+public sealed class DocLinkLabels(ISoloClientApi api,IJSRuntime? js=null) : ISoloMarkdownLinkProvider
 {
     private sealed class Cache {public Dictionary<(Guid,string),(DateTimeOffset At,string Label)> Values {get;}=[];}
     private static readonly ConditionalWeakTable<ISoloClientApi,Cache> Caches=new();
@@ -28,10 +29,10 @@ public sealed class DocLinkLabels(ISoloClientApi api) : ISoloMarkdownLinkProvide
     public async ValueTask<IReadOnlyDictionary<string,string>> LabelsAsync(IReadOnlyList<string> urls,CancellationToken ct)
     {
         // Identity is part of the key: a WASM service scope outlives sign-out.
-        var user=await api.GetAsync<UserDto>("api/users/me",ct);var cache=Caches.GetOrCreateValue(api);var now=DateTimeOffset.UtcNow;
+        var client=js is null?api:OfflineApi.For(api,js);var user=await client.GetAsync<UserDto>("api/users/me",ct);var cache=Caches.GetOrCreateValue(api);var now=DateTimeOffset.UtcNow;
         var result=new Dictionary<string,string>();var missing=new List<string>();
         lock(cache){foreach(var url in urls.Distinct()){if(cache.Values.TryGetValue((user.Id,url),out var v)&&now-v.At<TimeSpan.FromSeconds(30))result[url]=v.Label;else missing.Add(url);}}
-        if(missing.Count>0){var fetched=await api.SendAsync<Dictionary<string,string>>(HttpMethod.Post,"api/ext/design-docs/links/labels",new Contracts.LabelsRequest(missing),ct);
+        if(missing.Count>0){var fetched=await client.SendAsync<Dictionary<string,string>>(HttpMethod.Post,"api/ext/design-docs/links/labels",new Contracts.LabelsRequest(missing),ct);
             lock(cache){if(cache.Values.Count>1000)cache.Values.Clear();foreach(var pair in fetched){cache.Values[(user.Id,pair.Key)]=(now,pair.Value);result[pair.Key]=pair.Value;}}}
         return result;
     }

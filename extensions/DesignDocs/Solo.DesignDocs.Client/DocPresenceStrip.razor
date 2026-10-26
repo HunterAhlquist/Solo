@@ -1,4 +1,5 @@
-@inject ISoloClientApi Api
+@inject IJSRuntime Js
+@inject ISoloClientApi HostApi
 <span class="design-docs-presence" aria-label="People in this document">
     @foreach(var person in Entries.DistinctBy(p=>p.UserId)){
         <MudTooltip Text="@($"{person.DisplayName??"Someone"} · {person.Mode}")">
@@ -11,6 +12,7 @@
     }
 </span>
 @code{
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [Parameter] public Guid ProjectId {get;set;}
     [Parameter] public IReadOnlyList<TopicPresenceEntry> Entries {get;set;}=[];
     private Guid _project;

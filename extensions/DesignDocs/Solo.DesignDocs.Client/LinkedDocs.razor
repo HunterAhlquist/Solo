@@ -1,7 +1,9 @@
+@inject IJSRuntime Js
 @attribute [TaskDetailExtension]
-@inject ISoloClientApi Api
+@inject ISoloClientApi HostApi
 @if(_links.Count>0){<div class="mb-3"><MudText Typo="Typo.caption">Linked docs</MudText>@foreach(var pair in _links){<MudChip T="string" Href="@pair.Key" Size="Size.Small">@pair.Value</MudChip>}</div>}
 @code{
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [Parameter,EditorRequired] public TaskDto Task {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
     [Parameter] public EventCallback OnChanged {get;set;}

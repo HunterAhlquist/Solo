@@ -14,9 +14,15 @@ public sealed class DesignDocsDbContext(DbContextOptions<DesignDocsDbContext> op
     public DbSet<DocImage> Images => Set<DocImage>();
     public DbSet<MemberColor> MemberColors => Set<MemberColor>();
 
+    public DbSet<OfflineReceipt> OfflineReceipts => Set<OfflineReceipt>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         b.HasDefaultSchema(Schema);
+        b.Entity<OfflineReceipt>(e => {
+            e.HasKey(x=>new{x.UserId,x.Id});e.Property(x=>x.Result).HasColumnType("jsonb");
+            e.Property(x=>x.Hash).HasMaxLength(64);e.HasIndex(x=>x.ProjectId);
+        });
         b.Entity<Vault>(e => {
             e.ToTable("Vaults"); e.Property(x => x.Name).HasMaxLength(200);
             e.HasIndex(x => new { x.ProjectId, x.Name }).IsUnique(); e.HasIndex(x => x.ProjectId);
@@ -156,4 +162,14 @@ public sealed class DesignDocsDesignTimeFactory : IDesignTimeDbContextFactory<De
     public DesignDocsDbContext CreateDbContext(string[] args) => new(new DbContextOptionsBuilder<DesignDocsDbContext>()
         .UseNpgsql("Host=localhost;Database=solo;Username=solo;Password=design-time-only",
             n => n.MigrationsHistoryTable("__EFMigrationsHistory", DesignDocsDbContext.Schema)).Options);
+}
+
+public sealed class OfflineReceipt
+{
+    public Guid UserId {get;set;}
+    public Guid Id {get;set;}
+    public Guid ProjectId {get;set;}
+    public Guid VaultId {get;set;}
+    public string Hash {get;set;}="";
+    public string Result {get;set;}="null";
 }

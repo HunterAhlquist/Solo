@@ -1,3 +1,4 @@
+import {sketchStrokes} from '../sketch/objects.js';
 import { unzipSync,zipSync } from 'fflate';
 import { parser } from '@lezer/markdown';
 import * as Y from 'yjs';
@@ -86,7 +87,7 @@ export function createTransfer(bridge,options){let plan,disposed=false;const url
             for(const note of manifest.notes){if(disposed)return;const state=await bridge.invokeMethodAsync('State',note.id);let markdown=markdownFromState(state);
                 for(const sketch of manifest.sketches.filter(s=>s.noteId===note.id)){
                     const state=await bridge.invokeMethodAsync('State',sketch.id),doc=new Y.Doc();try{for(const update of state.updates)Y.applyUpdate(doc,decode(update.data));
-                        const meta={pageSize:sketch.pageSize,orientation:sketch.orientation,pattern:sketch.pattern,...doc.getMap('meta').toJSON()},canvas=document.createElement('canvas');pageSize(meta);paint(canvas.getContext('2d'),doc.getArray('ops').toArray(),[...doc.getMap('texts')].map(([id,text])=>({id,...text.toJSON()})),meta,{font,frame:0,exporting:true});
+                        const meta={pageSize:sketch.pageSize,orientation:sketch.orientation,pattern:sketch.pattern,...doc.getMap('meta').toJSON()},canvas=document.createElement('canvas');pageSize(meta);paint(canvas.getContext('2d'),sketchStrokes(doc),[...doc.getMap('texts')].map(([id,text])=>({id,...text.toJSON()})),meta,{font,frame:0,exporting:true});
                         const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png')),data=new Uint8Array(await blob.arrayBuffer());const exported=exportSketch(markdown,sketch,note.path);files[exported.path]=data;bytes+=data.length;markdown=exported.markdown;
                     }finally{doc.destroy();}}
                 const content=encoder.encode(markdown);files[note.path]=content;bytes+=content.length;await bridge.invokeMethodAsync('Progress',`Exporting ${note.path}`);

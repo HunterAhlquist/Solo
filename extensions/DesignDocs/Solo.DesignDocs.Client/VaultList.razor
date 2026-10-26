@@ -1,6 +1,6 @@
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.Components.Routing
-@inject ISoloClientApi Api
+@inject ISoloClientApi HostApi
 @inject ISoloLiveTopics Live
 @inject IDialogService Dialogs
 @inject NavigationManager Navigation
@@ -70,6 +70,7 @@ else {
 
 }
 @code {
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [Parameter,EditorRequired] public ProjectSummaryDto Project {get;set;}=null!;
     [Parameter] public bool Card {get;set;}
     [Parameter] public bool Compact {get;set;}

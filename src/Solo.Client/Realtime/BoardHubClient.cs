@@ -20,11 +20,14 @@ namespace Solo.Client.Realtime;
 public sealed class BoardHubClient(
     InstanceConnection instance,
     ApiClient api,
-    ConnectionIdAccessor connections)
+    ConnectionIdAccessor connections,
+    Solo.Client.Offline.OfflineCache? offline = null)
     : IBoardHubClient, IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private HubConnection? _connection;
+    private Timer? _retry;
+    private bool _disposed;
     private Guid? _boardId;
     private (string EntityType, Guid EntityId, PresenceMode Mode)? _presence;
 
@@ -307,12 +310,38 @@ public sealed class BoardHubClient(
 
     private async Task EnsureStartedAsync()
     {
+        try { await StartCoreAsync(); }
+        catch
+        {
+            _retry ??= new Timer(async _ => await RetryAsync(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            throw;
+        }
+    }
+
+    private async Task RetryAsync()
+    {
+        if (_disposed || !await _gate.WaitAsync(0)) return;
+        try
+        {
+            await StartCoreAsync();
+            _retry?.Dispose();
+            _retry = null;
+        }
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException or InvalidOperationException or ApiException or HubException) { }
+        finally { _gate.Release(); }
+    }
+
+    private async Task StartCoreAsync()
+    {
+        if (_disposed) return;
+        if (offline is not null && await offline.IsOffline()) throw new HttpRequestException("The live connection is offline.");
         if (_connection is not null)
         {
             if (_connection.State == HubConnectionState.Disconnected)
             {
-                await _connection.StartAsync();
-                connections.ConnectionId = _connection.ConnectionId;
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await _connection.StartAsync(timeout.Token);
+                await RestoreConnectionAsync(_connection);
             }
 
             return;
@@ -323,7 +352,11 @@ public sealed class BoardHubClient(
                 // Asked again for every start and reconnect. In a browser the
                 // WebSocket's credential has to go in the URL, which proxies
                 // log, so it is a one-use ticket and never the sign-in itself.
-                options.AccessTokenProvider = async () => await api.GetHubTicketAsync())
+                options.AccessTokenProvider = async () =>
+                {
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    return await api.GetHubTicketAsync(timeout.Token);
+                })
             .WithAutomaticReconnect()
             .Build();
 
@@ -345,58 +378,60 @@ public sealed class BoardHubClient(
 
         connection.Reconnecting += _ => Notify();
         connection.Closed += _ => Notify();
-        connection.Reconnected += async _ =>
-        {
-            // A reconnect lands in a new connection id and empty groups: rejoin
-            // the board and the topics and restate presence, then let the page refetch.
-            connections.ConnectionId = connection.ConnectionId;
-            if (_boardId is { } boardId)
-            {
-                await connection.InvokeAsync(nameof(IBoardHubServer.JoinBoard), boardId);
-                if (_presence is { } presence)
-                {
-                    await connection.InvokeAsync(
-                        nameof(IBoardHubServer.SetPresence),
-                        presence.EntityType, presence.EntityId, presence.Mode);
-                }
-            }
-
-            foreach (var ((projectId, topic), held) in _topics.ToList())
-            {
-                try
-                {
-                    await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), projectId, topic);
-                    if (held.Mode != PresenceMode.None)
-                    {
-                        await connection.InvokeAsync(
-                            nameof(IBoardHubServer.SetTopicPresence), projectId, topic, held.Mode);
-                    }
-                }
-                catch (HubException)
-                {
-                    // Access lost while away, say: that topic stays quiet, the rest carry on.
-                    _topics.Remove((projectId, topic));
-                }
-            }
-
-            foreach (var topic in _userTopics.Keys.ToList())
-            {
-                try
-                {
-                    await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), topic);
-                }
-                catch (HubException)
-                {
-                    _userTopics.Remove(topic);
-                }
-            }
-
-            await Notify();
-        };
+        connection.Reconnected += _ => RestoreConnectionAsync(connection);
 
         _connection = connection;
-        await connection.StartAsync();
+        using var startTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await connection.StartAsync(startTimeout.Token);
+        await RestoreConnectionAsync(connection);
+    }
+
+    private async Task RestoreConnectionAsync(HubConnection connection)
+    {
+        // A reconnect lands in a new connection id and empty groups: rejoin
+        // the board and the topics and restate presence, then let the page refetch.
         connections.ConnectionId = connection.ConnectionId;
+        if (_boardId is { } boardId)
+        {
+            await connection.InvokeAsync(nameof(IBoardHubServer.JoinBoard), boardId);
+            if (_presence is { } presence)
+            {
+                await connection.InvokeAsync(
+                    nameof(IBoardHubServer.SetPresence),
+                    presence.EntityType, presence.EntityId, presence.Mode);
+            }
+        }
+
+        foreach (var ((projectId, topic), held) in _topics.ToList())
+        {
+            try
+            {
+                await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), projectId, topic);
+                if (held.Mode != PresenceMode.None)
+                {
+                    await connection.InvokeAsync(
+                        nameof(IBoardHubServer.SetTopicPresence), projectId, topic, held.Mode);
+                }
+            }
+            catch (HubException)
+            {
+                // Access lost while away, say: that topic stays quiet, the rest carry on.
+                _topics.Remove((projectId, topic));
+            }
+        }
+
+        foreach (var topic in _userTopics.Keys.ToList())
+        {
+            try
+            {
+                await connection.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), topic);
+            }
+            catch (HubException)
+            {
+                _userTopics.Remove(topic);
+            }
+        }
+
         await Notify();
     }
 
@@ -404,12 +439,15 @@ public sealed class BoardHubClient(
 
     public async ValueTask DisposeAsync()
     {
-        if (_connection is not null)
+        if (_disposed) return;
+        _disposed = true;
+        _retry?.Dispose();
+        await _gate.WaitAsync();
+        try
         {
-            await _connection.DisposeAsync();
+            if (_connection is not null) await _connection.DisposeAsync();
+            connections.ConnectionId = null;
         }
-
-        connections.ConnectionId = null;
-        _gate.Dispose();
+        finally { _gate.Release(); _gate.Dispose(); }
     }
 }

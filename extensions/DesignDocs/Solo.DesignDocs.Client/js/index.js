@@ -16,3 +16,5 @@ export const isNarrowWorkspace=()=>matchMedia('(max-width:1000px)').matches;
 export { loadVaultPreferences,saveVaultPreferences } from './preferences.js';
 import {touchSupported} from './sketch/pressure.js';
 export const supportsTouch=()=>touchSupported(navigator);
+
+export {startOffline,offlineRequest,offlineAction,offlineStatus} from "./offline/session.js";

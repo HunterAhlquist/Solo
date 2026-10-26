@@ -1,5 +1,5 @@
 @implements IAsyncDisposable
-@inject ISoloClientApi Api
+@inject ISoloClientApi HostApi
 @inject IJSRuntime Js
 <MudDialog>
     <DialogContent>
@@ -25,6 +25,7 @@
     </DialogActions>
 </MudDialog>
 @code {
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
     [Parameter] public Guid ProjectId {get;set;}
     private string _name="",_progress="";private string? _error;private bool _busy;

@@ -1,0 +1,32 @@
+@inject ISoloClientApi Api
+@inject IJSRuntime Js
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-4">These changes remain on this device. Export recovery data before discarding work you need.</MudText>
+        @foreach(var problem in _problems){
+            <MudPaper Outlined="true" Class="pa-3 mb-3">
+                <MudText Typo="Typo.subtitle2">@problem.Name</MudText><MudText Typo="Typo.body2">@problem.Message</MudText>
+                <MudButton OnClick="@(()=>Retry(problem.Id))">@(problem.Metadata?"Apply local change":"Retry upload")</MudButton>
+                @if(problem.Metadata){<MudButton Color="Color.Error" OnClick="@(()=>Discard(problem.Id))">Discard queued action</MudButton>}
+            </MudPaper>
+        }
+        @if(_problems.Count==0){<MudText>No changes need attention.</MudText>}
+    </DialogContent>
+    <DialogActions><MudButton OnClick="Export" StartIcon="@Icons.Material.Filled.Download">Export recovery zip</MudButton><MudButton OnClick="@(()=>Dialog.Close())">Close</MudButton></DialogActions>
+</MudDialog>
+@code{
+    [CascadingParameter] private IMudDialogInstance Dialog{get;set;}=null!;
+    [Parameter] public string VaultId{get;set;}="";
+    private IJSObjectReference? _module;private List<Problem> _problems=[];
+    protected override async Task OnInitializedAsync(){_module=await DesignDocsAssets.ModuleAsync(Js,new(Api));await Load();}
+    private async Task Load()=>_problems=await _module!.InvokeAsync<List<Problem>>("offlineAction","problems",null,VaultId);
+    private async Task Retry(string id){
+        if(!await DocDialogs.Confirm(Dialogs,"Apply local change","Apply this queued change to the current server version?","Apply"))return;
+        try{await _module!.InvokeVoidAsync("offlineAction","retry",null,id);await Load();}catch(JSException e){Snackbar.Add(e.Message,Severity.Warning);}
+    }
+    private async Task Discard(string id){if(await DocDialogs.Confirm(Dialogs,"Discard queued action","Keep the server version and discard this queued action? Export recovery data first if you need it.","Discard")){await _module!.InvokeVoidAsync("offlineAction","discard",null,id);await Load();}}
+    private Task Export()=>_module!.InvokeVoidAsync("offlineAction","export",null,VaultId).AsTask();
+    public sealed class Problem{public string Id{get;set;}="";public string? Name{get;set;}public string Message{get;set;}="";public bool Metadata{get;set;}}
+}
