@@ -215,3 +215,24 @@ test('acknowledgment retries reuse the packet ID and start only after a slow sen
         await p.receive('ack',JSON.stringify({id:packets[1][1].id,seq:'1'}));assert.equal(await p.waitForSave(),true);
     }finally{release();p.dispose();t.mock.timers.reset();}
 });
+test('downloaded editors resume cursor broadcasts after offline edits and reconnect',async()=>{
+    const sent=[],p=new Provider({send:async(kind,raw)=>{if(kind==='awareness')sent.push(JSON.parse(raw));return 0;}},{canWrite:true,user:{userId:'writer',name:'Writer'}});
+    p.offline={canWrite:true,close(){},hasDraft:()=>false};
+    try{
+        await p.connected(false);p.awareness.setLocalStateField('cursor',{anchor:{},head:{}});await tick();await p.queue;
+        assert.equal(sent.length,0);
+        await p.connected(true);await tick();await p.queue;
+        assert.ok(sent.length>0,'a dropped offline presence packet must not latch the queue forever');
+    }finally{p.dispose();}
+});
+test('presence queued just before disconnection does not block the next online update',async()=>{
+    const sent=[],p=new Provider({send:async(kind,raw)=>{if(kind==='awareness')sent.push(JSON.parse(raw));return 0;}},{canWrite:true});
+    p.offline={canWrite:true,close(){},hasDraft:()=>false};
+    try{
+        await p.connected(true);await tick();sent.length=0;
+        let release;p.queue=new Promise(resolve=>release=resolve);const pending=p.send('awareness',{data:'old'});
+        p.online=false;release();await pending;
+        p.online=true;await p.send('awareness',{data:'new'});
+        assert.deepEqual(sent.map(packet=>packet.data),['new']);
+    }finally{p.dispose();}
+});
