@@ -229,9 +229,8 @@ html.solo-desktop--glass .design-docs-image-viewer:not(.is-presented)::backdrop 
 .design-docs-cursor--text > svg { width:10px; height:1.35em; fill:none; stroke-width:4; stroke-linecap:round; }
 .design-docs-cursor--text .design-docs-caret-body { stroke:#000; stroke-width:2; }
 .design-docs-cursor--text .design-docs-cursor-avatar { width:20px; height:20px; left:6px; top:.85em; }
-.design-docs-text-peer { position:relative; display:inline-block; width:0; height:0; vertical-align:baseline; pointer-events:none; }
-.design-docs-text-peer > .design-docs-cursor { position:absolute; top:-1.05em; left:-4px; height:1.35em; z-index:6; }
-.design-docs-editor .cm-ySelectionCaret { display:none; }
+.design-docs-text-peer { width:0; pointer-events:none; }
+.design-docs-text-peer > .design-docs-cursor { position:absolute; top:0; left:-4px; height:100%; z-index:6; }
 .design-docs-sketch-presence-layer { position:absolute; inset:0; z-index:5; overflow:hidden; pointer-events:none; }
 .design-docs-sketch-peer { position:absolute; left:0; top:0; pointer-events:none; }
 .design-docs-brush-footprint { position:absolute; transform:translate(-50%,-50%); box-sizing:border-box; border:1px solid var(--design-docs-user-color); border-radius:50%; opacity:.85; }

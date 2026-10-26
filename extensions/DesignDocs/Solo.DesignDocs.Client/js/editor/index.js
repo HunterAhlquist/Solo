@@ -59,7 +59,8 @@ export function mountEditor(root, bridge, options) {
         EditorView.contentAttributes.of({spellcheck:"true"}),
         ...(needsSpellingFallback(navigator)?[localSpelling(bridge)]:[]),
         ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
-        yCollab(provider.doc.getText('markdown'),provider.awareness),textPresence(provider),
+        // Inline presence widgets split words for the native spellchecker.
+        yCollab(provider.doc.getText('markdown'),null),textPresence(provider),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
         EditorView.domEventHandlers({focus:()=>{bridge.invokeMethodAsync('Focus',true);},blur:()=>{bridge.invokeMethodAsync('Focus',false);},
             paste:event=>{const files=[...(event.clipboardData?.files??[])];if(!provider.canWrite||!files.length)return false;event.preventDefault();files.forEach(f=>images.upload(f));return true;},
