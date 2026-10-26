@@ -115,6 +115,7 @@ export function mountEditor(root, bridge, options) {
         presence:users=>provider.presence(users),
         insert,
         chooseImage:()=>images.choose(),
+        sketchesChanged:()=>images.refresh(path=>/\.sketch$/i.test(path)),
         imagesChanged:()=>images.refresh(path=>!/\.sketch$/i.test(path)),
         refreshSketches:names=>images.refresh(path=>names.some(name=>path===name+'.sketch')),
         dispose(){removeSaveGuard?.();root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},

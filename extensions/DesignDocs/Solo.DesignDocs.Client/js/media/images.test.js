@@ -42,3 +42,21 @@ test('attachment display names and downloads exclude the owning note path',()=>{
     assert.equal(attachmentName('attachments/note/photo.png'),'photo.png');
     assert.equal(attachmentName('legacy.png'),'legacy.png');
 });
+
+test('a slow old thumbnail request cannot overwrite a newer sketch preview',async()=>{
+    const images=new Images({},false,()=>{},()=>{}),path='Map.sketch',thumbnail={src:'original'},requests=[];
+    images.cards.add({button:{isConnected:true,querySelectorAll:()=>[thumbnail]},entries:[{path}]});
+    images.resolve=()=>new Promise(resolve=>requests.push(resolve));
+    await images.refresh(item=>item===path);await images.refresh(item=>item===path);
+    requests[1]('newest');await Promise.resolve();requests[0]('stale');await Promise.resolve();
+    assert.equal(thumbnail.src,'newest');
+});
+
+test('a failed stale image request cannot remove the replacement cache entry',async t=>{
+    const requests=[];t.mock.method(URL,'createObjectURL',()=> 'blob:new');t.mock.method(URL,'revokeObjectURL',()=>{});
+    const images=new Images({invokeMethodAsync:()=>new Promise((resolve,reject)=>requests.push({resolve,reject}))},false,()=>{},()=>{});
+    const first=images.resolve('photo.png');await images.refresh();const second=images.resolve('photo.png');
+    requests[0].reject(new Error('Old request failed'));await assert.rejects(first);
+    assert.equal(images.cache.has('photo.png'),true);
+    requests[1].resolve({base64:'AA==',contentType:'image/png'});assert.equal(await second,'blob:new');images.dispose();
+});
