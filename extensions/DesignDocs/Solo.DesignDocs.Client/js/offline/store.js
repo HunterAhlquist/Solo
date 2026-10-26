@@ -23,16 +23,26 @@ export class VaultStore {
     async all(name){let rows;await this.transaction([name],'readonly',tables=>{tables[name].getAll().onsuccess=e=>rows=e.target.result.filter(r=>r.key.startsWith(this.scope));});return rows;}
     put(name,row){return this.transaction([name],'readwrite',t=>t[name].put({...row,key:this.key(row.id)}));}
     remove(name,id){return this.transaction([name],'readwrite',t=>t[name].delete(this.key(id)));}
-    enqueue(command,image){return this.transaction(image?['queue','images']:['queue'],'readwrite',t=>{t.queue.add({...command,key:this.key(command.id)});if(image)t.images.put({...image,key:this.key(image.id)});});}
+    async enqueue(command,image){
+        let downloaded=false;
+        await this.transaction(image?['vaults','queue','images']:['vaults','queue'],'readwrite',t=>{t.vaults.get(this.key(command.vaultId)).onsuccess=e=>{
+            if(!e.target.result)return;downloaded=true;
+            t.queue.add({...command,key:this.key(command.id)});if(image)t.images.put({...image,key:this.key(image.id)});
+        };});
+        if(!downloaded)throw new Error('The download was removed. Try this change again online.');
+    }
     async updateDocument(id,projectId,vaultId,updates,seq=null,local=false){
-        const update=Y.mergeUpdates(updates);const packetId=crypto.randomUUID();let result;
-        await this.transaction(local?['documents','queue']:['documents'],'readwrite',t=>{
+        const update=Y.mergeUpdates(updates);const packetId=crypto.randomUUID();let result,downloaded=!local;
+        await this.transaction(local?['vaults','documents','queue']:['documents'],'readwrite',t=>{
+            const save=()=>{
             t.documents.get(this.key(id)).onsuccess=e=>{
                 const old=e.target.result;result={...old,id,projectId,vaultId,key:this.key(id),state:Y.mergeUpdates(old?.state?[old.state,update]:[update]),seq:seq??old?.seq??'0'};
                 t.documents.put(result);
                 if(local)t.queue.add({key:this.key(packetId),id:packetId,projectId,vaultId,documentId:id,data:update,created:performance.timeOrigin+performance.now()});
             };
-        });return result;
+            };
+            if(local)t.vaults.get(this.key(vaultId)).onsuccess=e=>{if(e.target.result){downloaded=true;save();}};else save();
+        });if(!downloaded)throw new Error('The download was removed. Reopen this document online.');return result;
     }
     batchUpdates(vaultId){
         return this.transaction(['queue'],'readwrite',t=>{
@@ -92,10 +102,15 @@ export class VaultStore {
         });
     }
     async forget(vaultId){
-        const queue=await this.all('queue');if(queue.some(row=>row.vaultId===vaultId))throw new Error('Sync or export pending changes before removing this download.');
-        await this.transaction(['vaults','documents','images'],'readwrite',t=>{
+        let removed=false;
+        await this.transaction(['queue','vaults','documents','images'],'readwrite',t=>{
+            t.queue.getAll().onsuccess=e=>{
+            if(e.target.result.some(row=>row.key.startsWith(this.scope)&&row.vaultId===vaultId))return;
+            removed=true;
             t.vaults.delete(this.key(vaultId));for(const name of ['documents','images'])t[name].getAll().onsuccess=e=>{for(const row of e.target.result)if(row.key.startsWith(this.scope)&&row.vaultId===vaultId)t[name].delete(row.key);};
+            };
         });
+        if(!removed)throw new Error('Sync pending changes before removing this download.');
     }
     async close(){(await this.ready).close();}
 }
