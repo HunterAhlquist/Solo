@@ -116,12 +116,13 @@ export class VaultStore {
 }
 export const order=(a,b)=>a.created-b.created||a.id.localeCompare(b.id);
 export function applyCommand(manifest,c,value=null){
-    const tree=manifest.tree;const groups={folder:tree.folders,note:tree.notes,sketch:manifest.sketches,image:manifest.images};
+    const tree=manifest.tree;const groups=new Map([['folder',tree.folders],['note',tree.notes],['sketch',manifest.sketches],['image',manifest.images]]);
     if(c.entity==='vault'){
         if(c.action==='delete'){manifest.deleted=true;return;}
         tree.vault=value??{...tree.vault,id:c.targetId,name:c.name,isClosed:c.isClosed,version:c.version};manifest.canWrite=(manifest.projectWrite??manifest.canWrite)&&!tree.vault.isClosed;return;
     }
-    const list=groups[c.entity];const index=list.findIndex(row=>row.id===c.targetId),old=list[index];
+    const list=groups.get(c.entity);if(!Array.isArray(list))throw new Error('Unknown offline entity.');
+    const index=list.findIndex(row=>row.id===c.targetId),old=list[index];
     if(c.action==='delete'){
         if(c.entity==='folder'){
             const ids=new Set([c.targetId]);let grew=true;
