@@ -496,3 +496,16 @@ document.addEventListener('click', e => {
         window.solo.markdown._lastLinkClick = Date.now();
     }
 }, true);
+
+(() => {
+    const input = event => {
+        if (!['mouse', 'touch', 'pen'].includes(event.pointerType)) return;
+        if (document.documentElement.dataset.soloInput !== event.pointerType)
+            document.documentElement.dataset.soloInput = event.pointerType;
+    };
+    for (const type of ['pointerover', 'pointermove', 'pointerdown'])
+        document.addEventListener(type, input, { capture: true, passive: true });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Tab') document.documentElement.dataset.soloInput = 'keyboard';
+    }, true);
+})();

@@ -867,9 +867,14 @@ body.solo-dragging {
     background: color-mix(in srgb, var(--mud-palette-primary) 8%, transparent);
 }
 
+html[data-solo-input="touch"] .mud-tooltip,
+html[data-solo-input="pen"] .mud-tooltip {
+    display: none !important;
+}
+
 @media (hover: none) and (any-hover: none) {
-    /* Hide sticky touch tooltips only when no pointer can hover. */
-    .mud-tooltip {
+    /* iPad can report no hover even while a trackpad supplies mouse events. */
+    html:not([data-solo-input="mouse"]):not([data-solo-input="keyboard"]) .mud-tooltip {
         display: none !important;
     }
 }
