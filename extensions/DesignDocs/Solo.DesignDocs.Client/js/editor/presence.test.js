@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Y from 'yjs';
+import {Awareness} from 'y-protocols/awareness';
 import {EditorState,EditorSelection} from '@codemirror/state';
 import {textPresence,textPeers} from './presence.js';
 
@@ -41,4 +42,28 @@ test('local selections are published without inline widgets and cleared on blur 
         f.view.hasFocus=true;plugin.update({focusChanged:true});assert.deepEqual(selection(),[5,5]);
         plugin.destroy();assert.equal(selection(),null);assert.equal(f.listeners.size,0);
     }finally{f.doc.destroy();}
+});
+test('a focused editor republishes its cursor when sync restores local awareness',()=>{
+    const f=fixture();f.states.delete(f.doc.clientID);
+    const plugin=textPresence(f.provider).create(f.view);
+    try{
+        f.states.set(f.doc.clientID,{user:{name:'Local'}});
+        f.listeners.get('change')({added:[f.doc.clientID],updated:[],removed:[]});
+        assert.ok(f.awareness.getLocalState().cursor,'restoring write access must restore the focused caret without another edit');
+    }finally{plugin.destroy();f.doc.destroy();}
+});
+test('Safari context-menu focus is determined by CodeMirror rather than document.hasFocus',()=>{
+    const f=fixture();f.view.dom.ownerDocument.hasFocus=()=>false;
+    const plugin=textPresence(f.provider).create(f.view);
+    try{assert.ok(f.awareness.getLocalState().cursor,'CodeMirror preserves editor focus while Safari dismisses native menus');}
+    finally{plugin.destroy();f.doc.destroy();}
+});
+
+test('restoring real awareness publishes once without a recursive update loop',()=>{
+    const f=fixture(),awareness=new Awareness(f.doc);awareness.setLocalState(null);f.provider.awareness=awareness;
+    const plugin=textPresence(f.provider).create(f.view);let updates=0;awareness.on('update',()=>updates++);
+    try{
+        awareness.setLocalState({user:{name:'Local'}});
+        assert.ok(awareness.getLocalState().cursor);assert.equal(updates,2);
+    }finally{plugin.destroy();awareness.destroy();f.doc.destroy();}
 });
