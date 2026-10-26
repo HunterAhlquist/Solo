@@ -187,6 +187,13 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Check tooltip input behavior
+        run: node --test build/test-tooltip-input.mjs
+
       - name: Check release channels
         run: bash build/test-release-channel.sh
 
