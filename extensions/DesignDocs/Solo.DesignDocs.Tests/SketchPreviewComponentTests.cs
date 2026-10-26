@@ -58,5 +58,25 @@ public sealed class SketchPreviewComponentTests : ComponentTestBase
         Assert.Contains("local-pending",updates);Assert.Equal(version==0?1:2,reads);
         if(version!=0)Assert.Contains("remote-new",updates);
     }
+    [Fact]
+    public async Task Acknowledged_sketches_still_resolve_from_their_temporary_paths()
+    {
+        var project=Guid.NewGuid();var vault=Guid.NewGuid();var note=Guid.NewGuid();var id=Guid.NewGuid();
+        var (cut,http,_,_)=Mount(project,vault,note);
+        http.RouteJson("/sketches",new[]{new SketchDto(id,note,"Map (conflict 2)","A4","portrait","dots",null,null,1)});
+        http.RouteJson("/documents/",new{updates=Array.Empty<object>()});
+        Assert.NotNull(await cut.Instance.SketchPreview(AttachmentPaths.ForNote(note,id+"/Map")));
+        Assert.Null(await cut.Instance.SketchPreview(AttachmentPaths.ForNote(Guid.NewGuid(),id+"/Map")));
+    }
+    [Fact]
+    public async Task Acknowledged_images_still_resolve_from_their_temporary_paths()
+    {
+        var project=Guid.NewGuid();var vault=Guid.NewGuid();var note=Guid.NewGuid();var id=Guid.NewGuid();
+        var (cut,http,_,_)=Mount(project,vault,note);
+        http.RouteBytes("/images/"+id,[1,2,3]);
+        http.RouteJson("/images",new[]{new ImageDto(id,AttachmentPaths.ForNote(note,"renamed.png"),"image/png",1,1,3,1)});
+        var result=JsonSerializer.SerializeToElement(await cut.Instance.Image(AttachmentPaths.ForNote(note,id+"/original.png")));
+        Assert.Equal("AQID",result.GetProperty("base64").GetString());
+    }
 
 }
