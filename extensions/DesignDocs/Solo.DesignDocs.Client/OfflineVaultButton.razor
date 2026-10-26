@@ -1,19 +1,23 @@
 @inject ISoloClientApi Api
 @inject IJSRuntime Js
 @inject ISnackbar Snackbar
+@implements IDisposable
 <MudTooltip Text="@(_ready?"Vault downloaded to this device":"Download this vault for offline use")">
     <MudIconButton Icon="@(_busy?Icons.Material.Filled.Downloading:_ready?Icons.Material.Filled.OfflinePin:Icons.Material.Filled.CloudDownload)" Disabled="_busy" OnClick="Download" aria-label="Keep this vault offline" />
 </MudTooltip>
 @code{
     [Parameter] public Guid ProjectId{get;set;}
     [Parameter] public Guid VaultId{get;set;}
-    private bool _ready,_busy;private IJSObjectReference? _module;
-    protected override async Task OnParametersSetAsync(){_module=await DesignDocsAssets.ModuleAsync(Js,new(Api));var status=await _module.InvokeAsync<DownloadStatus>("offlineStatus",VaultId.ToString());_ready=status?.Ready??false;}
+    private bool _ready,_busy,_disposed;private IJSObjectReference? _module;
+    protected override void OnInitialized()=>OfflineEvents.Changed+=Changed;
+    private void Changed(Guid project){if(project==ProjectId&&!_disposed)_=InvokeAsync(async()=>{await OnParametersSetAsync();if(!_disposed)StateHasChanged();});}
+    protected override async Task OnParametersSetAsync(){var vaultId=VaultId;_module=await DesignDocsAssets.ModuleAsync(Js,new(Api));var status=await _module.InvokeAsync<DownloadStatus>("offlineStatus",vaultId.ToString());if(!_disposed&&vaultId==VaultId)_ready=status?.Ready??false;}
     private async Task Download(){
         if(_module is null)return;_busy=true;
         try{await _module.InvokeVoidAsync("offlineAction","pin",ProjectId.ToString(),VaultId.ToString());_ready=true;Snackbar.Add("Vault ready offline. Changes save on this device and sync while the app is open.",Severity.Success);}
         catch(JSException e){Snackbar.Add(e.Message,Severity.Error);}
         finally{_busy=false;}
     }
-    private sealed class DownloadStatus{public bool Ready{get;set;}}
+    public sealed class DownloadStatus{public bool Ready{get;set;}}
+    public void Dispose(){_disposed=true;OfflineEvents.Changed-=Changed;}
 }
