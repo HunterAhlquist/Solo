@@ -26,7 +26,7 @@ public sealed record RenameImpactDto(int References);
 public sealed record ImageDto(Guid Id,string Path,string ContentType,int Width,int Height,int Bytes,uint Version);
 public sealed record SketchDto(Guid Id,Guid NoteId,string Name,string PageSize,string Orientation,string Pattern,Guid? LastEditedBy,DateTimeOffset? LastEditedAt,uint Version)
 {
-    public string Path => AttachmentPaths.ForNote(NoteId, Name + ".sketch");
+    public string Path {get;init;} = AttachmentPaths.ForNote(NoteId, Name + ".sketch");
 }
 public sealed record SketchChange(string Name,string PageSize,string Orientation,string Pattern,uint Version);
 public sealed record SketchPreviewChange(Guid NoteId,string Name,string Path,string? PreviousName=null);

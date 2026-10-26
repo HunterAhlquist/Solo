@@ -15,7 +15,8 @@ public sealed class OfflineCacheTests:ComponentTestBase
         JSInterop.Setup<OfflineCache.CachedResponse?>("solo.offline.get",_=>true).SetResult(new(Convert.ToBase64String(Encoding.UTF8.GetBytes("private")),"application/json"));
         JSInterop.Setup<bool>("solo.offline.isOffline").SetResult(false);
         var expiry=new SessionExpiry();using var http=new HttpClient(new OfflineCacheHandler(new(JSInterop.JSRuntime),expiry){InnerHandler=new Handler(_=>new((HttpStatusCode)code))}){BaseAddress=new("https://solo.test")};
-        var response=await http.GetAsync("api/projects");Assert.Equal((HttpStatusCode)code,response.StatusCode);Assert.Contains(JSInterop.Invocations,i=>i.Identifier=="solo.offline.lock");
+        var response=await http.GetAsync("api/projects");Assert.Equal((HttpStatusCode)code,response.StatusCode);
+        Assert.Equal(code==401,JSInterop.Invocations.Any(i=>i.Identifier=="solo.offline.lock"));
     }
     [Fact]
     public async Task Transport_failure_uses_the_verified_accounts_cached_response()

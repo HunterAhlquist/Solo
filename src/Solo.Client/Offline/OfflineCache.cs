@@ -9,6 +9,7 @@ public sealed class OfflineCache(IJSRuntime js)
     public async Task<CachedResponse?> Read(string path){try{return await js.InvokeAsync<CachedResponse?>("solo.offline.get",path);}catch(JSException){return null;}catch(InvalidOperationException){return null;}}
     public async Task Write(string path,CachedResponse value,long epoch){try{await js.InvokeVoidAsync("solo.offline.put",path,value,epoch);}catch(JSException){}catch(InvalidOperationException){}}
     public async Task<bool> IsOffline(){try{return await js.InvokeAsync<bool>("solo.offline.isOffline");}catch(JSException){return false;}}
+    public async Task<bool> Reconnect(){try{return await js.InvokeAsync<bool>("solo.offline.reconnect");}catch(JSException){return false;}}
     public async Task Network(bool connected){try{await js.InvokeVoidAsync("solo.offline.network",connected);}catch(JSException){}}
     public async Task<long> Epoch(){try{return await js.InvokeAsync<long>("solo.offline.epoch");}catch(JSException){return 0;}}
     public async Task Lock(long epoch){try{await js.InvokeVoidAsync("solo.offline.lock",epoch);}catch(JSException){}}

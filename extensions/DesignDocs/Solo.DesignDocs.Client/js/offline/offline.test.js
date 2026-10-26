@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import * as Y from 'yjs';
-import {VaultStore,projectVault} from './store.js';
+import {VaultStore,projectVault,applyCommand,attachmentPath} from './store.js';
 import {OfflineSession} from './session.js';
 import {encode,decode} from '../sync/protocol.js';
 import {sketchStrokes} from '../sketch/objects.js';
@@ -83,6 +83,7 @@ test('the editor API queues complete offline CRUD and uploads nothing through a 
         await offlineRequest('PUT',root+'/notes/'+note.id,JSON.stringify({name:'Renamed',parentId:null,version:0}));
         const sketch=(await offlineRequest('POST',root+'/sketches/notes/'+note.id,JSON.stringify({name:'Drawing'}))).value;
         assert.equal(sketch.noteId,note.id);assert.ok(sketch.path.endsWith('/Drawing.sketch'));
+        assert.ok(sketch.path.includes(sketch.id),'pending attachments need a unique path before merging remote embeds');
         const image=(await offlineRequest('POST',root+'/images/notes/'+note.id+'?path=photo.webp',null,new Uint8Array([7,8]),'image/webp')).value;
         assert.deepEqual((await offlineRequest('GET',root+'/images/'+image.id)).bytes,new Uint8Array([7,8]));
         let tree=(await offlineRequest('GET',root)).value;assert.equal(tree.notes.find(n=>n.id===note.id).name,'Renamed');
@@ -121,21 +122,64 @@ test('a sketch can draw and close after offline startup without a live connectio
     }finally{sketch?.dispose();dom.restore();await agent.dispose();}
 });
 
-test('a conflicting attachment filename updates its own note atomically and only once',async()=>{
-    const {attachmentPath}=await import('./store.js');
+test('a conflicting attachment rename preserves other users same-named embeds',async()=>{
     const store=new VaultStore(id()),vaultId=id(),noteId=id(),projectId=id(),sketchId=id(),otherId=id();const base=snapshot(vaultId,noteId);
-    const path=attachmentPath(noteId,'Map.sketch'),renamed=attachmentPath(noteId,'Map (conflict 1).sketch');
+    const path=attachmentPath(noteId,sketchId+'/Map.sketch'),onlinePath=attachmentPath(noteId,'Map.sketch'),renamed=attachmentPath(noteId,'Map (conflict 1).sketch');
     await store.put('vaults',{id:vaultId,projectId,base});
-    for(const owner of [noteId,otherId]){const doc=new Y.Doc();doc.getText('markdown').insert(0,`![[${path}]] ![[Map.sketch|wide]]\n\n\`![[Map.sketch]]\``);await store.updateDocument(owner,projectId,vaultId,[Y.encodeStateAsUpdate(doc)]);doc.destroy();}
-    const command={id:id(),projectId,vaultId,created:1,command:{entity:'sketch',action:'create',targetId:sketchId,noteId,name:'Map'}};
+    for(const owner of [noteId,otherId]){const doc=new Y.Doc();doc.getText('markdown').insert(0,`![[${path}|wide]] ![[Map.sketch]] ![[${onlinePath}]]\n\n\`![[${path}]]\``);await store.updateDocument(owner,projectId,vaultId,[Y.encodeStateAsUpdate(doc)]);doc.destroy();}
+    const command={id:id(),projectId,vaultId,created:1,command:{entity:'sketch',action:'create',targetId:sketchId,noteId,name:'Map',path}};
     await store.enqueue(command);const result={id:sketchId,noteId,name:'Map (conflict 1)',path:renamed,version:2};
     try{
         await store.acknowledge(command,result);await store.acknowledge(command,result);
         const doc=new Y.Doc();Y.applyUpdate(doc,(await store.get('documents',noteId)).state);
-        assert.equal(doc.getText('markdown').toString(),`![[${renamed}]] ![[${renamed}|wide]]\n\n\`![[Map.sketch]]\``);doc.destroy();
+        assert.equal(doc.getText('markdown').toString(),`![[${renamed}|wide]] ![[Map.sketch]] ![[${onlinePath}]]\n\n\`![[${path}]]\``);doc.destroy();
         const other=new Y.Doc();Y.applyUpdate(other,(await store.get('documents',otherId)).state);assert.ok(other.getText('markdown').toString().includes(path));other.destroy();
         assert.equal((await store.all('queue')).length,1);assert.equal((await store.all('queue'))[0].documentId,noteId);
     }finally{await store.close();}
+});
+
+test('image metadata cannot replace the projected object prototype',()=>{
+    const base=snapshot(id(),id());
+    applyCommand(base,{entity:'image',action:'create',targetId:'image',image:JSON.parse('{"path":"image.png","__proto__":{"polluted":true}}')});
+    assert.equal(Object.getPrototypeOf(base.images[0]),Object.prototype);assert.equal(base.images[0].polluted,undefined);
+});
+
+test('expired sign-in leaves uploads retryable after authentication resumes',async()=>{
+    const store=new VaultStore(id()),vaultId=id(),projectId=id(),base=snapshot(vaultId,id());base.tree.notes=[];base.documents={};
+    await store.put('vaults',{id:vaultId,projectId,base,ready:true});
+    await store.enqueue({id:id(),vaultId,projectId,created:1,command:{entity:'folder',action:'create',targetId:id(),name:'Queued'}});
+    let expired=true,uploads=0;
+    const client=new OfflineSession(async(method)=>method==='GET'?{status:200,value:structuredClone(base)}:(uploads++,expired?{status:401,error:'Sign in again'}:{status:200,value:{id:id(),name:'Queued',version:2}}),{instance:'test',userId:id(),store});
+    try{await client.sync();assert.equal((await store.all('queue'))[0].error,undefined);expired=false;await client.sync();assert.equal((await store.all('queue')).length,0);assert.equal(uploads,2);}
+    finally{await client.stop();}
+});
+
+test('idle synchronization fetches one manifest and does not decode unchanged notes again',async()=>{
+    const store=new VaultStore(id()),vaultId=id(),projectId=id(),noteId=id(),base=snapshot(vaultId,noteId),doc=new Y.Doc();
+    doc.getText('markdown').insert(0,'Already copied');base.tree.notes[0].markdown='Already copied';base.documents[noteId]='1';
+    await store.put('vaults',{id:vaultId,projectId,base,ready:true});await store.updateDocument(noteId,projectId,vaultId,[Y.encodeStateAsUpdate(doc)],'1');doc.destroy();
+    let manifests=0,documentReads=0;
+    const client=new OfflineSession(async()=>{manifests++;return {status:200,value:structuredClone(base)};},{instance:'test',userId:id(),store});
+    const get=store.get.bind(store);store.get=(name,key)=>{if(name==='documents')documentReads++;return get(name,key);};
+    try{
+        await client.sync();const firstReads=documentReads;assert.equal(manifests,1);await client.sync();
+        assert.equal(manifests,2);assert.equal(documentReads-firstReads,1,'an unchanged note only needs its sequence check during pull');
+    }finally{await client.stop();}
+});
+
+test('requests for a named vault do not load or project unrelated downloaded vaults',async()=>{
+    const {startOffline,offlineRequest}=await import('./session.js');
+    const store=new VaultStore(id()),vaultId=id(),projectId=id(),base=snapshot(vaultId,id());
+    await store.put('vaults',{id:vaultId,projectId,base,ready:true});
+    const agent=await startOffline({invokeMethodAsync:async()=>({status:0})},{instance:'test',userId:'writer',store});
+    await agent.sync();const all=store.all.bind(store);let vaultScans=0,queueScans=0;
+    store.all=name=>{if(name==='vaults')vaultScans++;if(name==='queue')queueScans++;return all(name);};
+    try{
+        const root=`api/ext/design-docs/projects/${projectId}/vaults/`;
+        assert.equal((await offlineRequest('GET',root+vaultId)).value.vault.id,vaultId);assert.equal(vaultScans,0);
+        assert.equal((await offlineRequest('GET',root+id())).handled,false);assert.equal(vaultScans,0);assert.equal(queueScans,1);
+        assert.equal((await offlineRequest('GET','api/projects')).handled,false);assert.equal(vaultScans,0);assert.equal(queueScans,1);
+    }finally{await agent.dispose();}
 });
 
 test('closing a provider during hydration does not leave a local document attached',async()=>{

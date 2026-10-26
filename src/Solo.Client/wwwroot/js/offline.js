@@ -7,7 +7,7 @@
     const scope=async()=>String(await window.solo.desktop.instanceUrl()||location.origin).replace(/\/$/,'');
     async function read(key){const db=await ready;return new Promise((resolve,reject)=>{const request=db.transaction('entries').objectStore('entries').get(key);request.onsuccess=()=>resolve(request.result?.value??null);request.onerror=()=>reject(request.error);});}
     async function write(key,value){const db=await ready;return new Promise((resolve,reject)=>{const tx=db.transaction('entries','readwrite');tx.objectStore('entries').put({key,value});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});}
-    let unreachable=!navigator.onLine,generation=0;
+    let unreachable=!navigator.onLine,generation=0,reconnecting;
     const publicPath=path=>path==='api/config/auth'||path==='api/themes/active';
     const accountKey=async()=>await scope()+'|account';
     let currentAccount;
@@ -19,6 +19,15 @@
         epoch:()=>generation,
         isOffline:()=>unreachable||!navigator.onLine,
         network:value=>{unreachable=!value;},
+        reconnect:()=>{
+            if(!navigator.onLine)return Promise.resolve(false);
+            return reconnecting??= (async()=>{
+                const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
+                try{const response=await fetch('/api/config/auth',{cache:'no-store',signal:controller.signal});unreachable=!response.ok;return response.ok;}
+                catch{unreachable=true;return false;}
+                finally{clearTimeout(timer);reconnecting=null;}
+            })();
+        },
         profile:async()=>{const current=await account();return current?JSON.stringify(current):null;},
         lock:async expected=>{if(expected===undefined||expected===generation){generation++;currentAccount=null;await write(await accountKey(),null);}},
         credential:async email=>{const current=await account();if(current?.email?.toLowerCase()!==email?.toLowerCase()){generation++;currentAccount=null;await write(await accountKey(),null);}},

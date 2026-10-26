@@ -334,7 +334,7 @@ public sealed class BoardHubClient(
     private async Task StartCoreAsync()
     {
         if (_disposed) return;
-        if (offline is not null && await offline.IsOffline()) throw new HttpRequestException("The live connection is offline.");
+        if (offline is not null && await offline.IsOffline() && !await offline.Reconnect()) throw new HttpRequestException("The live connection is offline.");
         if (_connection is not null)
         {
             if (_connection.State == HubConnectionState.Disconnected)

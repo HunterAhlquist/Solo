@@ -68,11 +68,11 @@ export class VaultStore {
                 if(!event.target.result)return;
             t.queue.delete(this.key(command.id));
             if(command.command?.action==='create'&&value?.path){
-                const c=command.command,oldPath=c.entity==='sketch'?attachmentPath(c.noteId,c.name+'.sketch'):c.image?.path;
+                const c=command.command,oldPath=c.entity==='sketch'?c.path:c.image?.path;
                 if(oldPath&&oldPath!==value.path)t.documents.getAll().onsuccess=e=>{
                     for(const row of e.target.result.filter(r=>r.key.startsWith(this.scope)&&r.vaultId===command.vaultId&&(!c.noteId||r.id===c.noteId))){
                         const doc=new Y.Doc();Y.applyUpdate(doc,row.state);const vector=Y.encodeStateVector(doc);
-                        if(rewriteAttachment(doc,oldPath,value.path,c.noteId?oldPath.split('/').at(-1):null)){
+                        if(rewriteAttachment(doc,oldPath,value.path)){
                             row.state=Y.encodeStateAsUpdate(doc);t.documents.put(row);const id=crypto.randomUUID();
                             t.queue.add({key:this.key(id),id,projectId:row.projectId,vaultId:row.vaultId,documentId:row.id,data:Y.encodeStateAsUpdate(doc,vector),created:performance.timeOrigin+performance.now()});
                         }doc.destroy();
@@ -131,27 +131,27 @@ export function applyCommand(manifest,c,value=null){
         }else{if(index>=0)list.splice(index,1);if(c.entity==='note')manifest.sketches=manifest.sketches.filter(s=>s.noteId!==c.targetId);}
         return;
     }
-    const next=value??{...old,id:c.targetId,name:c.name,version:c.version??0};
+    let next=value??{...old,id:c.targetId,name:c.name,version:c.version??0};
     if(!value){
         if(c.entity==='folder')next.parentId=c.parentId??null;
         if(c.entity==='note')Object.assign(next,{vaultId:tree.vault.id,folderId:c.parentId??null,markdown:old?.markdown??'',seq:old?.seq??'0',headings:old?.headings??[]});
         if(c.entity==='sketch')Object.assign(next,{noteId:c.noteId??old?.noteId,pageSize:c.pageSize??old?.pageSize??'A4',orientation:c.orientation??old?.orientation??'portrait',pattern:c.pattern??old?.pattern??'empty'});
-        if(c.entity==='image')Object.assign(next,c.image);
+        if(c.entity==='image')next={...next,...c.image};
     }
     if(index<0)list.push(next);else list[index]=next;
-    if(c.entity==='sketch')next.path=attachmentPath(next.noteId,next.name+'.sketch');
+    if(c.entity==='sketch')next.path=value?.path??c.path??(old?.path&&old.name===next.name?old.path:attachmentPath(next.noteId,next.name+'.sketch'));
 }
 export function projectVault(vault,queue){const projected=structuredClone(vault.base);for(const row of queue.filter(r=>r.vaultId===vault.id&&r.command).sort(order))applyCommand(projected,row.command);return projected;}
 export function noteKey(id){const hex=id.replaceAll('-','');return btoa(String.fromCharCode(...hex.match(/../g).map(pair=>parseInt(pair,16)))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');}
 export const attachmentPath=(noteId,name)=>'attachments/'+noteKey(noteId)+'/'+name;
 
-export function rewriteAttachment(doc,oldPath,newPath,shortName=null){
+export function rewriteAttachment(doc,oldPath,newPath){
     const text=doc.getText('markdown'),markdown=text.toString(),tree=parser.parse(markdown),edits=[];
     for(const match of markdown.matchAll(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/g)){
         let code=false;for(let node=tree.resolveInner(match.index,1);node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name)){code=true;break;}
         if(code)continue;
         const target=(match[1]??match[2]??match[3]).split('|')[0];let decoded;try{decoded=decodeURIComponent(target);}catch{continue;}
-        if(decoded!==oldPath&&decoded!==shortName)continue;
+        if(decoded!==oldPath)continue;
         edits.push({at:match.index+match[0].indexOf(target),length:target.length,value:match[1]?newPath:encodeURI(newPath)});
     }
     doc.transact(()=>{for(const e of edits.reverse()){text.delete(e.at,e.length);text.insert(e.at,e.value);}});

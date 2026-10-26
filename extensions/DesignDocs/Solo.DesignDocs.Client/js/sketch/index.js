@@ -1,4 +1,4 @@
-import {sketchStrokes} from './objects.js';
+import {sketchStrokes,moveStroke} from './objects.js';
 import { presenceTheme,SketchPresence } from '../presence.js';
 import { bindDesktopRotation } from './rotation.js';
 import * as Y from 'yjs';
@@ -156,7 +156,7 @@ export async function mountSketch(root,bridge,options){
                     if(value.region.owners.size){
                         for(const stroke of sketchStrokes(provider.doc).filter(s=>value.ids.has(s.id)&&s.tool!=='eraser')){
                             const parts=splitSelection([stroke],value.region,w,h,value.dx,value.dy,value.ids);
-                            cuts.set(stroke.id,parts.stationary.concat(parts.moved));moved.push(...parts.moved);
+                            moved.push(...moveStroke(provider.doc,stroke,parts));
                         }
                     }
                 },local);undo.stopCapturing();
