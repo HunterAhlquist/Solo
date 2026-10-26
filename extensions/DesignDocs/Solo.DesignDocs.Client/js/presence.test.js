@@ -20,6 +20,46 @@ test('sketch presence transforms cursors with the page, scales brush footprints 
     peers.render([[1,{user,pointer:{x:NaN,y:0}}]],view);assert.equal(peers.markers.size,0);peers.dispose();assert.equal(dom.root.children.length,0);
 });
 
+function animatedPresence(t){
+    const dom=installDOM();t.after(()=>dom.restore());let now=0,next=0;const frames=new Map(),reduced={matches:false};
+    t.mock.method(performance,'now',()=>now);t.mock.method(globalThis,'matchMedia',()=>reduced);
+    t.mock.method(globalThis,'requestAnimationFrame',callback=>{frames.set(++next,callback);return next;});
+    t.mock.method(globalThis,'cancelAnimationFrame',id=>frames.delete(id));
+    const peers=new SketchPresence(dom.root);t.after(()=>peers.dispose());
+    return {peers,frames,reduced,step(time){now=time;for(const [id,callback]of [...frames]){frames.delete(id);callback(time);}}};
+}
+const plainView={pan:[0,0],zoom:1,angle:0};
+const peerAt=(x,y=0)=>[[1,{user,pointer:{x,y,tool:'pen',width:8}}]];
+test('remote sketch cursors interpolate, retarget continuously and stop after the last update',t=>{
+    const {peers,frames,step}=animatedPresence(t);
+    peers.render(peerAt(0),plainView);assert.equal(frames.size,0);
+    const entry=peers.markers.get(1);peers.render(peerAt(100),plainView);
+    assert.deepEqual(entry.point,[0,0]);assert.equal(frames.size,1);
+    step(40);assert.deepEqual(entry.point,[75,0]);
+    peers.render(peerAt(200),plainView);assert.deepEqual(entry.point,[75,0]);assert.equal(frames.size,1);
+    step(80);assert.deepEqual(entry.point,[168.75,0]);
+    step(120);assert.deepEqual(entry.point,[200,0]);assert.equal(frames.size,0);
+    assert.equal(entry.root.style.transform,'translate(200px,0px)');
+});
+test('camera changes apply immediately without restarting cursor interpolation',t=>{
+    const {peers,step,frames}=animatedPresence(t);
+    peers.render(peerAt(0),plainView);peers.render(peerAt(100),plainView);step(40);
+    const entry=peers.markers.get(1),view={pan:[10,20],zoom:2,angle:90};
+    peers.render(peerAt(100),view);
+    assert.deepEqual(entry.point,[75,0]);assert.equal(entry.ring.style.width,'16px');
+    const point=viewportPoint(view,[75,0]);assert.equal(entry.root.style.transform,`translate(${point[0]}px,${point[1]}px)`);
+    step(80);assert.deepEqual(entry.point,[100,0]);assert.equal(frames.size,0);
+});
+test('reduced motion, departed peers and disposal cancel cursor animation',t=>{
+    const {peers,step,frames,reduced}=animatedPresence(t);
+    peers.render(peerAt(0),plainView);peers.render(peerAt(100),plainView);reduced.matches=true;step(16);
+    assert.deepEqual(peers.markers.get(1).point,[100,0]);assert.equal(frames.size,0);
+    peers.render(peerAt(200),plainView);assert.deepEqual(peers.markers.get(1).point,[200,0]);assert.equal(frames.size,0);
+    reduced.matches=false;peers.render(peerAt(300),plainView);assert.equal(frames.size,1);
+    peers.render([],plainView);assert.equal(frames.size,0);assert.equal(peers.markers.size,0);
+    peers.render(peerAt(0),plainView);peers.render(peerAt(100),plainView);peers.dispose();assert.equal(frames.size,0);
+});
+
 test('the pointer edges are true tangents to the circle forming its concave notch',()=>{
     for(const [tip,center,radius]of [[[2,2],[23,27],11],[[0,0],[30,40],18]]){
         const shape=pointerOutline(tip,center,radius);
