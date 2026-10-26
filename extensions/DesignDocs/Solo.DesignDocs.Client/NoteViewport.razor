@@ -1,9 +1,7 @@
 <main class="design-docs-note" aria-busy="@Busy.ToString().ToLowerInvariant()">
     @foreach(var surface in Surfaces) {
         <div @key="surface.Note.Id" class="@($"design-docs-note-surface {(surface.Note.Id==_current?.Id?"is-current":"is-pending")}")" inert="@(Busy?"":null)" aria-hidden="@(surface.Note.Id!=_current?.Id?"true":null)">
-            <MudText Typo="Typo.h4">@surface.Note.Name</MudText>
-            @if(surface.Note.LastEditedAt is {} edited){<MudText Typo="Typo.caption" Class="d-block">Last edited by @surface.Author · @edited.ToLocalTime().ToString("g")</MudText>}
-            <NoteEditor ProjectId="ProjectId" Note="surface.Note" CanWrite="CanWrite" OnReady="@(()=>Ready(surface.Note.Id))" />
+            <NoteEditor ProjectId="ProjectId" Note="surface.Note" Author="surface.Author" CanWrite="CanWrite" OnReady="@(()=>Ready(surface.Note.Id))" />
         </div>
     }
     @if(Busy){<div class="design-docs-note-loading" role="status" aria-label="Loading note"><MudProgressCircular Indeterminate="true" Color="Color.Primary" /></div>}
