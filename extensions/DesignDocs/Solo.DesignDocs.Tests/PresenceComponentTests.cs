@@ -25,4 +25,27 @@ public sealed class PresenceComponentTests : ComponentTestBase
         cut.FindAll("img")[0].TriggerEvent("onerror",new Microsoft.AspNetCore.Components.Web.ErrorEventArgs());
         Assert.Contains("AE",cut.Markup);Assert.Single(cut.FindAll("img"));
     }
+    [Fact]
+    public async Task Sketch_header_updates_when_collaborators_join_and_leave()
+    {
+        var project=Guid.NewGuid();var vault=Guid.NewGuid();var note=Guid.NewGuid();var sketch=Guid.NewGuid();var peer=Guid.NewGuid();
+        var http=new StubHttp();var live=new FakeLiveTopics();
+        http.RouteJson("api/users/me",new Solo.Shared.Dtos.UserDto(Guid.NewGuid(),"alex@example.test","Alex",null,false));
+        http.Route("colors",System.Net.HttpStatusCode.OK,()=>new ColorDto(Guid.NewGuid(),0),HttpMethod.Post);
+        http.Route("colors",System.Net.HttpStatusCode.OK,()=>new[]{new ColorDto(peer,1)},HttpMethod.Get);
+        Services.AddSingleton<ISoloClientApi>(http.CreateClient());Services.AddSingleton<ISoloLiveTopics>(live);
+        var module=JSInterop.SetupModule(_=>true);module.SetupModule("mountSketch",_=>true);
+        var dialogs=Render<MudBlazor.MudDialogProvider>();
+        await dialogs.InvokeAsync(()=>Services.GetRequiredService<MudBlazor.IDialogService>().ShowAsync<SketchDialog>("Map",new MudBlazor.DialogParameters<SketchDialog>{
+            {x=>x.ProjectId,project},{x=>x.VaultId,vault},{x=>x.Sketch,new SketchDto(sketch,note,"Map","A4","portrait","dots",null,null,1)}
+        }));
+        dialogs.WaitForState(()=>live.Held.Any(h=>h.Topic==DocTopics.Doc(sketch)));
+        await dialogs.InvokeAsync(()=>live.PresentAsync(project,DocTopics.Doc(sketch),new TopicPresenceEntry(peer,"Sam Example",PresenceMode.Editing)));
+        dialogs.WaitForAssertion(()=>Assert.Single(dialogs.FindAll(".design-docs-sketch-title .design-docs-presence-avatar")));
+        Assert.Contains(DocPresenceColor.Value(1),dialogs.Find(".design-docs-presence-avatar").GetAttribute("style"));
+        Assert.Equal("Sam Example",dialogs.Find(".design-docs-presence-avatar").GetAttribute("aria-label"));
+        await dialogs.InvokeAsync(()=>live.PresentAsync(project,DocTopics.Doc(sketch)));
+        dialogs.WaitForAssertion(()=>Assert.Empty(dialogs.FindAll(".design-docs-sketch-title .design-docs-presence-avatar")));
+    }
+
 }
