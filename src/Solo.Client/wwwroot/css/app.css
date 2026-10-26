@@ -867,12 +867,8 @@ body.solo-dragging {
     background: color-mix(in srgb, var(--mud-palette-primary) 8%, transparent);
 }
 
-@media (pointer: coarse) {
-    /* A tooltip wants a hover to live inside, and a touchscreen hasn't got one:
-       it opens on the press — the very press that now lifts a card — and then
-       has no pointer-out to close it, so it sits over the board for the rest of
-       the drag. Every one of them repeats a label the element already carries
-       for a screen reader, so on a finger they are pure loss. */
+@media (hover: none) and (any-hover: none) {
+    /* Hide sticky touch tooltips only when no pointer can hover. */
     .mud-tooltip {
         display: none !important;
     }
