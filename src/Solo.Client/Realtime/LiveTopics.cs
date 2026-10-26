@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Solo.Client.State;
+using Solo.Client.Api;
 using Solo.Shared;
 using Solo.Shared.Extensibility;
 using Solo.Shared.Hubs;
@@ -76,7 +77,7 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
         {
             await _hub.SubscribeTopic(projectId, topic);
         }
-        catch (Exception e) when (e is HubException or InvalidOperationException or HttpRequestException)
+        catch (Exception e) when (e is HubException or InvalidOperationException or HttpRequestException or ApiException or OperationCanceledException)
         {
             _logger.LogWarning(e, "Couldn't subscribe to live topic {Topic}; it will stay quiet.", topic);
         }
@@ -101,7 +102,7 @@ public sealed class LiveTopics : ISoloLiveTopics, IDisposable
         {
             await _hub.SubscribeUserTopic(topic);
         }
-        catch (Exception e) when (e is HubException or InvalidOperationException or HttpRequestException)
+        catch (Exception e) when (e is HubException or InvalidOperationException or HttpRequestException or ApiException or OperationCanceledException)
         {
             _logger.LogWarning(e, "Couldn't subscribe to user topic {Topic}; it will stay quiet.", topic);
         }

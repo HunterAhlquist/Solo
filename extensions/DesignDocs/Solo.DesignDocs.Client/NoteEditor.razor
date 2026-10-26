@@ -1,5 +1,5 @@
 @implements IAsyncDisposable
-@inject ISoloClientApi Api
+@inject ISoloClientApi HostApi
 @inject ISoloLiveTopics Live
 @inject IJSRuntime Js
 @inject NavigationManager Navigation
@@ -24,6 +24,7 @@
 <EditorSurface Ready="Mount" />
 </div>
 @code {
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [Parameter] public Guid ProjectId {get;set;}
     [Parameter,EditorRequired] public NoteDto Note {get;set;}=null!;
     [Parameter] public bool CanWrite {get;set;}
@@ -42,14 +43,15 @@
             var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
             var color=DocPresenceColor.Value(slot.Slot);
             var module=await DesignDocsAssets.ModuleAsync(Js,new DesignDocsApi(Api));_reference=DotNetObjectReference.Create(this);
-            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,icons=new{close=Icons.Material.Filled.Close,previous=Icons.Material.Filled.ChevronLeft,next=Icons.Material.Filled.ChevronRight,edit=Icons.Material.Filled.Edit,remove=Icons.Material.Filled.Delete,download=Icons.Material.Filled.Download,replace=Icons.Material.Filled.FindReplace},fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color,colorLight=DocPresenceColor.Value(slot.Slot,true)}});
+            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,documentId=Note.Id,vaultId=Note.VaultId,projectId=ProjectId,icons=new{close=Icons.Material.Filled.Close,previous=Icons.Material.Filled.ChevronLeft,next=Icons.Material.Filled.ChevronRight,edit=Icons.Material.Filled.Edit,remove=Icons.Material.Filled.Delete,download=Icons.Material.Filled.Download,replace=Icons.Material.Filled.FindReplace},fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color,colorLight=DocPresenceColor.Value(slot.Slot,true)}});
+            await _editor.InvokeVoidAsync("connected",false);
             _subscription=await Live.SubscribeAsync(ProjectId,Topic,async m=>{
                 if(_editor is null||_disposed)return;
                 if(m.Kind is "deleted" or "closed"){await _editor.InvokeVoidAsync("connected",false);await Status("Content unavailable · read-only");return;}
                 await _editor.InvokeVoidAsync("receive",m.Kind,m.Data);
             },async people=>{_presence=people;if(_editor is not null)await _editor.InvokeVoidAsync("presence",people);await InvokeAsync(StateHasChanged);});
             _vaultSubscription=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(Note.VaultId),async m=>{if(m.Kind=="image"&&_editor is not null)await _editor.InvokeVoidAsync("imagesChanged");});
-            Live.ConnectionChanged+=Connection;await Live.SetPresenceAsync(ProjectId,Topic,PresenceMode.Viewing);await Connection();
+            Live.ConnectionChanged+=Connection;if(Live.IsConnected)await Live.SetPresenceAsync(ProjectId,Topic,PresenceMode.Viewing);await Connection();
         }catch(Exception e){await Status(e.Message);await Ready();}
     }
     private bool _leaving;
@@ -74,7 +76,7 @@
         return Menus.ShowAsync(x,y,items);
     }
     [JSInvokable] public Task Status(string value){_status=value;return InvokeAsync(StateHasChanged);}
-    [JSInvokable] public Task Focus(bool focused)=>Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
+    [JSInvokable] public Task Focus(bool focused)=>!Live.IsConnected?Task.CompletedTask:Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
     [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}
     private Task AddImage()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("chooseImage").AsTask();
     private async Task InsertTask(){

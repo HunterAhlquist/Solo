@@ -27,7 +27,11 @@ var instance = new InstanceConnection(builder.HostEnvironment.BaseAddress);
 // Anonymous bootstrap. Main is async precisely so the OIDC provider can be
 // configured from the API's environment rather than baked into the client.
 // ---------------------------------------------------------------------------
-var config = await LoadConfigAsync(instance);
+AppConfig config;
+using(var bootstrapServices=builder.Services.BuildServiceProvider())
+{
+    config=await LoadConfigAsync(instance,bootstrapServices.GetRequiredService<IJSRuntime>());
+}
 
 // ---------------------------------------------------------------------------
 // HTTP, realtime, state and the (empty) extension catalog — see
@@ -115,9 +119,9 @@ if (config.LoadError is null)
 await host.RunAsync();
 
 // ---------------------------------------------------------------------------
-static async Task<AppConfig> LoadConfigAsync(InstanceConnection instance)
+static async Task<AppConfig> LoadConfigAsync(InstanceConnection instance,IJSRuntime js)
 {
-    using var http = new HttpClient { BaseAddress = instance.BaseAddress };
+    using var http = new HttpClient(new Solo.Client.Offline.OfflineCacheHandler(new(js)){InnerHandler=new HttpClientHandler()}) { BaseAddress = instance.BaseAddress,Timeout=TimeSpan.FromSeconds(15) };
     try
     {
         var api = new ApiClient(http, instance);

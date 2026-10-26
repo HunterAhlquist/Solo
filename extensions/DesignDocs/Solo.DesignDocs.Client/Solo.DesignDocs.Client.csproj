@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <Version>1.0.26</Version>
+    <Version>1.1.0</Version>
     <!-- The extension serves its own content outside Static Web Assets. -->
     <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
   </PropertyGroup>
@@ -13,6 +13,7 @@
   <ItemGroup>
     <SupportedPlatform Include="browser" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.13" />
     <PackageReference Include="MudBlazor" Version="9.11.0" />
     <!-- Keep the contract package out of host tests, which must bind to the host's assembly. -->
     <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.11.1" PrivateAssets="all" />

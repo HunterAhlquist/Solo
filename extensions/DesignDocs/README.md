@@ -1,7 +1,9 @@
 # Design Docs
 
 Project vaults with collaborative Markdown, task links, images, sketches, and
-Obsidian ZIP import/export. Requires Solo client contract 1.11 or later.
+Obsidian ZIP import/export. Complete offline downloads include notes, sketches, and images.
+Requires Solo client contract 1.11 or later.
+Offline startup also requires the updated Solo client. The foreground agent saves locally and synchronizes queued changes across pages.
 
 Read the [user guide](../../site/guide/design-docs.md),
 [sketch guide](../../site/guide/design-docs-sketches.md), and

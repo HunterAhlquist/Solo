@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject UserSession Session
+@inject IJSRuntime Js
 @inject AppConfig Config
 @inject GoogleIdentityService Google
 @inject NavigationManager Navigation
@@ -269,6 +270,7 @@
     /// <summary>Google has no logout redirect: drop the credential and go to the destination.</summary>
     private async Task SignOutTo(string destination)
     {
+        if(destination=="signin"&&await Js.InvokeAsync<bool?>("solo.offline.flush")==false){Snackbar.Add("Local saving did not finish. Keep the app open and export your work before signing out.",Severity.Warning);return;}
         Session.Clear();
 
         if (Config.IsGoogle)

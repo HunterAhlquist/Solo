@@ -242,6 +242,36 @@ namespace Solo.DesignDocs.Migrations
                     b.ToTable("Notes", "ext_design_docs");
                 });
 
+            modelBuilder.Entity("Solo.DesignDocs.Data.OfflineReceipt", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Result")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("VaultId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("UserId", "Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("OfflineReceipts", "ext_design_docs");
+                });
+
             modelBuilder.Entity("Solo.DesignDocs.Data.Sketch", b =>
                 {
                     b.Property<Guid>("Id")

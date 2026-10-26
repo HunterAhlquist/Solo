@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Solo.Client.Api;
+using Solo.Client.Offline;
 using Solo.Client.Auth;
 using Solo.Client.Extensions;
 using Solo.Client.Realtime;
@@ -38,8 +39,11 @@ public static class SoloClientServices
         services.AddScoped<GoogleIdentityService>();
         services.AddScoped<IdTokenProvider>();
         services.AddScoped<IdTokenMessageHandler>();
+        services.AddScoped<OfflineCache>();
+        services.AddScoped<OfflineCacheHandler>();
 
         services.AddHttpClient<ApiClient>(client => client.BaseAddress = instance.BaseAddress)
+            .AddHttpMessageHandler<OfflineCacheHandler>()
             .AddHttpMessageHandler<IdTokenMessageHandler>();
         // What an extension's client assembly injects to call its own endpoints.
         // Forwarded to ApiClient rather than given its own HttpClient, so an

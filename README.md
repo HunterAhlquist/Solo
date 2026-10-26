@@ -323,7 +323,9 @@ Images and sketches form stacks that open in an attachment viewer.
 The fullscreen sketch editor supports Pencil input, selection tools, and PNG export.
 
 Import an Obsidian ZIP when creating a vault, or export an existing vault as
-Markdown and images. Notes and attachments stay in PostgreSQL.
+Markdown and images. The server stores notes and attachments in PostgreSQL.
+Download a vault to read and edit offline. Changes save on the device and
+synchronize while Solo is open.
 Install `solo-design-docs-<version>.zip` from a compatible release and restart Solo.
 See the [user guide](site/guide/design-docs.md) and [build instructions](extensions/DesignDocs/README.md).
 

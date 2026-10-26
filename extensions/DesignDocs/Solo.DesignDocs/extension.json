@@ -1,7 +1,7 @@
 {
   "id": "design-docs",
   "name": "Design Docs",
-  "version": "1.0.26",
+  "version": "1.1.0",
   "soloApiVersion": ">=1.10 <2.0",
   "soloClientVersion": ">=1.11 <2.0",
   "server": "server/Solo.DesignDocs.dll",

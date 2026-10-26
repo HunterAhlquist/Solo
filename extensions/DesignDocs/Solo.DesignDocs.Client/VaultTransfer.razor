@@ -1,5 +1,5 @@
 @implements IAsyncDisposable
-@inject ISoloClientApi Api
+@inject ISoloClientApi HostApi
 @inject IJSRuntime Js
 @inject ISnackbar Snackbar
 <div class="design-docs-transfer">
@@ -7,6 +7,7 @@
     <MudText Typo="Typo.caption" role="status">@_progress</MudText>
 </div>
 @code {
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [Parameter]public Guid ProjectId {get;set;}
     [Parameter,EditorRequired]public TreeDto Tree {get;set;}=null!;
     private VaultTransferSession? _session;private bool _busy;private string _progress="";

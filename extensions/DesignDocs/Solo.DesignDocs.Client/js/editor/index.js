@@ -94,9 +94,10 @@ export function mountEditor(root, bridge, options) {
     const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh(path=>/\.sketch$/i.test(path));}presenceTheme(root);});
     themeObserver.observe(document.head,{childList:true,subtree:true,characterData:true});
     themeObserver.observe(document.body,{attributes:true,attributeFilter:['class','style']});
+    const removeSaveGuard=globalThis.solo?.offline?.guard(async()=>{if(root.contains(document.activeElement))document.activeElement.blur();return provider.waitForSave();});
     return {
         suspend(value){suspended=!!value;root.inert=suspended;if(suspended&&root.contains(document.activeElement))document.activeElement.blur();applyAccess();},
-        connected:value=>provider.connected(value),
+        connected:async value=>{await provider.connected(value);if(provider.offline)await bridge.invokeMethodAsync('Ready');},
         permissions(value){images.canWrite=value;provider.options.canWrite=value;provider.connected(provider.online);},
         async receive(kind,data) {
             await provider.receive(kind,data);
@@ -116,6 +117,6 @@ export function mountEditor(root, bridge, options) {
         chooseImage:()=>images.choose(),
         imagesChanged:()=>images.refresh(path=>!/\.sketch$/i.test(path)),
         refreshSketches:names=>images.refresh(path=>names.some(name=>path===name+'.sketch')),
-        dispose(){root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
+        dispose(){removeSaveGuard?.();root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }

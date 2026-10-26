@@ -1,4 +1,5 @@
-@inject ISoloClientApi Api
+@inject IJSRuntime Js
+@inject ISoloClientApi HostApi
 <MudDialog>
     <DialogContent>
         @if(_error is not null){<MudAlert Severity="Severity.Error">@_error</MudAlert>}
@@ -19,6 +20,7 @@
     <DialogActions><MudButton OnClick="Dialog.Cancel">Cancel</MudButton><MudButton Disabled="@(Selected is null)" Color="Color.Primary" OnClick="Choose">Insert link</MudButton></DialogActions>
 </MudDialog>
 @code{
+    private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=null!;
     [Parameter] public Guid ProjectId {get;set;}
     private IReadOnlyList<VaultDto> _vaults=[];private IReadOnlyList<NoteDto> _notes=[];

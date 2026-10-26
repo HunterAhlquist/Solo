@@ -89,12 +89,12 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
 
     /// <summary>Called from JS when a GIS credential lands (web only).</summary>
     [JSInvokable]
-    public Task OnCredentialReceived(string credential)
+    public async Task OnCredentialReceived(string credential)
     {
+        try{await js.InvokeVoidAsync("solo.offline.credential",GoogleJwt.ToPrincipal(credential)?.FindFirst("email")?.Value);}catch(JSException){}
         _token = credential;
         ScheduleRenewal(credential);
         SignedInChanged?.Invoke();
-        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -102,10 +102,10 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     /// (desktop only). The session is already live; there is nothing to renew.
     /// </summary>
     [JSInvokable]
-    public Task OnDesktopSignedIn()
+    public async Task OnDesktopSignedIn()
     {
+        await OfflineLock();
         SignedInChanged?.Invoke();
-        return Task.CompletedTask;
     }
 
     /// <summary>Called from JS when a browser sign-in couldn't be completed.</summary>
@@ -145,6 +145,8 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
             // Never signed in here: nothing to renew, nothing to retire.
             return null;
         }
+
+        if(await IsOffline())return null;
 
         // The credential died while we weren't looking (slept laptop, restarted
         // browser with "stay signed in"). One silent re-issue usually saves it.
@@ -245,6 +247,7 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     {
         try
         {
+            if(await IsOffline())return;
             if (!await TryRenewAsync())
             {
                 sessionExpiry.NotifyExpired();
@@ -280,7 +283,9 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
         if (!await IsDesktopAsync())
         {
             var token = await GetTokenAsync();
-            return (token is not null, GoogleJwt.ToPrincipal(token));
+            if(token is not null)return (true,GoogleJwt.ToPrincipal(token));
+            if(await IsOffline()){var profile=await js.InvokeAsync<string?>("solo.offline.profile");return (profile is not null,DesktopUser.ToPrincipal(profile));}
+            return (false,null);
         }
 
         if (await GetTokenAsync() is null)
@@ -293,6 +298,7 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
 
     public async Task SignOutAsync()
     {
+        await OfflineLock();
         _token = null;
         CancelScheduledRenewal();
         if (await IsDesktopAsync())
@@ -303,6 +309,9 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
         await js.InvokeVoidAsync("solo.google.signOut");
         SignedInChanged?.Invoke();
     }
+
+    private async Task<bool> IsOffline(){try{return await js.InvokeAsync<bool>("solo.offline.isOffline");}catch(JSException){return false;}}
+    private async Task OfflineLock(){try{await js.InvokeVoidAsync("solo.offline.lock");}catch(JSException){}}
 
     private void CancelScheduledRenewal()
     {
