@@ -23,7 +23,11 @@
         if(Entries.Any(p=>!_colors.ContainsKey(p.UserId))){
             var project=ProjectId;
             try{
-                var colors=await Api.GetAsync<List<ColorDto>>($"api/ext/design-docs/projects/{project}/colors");
+                var path=$"api/ext/design-docs/projects/{project}/colors";
+                List<ColorDto> colors;
+                try{colors=await HostApi.GetAsync<List<ColorDto>>(path);}
+                catch(HttpRequestException){colors=await Api.GetAsync<List<ColorDto>>(path);}
+                catch(SoloApiException e)when(e.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout){colors=await Api.GetAsync<List<ColorDto>>(path);}
                 if(project==ProjectId)_colors=colors.ToDictionary(p=>p.UserId,p=>p.Slot);
             }catch(SoloApiException){ /* Presence remains visible while the server reconnects. */ }
         }
