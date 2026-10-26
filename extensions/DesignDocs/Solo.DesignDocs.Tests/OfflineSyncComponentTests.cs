@@ -43,4 +43,16 @@ public sealed class OfflineSyncComponentTests : ComponentTestBase
         var snackbar=Assert.Single(Services.GetRequiredService<ISnackbar>().ShownSnackbars);
         Assert.Equal("Could not remove this download. Try again.",snackbar.Message?.ToString());
     }
+    [Fact]
+    public async Task Removing_the_last_download_also_refreshes_the_open_vaults_download_button()
+    {
+        var project=Guid.NewGuid();var vault=Guid.NewGuid();var status=new OfflineVaultButton.DownloadStatus{Ready=true};
+        _module.Setup<OfflineVaultButton.DownloadStatus>("offlineStatus",_=>true).SetResult(status);
+        var sync=Render<OfflineSync>();var button=Render<OfflineVaultButton>(p=>p.Add(x=>x.ProjectId,project).Add(x=>x.VaultId,vault));
+        await sync.InvokeAsync(()=>sync.Instance.Changed(new(){Vaults=[new(){Id=vault.ToString(),ProjectId=project,Ready=true}]}));
+        button.WaitForAssertion(()=>Assert.Equal(Icons.Material.Filled.OfflinePin,button.FindComponent<MudIconButton>().Instance.Icon));
+        status.Ready=false;await sync.InvokeAsync(()=>sync.Instance.Changed(new()));
+        button.WaitForAssertion(()=>Assert.Equal(Icons.Material.Filled.CloudDownload,button.FindComponent<MudIconButton>().Instance.Icon));
+    }
+
 }
