@@ -50,7 +50,15 @@
                 if(m.Kind is "deleted" or "closed"){await _editor.InvokeVoidAsync("connected",false);await Status("Content unavailable · read-only");return;}
                 await _editor.InvokeVoidAsync("receive",m.Kind,m.Data);
             },async people=>{_presence=people;if(_editor is not null)await _editor.InvokeVoidAsync("presence",people);await InvokeAsync(StateHasChanged);});
-            _vaultSubscription=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(Note.VaultId),async m=>{if(m.Kind=="image"&&_editor is not null)await _editor.InvokeVoidAsync("imagesChanged");});
+            _vaultSubscription=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(Note.VaultId),async m=>{
+                if(_editor is null||_disposed)return;
+                if(m.Kind=="image")await _editor.InvokeVoidAsync("imagesChanged");
+                if(m.Kind=="sketch"&&System.Text.Json.JsonSerializer.Deserialize<SketchPreviewChange>(m.Data??"{}",new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) is {} change&&change.NoteId==Note.Id){
+                    _sketchRefreshes.Add(change.Name);_sketchRefreshes.Add(change.Path[..^7]);
+                    if(change.PreviousName is {} old){_sketchRefreshes.Add(old);_sketchRefreshes.Add(AttachmentPaths.ForNote(Note.Id,old+".sketch")[..^7]);}
+                    _refreshTask??=RefreshSketches();
+                }
+            });
             Live.ConnectionChanged+=Connection;if(Live.IsConnected)await Live.SetPresenceAsync(ProjectId,Topic,PresenceMode.Viewing);await Connection();
         }catch(Exception e){await Status(e.Message);await Ready();}
     }
@@ -61,7 +69,15 @@
         try{await _editor.InvokeVoidAsync("suspend",true);return await _editor.InvokeAsync<bool>("waitForSave",10000);}
         finally{_leaving=false;if(!_disposed&&_editor is not null){await _editor.InvokeVoidAsync("suspend",_sketchOpen);await InvokeAsync(StateHasChanged);}}
     }
-    private Task Connection()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
+    private readonly HashSet<string> _sketchRefreshes=[];
+    private readonly CancellationTokenSource _refreshStop=new();private Task? _refreshTask;
+    private async Task RefreshSketches(){
+        try{while(_sketchRefreshes.Count>0){
+            await Task.Delay(200,_refreshStop.Token);var names=_sketchRefreshes.ToArray();_sketchRefreshes.Clear();
+            if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches",new object[]{names});
+        }}catch(OperationCanceledException)when(_refreshStop.IsCancellationRequested){}finally{_refreshTask=null;}
+    }
+    private async Task Connection(){if(_editor is null||_disposed)return;await _editor.InvokeVoidAsync("connected",Live.IsConnected);if(Live.IsConnected)await _editor.InvokeVoidAsync("sketchesChanged");}
     [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);
     [JSInvokable] public void Notice(string value)=>Snackbar.Add(value,Severity.Info);
     [JSInvokable] public Task<bool> ConfirmRemoveAttachment(string path,bool sketch)=>CanWrite
@@ -135,8 +151,17 @@
     }
     [JSInvokable]public async Task<object?> SketchPreview(string name){
         var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");var sketch=sketches.SingleOrDefault(s=>s.NoteId==Note.Id&&(s.Name==name||s.Path==name+".sketch"));if(sketch is null)return null;
-        var state=await Api.GetAsync<System.Text.Json.JsonElement>($"api/ext/design-docs/projects/{ProjectId}/documents/{sketch.Id}");
-        return new{sketch,updates=state.GetProperty("updates").EnumerateArray().Select(u=>u.GetProperty("data").GetString()).ToArray()};
+        var path=$"api/ext/design-docs/projects/{ProjectId}/documents/{sketch.Id}";
+        var state=await Api.GetAsync<System.Text.Json.JsonElement>(path);
+        var updates=state.GetProperty("updates").EnumerateArray().Select(u=>u.GetProperty("data").GetString()).ToList();
+        if(Live.IsConnected&&sketch.Version!=0){
+            try{
+                // Merge fresh server state with local pending edits in the preview's Y.Doc.
+                var fresh=await HostApi.GetAsync<System.Text.Json.JsonElement>(path);
+                updates.AddRange(fresh.GetProperty("updates").EnumerateArray().Select(u=>u.GetProperty("data").GetString()));
+            }catch(HttpRequestException){}catch(SoloApiException e)when(e.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout){}
+        }
+        return new{sketch,updates};
     }
-    public async ValueTask DisposeAsync(){_disposed=true;Live.ConnectionChanged-=Connection;if(_subscription is not null)await _subscription.DisposeAsync();if(_vaultSubscription is not null)await _vaultSubscription.DisposeAsync();if(_editor is not null){try{await _editor.InvokeVoidAsync("dispose");await _editor.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
+    public async ValueTask DisposeAsync(){_disposed=true;_refreshStop.Cancel();if(_refreshTask is not null)await _refreshTask;_refreshStop.Dispose();Live.ConnectionChanged-=Connection;if(_subscription is not null)await _subscription.DisposeAsync();if(_vaultSubscription is not null)await _vaultSubscription.DisposeAsync();if(_editor is not null){try{await _editor.InvokeVoidAsync("dispose");await _editor.DisposeAsync();}catch(JSDisconnectedException){}}_reference?.Dispose();}
 }

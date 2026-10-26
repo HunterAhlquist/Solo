@@ -19,7 +19,7 @@ export function imageAngle(path) {let seed=0;for(const c of path)seed=(seed*31+c
 export class Images {
     constructor(bridge,canWrite,insert,status,actions={}) {
         Object.assign(this,{bridge,canWrite,insert,status,actions});
-        this.cache=new Map();this.cards=new Set();this.inputs=new Set();this.disposed=false;this.dragged=null;
+        this.revisions=new Map();this.cache=new Map();this.cards=new Set();this.inputs=new Set();this.disposed=false;this.dragged=null;
     }
     get canWrite(){return this._canWrite;}
     set canWrite(value){this._canWrite=value;for(const entry of this.cards??[]){entry.button.draggable=value;for(const image of entry.button.querySelectorAll('img'))image.draggable=value;}
@@ -32,7 +32,7 @@ export class Images {
         return this.canWrite&&!this.disposed&&!!this.actions.remove?.(reference);
     }
     async resolve(path) {
-        if(!this.cache.has(path))this.cache.set(path,(async()=>{
+        if(!this.cache.has(path)){const loading=(async()=>{
             let blob;
             if(/\.sketch$/i.test(path)){
                 const canvas=document.createElement('canvas');canvas.dataset.sketch=path.slice(0,-7);
@@ -46,7 +46,7 @@ export class Images {
             const url=URL.createObjectURL(blob);
             if(this.disposed){URL.revokeObjectURL(url);throw new Error('Page closed');}
             return url;
-        })().catch(e=>{this.cache.delete(path);throw e;}));
+        })().catch(e=>{if(this.cache.get(path)===loading)this.cache.delete(path);throw e;});this.cache.set(path,loading);}
         return this.cache.get(path);
     }
     card(entries) {
@@ -59,7 +59,7 @@ export class Images {
         for(const [index,item] of entries.entries()){
             const img=document.createElement('img');img.alt=attachmentName(item.path);img.draggable=this.canWrite;img.dataset.mediaIndex=String(index);
             img.style.transform=`translate(calc(${Math.min(index,7)*24}px * var(--design-docs-scale, 1)),calc(${index%2*6}px * var(--design-docs-scale, 1))) rotate(${imageAngle(item.path)*(entries.length>1?2:1)}deg)`;img.style.zIndex=index;
-            this.resolve(item.path).then(url=>{if(!this.disposed)img.src=url;}).catch(()=>{img.alt=`Unavailable: ${attachmentName(item.path)}`;});button.append(img);
+            this.thumbnail(img,item.path);button.append(img);
         }
         if(entries.length>1){const count=document.createElement('span');count.className='design-docs-stack-count';count.textContent=String(entries.length);button.append(count);}
         let front=entries.length-1;
@@ -205,13 +205,20 @@ export class Images {
             if(!replace)this.insert(`![[${stored}]]`);else await this.refresh(item=>item===path);
         }catch(e){if(!this.disposed)this.status(e.message);}
     }
+    thumbnail(image,path){
+        const revision=this.revisions.get(path);
+        this.resolve(path).then(url=>{if(!this.disposed&&this.revisions.get(path)===revision)image.src=url;})
+            .catch(()=>{if(!this.disposed&&this.revisions.get(path)===revision)image.alt=`Unavailable: ${attachmentName(path)}`;});
+    }
     async refresh(matches=()=>true){
+        const paths=new Set([...this.cache.keys(),...[...this.cards].flatMap(card=>card.entries.map(item=>item.path))]);
+        for(const path of paths)if(matches(path))this.revisions.set(path,(this.revisions.get(path)??0)+1);
         for(const [path,promise] of this.cache)if(matches(path)){this.cache.delete(path);promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});}
         if(this.dialog?.open)this.refreshViewer?.(matches);
         for(const entry of [...this.cards]){
             if(!entry.button.isConnected){this.cards.delete(entry);continue;}
-            const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>{if(matches(item.path))this.resolve(item.path).then(url=>{if(images[i])images[i].src=url;}).catch(()=>{});});
+            const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>{if(matches(item.path))this.thumbnail(images[i],item.path);});
         }
     }
-    dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.closeViewer?.();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();}
+    dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.closeViewer?.();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();this.revisions.clear();}
 }

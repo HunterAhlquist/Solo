@@ -17,12 +17,29 @@ public sealed partial class VaultTests
         public async Task<JsonElement> Next(string kind){using var cts=new CancellationTokenSource(TimeSpan.FromSeconds(8));while(true){var m=await _messages.Reader.ReadAsync(cts.Token);if(m.Kind==kind)return JsonDocument.Parse(m.Data!).RootElement.Clone();}}
         public async ValueTask DisposeAsync()=>await hub.DisposeAsync();
     }
-    private async Task<Peer> Connect(Guid id,string who="admin")
+    private Task<Peer> Connect(Guid id,string who="admin")=>ConnectTopic(DocTopics.Doc(id),who);
+    private async Task<Peer> ConnectTopic(string topic,string who="admin")
     {
         var hub=new HubConnectionBuilder().WithUrl(new Uri(_factory.Server.BaseAddress,BoardHubConstants.Path),o=>{
             o.HttpMessageHandlerFactory=_=>_factory.Server.CreateHandler();o.Transports=HttpTransportType.LongPolling;
             o.Headers[TestAuthHandler.SubHeader]=who;o.Headers[TestAuthHandler.EmailHeader]=who+"@example.com";o.Headers[TestAuthHandler.NameHeader]=who;
-        }).Build();var p=new Peer(hub,_project.Id,DocTopics.Doc(id));await p.Start();return p;
+        }).Build();var p=new Peer(hub,_project.Id,topic);await p.Start();return p;
+    }
+    [SkippableFact]
+    public async Task Remote_sketch_updates_notify_readers_who_only_have_the_note_open()
+    {
+        postgres.SkipUnlessDockerAvailable();var vault=await Vault();var note=await NewNote(vault);
+        var sketch=await _writer.PostJson<SketchDto>($"{Root}/{vault.Id}/sketches/notes/{note.Id}",new NameRequest("Map"));
+        await using var viewer=await ConnectTopic(DocTopics.Vault(vault.Id),"reader");
+        await using var writer=await Connect(sketch.Id,"writer");
+        await writer.Send("update",new{id=Guid.NewGuid(),data=Updates[0]});await writer.Next("ack");
+        var changed=await viewer.Next("sketch");
+        Assert.Equal(note.Id,changed.GetProperty("noteId").GetGuid());Assert.Equal(sketch.Path,changed.GetProperty("path").GetString());
+        await _writer.PostJson<OfflineWriteResult>($"{Root}/{vault.Id}/offline/documents/{sketch.Id}",new OfflineWrite(Guid.NewGuid(),Convert.FromBase64String(Updates[1])));
+        Assert.Equal(sketch.Path,(await viewer.Next("sketch")).GetProperty("path").GetString());
+        var current=(await _writer.GetJson<List<SketchDto>>($"{Root}/{vault.Id}/sketches")).Single();
+        await _writer.PutJson<SketchDto>($"{Root}/{vault.Id}/sketches/{sketch.Id}",new SketchChange("Renamed","A4","portrait","dots",current.Version));
+        var renamed=await viewer.Next("sketch");Assert.Equal("Map",renamed.GetProperty("previousName").GetString());Assert.Equal("Renamed",renamed.GetProperty("name").GetString());
     }
     private async Task<NoteDto> NewNote(VaultDto v)=>await _writer.PostJson<NoteDto>($"{Root}/{v.Id}/notes",new ItemChange("Note",null));
     private static readonly string[] Updates=["AQERAAQBCG1hcmtkb3duBUhlbGxvAA==","AQERBYQRBAYgd29ybGQA"];

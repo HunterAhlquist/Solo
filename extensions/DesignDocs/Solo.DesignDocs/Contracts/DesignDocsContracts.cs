@@ -29,3 +29,4 @@ public sealed record SketchDto(Guid Id,Guid NoteId,string Name,string PageSize,s
     public string Path => AttachmentPaths.ForNote(NoteId, Name + ".sketch");
 }
 public sealed record SketchChange(string Name,string PageSize,string Orientation,string Pattern,uint Version);
+public sealed record SketchPreviewChange(Guid NoteId,string Name,string Path,string? PreviousName=null);

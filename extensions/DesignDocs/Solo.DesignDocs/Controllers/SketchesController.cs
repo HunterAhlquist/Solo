@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Solo.DesignDocs.Contracts;
 using Solo.DesignDocs.Data;
+using Solo.DesignDocs.Sync;
 using Solo.Extensibility;
 namespace Solo.DesignDocs.Controllers;
 
@@ -35,8 +36,8 @@ public sealed class SketchesController(DesignDocsDbContext db,ISoloQuery query,I
         var vault=(await db.Vaults.FromSqlInterpolated($"SELECT *, xmin FROM ext_design_docs.\"Vaults\" WHERE \"Id\"={vaultId} AND \"ProjectId\"={projectId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
         if(vault is null)return NotFound();if(vault.IsClosed)return Problem(statusCode:409,title:"Design doc is closed");
         var s=await db.Sketches.SingleOrDefaultAsync(s=>s.Id==id&&s.VaultId==vaultId,ct);if(s is null)return NotFound();
-        s.Name=r.Name.Trim();s.PageSize=r.PageSize;s.Orientation=r.Orientation;s.Pattern=r.Pattern;
+        var previousName=s.Name;s.Name=r.Name.Trim();s.PageSize=r.PageSize;s.Orientation=r.Orientation;s.Pattern=r.Pattern;
         s.LastEditedBy=(await query.CallerAsync(ct)).UserId;s.LastEditedAt=DateTimeOffset.UtcNow;db.Entry(s).Property(x=>x.Version).OriginalValue=r.Version;
-        await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);await live.PublishAsync(projectId,DocTopics.Vault(vaultId),"tree",ct:ct);return Dto(s);
+        await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);await SketchPreviewChanges.PublishAsync(live,projectId,s,ct,previousName);await live.PublishAsync(projectId,DocTopics.Vault(vaultId),"tree",ct:ct);return Dto(s);
     }
 }

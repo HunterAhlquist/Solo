@@ -60,7 +60,12 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         var caller=await query.CallerAsync(ct);
         var hash=Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new{id,r},Json)));
         var receipt=await db.OfflineReceipts.FindAsync([caller.UserId,r.Id],ct);
-        if(receipt is not null)return receipt.ProjectId==projectId&&receipt.VaultId==vaultId&&receipt.Hash==hash?Content(receipt.Result,"application/json"):Conflict(new{title="Update ID already used"});
+        if(receipt is not null){
+            if(receipt.ProjectId!=projectId||receipt.VaultId!=vaultId||receipt.Hash!=hash)return Conflict(new{title="Update ID already used"});
+            await db.Database.CurrentTransaction!.CommitAsync(ct);
+            if(sketch is not null)await SketchPreviewChanges.PublishAsync(live,projectId,sketch,ct);
+            return Content(receipt.Result,"application/json");
+        }
         var previousSeq=await db.DocUpdates.Where(u=>u.DocumentId==id).MaxAsync(u=>(long?)u.Seq,ct)??0;
         var previousVersion=sketch?.Version;
         if(note?.SeedMarkdown is {} seed){
@@ -73,6 +78,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         var result=JsonSerializer.Serialize(new OfflineWriteResult(row.Seq.ToString(),previousSeq.ToString(),previousVersion,sketch?.Version),Json);
         db.Add(new OfflineReceipt{Id=r.Id,UserId=caller.UserId,ProjectId=projectId,VaultId=vaultId,Hash=hash,Result=result});
         await db.SaveChangesAsync(ct);await db.Database.CurrentTransaction!.CommitAsync(ct);
+        if(sketch is not null)await SketchPreviewChanges.PublishAsync(live,projectId,sketch,ct);
         var encoded=Convert.ToBase64String(r.Data);var count=(encoded.Length+DocProtocol.ChunkLength-1)/DocProtocol.ChunkLength;
         for(var i=0;i<count;i++)await live.PublishAsync(projectId,DocTopics.Doc(id),"update",DocProtocol.Serialize(new{seq=row.Seq.ToString(),index=i,count,data=encoded.Substring(i*DocProtocol.ChunkLength,Math.Min(DocProtocol.ChunkLength,encoded.Length-i*DocProtocol.ChunkLength))}),ct:ct);
         return Content(result,"application/json");
@@ -106,7 +112,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         if(r.Entity=="vault"){if(!caller.IsSuperAdmin)return Forbid();if(r.TargetId!=vaultId)return BadRequest();}
         else{if(!await CanWrite(ct))return Forbid();if(vault is null)return NotFound();if(vault.IsClosed)return Conflict(new{title="Design doc is closed"});}
         if(r.Action=="delete"&&r.BaseVersions is not null&&!await DeletionUnchanged(vaultId,r,ct))return Conflict(new{title="Content changed elsewhere. Review it before deleting."});
-        object? result=null;var kind="tree";var deletedDocs=new List<Guid>();
+        object? result=null;Sketch? changedSketch=null;string? previousName=null;var kind="tree";var deletedDocs=new List<Guid>();
         if(r.Action!="delete"&&r.Entity!="image"&&!VaultsController.ValidName(r.Name))return BadRequest();
         if(r.Entity=="vault"){
             if(r.Action=="create"){
@@ -144,6 +150,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
             }
         }else if(r.Entity=="sketch"){
             var s=await db.Sketches.SingleOrDefaultAsync(s=>s.Id==r.TargetId&&s.VaultId==vaultId,ct);
+            previousName=s?.Name;
             if(r.Action=="create"){
                 if(s is not null||await db.Sketches.AnyAsync(x=>x.Id==r.TargetId,ct))return Conflict();
                 if(!await db.Notes.AnyAsync(n=>n.Id==r.NoteId&&n.VaultId==vaultId,ct))return Conflict(new{title="The owning note no longer exists"});
@@ -153,7 +160,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
                 if(r.Action=="delete"){db.Remove(s);deletedDocs.Add(s.Id);}
                 else{if(r.PageSize is not("A3" or "A4" or "A5" or "Letter")||r.Orientation is not("portrait" or "landscape")||r.Pattern is not("empty" or "grid" or "notebook" or "dots"))return BadRequest();s.Name=r.Name!.Trim();s.PageSize=r.PageSize;s.Orientation=r.Orientation;s.Pattern=r.Pattern;}
             }
-            await db.SaveChangesAsync(ct);if(r.Action!="delete")result=Dto(s);
+            changedSketch=s;await db.SaveChangesAsync(ct);if(r.Action!="delete")result=Dto(s);
         }else{
             var image=await db.Images.SingleOrDefaultAsync(i=>i.Id==r.TargetId&&i.VaultId==vaultId,ct);
             if(r.Action=="create"){
@@ -182,6 +189,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         var json=JsonSerializer.Serialize(result,Json);db.Add(new OfflineReceipt{Id=r.Id,UserId=caller.UserId,ProjectId=projectId,VaultId=vaultId,Hash=hash,Result=json});
         await db.SaveChangesAsync(ct);await db.Database.CurrentTransaction!.CommitAsync(ct);
         await live.PublishAsync(projectId,DocTopics.Vault(vaultId),kind,ct:ct);
+        if(changedSketch is not null)await SketchPreviewChanges.PublishAsync(live,projectId,changedSketch,ct,previousName);
         if(r.Entity=="vault")await live.PublishAsync(projectId,DocTopics.Vaults,"changed",ct:ct);
         foreach(var id in deletedDocs)if(!await db.Notes.AnyAsync(n=>n.Id==id,ct)&&!await db.Sketches.AnyAsync(s=>s.Id==id,ct))await live.PublishAsync(projectId,DocTopics.Doc(id),"deleted",ct:ct);
         return Content(json,"application/json");

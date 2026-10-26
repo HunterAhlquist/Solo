@@ -5,7 +5,7 @@ using Solo.Extensibility;
 using Solo.Shared;
 namespace Solo.DesignDocs.Sync;
 
-public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : ISoloLiveMessageHandler
+public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory,ISoloLiveUpdates live) : ISoloLiveMessageHandler
 {
     public async ValueTask HandleAsync(LiveMessage m,ILiveMessageReply reply,CancellationToken ct)
     {
@@ -77,7 +77,7 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
             var accepted=await db.DocUpdates.AsNoTracking().SingleOrDefaultAsync(u=>u.DocumentId==id&&u.ClientUpdateId==r.Id,ct);
             if(accepted is not null){
                 if(!accepted.Data.AsSpan().SequenceEqual(data)){await Refuse("invalid-id");return;}
-                await tx.CommitAsync(ct);await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=accepted.Seq.ToString()}),ct);return;
+                await tx.CommitAsync(ct);if(sketch is not null)await SketchPreviewChanges.PublishAsync(live,m.ProjectId,sketch,ct);await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=accepted.Seq.ToString()}),ct);return;
             }
             if(r.SeedToken is {} token&&note?.SeededByToken==token) {
                 var seq=await db.DocUpdates.Where(u=>u.DocumentId==id).MaxAsync(u=>(long?)u.Seq,ct)??0;
@@ -89,6 +89,7 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory) : IS
             if(note?.SeedMarkdown is not null){note.SeedMarkdown=null;note.SeededByToken=r.SeedToken;}
             if(sketch is not null){sketch.LastEditedBy=m.Sender.UserId;sketch.LastEditedAt=DateTimeOffset.UtcNow;}
             await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);memory.Seeded(id);
+            if(sketch is not null)await SketchPreviewChanges.PublishAsync(live,m.ProjectId,sketch,ct);
             await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=update.Seq.ToString()}),ct);
             await Chunks(reply,"update",update.Seq,data,ct,others:true);
         }catch(FormatException){await Refuse("invalid-payload");}
