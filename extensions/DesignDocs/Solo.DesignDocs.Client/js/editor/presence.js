@@ -39,12 +39,16 @@ export function textPresence(provider){
     });
     return ViewPlugin.fromClass(class{
         constructor(view){
-            this.view=view;this.changed=({added,updated,removed})=>{if([...added,...updated,...removed].some(id=>id!==provider.doc.clientID))view.dispatch({effects:refresh.of(null)});};
+            this.view=view;this.changed=({added,updated,removed})=>{
+                const clients=[...added,...updated,...removed];
+                if(clients.includes(provider.doc.clientID))this.publish();
+                if(clients.some(id=>id!==provider.doc.clientID))view.dispatch({effects:refresh.of(null)});
+            };
             provider.awareness.on('change',this.changed);this.publish();
         }
         publish(){
             const local=provider.awareness.getLocalState();if(!local)return;
-            if(!this.view.hasFocus||!this.view.dom.ownerDocument.hasFocus()){
+            if(!this.view.hasFocus){
                 if(local.cursor)provider.awareness.setLocalStateField('cursor',null);return;
             }
             const selection=this.view.state.selection.main,anchor=Y.createRelativePositionFromTypeIndex(text,selection.anchor),head=Y.createRelativePositionFromTypeIndex(text,selection.head);
