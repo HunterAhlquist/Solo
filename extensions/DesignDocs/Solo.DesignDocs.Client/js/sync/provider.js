@@ -44,13 +44,15 @@ export class Provider {
     send(kind, value) {
         const epoch=this.epoch;
         if(kind==='awareness'){
+            if(!this.online||this.disposed)return this.queue;
             this.latestAwareness=value;
             if(this.awarenessQueued)return this.queue;
             this.awarenessQueued=true;
         }
         this.queue = this.queue.catch(() => {}).then(async () => {
-            if (!this.online || this.disposed||epoch!==this.epoch) return;
+            if(epoch!==this.epoch)return;
             if(kind==='awareness'){value=this.latestAwareness;this.awarenessQueued=false;this.latestAwareness=null;}
+            if(!this.online||this.disposed)return;
             let result = await this.bridge.send(kind, JSON.stringify(value));
             if(epoch!==this.epoch||this.disposed)return;
             // Presence is disposable; document writes remain pending until acknowledged.
