@@ -20,7 +20,7 @@ public sealed class OfflineCacheHandler(OfflineCache cache,SessionExpiry? expiry
         catch(Exception e)when(e is HttpRequestException||e is TaskCanceledException&&!ct.IsCancellationRequested){await cache.Network(false);if(cached is not null&&epoch==await cache.Epoch())return Stored();return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable){Content=System.Net.Http.Json.JsonContent.Create(new{title="Server unavailable",detail="Downloaded vaults remain available offline. Reconnect before using online features."})};}
         if(response.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout){await cache.Network(false);if(cached is not null&&epoch==await cache.Epoch()){response.Dispose();return Stored();}return response;}
         await cache.Network(true);
-        if(response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden){await cache.Lock(epoch);if(response.StatusCode==HttpStatusCode.Unauthorized)expiry?.NotifyExpired();return response;}
+        if(response.StatusCode==HttpStatusCode.Unauthorized){await cache.Lock(epoch);expiry?.NotifyExpired();return response;}
         if(eligible&&response.IsSuccessStatusCode)await cache.Write(path,new(Convert.ToBase64String(await response.Content.ReadAsByteArrayAsync(ct)),response.Content.Headers.ContentType?.MediaType),epoch);
         return response;
     }

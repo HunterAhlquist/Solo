@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Data;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,6 +23,11 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         await db.Database.BeginTransactionAsync(ct);
         return (await db.Vaults.FromSqlInterpolated($"SELECT *, xmin FROM ext_design_docs.\"Vaults\" WHERE \"Id\"={vaultId} AND \"ProjectId\"={projectId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
     }
+    private async Task<Vault?> ReadVault(Guid projectId,Guid vaultId,CancellationToken ct)
+    {
+        await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead,ct);
+        return await db.Vaults.AsNoTracking().SingleOrDefaultAsync(v=>v.Id==vaultId&&v.ProjectId==projectId,ct);
+    }
     private async Task<bool> CanWrite(CancellationToken ct){var caller=await query.CallerAsync(ct);return caller.IsProjectOwner||caller.Role==ProjectRole.ReadWrite;}
     private static SketchDto Dto(Sketch s)=>new(s.Id,s.NoteId,s.Name,s.PageSize,s.Orientation,s.Pattern,s.LastEditedBy,s.LastEditedAt,s.Version);
     private static ImageDto Dto(DocImage i)=>new(i.Id,i.Path,i.ContentType,i.Width,i.Height,i.Bytes,i.Version);
@@ -29,7 +35,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
     [HttpGet]
     public async Task<ActionResult<OfflineManifest>> Manifest(Guid projectId,Guid vaultId,CancellationToken ct)
     {
-        var v=await Lock(projectId,vaultId,ct);if(v is null)return NotFound();
+        var v=await ReadVault(projectId,vaultId,ct);if(v is null)return NotFound();
         var notes=await db.Notes.AsNoTracking().Where(n=>n.VaultId==vaultId).ToListAsync(ct);
         var sketches=await db.Sketches.AsNoTracking().Where(s=>s.VaultId==vaultId).ToListAsync(ct);
         var ids=notes.Select(n=>n.Id).Concat(sketches.Select(s=>s.Id)).ToArray();
@@ -42,7 +48,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
     [HttpGet("documents/{id:guid}")]
     public async Task<ActionResult<OfflineDocument>> Read(Guid projectId,Guid vaultId,Guid id,[FromQuery]string after="0",CancellationToken ct=default)
     {
-        var v=await Lock(projectId,vaultId,ct);if(v is null)return NotFound();
+        var v=await ReadVault(projectId,vaultId,ct);if(v is null)return NotFound();
         var note=await db.Notes.AsNoTracking().SingleOrDefaultAsync(n=>n.Id==id&&n.VaultId==vaultId,ct);
         if(note is null&&!await db.Sketches.AnyAsync(s=>s.Id==id&&s.VaultId==vaultId,ct))return NotFound();
         var rows=db.DocUpdates.AsNoTracking().Where(u=>u.DocumentId==id);var head=await rows.MaxAsync(u=>(long?)u.Seq,ct)??0;
@@ -130,7 +136,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
                 if(r.Action=="create"){if(f is not null||await db.Folders.AnyAsync(x=>x.Id==r.TargetId,ct))return Conflict();f=new(){Id=r.TargetId,VaultId=vaultId,ParentId=r.ParentId,Name=await Name("folder",r.Name!,r.ParentId,vaultId,ct)};db.Add(f);}
                 else{
                     if(f is null)return NotFound();if(f.Version!=r.Version)return Conflict(new{title="Folder changed elsewhere"});
-                    if(r.Action=="delete"){deletedDocs=await DocumentIds(vaultId,ct);db.Remove(f);}
+                    if(r.Action=="delete"){deletedDocs=await DocumentIds(vaultId,ct,f.Id);db.Remove(f);}
                     else{
                         var parents=await db.Folders.Where(x=>x.VaultId==vaultId).ToDictionaryAsync(x=>x.Id,x=>x.ParentId,ct);
                         for(var p=r.ParentId;p.HasValue;p=parents[p.Value])if(p==f.Id)return Conflict(new{title="A folder cannot contain itself"});
@@ -191,7 +197,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         await live.PublishAsync(projectId,DocTopics.Vault(vaultId),kind,ct:ct);
         if(changedSketch is not null)await SketchPreviewChanges.PublishAsync(live,projectId,changedSketch,ct,previousName);
         if(r.Entity=="vault")await live.PublishAsync(projectId,DocTopics.Vaults,"changed",ct:ct);
-        foreach(var id in deletedDocs)if(!await db.Notes.AnyAsync(n=>n.Id==id,ct)&&!await db.Sketches.AnyAsync(s=>s.Id==id,ct))await live.PublishAsync(projectId,DocTopics.Doc(id),"deleted",ct:ct);
+        foreach(var id in deletedDocs)await live.PublishAsync(projectId,DocTopics.Doc(id),"deleted",ct:ct);
         return Content(json,"application/json");
     }
     private async Task<bool> DeletionUnchanged(Guid vaultId,OfflineCommand command,CancellationToken ct)
@@ -215,7 +221,18 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         var clocks=await db.DocUpdates.Where(u=>documentIds.Contains(u.DocumentId)).GroupBy(u=>u.DocumentId).Select(g=>new{Id=g.Key,Seq=g.Max(u=>u.Seq)}).ToDictionaryAsync(x=>x.Id,x=>x.Seq.ToString(),ct);
         return command.BaseDocuments is not null&&documentIds.All(id=>command.BaseDocuments.TryGetValue(id,out var expected)&&expected==clocks.GetValueOrDefault(id,"0"));
     }
-    private async Task<List<Guid>> DocumentIds(Guid vaultId,CancellationToken ct)=>await db.Notes.Where(n=>n.VaultId==vaultId).Select(n=>n.Id).Concat(db.Sketches.Where(s=>s.VaultId==vaultId).Select(s=>s.Id)).ToListAsync(ct);
+    private async Task<List<Guid>> DocumentIds(Guid vaultId,CancellationToken ct,Guid? folderId=null)
+    {
+        var notes=db.Notes.Where(n=>n.VaultId==vaultId);
+        if(folderId is {} root){
+            var folders=await db.Folders.Where(f=>f.VaultId==vaultId).Select(f=>new{f.Id,f.ParentId}).ToListAsync(ct);
+            var ids=new HashSet<Guid>{root};bool grew;
+            do{grew=false;foreach(var f in folders)if(f.ParentId is {} parent&&ids.Contains(parent))grew|=ids.Add(f.Id);}while(grew);
+            notes=notes.Where(n=>n.FolderId.HasValue&&ids.Contains(n.FolderId.Value));
+        }
+        var noteIds=notes.Select(n=>n.Id);
+        return await noteIds.Concat(db.Sketches.Where(s=>noteIds.Contains(s.NoteId)).Select(s=>s.Id)).ToListAsync(ct);
+    }
     private async Task<string> Name(string kind,string proposed,Guid? parent,Guid scope,CancellationToken ct)
     {
         var name=proposed.Trim();var stem=name.Length>175?name[..175]:name;

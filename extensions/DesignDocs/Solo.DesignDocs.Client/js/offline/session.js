@@ -131,36 +131,40 @@ export class OfflineSession {
             const pending=await this.store.all('queue');const creating=pending.some(r=>r.vaultId===vault.id&&r.command?.entity==='vault'&&r.command.action==='create');
             if(!creating){try{await this.pull(vault);}catch(error){if([403,404].includes(error.status))return;throw error;}}
             await this.store.batchUpdates(vault.id);
-            const commands=(await this.store.all('queue')).filter(r=>r.vaultId===vault.id&&!r.error).sort(order);
+            const commands=(await this.store.all('queue')).filter(r=>r.vaultId===vault.id&&!r.error).sort(order);let sent=false;
             for(const item of commands){
                 if(!this.active)return;
                 try{
                     if(item.documentId){
-                        const seq=await this.request('POST',this.root(vault)+`/offline/documents/${item.documentId}`,{id:item.id,data:encode(item.data)});await this.store.acknowledge(item,seq);
+                        const seq=await this.request('POST',this.root(vault)+`/offline/documents/${item.documentId}`,{id:item.id,data:encode(item.data)});sent=true;await this.store.acknowledge(item,seq);
                     }else{
                         const current=await this.store.get('queue',item.id);if(!current)continue;
                         const command={...current.command,id:current.id};if(command.data instanceof Uint8Array)command.data=encode(command.data);
-                        const value=await this.request('POST',this.root(vault)+'/offline/commands',command);await this.store.acknowledge(current,value);
+                        const value=await this.request('POST',this.root(vault)+'/offline/commands',command);sent=true;await this.store.acknowledge(current,value);
                         if(command.entity==='vault'&&command.action==='delete'){vault.deleted=true;break;}
                     }
                 }catch(error){
-                    if([400,401,403,404,409,413,415].includes(error.status)){item.error=error.message;await this.store.put('queue',item);if(error.status===401)throw error;}
+                    if([400,403,404,409,413,415].includes(error.status)){item.error=error.message;await this.store.put('queue',item);}
                     else throw error;
                 }
             }
-            if(!vault.deleted){await this.pull(vault);await this.copyNotes(vault);}
+            if(!vault.deleted){if(sent||creating)await this.pull(vault);await this.copyNotes(vault);}
             });
         }
         this.message='';await this.refreshOpenDocuments();
     }
     async copyNotes(vault){
+        if(!vault.base.canWrite)return;
         const queue=await this.store.all('queue');
+        vault.copied??={};let changed=false;
         for(const note of vault.base.tree.notes){
-            if(queue.some(q=>q.documentId===note.id))continue;
+            if(queue.some(q=>q.documentId===note.id)||vault.copied[note.id]===vault.base.documents[note.id])continue;
             const record=await this.store.get('documents',note.id);if(!record)continue;
             const doc=new Y.Doc();Y.applyUpdate(doc,record.state);const markdown=doc.getText('markdown').toString();doc.destroy();
-            if(markdown!==note.markdown&&vault.base.canWrite)await this.request('PUT',this.root(vault)+`/notes/${note.id}/copy`,{markdown,seq:record.seq,headings:headings(markdown)});
+            if(markdown!==note.markdown)await this.request('PUT',this.root(vault)+`/notes/${note.id}/copy`,{markdown,seq:record.seq,headings:headings(markdown)});
+            vault.copied[note.id]=record.seq;changed=true;
         }
+        if(changed)await this.store.put('vaults',vault);
     }
     setAccess(vaultId,value){for(const entry of this.documents.values())if(entry.vaultId===vaultId){entry.canWrite=value&&!this.removing.has(vaultId)&&!entry.reopenRequired&&!entry.deleted;entry.access?.(entry.canWrite);}}
     async openDocument(options,doc,access,status){
@@ -268,36 +272,43 @@ export async function offlineRequest(...args){
 async function localRequest(active,method,path,json=null,bytes=null,contentType=null){
     if(!active?.active)return {handled:false};
     path=path.replace(/^\//,'');const url=new URL(path,'https://offline.invalid/');const parts=url.pathname.split('/').filter(Boolean),body=json?JSON.parse(json):null;
-    const vaults=await active.store.all('vaults'),queue=await active.store.all('queue');
-    const views=vaults.filter(v=>v.ready).map(v=>({vault:v,view:projectVault(v,queue)}));
+    if(parts[0]!=='api'||parts[1]!=='ext'||parts[2]!=='design-docs')return {handled:false};
     if(method==='GET'&&/^api\/ext\/design-docs\/notes\//.test(path)&&parts.at(-1)==='locate'){
+        const vaults=await active.store.all('vaults'),queue=await active.store.all('queue');
+        const views=vaults.filter(v=>v.ready).map(v=>({vault:v,view:projectVault(v,queue)}));
         const id=parts.at(-2);const found=views.find(v=>!v.view.deleted&&v.view.tree.notes.some(n=>n.id===id));
         if(found)return {handled:true,value:{projectId:found.vault.projectId,projectAlias:found.vault.projectAlias,vaultId:found.vault.id,noteId:id}};
     }
-    if(method==='POST'&&url.pathname==='/api/ext/design-docs/links/labels'&&views.length){
-        const labels={};for(const written of body.urls){const [target,heading]=written.split('#',2);
+    if(method==='POST'&&url.pathname==='/api/ext/design-docs/links/labels'){
+        const vaults=await active.store.all('vaults'),queue=await active.store.all('queue');
+        const views=vaults.filter(v=>v.ready).map(v=>({vault:v,view:projectVault(v,queue)}));
+        if(!views.length)return {handled:false};
+        const labels=Object.create(null);for(const written of body.urls){const [target,heading]=written.split('#',2);
             const note=views.filter(v=>!v.view.deleted).flatMap(v=>v.view.tree.notes).find(n=>target==='/docs/note/'+noteKey(n.id)||target==='/docs/note/'+n.id||target==='/docs/note/'+n.id.replaceAll('-',''));
             if(note){const h=note.headings?.find(h=>h.slug===heading);labels[written]=h?note.name+' › '+h.text:note.name;}
         }
         const missing=body.urls.filter(u=>!labels[u]);if(missing.length)try{Object.assign(labels,await active.request('POST',path,{urls:missing}));}catch{}
         return {handled:true,value:labels};
     }
-    if(parts[0]==='api'&&parts[1]==='ext'&&parts[2]==='design-docs'&&parts[3]==='projects'){
+    if(parts[3]==='projects'&&parts[5]==='colors'){
+        const vaults=await active.store.all('vaults');
         const cached=vaults.find(v=>v.ready&&v.projectId===parts[4]);
-        if(cached&&parts[5]==='colors')return {handled:true,value:method==='POST'?cached.color:cached.colors??[]};
-        if(method==='GET'&&parts[5]==='documents'){
-            const document=await active.store.get('documents',parts[6]);
-            if(document)return {handled:true,value:{updates:[{data:encode(document.state),seq:document.seq}]}};
-        }
+        return cached?{handled:true,value:method==='POST'?cached.color:cached.colors??[]}:{handled:false};
+    }
+    if(parts[3]==='projects'&&method==='GET'&&parts[5]==='documents'){
+        const document=await active.store.get('documents',parts[6]);
+        if(document?.projectId===parts[4]&&(await active.store.get('vaults',document.vaultId))?.ready)return {handled:true,value:{updates:[{data:encode(document.state),seq:document.seq}]}};
+        return {handled:false};
     }
     if(parts[0]!=='api'||parts[1]!=='ext'||parts[2]!=='design-docs'||parts[3]!=='projects'||parts[5]!=='vaults')return {handled:false};
     const projectId=parts[4],vaultId=parts[6];
     if(!vaultId){
+        const vaults=await active.store.all('vaults');
         if(method==='GET'){
             let value;
             try{if(!active.network||await globalThis.solo?.offline?.isOffline())throw new Error('Offline');value=await active.request('GET',path);for(const v of vaults.filter(v=>v.projectId===projectId)){v.list=value;await active.store.put('vaults',v);}}
             catch{value=vaults.find(v=>v.projectId===projectId)?.list;if(!value)return {handled:false};}
-            const local=views.filter(v=>v.vault.projectId===projectId),ids=new Set(local.map(v=>v.vault.id));
+            const queue=await active.store.all('queue'),local=vaults.filter(v=>v.ready&&v.projectId===projectId).map(v=>({vault:v,view:projectVault(v,queue)})),ids=new Set(local.map(v=>v.vault.id));
             return {handled:true,value:{canManage:value.canManage,vaults:value.vaults.filter(v=>!ids.has(v.id)).concat(local.filter(v=>!v.view.deleted).map(v=>v.view.tree.vault))}};
         }
         if(method==='POST'&&vaults.some(v=>v.projectId===projectId&&v.ready)){
@@ -308,7 +319,8 @@ async function localRequest(active,method,path,json=null,bytes=null,contentType=
         }
         return {handled:false};
     }
-    const vault=await active.store.get('vaults',vaultId);if(!vault?.ready)return {handled:false};
+    const vault=await active.store.get('vaults',vaultId);if(!vault?.ready||vault.projectId!==projectId)return {handled:false};
+    const queue=await active.store.all('queue');
     const view=projectVault(vault,queue),tree=view.tree,kind=parts[7],id=parts[8];
     if(method==='GET'){
         if(!kind){for(const n of tree.notes){const derived=vault.derived?.[n.id];if(derived)Object.assign(n,derived);}return {handled:true,value:tree};}
@@ -358,12 +370,12 @@ async function localRequest(active,method,path,json=null,bytes=null,contentType=
     }else if(kind==='sketches'){
         const creating=method==='POST'&&id==='notes',old=view.sketches.find(s=>s.id===id);
         command={entity:'sketch',action:creating?'create':method==='DELETE'?'delete':'update',targetId:creating?crypto.randomUUID():id,noteId:creating?parts[9]:old?.noteId,...body};
+        if(creating)command.path=attachmentPath(command.noteId,command.targetId+'/'+command.name+'.sketch');
     }else if(kind==='images'&&bytes){
         const creating=method==='POST'&&(!id||id==='notes'||id==='import'),old=view.images.find(i=>i.id===id),targetId=creating?crypto.randomUUID():id;
         if(!creating&&!old)return {handled:false};
         let name=creating?url.searchParams.get('path'):old.path.split('/').at(-1);
-        let path=creating?(id==='notes'?attachmentPath(parts[9],name):name):old.path;
-        if(creating&&view.images.some(i=>i.path===path)){name=targetId.slice(0,8)+'-'+name;path=id==='notes'?attachmentPath(parts[9],name):name;}
+        const path=creating?(id==='notes'?attachmentPath(parts[9],targetId+'/'+name):'offline/'+targetId+'/'+name):old.path;
         command={entity:'image',action:creating?'create':'update',targetId,noteId:creating&&id==='notes'?parts[9]:null,name,version:creating?0:Number(url.searchParams.get('version')),data:bytes,
             image:{id:targetId,path,contentType,width:0,height:0,bytes:bytes.length,version:0}};
         image={...command.image,data:bytes,vaultId};

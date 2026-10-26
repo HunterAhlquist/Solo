@@ -30,7 +30,7 @@
     private async Task Start(){
         _email=(await Auth.GetAuthenticationStateAsync()).User.FindFirst("email")?.Value;
         var user=await Api.GetAsync<UserDto>("api/users/me");if(_disposed||_stop.IsCancellationRequested)return;_email=user.Email;_module=await DesignDocsAssets.ModuleAsync(Js,new(Api));if(_disposed||_stop.IsCancellationRequested)return;_reference??=DotNetObjectReference.Create(this);
-        _agent=await _module.InvokeAsync<IJSObjectReference>("startOffline",_reference,new{instance=Api.ResolveExternal("/").ToString(),userId=user.Id,assets=new[]{"design-docs.js","design-docs.css","spelling-worker.js","explosion.gif","explosion.wav"}.Select(file=>new DesignDocsApi(Api).Content(file).ToString()).Append(Api.Resolve("api/extensions/design-docs/content/spelling-worker.js").ToString()).ToArray()});
+        _agent=await _module.InvokeAsync<IJSObjectReference>("startOffline",_reference,new{instance=Api.ResolveExternal("/").ToString(),userId=user.Id,assets=new[]{"design-docs.js","design-docs.css","spelling-worker.js","explosion.gif","explosion.wav"}.Select(file=>new DesignDocsApi(Api).Content(file).ToString()).ToArray()});
     }
     private async void AccountChanged(Task<AuthenticationState> state){
         try{

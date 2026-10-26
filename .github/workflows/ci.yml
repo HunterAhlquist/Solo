@@ -191,8 +191,8 @@ jobs:
         with:
           node-version: 24
 
-      - name: Check tooltip input behavior
-        run: node --test build/test-tooltip-input.mjs
+      - name: Check browser input and offline caching
+        run: node --test build/test-tooltip-input.mjs build/test-offline-cache.mjs
 
       - name: Check release channels
         run: bash build/test-release-channel.sh
