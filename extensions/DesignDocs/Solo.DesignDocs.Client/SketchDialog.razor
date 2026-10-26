@@ -85,9 +85,14 @@
         _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,documentId=Sketch.Id,vaultId=VaultId,projectId=ProjectId,name=Sketch.Name,explosionUrl=api.Content("explosion.gif").ToString(),explosionSoundUrl=api.Content("explosion.wav").ToString(),
             meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color=DocPresenceColor.Value(slot.Slot)}});
         await _sketch.InvokeVoidAsync("connected",false);
-        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await _sketch.InvokeVoidAsync("connected",false);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},async people=>{_presence=people;if(_sketch is not null&&!_disposed)await _sketch.InvokeVoidAsync("presence",people);await InvokeAsync(StateHasChanged);});
+        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await _sketch.InvokeVoidAsync("connected",false);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},Presence);
         _vault=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(VaultId),async m=>{if(m.Kind is "closed" or "deleted"&&_sketch is not null)await _sketch.InvokeVoidAsync("connected",false);});
         Live.ConnectionChanged+=Connection;if(Live.IsConnected)await Live.SetPresenceAsync(ProjectId,DocTopics.Doc(Sketch.Id),CanWrite?PresenceMode.Editing:PresenceMode.Viewing);await Connection();
+    }
+    private async Task Presence(IReadOnlyList<TopicPresenceEntry> people){
+        if(_disposed)return;_presence=people;
+        if(_sketch is not null)await _sketch.InvokeVoidAsync("presence",people);
+        await InvokeAsync(()=>{StateHasChanged();Dialog.StateHasChanged();});
     }
     private Task Connection()=>_sketch is null?Task.CompletedTask:_sketch.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
     [JSInvokable]public Task<LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,DocTopics.Doc(Sketch.Id),kind,data);
