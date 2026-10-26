@@ -143,6 +143,9 @@ test('image metadata cannot replace the projected object prototype',()=>{
     applyCommand(base,{entity:'image',action:'create',targetId:'image',image:JSON.parse('{"path":"image.png","__proto__":{"polluted":true}}')});
     assert.equal(Object.getPrototypeOf(base.images[0]),Object.prototype);assert.equal(base.images[0].polluted,undefined);
 });
+test('offline projection rejects inherited entity names',()=>{
+    for(const entity of ['__proto__','constructor','toString','hasOwnProperty'])assert.throws(()=>applyCommand(snapshot(id(),id()),{entity,action:'create',targetId:id()}),/Unknown offline entity/);
+});
 
 test('expired sign-in leaves uploads retryable after authentication resumes',async()=>{
     const store=new VaultStore(id()),vaultId=id(),projectId=id(),base=snapshot(vaultId,id());base.tree.notes=[];base.documents={};
