@@ -30,11 +30,15 @@ export class Provider {
     async bindOffline(){
         try{
             if(this.disposed)return;
-            const binding=await offlineDocument({...this.options,canceled:()=>this.disposed},this.doc,value=>{if(!this.disposed)this.setWritable(value);},this.options.status);
+            const binding=await offlineDocument({...this.options,canceled:()=>this.disposed,removed:()=>this.releaseOffline()},this.doc,value=>{if(!this.disposed)this.setWritable(value);},this.options.status);
             if(this.disposed){binding?.close();return;}
             this.offline=binding;
             if(this.offline){this.pending.clear();this.batch=[];clearTimeout(this.ackRetry);}
         }finally{this.hydrating=false;}
+    }
+    async releaseOffline(){
+        this.offline?.close();this.offline=null;this.offlineLoading=null;this.checkpoint='0';this.seq='0';
+        if(!this.disposed)await this.connected(this.online);
     }
     get hasPending(){return this.offline?this.offline.hasDraft():this.pending.size>0||this.batch.length>0;}
     send(kind, value) {

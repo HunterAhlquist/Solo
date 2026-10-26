@@ -12,6 +12,7 @@ const empty=()=>({tree:{vault:{},folders:[],notes:[]},sketches:[],images:[],docu
 export class OfflineSession {
     constructor(transport,options){
         this.transport=transport;this.options=options;this.store=options.store??new VaultStore(options.instance+'|'+options.userId);
+        this.locks=options.locks??globalThis.navigator?.locks;this.removing=new Set();this.forgetting=new Set();
         this.documents=new Map();this.active=true;this.network=true;this.message='';this.localOperations=new Set();this.removeSaveGuard=globalThis.solo?.offline?.guard(async()=>{await Promise.allSettled([...this.localOperations]);const results=await Promise.all([...this.documents.values()].map(e=>e.flush().then(()=>!e.pending.length,()=>false)));return results.every(Boolean);});
         this.wake=()=>{if(typeof document==='undefined'||!document.hidden)this.sync();};
         this.online=()=>{this.network=true;this.sync();};
@@ -33,9 +34,19 @@ export class OfflineSession {
         return bytes===true?response.bytes:response.value;
     }
     root(v){return `api/ext/design-docs/projects/${v.projectId}/vaults/${v.id}`;}
+    lock(vaultId,mode,action,ifAvailable=false){return this.locks?this.locks.request('solo-docs-vault:'+this.store.key(vaultId),{mode,ifAvailable},action):action(true);}
+    async hold(vaultId){
+        if(!this.locks)return ()=>Promise.resolve();
+        let acquired,reject;const ready=new Promise((resolve,fail)=>{acquired=resolve;reject=fail;});
+        const held=this.lock(vaultId,'shared',()=>new Promise(release=>acquired(()=>{release();return held;})));
+        held.catch(reject);return ready;
+    }
     async view(vaultId){const v=await this.store.get('vaults',vaultId);return v?projectVault(v,await this.store.all('queue')):null;}
     async notify(){if(!this.active)return;const queue=await this.store.all('queue');const vaults=await this.store.all('vaults');const status={pending:queue.length,conflicts:queue.filter(r=>r.error).length,online:this.network,message:this.message,vaults:vaults.map(v=>({id:v.id,projectId:v.projectId,projectAlias:v.projectAlias,name:v.base.tree.vault.name,ready:v.ready,pending:queue.filter(q=>q.vaultId===v.id).length,conflicts:queue.filter(q=>q.vaultId===v.id&&q.error).length,unavailable:v.unavailable}))};if(!this.active)return;try{await this.options.changed?.(status);}catch(error){if(this.active)throw error;}}
     async pin(projectId,vaultId){
+        return this.lock(vaultId,'shared',()=>this.download(projectId,vaultId));
+    }
+    async download(projectId,vaultId){
         if(!globalThis.solo?.offline)throw new Error("Update the Solo client to download vaults for offline use.");
         await globalThis.solo.offline.prepare(this.options.assets??[]);
         const prior=await this.store.get('vaults',vaultId);const vault=prior??{id:vaultId,projectId,base:empty(),ready:false};
@@ -113,9 +124,12 @@ export class OfflineSession {
         this.message='Syncing downloaded vaults…';await this.notify();
         for(const vault of vaults){
             if(!this.active)return;
+            if(this.forgetting.has(vault.id))continue;
+            await this.lock(vault.id,'shared',async()=>{
+            if(!await this.store.get('vaults',vault.id))return;
             // Refresh access and deletion state before replaying offline writes.
             const pending=await this.store.all('queue');const creating=pending.some(r=>r.vaultId===vault.id&&r.command?.entity==='vault'&&r.command.action==='create');
-            if(!creating){try{await this.pull(vault);}catch(error){if([403,404].includes(error.status))continue;throw error;}}
+            if(!creating){try{await this.pull(vault);}catch(error){if([403,404].includes(error.status))return;throw error;}}
             await this.store.batchUpdates(vault.id);
             const commands=(await this.store.all('queue')).filter(r=>r.vaultId===vault.id&&!r.error).sort(order);
             for(const item of commands){
@@ -135,6 +149,7 @@ export class OfflineSession {
                 }
             }
             if(!vault.deleted){await this.pull(vault);await this.copyNotes(vault);}
+            });
         }
         this.message='';await this.refreshOpenDocuments();
     }
@@ -147,16 +162,19 @@ export class OfflineSession {
             if(markdown!==note.markdown&&vault.base.canWrite)await this.request('PUT',this.root(vault)+`/notes/${note.id}/copy`,{markdown,seq:record.seq,headings:headings(markdown)});
         }
     }
-    setAccess(vaultId,value){for(const entry of this.documents.values())if(entry.vaultId===vaultId){entry.canWrite=value&&!entry.reopenRequired&&!entry.deleted;entry.access?.(entry.canWrite);}}
+    setAccess(vaultId,value){for(const entry of this.documents.values())if(entry.vaultId===vaultId){entry.canWrite=value&&!this.removing.has(vaultId)&&!entry.reopenRequired&&!entry.deleted;entry.access?.(entry.canWrite);}}
     async openDocument(options,doc,access,status){
         if(!this.active||options.user?.userId&&options.user.userId!==this.options.userId)return null;
+        if(this.removing.has(options.vaultId))return null;
+        const releaseLock=await this.hold(options.vaultId);let entry;
+        try{
         const vault=await this.store.get('vaults',options.vaultId);if(!vault?.ready)return null;
         const record=await this.store.get('documents',options.documentId);
         const projected=projectVault(vault,await this.store.all('queue'));
         if(!this.active||options.canceled?.())return null;
         let local;
         if(record){const before=new Y.Doc();Y.applyUpdate(before,record.state);local=Y.encodeStateAsUpdate(doc,Y.encodeStateVector(before));before.destroy();Y.applyUpdate(doc,record.state,remote);}
-        const entry={doc,id:options.documentId,vaultId:options.vaultId,projectId:options.projectId,canWrite:projected.canWrite&&!vault.unavailable&&!record?.deleted,deleted:!!record?.deleted,access,status,pending:[],writing:Promise.resolve()};
+        entry={doc,id:options.documentId,vaultId:options.vaultId,projectId:options.projectId,canWrite:projected.canWrite&&!vault.unavailable&&!record?.deleted,deleted:!!record?.deleted,access,status,pending:[],writing:Promise.resolve(),releaseLock,removed:options.removed};
         const flush=()=>{
             clearTimeout(entry.timer);entry.timer=null;if(!entry.pending.length)return entry.writing;
             const updates=entry.pending.splice(0);
@@ -165,15 +183,51 @@ export class OfflineSession {
         };
         const changed=(update,origin)=>{if(origin===remote)return;entry.pending.push(update);status?.('Saving on this device…');entry.timer??=setTimeout(()=>{flush().catch(()=>{});},40);};
         doc.on('update',changed);entry.flush=flush;this.documents.set(entry.id,entry);
+        entry.close=()=>{clearTimeout(entry.timer);doc.off('update',changed);if(this.documents.get(entry.id)===entry)this.documents.delete(entry.id);entry.releaseLock();};
         if(local?.length>2){entry.pending.push(local);flush().catch(()=>{});}
         return {get canWrite(){return entry.canWrite;},save:async()=>{try{await flush();return !entry.pending.length;}catch{return false;}},hasDraft:()=>!!entry.pending.length||!!entry.saving,
-            apply:async update=>{Y.applyUpdate(doc,update,remote);await this.store.updateDocument(entry.id,entry.projectId,entry.vaultId,[update]);},close:()=>{clearTimeout(entry.timer);doc.off('update',changed);this.documents.delete(entry.id);},flush};
+            apply:async update=>{Y.applyUpdate(doc,update,remote);await this.store.updateDocument(entry.id,entry.projectId,entry.vaultId,[update]);},close:entry.close,flush};
+        }finally{if(!entry)await releaseLock();}
     }
     async refreshOpenDocuments(){if(!this.active)return;for(const entry of this.documents.values()){const record=await this.store.get('documents',entry.id);if(record)Y.applyUpdate(entry.doc,record.state,remote);}await this.notify();}
     async enqueue(vault,command,image=null){
         if(!this.active)throw new Error("The account changed. Reopen the vault before editing.");
+        if(this.removing.has(vault.id))throw new Error('The download is being removed. Wait before editing.');
         const row={id:crypto.randomUUID(),created:performance.timeOrigin+performance.now(),projectId:vault.projectId,vaultId:vault.id,command};
         await this.store.enqueue(row,image);this.setAccess(vault.id,(await this.view(vault.id)).canWrite&&!vault.unavailable);this.channel?.postMessage(vault.id);await this.notify();this.sync();return row;
+    }
+    async forget(vaultId){
+        if(this.removing.has(vaultId))return {ok:false,error:'The download is already being removed.'};
+        const vault=await this.store.get('vaults',vaultId);if(!vault)return {ok:true};
+        const entries=[...this.documents.values()].filter(e=>e.vaultId===vaultId);let released=false;
+        this.removing.add(vaultId);this.setAccess(vaultId,false);
+        try{
+            if(await globalThis.solo?.offline?.flush?.()===false)return {ok:false,error:'Saving did not finish. Keep this vault open and try again.'};
+            await Promise.allSettled([...this.localOperations]);
+            const saved=await Promise.allSettled(entries.map(e=>e.flush()));
+            if(saved.some(r=>r.status==='rejected')||entries.some(e=>e.pending.length))return {ok:false,error:'Saving did not finish. Keep this vault open and try again.'};
+            await this.sync();
+            if((await this.store.all('queue')).some(q=>q.vaultId===vaultId))return {ok:false,error:'Sync pending changes before removing this download.'};
+            if(entries.length){
+                if(!this.locks)return {ok:false,error:'Close this vault before removing its download in this browser.'};
+                try{await this.request('GET',this.root(vault)+'/offline');}catch{return {ok:false,error:'Reconnect before removing an open vault’s download.'};}
+            }
+            this.forgetting.add(vaultId);await this.running;
+            await Promise.all(entries.map(e=>e.releaseLock()));released=true;
+            const result=await this.lock(vaultId,'exclusive',async lock=>{
+                if(!lock)return {ok:false,error:'This vault is busy in another tab. Close it there and try again.'};
+                await this.store.forget(vaultId);
+                for(const entry of entries)if(this.documents.get(entry.id)===entry){if(entry.removed)await entry.removed();else entry.close();}
+                this.message='';this.channel?.postMessage(vaultId);return {ok:true};
+            },true);
+            return result;
+        }catch{return {ok:false,error:'Could not remove this download. Your local work is retained. Try again.'};}
+        finally{
+            if(released)for(const entry of entries)if(this.documents.get(entry.id)===entry)entry.releaseLock=await this.hold(vaultId);
+            this.removing.delete(vaultId);this.forgetting.delete(vaultId);
+            const current=await this.store.get('vaults',vaultId);if(current)this.setAccess(vaultId,(await this.view(vaultId)).canWrite&&!current.unavailable);
+            await this.notify();
+        }
     }
     async exportRecovery(vaultId){
         const archive=await recoveryArchive(this.store,vaultId);
@@ -195,7 +249,7 @@ export class OfflineSession {
         delete row.error;await this.store.put('queue',row);await this.notify();this.sync();
     }
 
-    async stop(){if(this.stopped)return;this.stopped=true;this.active=false;this.removeSaveGuard?.();for(const vaultId of new Set([...this.documents.values()].map(e=>e.vaultId)))this.setAccess(vaultId,false);clearInterval(this.timer);globalThis.removeEventListener?.('online',this.online);globalThis.document?.removeEventListener('visibilitychange',this.wake);this.channel?.close();await Promise.allSettled([...this.documents.values()].map(e=>e.flush()));await Promise.allSettled([...this.localOperations]);await this.running;await this.store.close();}
+    async stop(){if(this.stopped)return;this.stopped=true;this.active=false;this.removeSaveGuard?.();for(const vaultId of new Set([...this.documents.values()].map(e=>e.vaultId)))this.setAccess(vaultId,false);clearInterval(this.timer);globalThis.removeEventListener?.('online',this.online);globalThis.document?.removeEventListener('visibilitychange',this.wake);this.channel?.close();await Promise.allSettled([...this.documents.values()].map(e=>e.flush()));await Promise.allSettled([...this.localOperations]);for(const entry of this.documents.values())entry.close();await this.running;await this.store.close();}
 }
 export async function startOffline(bridge,options){
     if(session)await session.stop();
@@ -203,7 +257,7 @@ export async function startOffline(bridge,options){
     const active=session;markStarted(active);await active.notify();active.sync();return {dispose:async()=>{await active.stop();if(session===active){session=null;resetStarted();}},sync:()=>active.sync()};
 }
 export const offlineDocument=async(options,doc,access,status)=>(await current())?.openDocument(options,doc,access,status)??null;
-export const offlineAction=async(action,projectId,vaultId)=>{if(!session)throw new Error('The offline service is not ready.');if(action==='pin')return session.pin(projectId,vaultId);if(action==='forget'){if([...session.documents.values()].some(d=>d.vaultId===vaultId))throw new Error('Close this vault before removing its download.');await session.store.forget(vaultId);await session.notify();}if(action==='export')return session.exportRecovery(vaultId);if(action==='problems')return session.problems(vaultId);if(action==='retry')return session.resolve(vaultId,true);if(action==='discard')return session.resolve(vaultId,false);};
+export const offlineAction=async(action,projectId,vaultId)=>{if(!session)throw new Error('The offline service is not ready.');if(action==='pin')return session.pin(projectId,vaultId);if(action==='forget')return session.forget(vaultId);if(action==='export')return session.exportRecovery(vaultId);if(action==='problems')return session.problems(vaultId);if(action==='retry')return session.resolve(vaultId,true);if(action==='discard')return session.resolve(vaultId,false);};
 export const offlineStatus=async vaultId=>{const vault=await session?.store.get('vaults',vaultId);return {available:!!globalThis.solo?.offline,ready:!!vault?.ready};};
 
 export async function offlineRequest(...args){

@@ -134,7 +134,8 @@ Safari can remove website storage under disk pressure.
 Solo requests persistent storage, but a download does not replace a backup.
 See [WebKit's storage policy](https://webkit.org/blog/14403/updates-to-storage-policy/).
 **Remove download** is available after pending changes finish synchronizing.
-Close the vault editor before removing its download.
+An open editor switches to online saving after its changes finish synchronizing.
+Close the vault in other tabs before removing its download.
 
 ## Close a design doc
 

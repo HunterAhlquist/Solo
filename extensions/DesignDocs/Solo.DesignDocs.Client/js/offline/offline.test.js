@@ -11,7 +11,7 @@ const snapshot=(vaultId,noteId)=>({tree:{vault:{id:vaultId,name:'Park notes',isC
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 
 test('device storage survives reopening, isolates accounts and rolls back the queue with attachment writes',async()=>{
-    const scope=id(),store=new VaultStore(scope),vaultId=id(),noteId=id(),doc=new Y.Doc();
+    const scope=id(),store=new VaultStore(scope),vaultId=id(),noteId=id(),doc=new Y.Doc();await store.put('vaults',{id:vaultId,ready:true,base:snapshot(vaultId,noteId)});
     doc.getText('markdown').insert(0,'At the park');await store.updateDocument(noteId,'project',vaultId,[Y.encodeStateAsUpdate(doc)],null,true);
     const command={id:id(),vaultId,created:1,command:{entity:'note',action:'create',targetId:id(),name:'Offline note'}};await store.enqueue(command);
     await assert.rejects(store.enqueue(command,{id:'image',data:new Uint8Array([1]),vaultId}));assert.equal(await store.get('images','image'),undefined);
@@ -151,7 +151,7 @@ test('closing a provider during hydration does not leave a local document attach
 });
 
 test('queued updates combine into durable packages without crossing metadata commands',async()=>{
-    const scope=id(),store=new VaultStore(scope),vaultId=id(),noteId=id(),projectId=id(),doc=new Y.Doc();
+    const scope=id(),store=new VaultStore(scope),vaultId=id(),noteId=id(),projectId=id(),doc=new Y.Doc();await store.put('vaults',{id:vaultId,projectId,ready:true,base:snapshot(vaultId,noteId)});
     try{
         for(const word of ['First',' second',' third']){const vector=Y.encodeStateVector(doc);doc.getText('markdown').insert(doc.getText('markdown').length,word);await store.updateDocument(noteId,projectId,vaultId,[Y.encodeStateAsUpdate(doc,vector)],null,true);}
         const barrier={id:id(),vaultId,created:performance.timeOrigin+performance.now(),command:{entity:'note',action:'delete',targetId:noteId}};await store.enqueue(barrier);
@@ -203,4 +203,50 @@ test('downloading an already edited document captures changes made while storage
     const loading=client.openDocument({documentId:noteId,projectId,vaultId},doc);doc.getText('markdown').insert(0,'Typed while downloading');release();const handle=await loading;
     try{doc.getText('markdown').insert(doc.getText('markdown').length,' and afterward');assert.equal(await handle.save(),true);const persisted=new Y.Doc();Y.applyUpdate(persisted,(await store.get('documents',noteId)).state);assert.equal(persisted.getText('markdown').toString(),'Typed while downloading and afterward');persisted.destroy();}
     finally{handle.close();doc.destroy();await client.stop();}
+});
+
+test('removing an open downloaded vault keeps the document and resumes online editing',async()=>{
+    const {startOffline,offlineAction}=await import('./session.js');const {Provider}=await import('../sync/provider.js');
+    const store=new VaultStore(id()),vaultId=id(),noteId=id(),projectId=id(),base=snapshot(vaultId,noteId),sent=[],server=new Y.Doc(),updates=[];
+    await store.put('vaults',{id:vaultId,projectId,ready:true,base});await store.put('documents',{id:noteId,projectId,vaultId,state:Y.encodeStateAsUpdate(new Y.Doc()),seq:'0'});
+    const agent=await startOffline({invokeMethodAsync:async(method,verb,path,json)=>{
+        if(method!=='Request')return;const body=json?JSON.parse(json):null;
+        if(path.endsWith('/offline'))return {status:200,value:{...base,documents:{[noteId]:String(updates.length)}}};
+        if(verb==='POST'&&path.endsWith('/offline/documents/'+noteId)){const previousSeq=String(updates.length);updates.push(body.data);Y.applyUpdate(server,decode(body.data));return {status:200,value:{seq:String(updates.length),previousSeq}};}
+        return {status:200,value:{updates,seq:String(updates.length),seedMarkdown:null}};
+    }},{instance:'test',userId:'writer',store});
+    const provider=new Provider({send:async(kind,raw)=>{sent.push([kind,JSON.parse(raw)]);return 0;}},{canWrite:true,documentId:noteId,projectId,vaultId,user:{userId:'writer'}});
+    try{
+        await provider.connected(true);assert.ok(provider.offline);provider.doc.getText('markdown').insert(0,'Saved before removal. ');
+        const result=await offlineAction('forget',null,vaultId);assert.equal(result.ok,true);assert.equal(await store.get('vaults',vaultId),undefined);assert.equal(provider.offline,null);assert.equal(server.getText('markdown').toString(),'Saved before removal. ');
+        await provider.receive('synced',JSON.stringify({seq:'0',canWrite:true,updates:0,syncId:provider.syncId}));
+        provider.doc.getText('markdown').insert(provider.doc.getText('markdown').length,'Still editing online');await wait(90);assert.ok(sent.some(([kind])=>kind==='update'));assert.equal((await store.all('queue')).length,0);
+    }finally{provider.dispose();await agent.dispose();server.destroy();}
+});
+
+test('removing a download offline retains unsynced edits and restores the open editor',async()=>{
+    const store=new VaultStore(id()),vaultId=id(),noteId=id(),projectId=id(),doc=new Y.Doc();
+    await store.put('vaults',{id:vaultId,projectId,ready:true,base:snapshot(vaultId,noteId)});
+    const client=new OfflineSession(async()=>({status:0}),{instance:'test',userId:id(),store});const handle=await client.openDocument({documentId:noteId,projectId,vaultId},doc);
+    try{doc.getText('markdown').insert(0,'Keep this offline edit');const result=await client.forget(vaultId);assert.equal(result.ok,false);assert.match(result.error,/Sync pending changes/);assert.ok(await store.get('vaults',vaultId));assert.equal(handle.canWrite,true);assert.equal((await store.all('queue')).length,1);assert.equal(await handle.save(),true);}
+    finally{handle.close();doc.destroy();await client.stop();}
+});
+
+test('an editor in another tab prevents removing its shared download',async()=>{
+    const scope=id(),first=new VaultStore(scope),second=new VaultStore(scope),vaultId=id(),noteId=id(),projectId=id(),base=snapshot(vaultId,noteId);
+    await first.put('vaults',{id:vaultId,projectId,ready:true,base});await first.put('documents',{id:noteId,projectId,vaultId,state:Y.encodeStateAsUpdate(new Y.Doc()),seq:'0'});
+    const transport=async(method,path)=>({status:200,value:path.endsWith('/offline')?base:{updates:[],seq:'0',seedMarkdown:null}});
+    const a=new OfflineSession(transport,{instance:'test',userId:'writer',store:first}),b=new OfflineSession(transport,{instance:'test',userId:'writer',store:second}),docA=new Y.Doc(),docB=new Y.Doc();
+    const handleA=await a.openDocument({documentId:noteId,projectId,vaultId},docA),handleB=await b.openDocument({documentId:noteId,projectId,vaultId},docB);
+    try{const result=await a.forget(vaultId);assert.equal(result.ok,false);assert.match(result.error,/another tab/);assert.ok(await first.get('vaults',vaultId));assert.equal(handleA.canWrite,true);assert.equal(handleB.canWrite,true);}
+    finally{handleA.close();handleB.close();docA.destroy();docB.destroy();await a.stop();await b.stop();}
+});
+
+test('download removal and a new write cannot leave an orphaned upload queue',async()=>{
+    const store=new VaultStore(id()),vaultId=id(),noteId=id();await store.put('vaults',{id:vaultId,ready:true,base:snapshot(vaultId,noteId)});
+    try{
+        const [removal,write]=await Promise.allSettled([store.forget(vaultId),store.enqueue({id:id(),vaultId,command:{entity:'note',action:'create',targetId:noteId}})]);
+        assert.notEqual(removal.status,write.status);
+        if(removal.status==='fulfilled'){assert.equal(await store.get('vaults',vaultId),undefined);assert.equal((await store.all('queue')).length,0);}else{assert.ok(await store.get('vaults',vaultId));assert.equal((await store.all('queue')).length,1);}
+    }finally{await store.close();}
 });
