@@ -115,9 +115,11 @@
     }
     [JSInvokable] public Task OpenTask(string value)=>TaskDrawer.OpenAsync(Guid.Parse(value));
     private string ImageRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/images";
+    private bool PendingAttachment(string path,Guid id)=>path.StartsWith(AttachmentPaths.ForNote(Note.Id,id+"/"),StringComparison.Ordinal)||path.StartsWith($"offline/{id}/",StringComparison.Ordinal);
+    private bool MatchesSketch(SketchDto sketch,string name)=>sketch.NoteId==Note.Id&&(sketch.Name==name||sketch.Path==name+".sketch"||PendingAttachment(name,sketch.Id));
     private async Task<ImageDto> FindImage(string path){
         var images=await Api.GetAsync<List<ImageDto>>(ImageRoot);
-        var exact=images.FirstOrDefault(i=>i.Path==path);if(exact is not null)return exact;
+        var exact=images.FirstOrDefault(i=>i.Path==path)??images.FirstOrDefault(i=>PendingAttachment(path,i.Id));if(exact is not null)return exact;
         var tree=await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}");
         var parts=new List<string>{Note.Name+".md"};
         for(var parent=Note.FolderId;parent.HasValue;){var folder=tree.Folders.Single(f=>f.Id==parent);parts.Insert(0,folder.Name);parent=folder.ParentId;}
@@ -139,7 +141,7 @@
     [JSInvokable]public async Task OpenSketch(string name){
         if(_sketchOpen||_editor is null)return;_sketchOpen=true;
         try{var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");
-            var sketch=sketches.SingleOrDefault(s=>s.NoteId==Note.Id&&(s.Name==name||s.Path==name+".sketch"));if(sketch is null){await Status("Sketch not found in this note.");return;}
+            var sketch=sketches.SingleOrDefault(s=>MatchesSketch(s,name));if(sketch is null){await Status("Sketch not found in this note.");return;}
             await _editor.InvokeVoidAsync("suspend",true);
             var dialog=await Dialogs.ShowAsync<SketchDialog>(sketch.Name,new DialogParameters<SketchDialog>{{x=>x.ProjectId,ProjectId},{x=>x.VaultId,Note.VaultId},{x=>x.Sketch,sketch},{x=>x.CanWrite,CanWrite}},new DialogOptions{FullScreen=true,CloseButton=false,CloseOnEscapeKey=false,BackdropClick=false});
             await dialog.Result;if(_editor is not null&&!_disposed)await _editor.InvokeVoidAsync("refreshSketches",new object[]{new[]{sketch.Name,sketch.Path[..^7]}});
@@ -157,7 +159,7 @@
         return note is null?null:new{url=NoteAddress.Url(note.Id),note.Headings};
     }
     [JSInvokable]public async Task<object?> SketchPreview(string name){
-        var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");var sketch=sketches.SingleOrDefault(s=>s.NoteId==Note.Id&&(s.Name==name||s.Path==name+".sketch"));if(sketch is null)return null;
+        var sketches=await Api.GetAsync<List<SketchDto>>($"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches");var sketch=sketches.SingleOrDefault(s=>MatchesSketch(s,name));if(sketch is null)return null;
         var path=$"api/ext/design-docs/projects/{ProjectId}/documents/{sketch.Id}";
         var state=await Api.GetAsync<System.Text.Json.JsonElement>(path);
         var updates=state.GetProperty("updates").EnumerateArray().Select(u=>u.GetProperty("data").GetString()).ToList();
