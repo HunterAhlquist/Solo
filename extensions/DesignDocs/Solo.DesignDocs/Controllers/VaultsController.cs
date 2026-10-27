@@ -76,6 +76,18 @@ public sealed class VaultsController(DesignDocsDbContext db, ISoloQuery query, I
             (await db.Notes.AsNoTracking().Where(n=>n.VaultId==vaultId).OrderBy(n=>n.Name)
                 .Select(n=>new Note {Id=n.Id,VaultId=n.VaultId,FolderId=n.FolderId,Name=n.Name,Headings=n.Headings,MarkdownSeq=n.MarkdownSeq,LastEditedBy=n.LastEditedBy,LastEditedAt=n.LastEditedAt,CreatedAt=n.CreatedAt,Version=n.Version}).ToListAsync(ct)).Select(Dto).ToList());
     }
+    // The attachments dialog lists what the vault holds, including files no note embeds any more.
+    [HttpGet("{vaultId:guid}/attachments"), Authorize(Policy=SoloPolicies.ProjectRead)]
+    public async Task<ActionResult<AttachmentListDto>> Attachments(Guid projectId, Guid vaultId, CancellationToken ct)
+    {
+        if(!await db.Vaults.AnyAsync(v=>v.Id==vaultId&&v.ProjectId==projectId,ct)) return NotFound();
+        var images=await db.Images.AsNoTracking().Where(i=>i.VaultId==vaultId).OrderBy(i=>i.Path)
+            .Select(i=>new ImageDto(i.Id,i.Path,i.ContentType,i.Width,i.Height,i.Bytes,i.Version)).ToListAsync(ct);
+        var sketches=(await db.Sketches.AsNoTracking().Where(s=>s.VaultId==vaultId).OrderBy(s=>s.Name).ToListAsync(ct))
+            .Select(s=>new SketchDto(s.Id,s.NoteId,s.Name,s.PageSize,s.Orientation,s.Pattern,s.LastEditedBy,s.LastEditedAt,s.Version)).ToList();
+        var notes=await db.Notes.AsNoTracking().Where(n=>n.VaultId==vaultId).Select(n=>new{n.Id,n.Markdown,n.SeedMarkdown}).ToListAsync(ct);
+        return new AttachmentListDto(images,sketches,notes.ToDictionary(n=>n.Id,n=>AttachmentPaths.EmbedTargets(n.SeedMarkdown??n.Markdown)));
+    }
     [HttpGet("{vaultId:guid}/notes/{id:guid}"), Authorize(Policy=SoloPolicies.ProjectRead)]
     public async Task<ActionResult<NoteDto>> Note(Guid projectId, Guid vaultId, Guid id, CancellationToken ct)
     {

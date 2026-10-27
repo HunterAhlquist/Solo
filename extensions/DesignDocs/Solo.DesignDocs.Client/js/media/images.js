@@ -31,7 +31,7 @@ export class Images {
     }
     get canWrite(){return this._canWrite;}
     set canWrite(value){this._canWrite=value;for(const entry of this.cards??[]){entry.button.draggable=value;for(const image of entry.button.querySelectorAll('img'))image.draggable=value;}
-        const remove=this.dialog?.querySelector('[aria-label="Remove attachment"]');if(remove)remove.hidden=!value;
+        const remove=this.dialog?.querySelector('[aria-label="Remove attachment"]');if(remove)remove.hidden=!value||this.viewerFixed;
         const replace=this.dialog?.querySelector('[aria-label="Replace image"]');if(replace)replace.hidden=!value||!!this.viewerSketch;
     }
     // The bridge answers 'remove' (the embed only), 'delete' (the stored attachment too) or nothing.
@@ -104,10 +104,12 @@ export class Images {
         return button;
     }
     release(button){for(const entry of this.cards)if(entry.button===button)this.cards.delete(entry);}
-    async open(references,onSelection=()=>{},initialIndex=0,sourceFor=()=>null) {
+    // options.remove=false opens attachments that aren't embeds of this note (from the
+    // attachments dialog), so there is nothing to remove.
+    async open(references,onSelection=()=>{},initialIndex=0,sourceFor=()=>null,options={}) {
         this.closeViewer?.();
         const dialog=document.createElement('dialog');dialog.className='design-docs-image-viewer';
-        dialog.setAttribute('aria-label','Attachments');this.dialog=dialog;
+        dialog.setAttribute('aria-label','Attachments');this.dialog=dialog;this.viewerFixed=options.remove===false;
         let index=initialIndex,request=0,closing=false,closed=false,presented=false,flight,hiddenSource,closingTask;const items=[...references];
         const duration=matchMedia('(prefers-reduced-motion: reduce)').matches?0:260;
         const restoreSource=()=>{if(hiddenSource){hiddenSource.style.visibility='';hiddenSource=null;}};
@@ -173,6 +175,18 @@ export class Images {
             try{const item=items[index],a=document.createElement('a');a.href=await this.resolve(item.path);a.download=item.sketch?attachmentName(item.path).replace(/\.sketch$/i,'.png'):attachmentName(item.path);document.body.append(a);a.click();a.remove();}catch(e){this.status(e.message);}
         });
         const replace=control('replace','Replace image',()=>this.choose(items[index].path));
+        // An attachment created in another note links back to it.
+        let ownerNote=null;
+        const owner=control('owner','Open owning note',async()=>{
+            const target=ownerNote;if(!target||closing||closed)return;
+            await dismiss();if(!this.disposed)await this.bridge.invokeMethodAsync('OpenNote',target.url);
+        });owner.hidden=true;
+        const showOwner=async(item,serial)=>{
+            let found=null;try{found=await this.bridge.invokeMethodAsync('AttachmentOwner',item.path,!!item.sketch,this.identities.get(item.path)??null);}catch{}
+            if(serial!==request||closed)return;
+            ownerNote=found;owner.hidden=!found;
+            const label=found?`Open “${found.name}”`:'Open owning note';owner.setAttribute('aria-label',label);owner.title=label;
+        };
         this.refreshViewer=matches=>{if(matches(items[index].path))return show(index);};
         const show=async position=>{
             if(closing||closed)return;
@@ -180,9 +194,10 @@ export class Images {
             index=(position+items.length)%items.length;const item=items[index],serial=++request;this.viewerSketch=item.sketch;onSelection(references.indexOf(item));
             label.textContent=attachmentName(item.path);counter.textContent=`${index+1} / ${items.length}`;
             image.alt=attachmentName(item.path);image.style.visibility='hidden';caption.hidden=true;
-            previous.hidden=next.hidden=items.length<2;edit.hidden=!item.sketch;remove.hidden=!this.canWrite;replace.hidden=!this.canWrite||item.sketch;download.setAttribute('aria-label',item.sketch?'Export sketch PNG':'Download image');download.title=download.getAttribute('aria-label');
+            previous.hidden=next.hidden=items.length<2;edit.hidden=!item.sketch;remove.hidden=!this.canWrite||this.viewerFixed;owner.hidden=true;ownerNote=null;replace.hidden=!this.canWrite||item.sketch;download.setAttribute('aria-label',item.sketch?'Export sketch PNG':'Download image');download.title=download.getAttribute('aria-label');
             try{
                 const url=await this.resolve(item.path);if(serial!==request||!dialog.open||closing)return;
+                showOwner(item,serial);
                 image.src=url;await image.decode();if(serial!==request||!dialog.open||closing)return;
                 if(!presented){
                     // Raise the selected preview before the background starts to fade.
@@ -196,7 +211,7 @@ export class Images {
                 }else image.style.visibility='';
             }catch(e){if(serial===request&&!closed){caption.textContent=e.message;caption.hidden=false;dialog.classList.add('is-presented');}}
         };
-        header.append(label,counter,close);stage.append(previous,image,caption,next);footer.append(download,replace,edit,remove);dialog.append(header,stage,footer);
+        header.append(label,counter,close);stage.append(previous,image,caption,next);footer.append(owner,download,replace,edit,remove);dialog.append(header,stage,footer);
         dialog.addEventListener('click',event=>{if(event.target===dialog||event.target===stage)dismiss();});
         dialog.addEventListener('cancel',event=>{event.preventDefault();dismiss();});
         dialog.addEventListener('keydown',event=>{

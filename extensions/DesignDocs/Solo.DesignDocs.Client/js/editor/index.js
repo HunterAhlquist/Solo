@@ -9,6 +9,7 @@ import { headings } from './markdown.js';
 import { Images } from '../media/images.js';
 import { protectMedia, mediaEdit } from './media-protection.js';
 import { mediaReference, mediaRange } from '../media/references.js';
+import { embeds, imageTargets } from '../media/vault-paths.js';
 import { caretPalettePosition } from './palette.js';
 import { markdownEditing } from './commands.js';
 import { localSpelling,needsSpellingFallback } from './spelling.js';
@@ -120,6 +121,16 @@ export function mountEditor(root, bridge, options) {
         sketchesChanged:()=>images.refresh(path=>/\.sketch$/i.test(path)),
         imagesChanged:()=>images.refresh(path=>!/\.sketch$/i.test(path)),
         refreshSketches:names=>images.refresh(path=>names.some(name=>path===name+'.sketch')),
+        // For the attachments dialog: what this note embeds now, and acting on one attachment.
+        embedTargets:()=>imageTargets(text.toString()),
+        view:(path,sketch)=>images.open([{path,sketch}],()=>{},0,()=>null,{remove:false}),
+        replaceImage:path=>images.choose(path),
+        forget:path=>images.refresh(item=>item===path),
+        removeEmbeds(targets){
+            if(!provider.canWrite)return;
+            const wanted=new Set(targets),changes=embeds(text.toString()).filter(e=>wanted.has(e.raw)).map(e=>({from:e.from,to:e.to,insert:''}));
+            if(changes.length)view.dispatch({changes,annotations:mediaEdit.of(true)});
+        },
         dispose(){removeSaveGuard?.();root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }

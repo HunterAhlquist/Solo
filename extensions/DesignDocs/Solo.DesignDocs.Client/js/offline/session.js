@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import {VaultStore,projectVault,applyCommand,attachmentPath,noteKey,order} from './store.js';
 import {encode,decode} from '../sync/protocol.js';
 import {headings} from '../editor/markdown.js';
+import {imageTargets} from '../media/vault-paths.js';
 
 let session;
 let markStarted,started;function resetStarted(){started=new Promise(resolve=>markStarted=resolve);}resetStarted();
@@ -326,6 +327,8 @@ async function localRequest(active,method,path,json=null,bytes=null,contentType=
         if(!kind){for(const n of tree.notes){const derived=vault.derived?.[n.id];if(derived)Object.assign(n,derived);}return {handled:true,value:tree};}
         if(kind==='images'&&!id)return {handled:true,value:view.images};
         if(kind==='sketches'&&!id)return {handled:true,value:view.sketches};
+        if(kind==='attachments'&&!id)return {handled:true,value:{images:view.images,sketches:view.sketches,
+            embeds:Object.fromEntries(tree.notes.map(n=>[n.id,imageTargets(vault.derived?.[n.id]?.markdown??n.markdown??'')]))}};
         if(kind==='images'&&id){const image=await active.store.get('images',id);if(!image)throw new Error('The image has not finished downloading.');return {handled:true,bytes:image.data,contentType:image.contentType};}
         if(kind==='notes'&&parts[9]==='rename-impact')return {handled:true,value:{references:tree.notes.filter(n=>n.markdown?.includes('[[')).length}};
         if(kind==='notes'&&id){

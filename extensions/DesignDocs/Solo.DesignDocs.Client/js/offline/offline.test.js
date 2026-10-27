@@ -114,6 +114,21 @@ test('a downloaded vault queues permanent sketch and image deletes with the vers
     }finally{await agent.dispose();}
 });
 
+test('a downloaded vault lists its attachments and every note’s embeds',async()=>{
+    const {startOffline,offlineRequest}=await import('./session.js');
+    const store=new VaultStore(id()),vaultId=id(),noteId=id(),projectId=id(),sketchId=id(),imageId=id();const base=snapshot(vaultId,noteId);
+    base.sketches.push({id:sketchId,noteId,name:'Map',pageSize:'A4',orientation:'portrait',pattern:'dots',path:attachmentPath(noteId,'Map.sketch'),version:4});
+    base.images.push({id:imageId,path:attachmentPath(noteId,'photo.webp'),contentType:'image/webp',width:1,height:1,bytes:1,version:6});
+    base.tree.notes[0].markdown='saved ![[Map.sketch]]';
+    await store.put('vaults',{id:vaultId,projectId,projectAlias:'PARK',ready:true,base,derived:{[noteId]:{markdown:'edited ![[photo.webp|200]] `![[code.png]]`',headings:[]}},color:{userId:'writer',slot:1},colors:[],list:{canManage:true,vaults:[base.tree.vault]}});
+    const agent=await startOffline({invokeMethodAsync:async()=>({status:0})},{instance:'test',userId:'writer',store});
+    try{
+        const value=(await offlineRequest('GET',`api/ext/design-docs/projects/${projectId}/vaults/${vaultId}/attachments`)).value;
+        assert.deepEqual(value.images.map(i=>i.id),[imageId]);assert.deepEqual(value.sketches.map(s=>s.id),[sketchId]);
+        assert.deepEqual(value.embeds,{[noteId]:['photo.webp|200']},'the newest local copy of a note wins');
+    }finally{await agent.dispose();}
+});
+
 test('duplicate acknowledgments cannot rebase a later queued command to an old version',async()=>{
     const store=new VaultStore(id()),vaultId=id(),noteId=id(),base=snapshot(vaultId,noteId);await store.put('vaults',{id:vaultId,base});
     const first={id:id(),vaultId,created:1,command:{entity:'note',action:'update',targetId:noteId,name:'First',version:1}};
