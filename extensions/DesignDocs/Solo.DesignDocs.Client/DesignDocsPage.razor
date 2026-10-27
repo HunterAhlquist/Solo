@@ -64,7 +64,7 @@ else if(_activeVaultId==Guid.Empty) {
 @code {
     private ISoloClientApi Api=>OfflineApi.For(HostApi,Js);
     [Parameter] public string? RouteNoteKey {get;set;}
-    private Guid? _routeNoteId;private long _routeGeneration;
+    private Guid? _routeNoteId,_revealedNote;private long _routeGeneration;
     private Guid _activeVaultId;private string _activeAlias="";private bool _navigating;
     [Parameter] public string ProjectAlias {get;set;}="";
     [Parameter] public Guid VaultId {get;set;}
@@ -103,7 +103,7 @@ else if(_activeVaultId==Guid.Empty) {
         var key=$"{alias}/{vaultId}";
         if(_loaded==key){_error=null;_routeNoteId=requestedNote;_navigating=false;if(_preferencesLoaded)await RememberNote();return;}
         _loaded=key;var generation=++_loadGeneration;_preferencesLoaded=false;
-        _activeVaultId=vaultId;_activeAlias=alias;_routeNoteId=requestedNote;
+        _activeVaultId=vaultId;_activeAlias=alias;_routeNoteId=requestedNote;_revealedNote=null;
         var previous=_subscription;_subscription=null;if(previous is not null)await previous.DisposeAsync();
         if(generation!=_loadGeneration||_disposed)return;
         _tree=null;_project=null;_error=null;
@@ -142,18 +142,32 @@ else if(_activeVaultId==Guid.Empty) {
     }
     private async Task Load(){
         if(_disposed)return;var generation=_loadGeneration;var path=Path;
-        try{var tree=await Api.GetAsync<TreeDto>(path);if(generation==_loadGeneration&&!_disposed){_tree=tree;_error=null;}}
+        // A note created and opened in one step only joins the tree here, after its route has already settled.
+        try{var tree=await Api.GetAsync<TreeDto>(path);if(generation==_loadGeneration&&!_disposed){_tree=tree;_error=null;if(_preferencesLoaded)await RememberNote();}}
         catch(SoloApiException e){if(generation==_loadGeneration&&!_disposed)_error=e.Message;}
     }
     private Task SavePreferences()=>!_preferencesLoaded||_preferences is null?Task.CompletedTask:_preferences.InvokeVoidAsync("saveVaultPreferences",_activeVaultId.ToString(),new VaultViewPreferences(_openFolders.Order().ToArray(),_rememberedNote,_fontScale,_marginWidth)).AsTask();
-    private async Task RememberNote(){if(Selected is {} note&&note.Id!=_rememberedNote){_rememberedNote=note.Id;await SavePreferences();}}
+    private async Task RememberNote(){
+        var changed=Selected is {} note&&note.Id!=_rememberedNote;if(changed)_rememberedNote=Selected!.Id;
+        if(RevealRoutedNote()||changed)await SavePreferences();
+    }
+    // A note reached by address (a link, the URL, a note just created) has to be visible in the tree, so its
+    // folders open. Only once per note: rerenders re-run this, and must not undo the user collapsing that folder.
+    // A vault opened without a note keeps the folders as the user left them.
+    private bool RevealRoutedNote(){
+        if(_routeNoteId is not {} id||id==_revealedNote||Selected is not {} note||note.Id!=id)return false;
+        _revealedNote=id;var opened=false;
+        foreach(var folder in Ancestors(note.FolderId))opened|=_openFolders.Add(folder);
+        return opened;
+    }
+    private IEnumerable<Guid> Ancestors(Guid? folder){
+        var folders=_tree!.Folders;var seen=new HashSet<Guid>();
+        for(var parent=folder;parent.HasValue&&seen.Add(parent.Value);parent=folders.FirstOrDefault(f=>f.Id==parent)?.ParentId)yield return parent.Value;
+    }
     private async Task ToggleFolders(){
         var folders=_tree!.Folders;
         if(folders.Any(f=>!_openFolders.Contains(f.Id)))_openFolders=folders.Select(f=>f.Id).ToHashSet();
-        else{
-            _openFolders.Clear();
-            for(var parent=Selected?.FolderId;parent.HasValue;parent=folders.FirstOrDefault(f=>f.Id==parent)?.ParentId)_openFolders.Add(parent.Value);
-        }
+        else _openFolders=Ancestors(Selected?.FolderId).ToHashSet();
         await SavePreferences();
     }
     private async Task SetExpanded(DocTreeExpansion change){if(change.Expanded)_openFolders.Add(change.Id);else _openFolders.Remove(change.Id);await SavePreferences();}

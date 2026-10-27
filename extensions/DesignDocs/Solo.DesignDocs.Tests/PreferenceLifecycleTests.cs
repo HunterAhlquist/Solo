@@ -86,6 +86,42 @@ public sealed class PreferenceLifecycleTests : ComponentTestBase
         cut.WaitForAssertion(()=>Assert.Equal(first.ToString(),cut.Find("[data-note]").GetAttribute("data-note")));
     }
     [Fact]
+    public async Task Opening_a_note_by_address_opens_its_folders_once()
+    {
+        var project=Guid.NewGuid();var vault=Guid.NewGuid();var outer=Guid.NewGuid();var inner=Guid.NewGuid();var other=Guid.NewGuid();
+        var deep=Guid.NewGuid();var sibling=Guid.NewGuid();var top=Guid.NewGuid();
+        var http=new StubHttp();
+        http.RouteJson($"api/projects/{project}",new ProjectDto(project,"Project","DOCS",null,null,1,[]));
+        http.RouteJson("api/projects",new[]{new ProjectSummaryDto(project,"Project","DOCS",null,null,ProjectRole.ReadWrite,true)});
+        http.RouteJson("api/users/me",new UserDto(Guid.NewGuid(),"fixture@example.test","Fixture",null,true));
+        http.RouteJson($"vaults/{vault}",new TreeDto(new(vault,"Vault",false,null,1),[new(outer,null,"Outer",1),new(inner,outer,"Inner",1),new(other,null,"Other",1)],
+            [new(top,vault,null,"Top","","0",[],null,null,1),new(deep,vault,inner,"Deep","","0",[],null,null,1),new(sibling,vault,inner,"Sibling","","0",[],null,null,1)]));
+        http.RouteJson("vaults",new VaultListDto(false,[new(vault,"Vault",false,null,1)]));
+        foreach(var note in new[]{deep,sibling})http.RouteJson($"notes/{note}/locate",new LocateDto(project,"DOCS",vault,note));
+        Services.AddSingleton<ISoloClientApi>(http.CreateClient());Services.AddSingleton<ISoloLiveTopics>(new FakeLiveTopics());
+        Services.AddScoped<ISoloWorkspace>(sp=>sp.GetRequiredService<WorkspaceState>());Services.AddScoped<ISoloContextMenu>(sp=>sp.GetRequiredService<ContextMenuService>());
+        ComponentFactories.AddStub<NoteEditor>();ComponentFactories.AddStub<DocHierarchy>();
+        var module=JSInterop.SetupModule(_=>true);
+        // The remembered note is at the root and every folder is closed, as the user left them.
+        module.Setup<VaultViewPreferences>("loadVaultPreferences",_=>true).SetResult(new([],top,100));
+        module.SetupVoid("saveVaultPreferences",_=>true).SetVoidResult();
+        var cut=Render<DesignDocsPage>(p=>p.Add(x=>x.RouteNoteKey,NoteAddress.Encode(deep)));
+        IReadOnlySet<Guid> Open()=>cut.FindComponent<Bunit.TestDoubles.Stub<DocHierarchy>>().Instance.Parameters.Get(x=>x.OpenFolders);
+        Task Route(Guid note)=>cut.InvokeAsync(()=>cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string,object?>{
+            {nameof(DesignDocsPage.RouteNoteKey),NoteAddress.Encode(note)},{nameof(DesignDocsPage.ProjectAlias),""},{nameof(DesignDocsPage.VaultId),Guid.Empty}})));
+        cut.WaitForAssertion(()=>Assert.Equal(new HashSet<Guid>{outer,inner},Open()));
+        var saved=module.Invocations.Last(i=>i.Identifier=="saveVaultPreferences").Arguments[1] as VaultViewPreferences;
+        Assert.Equal(new[]{outer,inner}.Order(),saved!.OpenFolders);
+        // The user closes the outer folder; a rerender for the same note must leave it closed.
+        await cut.InvokeAsync(()=>cut.FindComponent<Bunit.TestDoubles.Stub<DocHierarchy>>().Instance.Parameters.Get(x=>x.OnExpanded).InvokeAsync(new(outer,false)));
+        await Route(deep);
+        Assert.DoesNotContain(outer,Open());
+        // Following a link to a different note in that folder opens the path again.
+        await Route(sibling);
+        Assert.Contains(outer,Open());Assert.Contains(inner,Open());Assert.DoesNotContain(other,Open());
+    }
+
+    [Fact]
     public async Task A_late_sync_for_a_superseded_note_cannot_replace_the_visible_note()
     {
         var vault=Guid.NewGuid();
