@@ -1,11 +1,26 @@
-import {pageSize,rasterize,applyStrokes,paint,paintTexts,paintPixels,splitSelection} from './render.js';
+import {pageSize,rasterize,applyStrokes,paint,paintTexts,paintPixels,splitSelection,repaint,footprint,paintStroke} from './render.js';
 
 // The three seeded boil frames are immutable until the shared strokes change.
 // Pointer feedback copies a bitmap; it never replays the committed drawing.
 export class SketchScene {
-    constructor(createCanvas){this.createCanvas=createCanvas;this.setScene([],{});this.setStyle({});}
-    setScene(ops,meta){this.ops=ops;this.meta=meta;[this.width,this.height]=pageSize(meta);this.frames=new Map();this.drag=null;}
-    setStyle(style){this.style=style;for(const value of this.frames.values())value.canvas=null;if(this.drag)this.drag.frames.clear();}
+    constructor(createCanvas){this.createCanvas=createCanvas;this.style={};this.held=new Map();this.setScene([],{});}
+    setScene(ops,meta){
+        const [width,height]=pageSize(meta),previous=this.ops;
+        // Collaborators mostly append strokes. Painting only the new ones over each cached
+        // frame gives the same pixels as a replay, at a cost that doesn't grow with the page.
+        const extended=this.frames?.size>0&&width===this.width&&height===this.height&&meta?.pattern===this.meta?.pattern
+            &&ops.length>=previous.length&&previous.every((stroke,index)=>ops[index]===stroke);
+        if(!extended)this.frames=new Map();
+        else if(ops.length>previous.length){
+            const added=ops.slice(previous.length),region=footprint(added);
+            for(const [number,value] of this.frames){
+                applyStrokes(value.raster,added,width,height,number,previous.length);
+                if(value.canvas)repaint(value.canvas.getContext('2d'),value.raster,meta,this.style,region);
+            }
+        }
+        this.ops=ops;this.meta=meta;this.width=width;this.height=height;this.drag=null;
+    }
+    setStyle(style){this.style=style;this.held.clear();for(const value of this.frames.values())value.canvas=null;if(this.drag)this.drag.frames.clear();}
     frame(number){
         let value=this.frames.get(number);
         if(!value){value={raster:rasterize(this.ops,this.width,this.height,number)};this.frames.set(number,value);}
@@ -29,21 +44,49 @@ export class SketchScene {
         }
         return value;
     }
-    paintExtra(context,extra,frame){
-        let left=this.width,top=this.height,right=0,bottom=0;
-        for(const stroke of extra)for(const point of stroke.points??[])if(Number.isFinite(point?.[0])&&Number.isFinite(point?.[1])){
-            left=Math.min(left,Math.floor(point[0])-8);top=Math.min(top,Math.floor(point[1])-8);
-            right=Math.max(right,Math.ceil(point[0])+9);bottom=Math.max(bottom,Math.ceil(point[1])+9);
+    // Held strokes grow by a few samples a frame. Each keeps its pixels and a bitmap per
+    // boil frame, covering only its own footprint, and extends them, rather than replaying
+    // every sample of every held stroke each frame; that replay grew with stroke length and
+    // churned the garbage collector enough to stall the page while people drew.
+    heldLayer(stroke,frame){
+        const {width,height}=this,points=Array.isArray(stroke.points)?stroke.points:[];
+        let held=this.held.get(stroke.id);
+        if(!held||held.points!==points||held.pointerType!==stroke.pointerType){held={points,pointerType:stroke.pointerType,frames:new Map()};this.held.set(stroke.id,held);}
+        let layer=held.frames.get(frame);
+        // The collaborator feed rewrites its tail on overlap and after a gap.
+        const last=layer?.next?points[layer.next-1]:null;
+        if(!layer||layer.next>points.length||(layer.next&&(last?.[0]!==layer.last[0]||last?.[1]!==layer.last[1]||last?.[2]!==layer.last[2]))){
+            layer={canvas:this.createCanvas(),raster:{pixels:new Uint8Array(0),left:0,top:0,width:0,height:0},next:0,last:null};held.frames.set(frame,layer);
         }
-        left=Math.max(0,left);top=Math.max(0,top);right=Math.min(this.width,right);bottom=Math.min(this.height,bottom);
-        const width=right-left,height=bottom-top;if(width<=0||height<=0)return;
-        const canvas=this.previewCanvas??=this.createCanvas(),overlay=canvas.getContext('2d'),length=width*height;
-        if(canvas.width!==width)canvas.width=width;if(canvas.height!==height)canvas.height=height;
-        overlay.clearRect(0,0,width,height);
-        if(!this.previewPixels||this.previewPixels.length<length)this.previewPixels=new Uint8Array(Math.max(length,(this.previewPixels?.length??256)*2));
-        const pixels=this.previewPixels.subarray(0,length);pixels.fill(0);
-        applyStrokes({pixels},extra.map(stroke=>({...stroke,points:(stroke.points??[]).map(point=>Array.isArray(point)?point.map((value,index)=>index===0?value-left:index===1?value-top:value):point)})),width,height,frame);
-        paintPixels(overlay,{pixels},width,height,this.style.themeInk);context.drawImage(canvas,left,top);
+        if(points.length>layer.next){
+            const found=footprint([{points:points.slice(Math.max(0,layer.next-1))}]),region={left:Math.max(0,found.left),top:Math.max(0,found.top),right:Math.min(width,found.right),bottom:Math.min(height,found.bottom)};
+            this.cover(layer,region);
+            paintStroke(layer.raster,stroke,width,height,frame,0,layer);
+            const {raster}=layer;
+            paintPixels(layer.canvas.getContext('2d'),raster,raster.width,raster.height,this.style.themeInk,{left:region.left-raster.left,top:region.top-raster.top,right:region.right-raster.left,bottom:region.bottom-raster.top});
+            layer.last=points.at(-1).slice(0,3);
+        }
+        return layer;
+    }
+    // Grows a held layer to include a region, with headroom so growth is occasional.
+    cover(layer,region){
+        const old=layer.raster;if(region.right<=region.left||region.bottom<=region.top)return;
+        if(old.width&&region.left>=old.left&&region.top>=old.top&&region.right<=old.left+old.width&&region.bottom<=old.top+old.height)return;
+        let left=region.left,top=region.top,right=region.right,bottom=region.bottom;
+        if(old.width){
+            left=Math.min(left,old.left);top=Math.min(top,old.top);right=Math.max(right,old.left+old.width);bottom=Math.max(bottom,old.top+old.height);
+            const padX=Math.ceil((right-left)/4),padY=Math.ceil((bottom-top)/4);
+            left=Math.max(0,left-padX);top=Math.max(0,top-padY);right=Math.min(this.width,right+padX);bottom=Math.min(this.height,bottom+padY);
+        }
+        const raster={pixels:new Uint8Array((right-left)*(bottom-top)),left,top,width:right-left,height:bottom-top};
+        for(let y=0;y<old.height;y++)raster.pixels.set(old.pixels.subarray(y*old.width,(y+1)*old.width),(old.top+y-top)*raster.width+old.left-left);
+        layer.raster=raster;layer.canvas.width=raster.width;layer.canvas.height=raster.height;
+        paintPixels(layer.canvas.getContext('2d'),raster,raster.width,raster.height,this.style.themeInk);
+    }
+    paintExtra(context,extra,frame){
+        const seen=new Set();
+        for(const stroke of extra){seen.add(stroke.id);const layer=this.heldLayer(stroke,frame);if(layer.raster.width)context.drawImage(layer.canvas,layer.raster.left,layer.raster.top);}
+        for(const id of this.held.keys())if(!seen.has(id))this.held.delete(id);
     }
     render(context,{frame=0,texts=[],extra=[],selection=null,selectionContext=null,font}={}){
         const {width:w,height:h}=this,moving=selection&&(selection.dx||selection.dy),erasing=extra.some(stroke=>stroke.tool==='eraser');
@@ -63,7 +106,7 @@ export class SketchScene {
             if(!erasing)context.drawImage(value.canvas,0,0);else raster={pixels:value.raster.pixels.slice()};
         }
         if(raster){applyStrokes(raster,extra,w,h,frame,this.ops.length);paint(context,[],[],this.meta,{...this.style,raster});}
-        else if(extra.length)this.paintExtra(context,extra,frame);
+        else this.paintExtra(context,extra,frame);
         const boxes=moving?(selectionContext?texts.filter(t=>!selection.textIds.has(t.id)):texts.map(t=>selection.textIds.has(t.id)?{...t,x:t.x+selection.dx,y:t.y+selection.dy}:t)):texts;
         paintTexts(context,boxes,{...this.style,font});
         if(moving&&selectionContext){
@@ -77,5 +120,5 @@ export class SketchScene {
         }
         return null;
     }
-    dispose(){this.frames.clear();this.drag=null;this.ops=[];this.previewCanvas=this.previewPixels=null;}
+    dispose(){this.frames.clear();this.drag=null;this.ops=[];this.held.clear();}
 }

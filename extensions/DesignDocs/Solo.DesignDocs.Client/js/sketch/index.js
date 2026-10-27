@@ -10,13 +10,14 @@ import { contains,selectPolygon,selectionBounds,shiftRegion } from './selection.
 import { SketchScene } from './scene.js';
 import { SketchInput } from './input.js';
 import { applyTrackpadPressure } from './pressure.js';
-import { strokePresence } from './stroke-presence.js';
+import { strokePresence,StrokeFeed } from './stroke-presence.js';
 const local=Symbol('local sketch');
 export async function mountSketch(root,bridge,options){
     const font=await loadFont(root),shell=root.closest('.design-docs-sketch-shell')??root;
     let frameRequest=null,active=null,selected=null,marquee=null,editing=null,frame=0,disposed=false,visible=true;
     let pan=[12,12],zoom=1,angle=0,gesture=null,dragPan=null,space=false,safariGesture=null,fitPending=true;
-    let mousePressure=0,lastPointer=null,lastPointerType='mouse';
+    let mousePressure=0,lastPointer=null,lastPointerType='mouse',delivered={id:null,count:0};
+    const feed=new StrokeFeed();
     let tool='pen',ink='theme',level=0,constrain=false,clearing=false,closing=false;
     const commands=new Set();
     const touches=new Map(),downloads=[],timers=new Set();
@@ -34,6 +35,10 @@ export async function mountSketch(root,bridge,options){
     const say=message=>{status.textContent=message;};
     const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,documentId:options.documentId,projectId:options.projectId,vaultId:options.vaultId,atomicSync:true,hasDraft:()=>!!active||(selected?.pointer!==undefined&&(selected.dx!==0||selected.dy!==0))||clearing||commands.size>0,
         status:message=>{say(message);if(provider.synced&&provider.canWrite&&!meta.size)provider.doc.transact(()=>Object.entries(options.meta).forEach(([k,v])=>meta.set(k,v)),local);},
+        // Presence that reached the relay; the next message starts after it.
+        awarenessSent:state=>{const stroke=state?.stroke;if(stroke&&stroke.id===active?.id)delivered={id:stroke.id,count:Math.max(delivered.id===stroke.id?delivered.count:0,stroke.base+stroke.points.length)};},
+        // Someone arriving mid-stroke has none of it yet.
+        peerJoined:()=>{delivered={id:null,count:0};if(active&&provider.canWrite)provider.awareness.setLocalStateField('stroke',heldPresence());},
         writable:value=>{bridge.invokeMethodAsync('Writable',value&&!closing);if(!value){finishStroke();if(selected?.pointer!==undefined)up({pointerId:selected.pointer,type:'pointerup'},true);selected=null;marquee=null;viewport.querySelector('textarea')?.blur();requestDraw();}},
     });
     const ops=provider.doc.getArray('ops'),texts=provider.doc.getMap('texts'),meta=provider.doc.getMap('meta'),cuts=provider.doc.getMap('cuts');
@@ -78,8 +83,7 @@ export async function mountSketch(root,bridge,options){
     function draw(){
         if(disposed)return;const preview=[];
         if(active)preview.push(active.tool==='rectangle'||active.tool==='ellipse'?{...active,tool:'pen',points:shape(active.tool,active.points[0],active.points.at(-1),constrain||active.shift)}:active);
-        const others=[...provider.awareness.getStates()].filter(([id])=>id!==provider.doc.clientID).map(([,state])=>state);
-        for(const state of others)if(state.stroke)preview.push(state.stroke);
+        for(const stroke of feed.values())preview.push(stroke);
         const floating=scene.render(context,{texts:getTexts(),extra:preview,selection:selected,selectionContext,font,frame:reduced.matches?0:frame});
         selectionCanvas.hidden=!floating;selectionPadding=floating?.padding??0;
         if(selected){const b=selected.bounds,c=floating?selectionContext:context,dx=floating?selectionPadding:selected.dx,dy=floating?selectionPadding:selected.dy,x=b.left+dx,y=b.top+dy;c.strokeStyle=themeInk();c.lineWidth=1/zoom;c.setLineDash([5/zoom,4/zoom]);c.strokeRect(x-3,y-3,b.right-b.left+6,b.bottom-b.top+6);c.setLineDash([]);
@@ -89,12 +93,17 @@ export async function mountSketch(root,bridge,options){
     }
     const requestDraw=()=>{if(frameRequest!==null||disposed)return;frameRequest=requestAnimationFrame(()=>{frameRequest=null;draw();});};
     const sceneChanged=()=>{scene.setScene(sketchStrokes(provider.doc),getMeta());requestDraw();};
-    ops.observe(sceneChanged);cuts.observe(sceneChanged);texts.observeDeep(requestDraw);meta.observe(()=>{sceneChanged();if(fitPending)resetView();});sceneChanged();provider.awareness.on('change',requestDraw);
+    ops.observe(sceneChanged);cuts.observe(sceneChanged);texts.observeDeep(requestDraw);meta.observe(()=>{sceneChanged();if(fitPending)resetView();});sceneChanged();provider.awareness.on('change',({added,updated,removed})=>{
+        // Fold each message in as it arrives; several can land within one frame.
+        for(const id of [...added,...updated])if(id!==provider.doc.clientID)feed.apply(id,provider.awareness.getStates().get(id)?.stroke);
+        for(const id of removed)feed.delete(id);requestDraw();
+    });
     const observer=new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;});observer.observe(viewport);
     const boil=setInterval(()=>{if(visible&&!document.hidden&&!disposed&&!reduced.matches&&ops.length){frame=(frame+1)%3;requestDraw();}},250);
     function localPoint(e){if(!Number.isFinite(e.clientX)||!Number.isFinite(e.clientY))return center();const r=viewport.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top];}
     function point(e){return [...pagePoint(currentView(),localPoint(e)),e.pointerType==='mouse'?mousePressure:e.pressure];}
-    function updateAwareness(p,type=lastPointerType){lastPointer=p;lastPointerType=type;if(!provider.canWrite)return;provider.awareness.setLocalStateField('pointer',{x:p[0],y:p[1],tool,width:pressureWidth(level,p[2]??0,type)});provider.awareness.setLocalStateField('stroke',strokePresence(active));}
+    function updateAwareness(p,type=lastPointerType){lastPointer=p;lastPointerType=type;if(!provider.canWrite)return;provider.awareness.setLocalStateField('pointer',{x:p[0],y:p[1],tool,width:pressureWidth(level,p[2]??0,type)});provider.awareness.setLocalStateField('stroke',heldPresence());}
+    const heldPresence=()=>strokePresence(active,delivered.id===active?.id?delivered.count:0);
     function editText(box){
         viewport.querySelector('textarea')?.blur();editing=box;const text=box.get('text'),input=document.createElement('textarea');input.className='design-docs-sketch-text';input.setAttribute('aria-label','Sketch text');input.value=text.toString();input.spellcheck=false;
         viewport.append(input);transform();undo.stopCapturing();
@@ -270,6 +279,8 @@ export async function mountSketch(root,bridge,options){
     const stopDesktopRotation=bindDesktopRotation(viewport,currentView,view=>{if(!active&&!marquee&&!dragPan&&inputMode.penId===null)setView(view);});
     const resize=new ResizeObserver(()=>{if(fitPending&&viewport.clientWidth&&viewport.clientHeight)resetView();});resize.observe(viewport);
     const removeSaveGuard=globalThis.solo?.offline?.guard(waitForSave);
-    draw();return {waitForSave,command:(...args)=>{const task=command(...args);commands.add(task);task.finally(()=>commands.delete(task)).catch(()=>{});return task;},connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
+    // Closing saves, then tells the note's viewers once that their preview is stale.
+    async function close(timeout){const saved=await waitForSave(timeout);if(saved&&!disposed)await provider.closed();return saved;}
+    draw();return {waitForSave,close,command:(...args)=>{const task=command(...args);commands.add(task);task.finally(()=>commands.delete(task)).catch(()=>{});return task;},connected:value=>provider.connected(value),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
         dispose(){disposed=true;removeSaveGuard?.();dialog?.removeEventListener('keydown',closeKey,true);peerCursors.dispose();stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('pointerleave',leavePointer);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
 }

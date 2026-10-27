@@ -17,6 +17,7 @@ Their editor fills the window and keeps the note editor inactive until you close
 To edit an existing sketch, select its preview. Then select **Edit sketch** in the attachment viewer.
 Changes save automatically while connected.
 Use the **X** in the top-right corner to return to the note.
+Other people who have the note open see the updated preview when you close the sketch.
 
 ## Drawing tools
 

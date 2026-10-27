@@ -7,14 +7,17 @@ export function bitmapCanvas(){
     const canvas={width:0,height:0};
     const colors={'white':[255,255,255],'#111':[17,17,17],'#d0d0d0':[208,208,208],'#b52c32':[181,44,50],'#2164b4':[33,100,180],'#23763e':[35,118,62],'#8043ad':[128,67,173]};
     const context={canvas,globalAlpha:1,fillStyle:'white',fills:0,copies:0,buffer:null,
-        clearRect(){this.buffer=new Uint8ClampedArray(canvas.width*canvas.height*4);},
+        clearRect(x=0,y=0,w=canvas.width,h=canvas.height){
+            if(this.buffer?.length!==canvas.width*canvas.height*4){this.buffer=new Uint8ClampedArray(canvas.width*canvas.height*4);return;}
+            for(let py=Math.max(0,y);py<Math.min(canvas.height,y+h);py++)this.buffer.fill(0,(py*canvas.width+Math.max(0,x))*4,(py*canvas.width+Math.min(canvas.width,x+w))*4);
+        },
         fillRect(x,y,w,h){if(this.buffer?.length!==canvas.width*canvas.height*4)this.buffer=new Uint8ClampedArray(canvas.width*canvas.height*4);this.fills++;const rgb=colors[this.fillStyle];assert.ok(rgb,this.fillStyle);
             for(let py=Math.max(0,y);py<Math.min(canvas.height,y+h);py++)for(let px=Math.max(0,x);px<Math.min(canvas.width,x+w);px++){
                 const at=(py*canvas.width+px)*4,a=this.globalAlpha,old=this.buffer[at+3]/255,out=a+old*(1-a);
                 for(let c=0;c<3;c++)this.buffer[at+c]=(rgb[c]*a+this.buffer[at+c]*old*(1-a))/out;this.buffer[at+3]=out*255;
             }
         },
-        drawImage(source,dx,dy){this.copies++;const sourceBuffer=source.getContext('2d').buffer;
+        drawImage(source,dx,dy){this.copies++;const sourceBuffer=source.getContext('2d').buffer;if(!sourceBuffer)return;
             for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++){
                 const sx=x+dx,sy=y+dy;if(sx<0||sy<0||sx>=canvas.width||sy>=canvas.height)continue;
                 const from=(y*source.width+x)*4;if(!sourceBuffer[from+3])continue;
@@ -96,4 +99,36 @@ test('bounded live pen layers agree with full replay across colors, frames, and 
     const extra=[{...stroke,ink:'blue',points:[[-8,20,1],[45,25,1]]},{...stroke,ink:'purple',points:[[20,10,1],[55,35,1]]}];
     const scene=new SketchScene(bitmapCanvas);scene.setScene([stroke],meta);const target=output();
     for(const frame of [0,1,2]){scene.render(target,{extra,frame});const direct=output();paint(direct,[stroke,...extra],[],meta,{frame});assert.deepEqual(target.buffer,direct.buffer);}
+});
+
+test('appended strokes repaint cached frames to the pixels of a full replay',()=>{
+    const second={...stroke,id:'b',ink:'red',points:[[100,200,.5],[160,260,.9]]},eraser={...stroke,id:'e',tool:'eraser',level:4,points:[[30,0,1],[30,40,1]]};
+    for(const pattern of ['grid','dots','notebook','empty']){
+        const page={...meta,pattern},scene=new SketchScene(bitmapCanvas),target=output();let ops=[stroke];
+        scene.setScene(ops,page);for(const frame of [0,1,2])scene.render(target,{frame});const cached=scene.frame(0).canvas;
+        for(const next of [second,eraser]){
+            ops=[...ops,next];scene.setScene(ops,page);
+            assert.equal(scene.frame(0).canvas,cached,'appending must not rebuild the cached layer');
+            for(const frame of [0,1,2]){scene.render(target,{frame});const direct=output();paint(direct,ops,[],page,{frame});assert.deepEqual(target.buffer,direct.buffer,pattern+' frame '+frame);}
+            assert.deepEqual(scene.hitRaster(),rasterize(ops,420,595,0));
+        }
+        scene.setScene(ops,page);assert.equal(scene.frame(0).canvas,cached,'an unchanged scene keeps its frames');
+        // Concurrent writers can land a stroke before existing ones; that replays the page.
+        ops=[second,...ops];scene.setScene(ops,page);assert.notEqual(scene.frame(0).canvas,cached);
+        scene.render(target,{frame:1});const direct=output();paint(direct,ops,[],page,{frame:1});assert.deepEqual(target.buffer,direct.buffer);
+    }
+});
+test('a growing held stroke extends its layer and matches a full replay each frame',()=>{
+    const scene=new SketchScene(bitmapCanvas);scene.setScene([stroke],meta);const target=output();
+    const held={...stroke,id:'held',ink:'green',pointerType:'pen',points:[[-20,300,.2]]},check=frame=>{const direct=output();paint(direct,[stroke,held],[],meta,{frame});assert.deepEqual(target.buffer,direct.buffer);};
+    let layer;
+    for(let i=1;i<140;i++){
+        held.points.push([-20+i*4,300+Math.sin(i/5)*120,i%10/10]);scene.render(target,{extra:[held],frame:i%3});
+        if(i>3&&i%3===0){const next=scene.held.get('held').frames.get(0);if(layer)assert.equal(next,layer,'a held stroke extends its layer instead of replaying');layer=next;}
+        if(i%23===0)check(i%3);
+    }
+    check(139%3);
+    // A collaborator's feed rewrites the tail after a gap; that layer starts over.
+    held.points.length=100;held.points.push([200,100,.5]);scene.render(target,{extra:[held],frame:1});check(1);
+    scene.render(target,{frame:1});assert.equal(scene.held.size,0,'a finished stroke releases its layers');
 });

@@ -15,6 +15,7 @@ public sealed partial class VaultTests
         public async Task Start(){hub.On<TopicMessage>(nameof(IBoardClient.TopicMessage),m=>_messages.Writer.TryWrite(m));await hub.StartAsync();await hub.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic),project,topic);}
         public Task<LiveSendResult> Send(string kind,object data)=>hub.InvokeAsync<LiveSendResult>(nameof(IBoardHubServer.SendTopicMessage),project,topic,kind,JsonSerializer.Serialize(data,TestClients.Json));
         public async Task<JsonElement> Next(string kind){using var cts=new CancellationTokenSource(TimeSpan.FromSeconds(8));while(true){var m=await _messages.Reader.ReadAsync(cts.Token);if(m.Kind==kind)return JsonDocument.Parse(m.Data!).RootElement.Clone();}}
+        public async Task<bool> Pending(string kind,TimeSpan wait){using var cts=new CancellationTokenSource(wait);try{while(true){var m=await _messages.Reader.ReadAsync(cts.Token);if(m.Kind==kind)return true;}}catch(OperationCanceledException){return false;}}
         public async ValueTask DisposeAsync()=>await hub.DisposeAsync();
     }
     private Task<Peer> Connect(Guid id,string who="admin")=>ConnectTopic(DocTopics.Doc(id),who);
@@ -26,13 +27,18 @@ public sealed partial class VaultTests
         }).Build();var p=new Peer(hub,_project.Id,topic);await p.Start();return p;
     }
     [SkippableFact]
-    public async Task Remote_sketch_updates_notify_readers_who_only_have_the_note_open()
+    public async Task Closing_a_changed_sketch_notifies_readers_who_only_have_the_note_open()
     {
         postgres.SkipUnlessDockerAvailable();var vault=await Vault();var note=await NewNote(vault);
         var sketch=await _writer.PostJson<SketchDto>($"{Root}/{vault.Id}/sketches/notes/{note.Id}",new NameRequest("Map"));
         await using var viewer=await ConnectTopic(DocTopics.Vault(vault.Id),"reader");
-        await using var writer=await Connect(sketch.Id,"writer");
+        await using var writer=await Connect(sketch.Id,"writer");await using var reader=await Connect(sketch.Id,"reader");
         await writer.Send("update",new{id=Guid.NewGuid(),data=Updates[0]});await writer.Next("ack");
+        // A preview re-reads the whole sketch; refreshing it per stroke slowed everyone drawing.
+        Assert.False(await viewer.Pending("sketch",TimeSpan.FromMilliseconds(500)));
+        Assert.Equal(LiveSendResult.Accepted,await reader.Send("closed",new{}));
+        Assert.False(await viewer.Pending("sketch",TimeSpan.FromMilliseconds(500)),"a reader closing changes nothing");
+        Assert.Equal(LiveSendResult.Accepted,await writer.Send("closed",new{}));
         var changed=await viewer.Next("sketch");
         Assert.Equal(note.Id,changed.GetProperty("noteId").GetGuid());Assert.Equal(sketch.Path,changed.GetProperty("path").GetString());
         await _writer.PostJson<OfflineWriteResult>($"{Root}/{vault.Id}/offline/documents/{sketch.Id}",new OfflineWrite(Guid.NewGuid(),Convert.FromBase64String(Updates[1])));
@@ -40,6 +46,22 @@ public sealed partial class VaultTests
         var current=(await _writer.GetJson<List<SketchDto>>($"{Root}/{vault.Id}/sketches")).Single();
         await _writer.PutJson<SketchDto>($"{Root}/{vault.Id}/sketches/{sketch.Id}",new SketchChange("Renamed","A4","portrait","dots",current.Version));
         var renamed=await viewer.Next("sketch");Assert.Equal("Map",renamed.GetProperty("previousName").GetString());Assert.Equal("Renamed",renamed.GetProperty("name").GetString());
+    }
+    [SkippableFact]
+    public async Task Presence_relays_from_writers_only_without_waiting_on_document_writes()
+    {
+        postgres.SkipUnlessDockerAvailable();var v=await Vault();var n=await NewNote(v);
+        await using var writer=await Connect(n.Id,"writer");await using var reader=await Connect(n.Id,"reader");
+        Assert.Equal(LiveSendResult.Accepted,await writer.Send("awareness",new{data="cHJlc2VuY2U="}));
+        Assert.Equal("cHJlc2VuY2U=",(await reader.Next("awareness")).GetProperty("data").GetString());
+        Assert.Equal(LiveSendResult.Accepted,await reader.Send("awareness",new{data="cmVhZGVy"}));
+        Assert.False(await writer.Pending("awareness",TimeSpan.FromMilliseconds(500)),"readers have no presence to relay");
+        // Presence takes no vault lock, so a write transaction holding it can't stall a cursor.
+        await using var connection=new NpgsqlConnection(_connectionString);await connection.OpenAsync();
+        await using var tx=await connection.BeginTransactionAsync();
+        await using(var command=new NpgsqlCommand($"SELECT 1 FROM ext_design_docs.\"Vaults\" WHERE \"Id\"='{v.Id}' FOR UPDATE",connection,tx))await command.ExecuteScalarAsync();
+        Assert.Equal(LiveSendResult.Accepted,await writer.Send("awareness",new{data="bG9ja2Vk"}));
+        Assert.Equal("bG9ja2Vk",(await reader.Next("awareness")).GetProperty("data").GetString());
     }
     private async Task<NoteDto> NewNote(VaultDto v)=>await _writer.PostJson<NoteDto>($"{Root}/{v.Id}/notes",new ItemChange("Note",null));
     private static readonly string[] Updates=["AQERAAQBCG1hcmtkb3duBUhlbGxvAA==","AQERBYQRBAYgd29ybGQA"];

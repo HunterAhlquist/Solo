@@ -17,6 +17,14 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory,ISolo
         var vaultId=await db.Notes.Where(n=>n.Id==id).Select(n=>(Guid?)n.VaultId).SingleOrDefaultAsync(ct)
             ??await db.Sketches.Where(s=>s.Id==id).Select(s=>(Guid?)s.VaultId).SingleOrDefaultAsync(ct);
         if(vaultId is null)return;
+        if(m.Kind=="awareness") {
+            // Presence arrives at pointer rate from every drawer. Taking the vault row lock here
+            // queued it behind document writes, and slowed those writes in turn.
+            var open=await db.Vaults.AsNoTracking().Where(v=>v.Id==vaultId.Value&&v.ProjectId==m.ProjectId).Select(v=>(bool?)!v.IsClosed).SingleOrDefaultAsync(ct);
+            if(open==true&&(m.Sender.IsProjectOwner||m.Sender.Role==ProjectRole.ReadWrite)&&r.Data is {Length:<=32000})
+                await reply.ToOthersAsync("awareness",DocProtocol.Serialize(new {data=r.Data,userId=m.Sender.UserId}),ct);
+            return;
+        }
         await using var tx=await db.Database.BeginTransactionAsync(ct);
         var vault=(await db.Vaults.FromSqlInterpolated($"SELECT *, xmin FROM ext_design_docs.\"Vaults\" WHERE \"Id\"={vaultId.Value} AND \"ProjectId\"={m.ProjectId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
         if(vault is null)return;
@@ -25,11 +33,6 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory,ISolo
         if(note is null&&sketch is null)return;
         var writer=!vault.IsClosed&&(m.Sender.IsProjectOwner||m.Sender.Role==ProjectRole.ReadWrite);
         async Task Refuse(string reason)=>await reply.ToSenderAsync("refused",DocProtocol.Serialize(new {r.Id,reason}),ct);
-        if(m.Kind=="awareness") {
-            await tx.CommitAsync(ct);
-            if(writer&&r.Data is {Length:<=32000})await reply.ToOthersAsync("awareness",DocProtocol.Serialize(new {data=r.Data,userId=m.Sender.UserId}),ct);
-            return;
-        }
         if(m.Kind=="sync") {
             var history=db.DocUpdates.AsNoTracking().Where(u=>u.DocumentId==id);
             var head=await history.MaxAsync(u=>(long?)u.Seq,ct)??0;
@@ -56,6 +59,8 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory,ISolo
             }
             await reply.ToSenderAsync("synced",DocProtocol.Serialize(new {seq=head.ToString(),updates,canWrite=writer,syncId=r.Batch?r.SyncId:null}),ct);return;
         }
+        // Note previews re-read the whole sketch, so they refresh when an editor leaves, not per stroke.
+        if(m.Kind=="closed"){await tx.CommitAsync(ct);if(writer&&sketch is not null)await SketchPreviewChanges.PublishAsync(live,m.ProjectId,sketch,ct);return;}
         if(!writer){await Refuse(vault.IsClosed?"closed":"read-only");return;}
         if(m.Kind is not ("update" or "update-part" or "compact" or "compact-part"))return;
         if(m.Kind is not ("compact" or "compact-part")&&r.Id==Guid.Empty){await Refuse("invalid-id");return;}
@@ -77,7 +82,7 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory,ISolo
             var accepted=await db.DocUpdates.AsNoTracking().SingleOrDefaultAsync(u=>u.DocumentId==id&&u.ClientUpdateId==r.Id,ct);
             if(accepted is not null){
                 if(!accepted.Data.AsSpan().SequenceEqual(data)){await Refuse("invalid-id");return;}
-                await tx.CommitAsync(ct);if(sketch is not null)await SketchPreviewChanges.PublishAsync(live,m.ProjectId,sketch,ct);await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=accepted.Seq.ToString()}),ct);return;
+                await tx.CommitAsync(ct);await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=accepted.Seq.ToString()}),ct);return;
             }
             if(r.SeedToken is {} token&&note?.SeededByToken==token) {
                 var seq=await db.DocUpdates.Where(u=>u.DocumentId==id).MaxAsync(u=>(long?)u.Seq,ct)??0;
@@ -89,7 +94,6 @@ public sealed class DocumentRelay(DesignDocsDbContext db,RelayState memory,ISolo
             if(note?.SeedMarkdown is not null){note.SeedMarkdown=null;note.SeededByToken=r.SeedToken;}
             if(sketch is not null){sketch.LastEditedBy=m.Sender.UserId;sketch.LastEditedAt=DateTimeOffset.UtcNow;}
             await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);memory.Seeded(id);
-            if(sketch is not null)await SketchPreviewChanges.PublishAsync(live,m.ProjectId,sketch,ct);
             await reply.ToSenderAsync("ack",DocProtocol.Serialize(new {r.Id,seq=update.Seq.ToString()}),ct);
             await Chunks(reply,"update",update.Seq,data,ct,others:true);
         }catch(FormatException){await Refuse("invalid-payload");}

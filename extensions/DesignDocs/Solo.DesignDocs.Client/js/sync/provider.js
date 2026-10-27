@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import { encode, decode, parts, sequence, unpackUpdates } from './protocol.js';
 
+const disposable=kind=>kind==='awareness'||kind==='closed';
 export class Provider {
     constructor(bridge, options = {}) {
         this.bridge = bridge; this.options = options; this.doc = new Y.Doc(); this.awareness = new Awareness(this.doc);
@@ -18,7 +19,7 @@ export class Provider {
         this.awareness.on('update', (_, origin) => {
             if (this.disposed || origin === this.remote || !this.canWrite) return;
             // A debounce prevents presence updates during continuous drawing.
-            this.awarenessTimer ??= setTimeout(() => {this.awarenessTimer=null;this.send('awareness', {data: encode(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]))});}, 60);
+            this.awarenessTimer ??= setTimeout(() => {this.awarenessTimer=null;this.send('awareness', {data: encode(encodeAwarenessUpdate(this.awareness, [this.doc.clientID]))}, this.awareness.getLocalState());}, 60);
         });
         this.offlineReady=event=>{if(!this.disposed&&event.detail===this.options.vaultId&&!this.offline)this.bindOffline().then(()=>this.connected(this.online));};
         if(options.documentId){this.hydrating=true;this.offlineLoading=this.bindOffline();globalThis.addEventListener?.('solo-docs-offline-ready',this.offlineReady);}
@@ -41,27 +42,28 @@ export class Provider {
         if(!this.disposed)await this.connected(this.online);
     }
     get hasPending(){return this.offline?this.offline.hasDraft():this.pending.size>0||this.batch.length>0;}
-    send(kind, value) {
+    send(kind, value, state) {
         const epoch=this.epoch;
         if(kind==='awareness'){
             if(!this.online||this.disposed)return this.queue;
-            this.latestAwareness=value;
+            this.latestAwareness=value;this.latestAwarenessState=state;
             if(this.awarenessQueued)return this.queue;
             this.awarenessQueued=true;
         }
         this.queue = this.queue.catch(() => {}).then(async () => {
             if(epoch!==this.epoch)return;
-            if(kind==='awareness'){value=this.latestAwareness;this.awarenessQueued=false;this.latestAwareness=null;}
+            if(kind==='awareness'){value=this.latestAwareness;state=this.latestAwarenessState;this.awarenessQueued=false;this.latestAwareness=this.latestAwarenessState=null;}
             if(!this.online||this.disposed)return;
             let result = await this.bridge.send(kind, JSON.stringify(value));
             if(epoch!==this.epoch||this.disposed)return;
-            // Presence is disposable; document writes remain pending until acknowledged.
-            if (kind === 'awareness' && result !== 0) return;
+            // Presence and close notices are disposable; document writes remain pending until acknowledged.
+            if (disposable(kind) && result !== 0) return;
+            if (kind === 'awareness') this.options.awarenessSent?.(state);
             if (result === 4) { await new Promise(r => setTimeout(r, 100)); if (this.online&&epoch===this.epoch) result = await this.bridge.send(kind, JSON.stringify(value)); }
             if(epoch!==this.epoch||this.disposed)return;
             if (result !== 0) this.interrupted();
             await new Promise(r => setTimeout(r, 25));
-        }).catch(() => {if(epoch===this.epoch&&kind!=='awareness'&&!this.disposed)this.interrupted();});
+        }).catch(() => {if(epoch===this.epoch&&!disposable(kind)&&!this.disposed)this.interrupted();});
         return this.queue;
     }
     interrupted(){
@@ -74,7 +76,7 @@ export class Provider {
         if(this.offline||!this.batch.length||this.pending.size||!this.synced||!this.canWrite)return;
         let size=0,count=0;
         do{size+=this.batch[count++].byteLength;}while(count<this.batch.length&&size+this.batch[count].byteLength<=1024*1024);
-        const packet={id:crypto.randomUUID(),data:encode(Y.mergeUpdates(this.batch.splice(0,count))),seedToken:this.seedToken};
+        const packet={id:crypto.randomUUID(),data:encode(Y.mergeUpdates(this.batch.splice(0,count))),seedToken:this.seedToken};this.edited=true;
         this.pending.set(packet.id,packet);this.options.status?.('Saving…');this.transmit(packet);
     }
     transmit(packet) {
@@ -109,6 +111,11 @@ export class Provider {
             const waiter={finish:value=>{clearTimeout(waiter.timer);this.waiters.delete(waiter);resolve(value);}};
             waiter.timer=setTimeout(()=>waiter.finish(false),Math.max(0,timeout));this.waiters.add(waiter);
         });
+    }
+    // Viewers' previews of a sketch refresh when an editor that changed it closes, not per stroke.
+    closed(){
+        if(this.offline||!this.edited||!this.online||this.disposed)return Promise.resolve();
+        this.edited=false;return this.send('closed',{});
     }
     saved(){if(!this.hasPending)for(const waiter of [...this.waiters])waiter.finish(true);}
     compact(){
@@ -182,7 +189,7 @@ export class Provider {
         const held = new Set(users.map(u => u.userId));
         const joined=[...held].some(id=>id!==this.options.user?.userId&&!this.presentUsers?.has(id));
         this.presentUsers=held;
-        if(joined&&this.canWrite){const state=this.awareness.getLocalState();if(state)this.awareness.setLocalState({...state});}
+        if(joined&&this.canWrite){this.options.peerJoined?.();const state=this.awareness.getLocalState();if(state)this.awareness.setLocalState({...state});}
         const gone = [...this.awareness.getStates()].filter(([id, state]) => id !== this.doc.clientID && !held.has(state.user?.userId)).map(([id]) => id);
         removeAwarenessStates(this.awareness, gone, this.remote);
     }

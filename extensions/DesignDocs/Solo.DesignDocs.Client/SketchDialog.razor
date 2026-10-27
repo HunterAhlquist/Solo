@@ -58,7 +58,7 @@
     [Parameter] public bool CanWrite {get;set;}
     private string _tool="pen",_ink="theme";private int _level;private bool _constrain,_writable,_touchDrawing,_supportsTouch;
     private SaveBeforeLeave? _saveGuard;
-    private Task<bool> SaveBeforeClose()=>_sketch is null?Task.FromResult(true):_sketch.InvokeAsync<bool>("waitForSave",10000).AsTask();
+    private Task<bool> SaveBeforeClose()=>_sketch is null?Task.FromResult(true):_sketch.InvokeAsync<bool>("close",10000).AsTask();
     private async Task RequestClose(){if(_saveGuard is not null&&await _saveGuard.TryLeaveAsync())CloseSaved();}
     private void CloseSaved(){if(!_disposed)Dialog.Close();}
     [JSInvokable] public Task Close()=>RequestClose();
