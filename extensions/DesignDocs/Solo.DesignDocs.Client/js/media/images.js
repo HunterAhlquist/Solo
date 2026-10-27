@@ -15,6 +15,14 @@ export async function prepareImage(file) {
         return {bytes:new Uint8Array(await output.arrayBuffer()),type:output.type,extension:output.type==='image/webp'?'webp':'jpg'};
     } finally { URL.revokeObjectURL(source); }
 }
+// MudBlazor's indeterminate progress circle, drawn into the preview slot itself so a stacked or
+// rotated preview keeps its size and transform while it loads. An SVG used as an image cannot
+// read the page's CSS, so the theme colour is baked in; reduced motion gets a still arc.
+export function loadingPreview(color='#594ae2',still=false){
+    const motion=still?'':'<style>svg>g{animation:r 1.4s linear infinite;transform-origin:64px 64px}circle{animation:d 1.4s ease-in-out infinite}@keyframes r{to{transform:rotate(360deg)}}@keyframes d{0%{stroke-dasharray:1px 200px;stroke-dashoffset:0}50%{stroke-dasharray:100px 200px;stroke-dashoffset:-15px}100%{stroke-dasharray:100px 200px;stroke-dashoffset:-125px}}</style>';
+    const dash=still?' stroke-dasharray="80 200"':'';
+    return 'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">${motion}<g><circle cx="64" cy="64" r="20" fill="none" stroke="${color}" stroke-width="3.6" stroke-linecap="round"${dash}/></g></svg>`);
+}
 export function imageAngle(path) {let seed=0;for(const c of path)seed=(seed*31+c.charCodeAt(0))|0;return (Math.abs(seed)%701)/100-3.5;}
 export class Images {
     constructor(bridge,canWrite,insert,status,actions={}) {
@@ -23,13 +31,23 @@ export class Images {
     }
     get canWrite(){return this._canWrite;}
     set canWrite(value){this._canWrite=value;for(const entry of this.cards??[]){entry.button.draggable=value;for(const image of entry.button.querySelectorAll('img'))image.draggable=value;}
-        const remove=this.dialog?.querySelector('[aria-label="Remove attachment from note"]');if(remove)remove.hidden=!value;
+        const remove=this.dialog?.querySelector('[aria-label="Remove attachment"]');if(remove)remove.hidden=!value;
         const replace=this.dialog?.querySelector('[aria-label="Replace image"]');if(replace)replace.hidden=!value||!!this.viewerSketch;
     }
+    // The bridge answers 'remove' (the embed only), 'delete' (the stored attachment too) or nothing.
     async remove(reference) {
         if(!this.canWrite||this.disposed)return false;
-        if(!await this.bridge.invokeMethodAsync('ConfirmRemoveAttachment',reference.path,!!reference.sketch))return false;
-        return this.canWrite&&!this.disposed&&!!this.actions.remove?.(reference);
+        const choice=await this.bridge.invokeMethodAsync('ConfirmRemoveAttachment',reference.path,!!reference.sketch);
+        if(choice!=='remove'&&choice!=='delete'||!this.canWrite||this.disposed)return false;
+        if(choice==='delete'){
+            // Check the embed first: deleting and then failing to remove it would leave a broken embed.
+            if(this.actions.removable&&!this.actions.removable(reference)){this.status('Attachment changed elsewhere. Reopen the viewer to remove it.');return false;}
+            if(!await this.bridge.invokeMethodAsync('DeleteAttachment',reference.path,!!reference.sketch)||this.disposed)return false;
+            // Other embeds of the same file show it as unavailable; the open viewer moves on by itself.
+            this.refresh(path=>path===reference.path,false);
+            this.actions.remove?.(reference);return true;
+        }
+        return !!this.actions.remove?.(reference);
     }
     async resolve(path) {
         if(!this.cache.has(path)){const loading=(async()=>{
@@ -134,7 +152,7 @@ export class Images {
             await dismiss();if(this.disposed)return;await this.bridge.invokeMethodAsync('OpenSketch',path.slice(0,-7));
         });
         let confirming=false;
-        const remove=control('remove','Remove attachment from note',async()=>{
+        const remove=control('remove','Remove attachment',async()=>{
             if(!this.canWrite||confirming||closing||closed)return;
             const item=items[index];confirming=true;remove.disabled=true;let removed=false;
             // A native modal would cover MudBlazor's confirmation dialog.
@@ -205,16 +223,23 @@ export class Images {
             if(!replace)this.insert(`![[${stored}]]`);else await this.refresh(item=>item===path);
         }catch(e){if(!this.disposed)this.status(e.message);}
     }
-    thumbnail(image,path){
-        const revision=this.revisions.get(path);
-        this.resolve(path).then(url=>{if(!this.disposed&&this.revisions.get(path)===revision)image.src=url;})
-            .catch(()=>{if(!this.disposed&&this.revisions.get(path)===revision)image.alt=`Unavailable: ${attachmentName(path)}`;});
+    spinner(){
+        const color=globalThis.document?getComputedStyle(document.body).getPropertyValue('--mud-palette-primary').trim():'';
+        const still=!!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        return loadingPreview(/^[#\w(),.%\s-]+$/.test(color)?color:undefined,still);
     }
-    async refresh(matches=()=>true){
+    // Until the preview is ready the slot shows a spinner, not the browser's broken-image icon.
+    thumbnail(image,path){
+        const revision=this.revisions.get(path),name=attachmentName(path);
+        image.dataset.loading='';image.src=this.spinner();image.alt=`Loading ${name}`;
+        this.resolve(path).then(url=>{if(!this.disposed&&this.revisions.get(path)===revision){image.src=url;image.alt=name;delete image.dataset.loading;}})
+            .catch(()=>{if(!this.disposed&&this.revisions.get(path)===revision){delete image.dataset.loading;image.removeAttribute('src');image.alt=`Unavailable: ${name}`;}});
+    }
+    async refresh(matches=()=>true,viewer=true){
         const paths=new Set([...this.cache.keys(),...[...this.cards].flatMap(card=>card.entries.map(item=>item.path))]);
         for(const path of paths)if(matches(path))this.revisions.set(path,(this.revisions.get(path)??0)+1);
         for(const [path,promise] of this.cache)if(matches(path)){this.cache.delete(path);promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});}
-        if(this.dialog?.open)this.refreshViewer?.(matches);
+        if(viewer&&this.dialog?.open)this.refreshViewer?.(matches);
         for(const entry of [...this.cards]){
             if(!entry.button.isConnected){this.cards.delete(entry);continue;}
             const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>{if(matches(item.path))this.thumbnail(images[i],item.path);});

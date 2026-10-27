@@ -72,4 +72,16 @@ public sealed class ImagesController(DesignDocsDbContext db,ISoloQuery query,ISo
         image.UploadedBy=(await query.CallerAsync(ct)).UserId;image.UploadedAt=DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);await transaction.CommitAsync(ct);await live.PublishAsync(projectId,DocTopics.Vault(vaultId),"image",ct:ct);return Dto(image);
     }
+    [HttpDelete("{id:guid}"),Authorize(Policy=SoloPolicies.ProjectWrite)]
+    public async Task<IActionResult> Delete(Guid projectId,Guid vaultId,Guid id,[FromQuery]uint version,CancellationToken ct)
+    {
+        await using var transaction=await db.Database.BeginTransactionAsync(ct);
+        var vault=(await db.Vaults.FromSqlInterpolated($"SELECT *, xmin FROM ext_design_docs.\"Vaults\" WHERE \"Id\"={vaultId} AND \"ProjectId\"={projectId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
+        if(vault is null)return NotFound();if(vault.IsClosed)return Problem(statusCode:409,title:"Design doc is closed");
+        // Load the row without its bytes; only the key and version are needed to delete it.
+        var image=await db.Images.Where(i=>i.Id==id&&i.VaultId==vaultId).Select(i=>new DocImage{Id=i.Id,VaultId=i.VaultId,Path=i.Path,Version=i.Version}).SingleOrDefaultAsync(ct);
+        if(image is null)return NotFound();
+        db.Attach(image);db.Entry(image).Property(i=>i.Version).OriginalValue=version;db.Remove(image);
+        await db.SaveChangesAsync(ct);await transaction.CommitAsync(ct);await live.PublishAsync(projectId,DocTopics.Vault(vaultId),"image",ct:ct);return NoContent();
+    }
 }

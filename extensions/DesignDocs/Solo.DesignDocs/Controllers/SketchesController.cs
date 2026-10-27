@@ -40,4 +40,18 @@ public sealed class SketchesController(DesignDocsDbContext db,ISoloQuery query,I
         s.LastEditedBy=(await query.CallerAsync(ct)).UserId;s.LastEditedAt=DateTimeOffset.UtcNow;db.Entry(s).Property(x=>x.Version).OriginalValue=r.Version;
         await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);await SketchPreviewChanges.PublishAsync(live,projectId,s,ct,previousName);await live.PublishAsync(projectId,DocTopics.Vault(vaultId),"tree",ct:ct);return Dto(s);
     }
+    // Deleting the sketch removes its history with it; every embed of it then shows as
+    // unavailable. The note editor removes the embed it was deleted from.
+    [HttpDelete("{id:guid}"),Authorize(Policy=SoloPolicies.ProjectWrite)]
+    public async Task<IActionResult> Delete(Guid projectId,Guid vaultId,Guid id,[FromQuery]uint version,CancellationToken ct)
+    {
+        await using var tx=await db.Database.BeginTransactionAsync(ct);
+        var vault=(await db.Vaults.FromSqlInterpolated($"SELECT *, xmin FROM ext_design_docs.\"Vaults\" WHERE \"Id\"={vaultId} AND \"ProjectId\"={projectId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
+        if(vault is null)return NotFound();if(vault.IsClosed)return Problem(statusCode:409,title:"Design doc is closed");
+        var s=await db.Sketches.SingleOrDefaultAsync(s=>s.Id==id&&s.VaultId==vaultId,ct);if(s is null)return NotFound();
+        db.Entry(s).Property(x=>x.Version).OriginalValue=version;db.Remove(s);
+        await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);
+        await live.PublishAsync(projectId,DocTopics.Doc(id),"deleted",ct:ct);
+        await SketchPreviewChanges.PublishAsync(live,projectId,s,ct);await live.PublishAsync(projectId,DocTopics.Vault(vaultId),"tree",ct:ct);return NoContent();
+    }
 }

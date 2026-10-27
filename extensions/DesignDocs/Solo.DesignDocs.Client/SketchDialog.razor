@@ -5,7 +5,7 @@
 @inject IDialogService Dialogs
 <MudDialog Class="design-docs-sketch-dialog">
     <TitleContent>
-        <div class="design-docs-sketch-title"><MudText Typo="Typo.h6">@Sketch.Name</MudText><DocPresenceStrip ProjectId="ProjectId" Entries="_presence" /><MudIconButton Class="mud-button-close" Icon="@Icons.Material.Filled.Close" OnClick="RequestClose" aria-label="Close" /></div>
+        <div class="design-docs-sketch-title"><MudText Typo="Typo.h6">@Sketch.Name</MudText>@if(_deleted){<MudAlert Severity="Severity.Warning" Dense="true">Deleted · read-only. Export a PNG to keep a copy.</MudAlert>}<DocPresenceStrip ProjectId="ProjectId" Entries="_presence" /><MudIconButton Class="mud-button-close" Icon="@Icons.Material.Filled.Close" OnClick="RequestClose" aria-label="Close" /></div>
     </TitleContent>
     <DialogContent>
         <SaveBeforeLeave @ref="_saveGuard" Save="SaveBeforeClose" ContentName="sketch" OnNavigating="CloseSaved" />
@@ -72,7 +72,7 @@
     private async Task SetLevel(int value){_level=value;await Command("level",value);}
     private async Task ToggleTouchDrawing(){_touchDrawing=!_touchDrawing;await Command("touchDrawing",_touchDrawing);}
     private async Task Constrain(){_constrain=!_constrain;await Command("constrain",_constrain);}
-    [JSInvokable] public Task Writable(bool value){_writable=CanWrite&&value;return InvokeAsync(StateHasChanged);}
+    [JSInvokable] public Task Writable(bool value){_writable=CanWrite&&value&&!_deleted;return InvokeAsync(StateHasChanged);}
     [JSInvokable] public async Task<SketchPageSettings?> PageSettings(SketchPageSettings settings){
         var dialog=await Dialogs.ShowAsync<SketchPageDialog>("Sketch page settings",new DialogParameters<SketchPageDialog>{{x=>x.Settings,settings}},new DialogOptions{CloseButton=true,MaxWidth=MaxWidth.ExtraSmall,FullWidth=true});
         return await dialog.Result is {Canceled:false,Data:SketchPageSettings result}?result:null;
@@ -85,7 +85,7 @@
         _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,documentId=Sketch.Id,vaultId=VaultId,projectId=ProjectId,name=Sketch.Name,explosionUrl=api.Content("explosion.gif").ToString(),explosionSoundUrl=api.Content("explosion.wav").ToString(),
             meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color=DocPresenceColor.Value(slot.Slot)}});
         await _sketch.InvokeVoidAsync("connected",false);
-        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await _sketch.InvokeVoidAsync("connected",false);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},Presence);
+        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){_deleted=true;_writable=false;await _sketch.InvokeVoidAsync("connected",false);await InvokeAsync(StateHasChanged);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},Presence);
         _vault=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(VaultId),async m=>{if(m.Kind is "closed" or "deleted"&&_sketch is not null)await _sketch.InvokeVoidAsync("connected",false);});
         Live.ConnectionChanged+=Connection;if(Live.IsConnected)await Live.SetPresenceAsync(ProjectId,DocTopics.Doc(Sketch.Id),CanWrite?PresenceMode.Editing:PresenceMode.Viewing);await Connection();
     }
@@ -94,7 +94,9 @@
         if(_sketch is not null)await _sketch.InvokeVoidAsync("presence",people);
         await InvokeAsync(()=>{StateHasChanged();Dialog.StateHasChanged();});
     }
-    private Task Connection()=>_sketch is null?Task.CompletedTask:_sketch.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
+    // A deleted sketch stays disconnected; reconnecting would only fail against a missing document.
+    private bool _deleted;
+    private Task Connection()=>_sketch is null||_deleted?Task.CompletedTask:_sketch.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
     [JSInvokable]public Task<LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,DocTopics.Doc(Sketch.Id),kind,data);
     [JSInvokable]public Task<bool> Confirm(string message)=>DocDialogs.Confirm(Dialogs,"Sketch",message,"Continue");
     [JSInvokable]public async Task Meta(string pageSize,string orientation,string pattern){

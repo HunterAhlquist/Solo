@@ -76,6 +76,7 @@ Note links remain valid after a rename or move.
 Select **Add image** in the palette, or paste or drop an image into the editor.
 Select **New sketch** to create a [sketch](design-docs-sketches.md).
 Attachments remain rendered while you edit the surrounding text.
+A progress circle shows in each preview until it loads.
 
 Place attachments on the same line to form a stack.
 Drag a rendered attachment to move its embed within the note.
@@ -87,9 +88,22 @@ Select a preview to open the attachment viewer.
 Use its arrows or the **Left** and **Right** arrow keys to change attachments on that line.
 Select the background or **Close viewer** to close it.
 
-The viewer can download images, export sketches as PNG, and remove an attachment embed from the note.
-Writers can also replace an image or edit a sketch.
-Use the viewer to remove an embed. **Backspace** and **Delete** do not remove rendered attachments.
+The viewer can download images and export sketches as PNG.
+Writers can also replace an image, edit a sketch, or remove an attachment.
+Use the viewer to remove an attachment. **Backspace** and **Delete** do not remove rendered attachments.
+
+### Remove or delete an attachment
+
+Select **Remove attachment** in the viewer, then choose one of these options:
+
+- **Remove from note** removes the embed from this note only. The image or sketch stays stored in the vault, and other notes that embed it are not changed.
+- **Delete permanently** deletes the image or sketch from the vault and removes the embed from this note. You must confirm the deletion. You cannot undo it.
+
+After a permanent deletion, other notes that embed the attachment show it as unavailable.
+A person who has the sketch open sees it change to read-only. They can export a PNG to keep a copy.
+You can delete a sketch only from the note that created it.
+In a downloaded vault, the deletion is queued and synchronized like other offline changes.
+The server refuses it if someone else changed the attachment first.
 
 ## Work with other people
 
