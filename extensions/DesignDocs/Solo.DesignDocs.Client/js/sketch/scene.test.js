@@ -17,9 +17,12 @@ export function bitmapCanvas(){
                 for(let c=0;c<3;c++)this.buffer[at+c]=(rgb[c]*a+this.buffer[at+c]*old*(1-a))/out;this.buffer[at+3]=out*255;
             }
         },
-        drawImage(source,dx,dy){this.copies++;const sourceBuffer=source.getContext('2d').buffer;if(!sourceBuffer)return;
-            for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++){
-                const sx=x+dx,sy=y+dy;if(sx<0||sy<0||sx>=canvas.width||sy>=canvas.height)continue;
+        // Both drawImage forms: (image,dx,dy) and an unscaled source rectangle.
+        drawImage(source,...args){this.copies++;const sourceBuffer=source.getContext('2d').buffer;if(!sourceBuffer)return;
+            const [x0,y0,w,h,dx,dy]=args.length===2?[0,0,source.width,source.height,...args]:args;
+            if(this.buffer?.length!==canvas.width*canvas.height*4)this.buffer=new Uint8ClampedArray(canvas.width*canvas.height*4);
+            for(let y=y0;y<y0+h;y++)for(let x=x0;x<x0+w;x++){
+                const sx=x-x0+dx,sy=y-y0+dy;if(sx<0||sy<0||sx>=canvas.width||sy>=canvas.height||x>=source.width||y>=source.height)continue;
                 const from=(y*source.width+x)*4;if(!sourceBuffer[from+3])continue;
                 this.buffer.set(sourceBuffer.subarray(from,from+4),(sy*canvas.width+sx)*4);
             }
@@ -131,4 +134,42 @@ test('a growing held stroke extends its layer and matches a full replay each fra
     // A collaborator's feed rewrites the tail after a gap; that layer starts over.
     held.points.length=100;held.points.push([200,100,.5]);scene.render(target,{extra:[held],frame:1});check(1);
     scene.render(target,{frame:1});assert.equal(scene.held.size,0,'a finished stroke releases its layers');
+});
+test('a held eraser extends one copy of the page and matches a full replay each frame',()=>{
+    const page={pageSize:'A5',pattern:'dots'},ops=Array.from({length:12},(_,i)=>({...stroke,id:'s'+i,ink:['theme','red','blue'][i%3],points:[[10,30+i*40,1],[400,40+i*40,.5]]}));
+    const scene=new SketchScene(bitmapCanvas),target=output(),check=(extra,frame)=>{const direct=output();paint(direct,[...ops,...extra],[],page,{frame});assert.deepEqual(target.buffer,direct.buffer);};
+    scene.setScene(ops,page);for(const frame of [0,1,2])scene.render(target,{frame});
+    let copies=0;for(const frame of [0,1,2]){const raster=scene.frame(frame).raster.pixels,slice=raster.slice.bind(raster);raster.slice=(...a)=>{copies++;return slice(...a);};}
+    const eraser={id:'eraser',tool:'eraser',ink:'theme',level:4,pointerType:'pen',seed:5,points:[[30,20,.8]]};
+    for(let i=1;i<90;i++){
+        eraser.points.push([30+i*4,20+i*5+Math.sin(i/4)*20,.8]);scene.render(target,{extra:[eraser],frame:i%3});
+        if(i%22===0)check([eraser],i%3);
+    }
+    assert.equal(copies,3,'each boil frame copies the page once per erase, not once per frame');
+    const fills=scene.frame(1).erase.canvas.getContext('2d').fills;const tip=eraser.points.at(-1);eraser.points.push([tip[0]+3,tip[1]+2,.8]);scene.render(target,{extra:[eraser],frame:1});
+    assert.ok(scene.frame(1).erase.canvas.getContext('2d').fills-fills<200,'a frame repaints only the new samples, not the paper and every ink run');
+    check([eraser],1);
+    // A held pen stroke draws over the erased copy.
+    const pen={...stroke,id:'pen',ink:'green',pointerType:'pen',points:[[60,100,1],[300,400,1]]};
+    scene.render(target,{extra:[eraser,pen],frame:2});check([eraser,pen],2);
+    // The collaborator feed rewrote the tail: start over from the committed page.
+    eraser.points.length=40;eraser.points.push([100,500,.8]);scene.render(target,{extra:[eraser],frame:0});check([eraser],0);
+    // Saving the erase appends it; the page then matches with no held eraser.
+    const saved=[...ops,eraser];scene.setScene(saved,page);scene.render(target,{frame:0});assert.equal(scene.frame(0).erase,null);
+    const direct=output();paint(direct,saved,[],page,{frame:0});assert.deepEqual(target.buffer,direct.buffer);
+});
+test('an eraser lifted before its stroke arrives shows the saved page again',()=>{
+    const scene=new SketchScene(bitmapCanvas),target=output();scene.setScene([stroke],meta);
+    const eraser={...stroke,id:'e',tool:'eraser',level:4,pointerType:'pen',points:[[30,0,1],[30,40,1]]};
+    scene.render(target,{extra:[eraser]});const other={...eraser,id:'f',points:[[10,0,1],[10,40,1]]};
+    scene.render(target,{extra:[other]});const direct=output();paint(direct,[stroke,other],[],meta);assert.deepEqual(target.buffer,direct.buffer);
+});
+test('the paper and its ruling are drawn once per page and style',()=>{
+    const page={pageSize:'A4',pattern:'dots'},scene=new SketchScene(bitmapCanvas),target=output();scene.setScene([stroke],page);
+    for(const frame of [0,1,2])scene.render(target,{frame});
+    const paper=scene.paperCanvas.getContext('2d'),dots=paper.fills;assert.ok(dots>3000);
+    scene.setScene([stroke,{...stroke,id:'b',points:[[100,100,1],[120,140,1]]}],page);for(const frame of [0,1,2])scene.render(target,{frame});
+    for(const frame of [0,1,2])assert.ok(scene.frame(frame).canvas.getContext('2d').fills<dots,'layers copy the paper instead of redrawing each dot');
+    assert.equal(paper.fills,dots,'appending a stroke does not redraw the paper');
+    scene.setStyle({paperColor:'#111'});scene.render(target);assert.ok(paper.fills>dots,'a new paper colour redraws it');
 });

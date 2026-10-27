@@ -68,10 +68,7 @@ export function shape(tool,a,b,constrain=false){let dx=b[0]-a[0],dy=b[1]-a[1];if
 }
 export function paint(context,ops,texts,meta,{frame=0,themeInk='#111',font,exporting=false,paperColor='white',raster=null,paper=true}={}){
     const [width,height]=pageSize(meta);if(context.canvas.width!==width)context.canvas.width=width;if(context.canvas.height!==height)context.canvas.height=height;
-    context.clearRect(0,0,width,height);context.imageSmoothingEnabled=false;context.fillStyle=paperColor;if(paper)context.fillRect(0,0,width,height);context.globalAlpha=.5;
-    context.fillStyle='#d0d0d0';if(paper&&(meta.pattern==='grid'||meta.pattern==='notebook')){for(let y=24;y<height;y+=24)context.fillRect(0,y,width,1);if(meta.pattern==='grid')for(let x=24;x<width;x+=24)context.fillRect(x,0,1,height);}
-    if(paper&&meta.pattern==='dots')for(let y=12;y<height;y+=12)for(let x=12;x<width;x+=12)context.fillRect(x,y,1,1);
-    context.globalAlpha=1;
+    context.clearRect(0,0,width,height);context.imageSmoothingEnabled=false;if(paper)paintPaper(context,meta,paperColor);
     raster??=rasterize(ops,width,height,frame);
     paintPixels(context,raster,width,height,themeInk);
     paintTexts(context,texts,{font,themeInk});return raster;
@@ -85,17 +82,14 @@ export function paintPixels(context,raster,width,height,themeInk='#111',{left=0,
         if(ink){context.fillStyle=palette[ink];context.fillRect(start,y,x-start,1);}
     }
 }
-// Repaint one rectangle of a paper layer exactly as paint() draws it, so a stroke added to
-// the page costs its own footprint rather than a replay of every stroke and pixel.
-export function repaint(context,raster,meta,{themeInk='#111',paperColor='white'}={},region){
-    const [width,height]=pageSize(meta),left=Math.max(0,region.left),top=Math.max(0,region.top),right=Math.min(width,region.right),bottom=Math.min(height,region.bottom);
-    if(right<=left||bottom<=top)return;
-    context.clearRect(left,top,right-left,bottom-top);context.imageSmoothingEnabled=false;context.fillStyle=paperColor;context.fillRect(left,top,right-left,bottom-top);
-    context.globalAlpha=.5;context.fillStyle='#d0d0d0';
-    if(meta.pattern==='grid'||meta.pattern==='notebook'){for(let y=24;y<height;y+=24)if(y>=top&&y<bottom)context.fillRect(left,y,right-left,1);if(meta.pattern==='grid')for(let x=24;x<width;x+=24)if(x>=left&&x<right)context.fillRect(x,top,1,bottom-top);}
-    if(meta.pattern==='dots')for(let y=12;y<height;y+=12)if(y>=top&&y<bottom)for(let x=12;x<width;x+=12)if(x>=left&&x<right)context.fillRect(x,y,1,1);
+// Paper and its ruling. The dot pattern alone is one call per dot, so the editor draws
+// this once per page and copies it, rather than calling it for every repaint.
+export function paintPaper(context,meta,paperColor='white'){
+    const [width,height]=pageSize(meta);
+    context.fillStyle=paperColor;context.fillRect(0,0,width,height);context.globalAlpha=.5;context.fillStyle='#d0d0d0';
+    if(meta.pattern==='grid'||meta.pattern==='notebook'){for(let y=24;y<height;y+=24)context.fillRect(0,y,width,1);if(meta.pattern==='grid')for(let x=24;x<width;x+=24)context.fillRect(x,0,1,height);}
+    if(meta.pattern==='dots')for(let y=12;y<height;y+=12)for(let x=12;x<width;x+=12)context.fillRect(x,y,1,1);
     context.globalAlpha=1;
-    paintPixels(context,raster,width,height,themeInk,{left,top,right,bottom});
 }
 // The page rectangle a set of strokes can touch: brush radius plus stamp jitter.
 export function footprint(ops){
