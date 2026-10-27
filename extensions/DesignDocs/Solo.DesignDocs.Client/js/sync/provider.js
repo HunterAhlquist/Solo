@@ -10,7 +10,7 @@ export class Provider {
         this.remote = {}; this.pending = new Map(); this.chunks = new Map(); this.seq = '0'; this.batch = [];this.loading=[];this.checkpoint='0';this.epoch=0;this.waiters=new Set();
         this.online = false; this.synced = false; this.canWrite = false; this.disposed = false; this.queue = Promise.resolve();
         this.doc.on('update', (update, origin) => {
-            if (this.disposed || this.hydrating || this.offline || origin === this.remote) return;
+            if (this.disposed || this.hydrating || this.offline || this.deleted || origin === this.remote) return;
             this.batch.push(update); clearTimeout(this.copyTimer);
             this.copyTimer = setTimeout(() => { this.copyWanted = true; this.copy(); }, 2000);
             this.batchTimer ??= setTimeout(() => { this.batchTimer = null; this.flush(); }, 50);
@@ -23,7 +23,7 @@ export class Provider {
         });
         this.offlineReady=event=>{if(!this.disposed&&event.detail===this.options.vaultId&&!this.offline)this.bindOffline().then(()=>this.connected(this.online));};
         if(options.documentId){this.hydrating=true;this.offlineLoading=this.bindOffline();globalThis.addEventListener?.('solo-docs-offline-ready',this.offlineReady);}
-        this.beforeUnload = e => { if (this.hasPending || this.options.hasDraft?.()) { e.preventDefault(); e.returnValue = ''; } };
+        this.beforeUnload = e => { if (!this.discarded && (this.hasPending || this.options.hasDraft?.())) { e.preventDefault(); e.returnValue = ''; } };
         if (typeof window !== 'undefined') window.addEventListener('beforeunload', this.beforeUnload);
         this.visibility = () => { if (!document.hidden && this.online) this.connected(true); };
         if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.visibility);
@@ -41,7 +41,7 @@ export class Provider {
         this.offline?.close();this.offline=null;this.offlineLoading=null;this.checkpoint='0';this.seq='0';
         if(!this.disposed)await this.connected(this.online);
     }
-    get hasPending(){return this.offline?this.offline.hasDraft():this.pending.size>0||this.batch.length>0;}
+    get hasPending(){if(this.discarded)return false;return this.offline?this.offline.hasDraft():this.pending.size>0||this.batch.length>0;}
     send(kind, value, state) {
         const epoch=this.epoch;
         if(kind==='awareness'){
@@ -91,9 +91,20 @@ export class Provider {
         });
     }
 
+    // Deleted elsewhere: nothing can be saved again, so no reconnect, visibility change or
+    // offline access callback may make it writable.
+    markDeleted(){
+        if(this.deleted||this.disposed)return;
+        this.deleted=true;this.online=false;this.synced=false;this.epoch++;this.queue=Promise.resolve();
+        clearTimeout(this.ackRetry);clearTimeout(this.retry);clearTimeout(this.batchTimer);this.batchTimer=null;
+        this.setWritable(false);this.options.status?.('Deleted · read-only');
+    }
+    // Drops work that can no longer be saved, so a deleted document can be left.
+    discard(){this.discarded=true;this.pending.clear();this.batch=[];for(const waiter of [...this.waiters])waiter.finish(true);}
     async connected(value) {
         if(this.offlineLoading)await this.offlineLoading;
         if(this.disposed)return;
+        if(this.deleted){this.setWritable(false);return;}
         if(this.offline){this.online=value;this.synced=true;this.setWritable(this.offline.canWrite);this.options.status?.(this.canWrite?'Saved on this device':'Read-only · downloaded vault');return;}
 
         this.online=value;this.synced=false;this.epoch++;this.queue=Promise.resolve();
@@ -104,6 +115,7 @@ export class Provider {
         if(value)this.send('sync',{afterSeq:this.checkpoint,batch:true,syncId:this.syncId});
     }
     waitForSave(timeout=10000){
+        if(this.discarded)return Promise.resolve(true);
         if(this.offline)return this.offline.save();
         this.flush();
         if(!this.hasPending)return Promise.resolve(true);
@@ -126,7 +138,7 @@ export class Provider {
         else chunks.forEach((data,index)=>this.send('compact-part',{id,uptoSeq:this.checkpoint,index,count:chunks.length,data}));
     }
     setWritable(value) {
-        this.canWrite = value && (this.online||!!this.offline) && !!this.options.canWrite;
+        this.canWrite = value && !this.deleted && (this.online||!!this.offline) && !!this.options.canWrite;
         // setLocalStateField is a no-op after disconnect cleared the local state.
         if (this.canWrite) this.awareness.setLocalState({...this.awareness.getLocalState(),user:this.options.user});
         else this.awareness.setLocalState(null);

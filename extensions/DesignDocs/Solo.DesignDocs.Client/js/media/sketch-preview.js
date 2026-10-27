@@ -13,4 +13,5 @@ export async function refreshSketchPreview(canvas,bridge){
             {pageSize:data.sketch.pageSize,orientation:data.sketch.orientation,pattern:data.sketch.pattern,...doc.getMap('meta').toJSON()},
             {font,frame:0,themeInk:getComputedStyle(document.body).color,paperColor:getComputedStyle(document.body).getPropertyValue('--mud-palette-surface')||'white',exporting:true});
     }finally{doc.destroy();}
+    return data.sketch;
 }
