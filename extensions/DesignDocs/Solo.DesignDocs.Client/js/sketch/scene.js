@@ -11,6 +11,8 @@ export class SketchScene {
         const extended=this.frames?.size>0&&width===this.width&&height===this.height&&meta?.pattern===this.meta?.pattern
             &&ops.length>=previous.length&&previous.every((stroke,index)=>ops[index]===stroke);
         if(!extended)this.frames=new Map();
+        // Held layers are sized and clipped to the page; a resized page starts them over.
+        if(width!==this.width||height!==this.height)this.held.clear();
         else if(ops.length>previous.length){
             const added=ops.slice(previous.length),region=footprint(added);
             for(const [number,value] of this.frames){
@@ -58,7 +60,7 @@ export class SketchScene {
     // over the copy, so a preview erases saved ink only; the saved erase follows stroke order.
     erased(value,erasers,frame){
         let erase=value.erase;
-        const current=state=>{const stroke=erasers.find(s=>s.id===state.id),points=stroke?.points;if(!stroke||state.points!==points||state.pointerType!==stroke.pointerType||state.next>points.length)return false;
+        const current=state=>{const stroke=erasers.find(s=>s.id===state.id),points=stroke?.points;if(!stroke||state.points!==points||state.pointerType!==stroke.pointerType||state.revision!==stroke.revision||state.next>points.length)return false;
             const last=state.next?points[state.next-1]:null;return !state.next||(last?.[0]===state.last[0]&&last?.[1]===state.last[1]&&last?.[2]===state.last[2]);};
         if(!erase||![...erase.strokes.values()].every(current)){
             // The collaborator feed rewrote a tail, or an eraser lifted without its stroke
@@ -69,7 +71,7 @@ export class SketchScene {
         }
         for(const stroke of erasers){
             const points=Array.isArray(stroke.points)?stroke.points:[];
-            let state=erase.strokes.get(stroke.id);if(!state){state={id:stroke.id,points,pointerType:stroke.pointerType,next:0,last:null};erase.strokes.set(stroke.id,state);}
+            let state=erase.strokes.get(stroke.id);if(!state){state={id:stroke.id,points,pointerType:stroke.pointerType,revision:stroke.revision,next:0,last:null};erase.strokes.set(stroke.id,state);}
             if(points.length<=state.next)continue;
             const region=footprint([{points:points.slice(Math.max(0,state.next-1))}]);
             paintStroke(erase.raster,stroke,this.width,this.height,frame,0,state);
@@ -99,7 +101,8 @@ export class SketchScene {
     heldLayer(stroke,frame){
         const {width,height}=this,points=Array.isArray(stroke.points)?stroke.points:[];
         let held=this.held.get(stroke.id);
-        if(!held||held.points!==points||held.pointerType!==stroke.pointerType){held={points,pointerType:stroke.pointerType,frames:new Map()};this.held.set(stroke.id,held);}
+        // A collaborator's feed bumps `revision` when it fills in samples before the end.
+        if(!held||held.points!==points||held.pointerType!==stroke.pointerType||held.revision!==stroke.revision){held={points,pointerType:stroke.pointerType,revision:stroke.revision,frames:new Map()};this.held.set(stroke.id,held);}
         let layer=held.frames.get(frame);
         // The collaborator feed rewrites its tail on overlap and after a gap.
         const last=layer?.next?points[layer.next-1]:null;

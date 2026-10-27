@@ -173,3 +173,19 @@ test('the paper and its ruling are drawn once per page and style',()=>{
     assert.equal(paper.fills,dots,'appending a stroke does not redraw the paper');
     scene.setStyle({paperColor:'#111'});scene.render(target);assert.ok(paper.fills>dots,'a new paper colour redraws it');
 });
+test('a page resized under a held stroke starts its layers over',()=>{
+    const scene=new SketchScene(bitmapCanvas),target=output(),check=page=>{const direct=output();paint(direct,[stroke,held],[],page);assert.deepEqual(target.buffer,direct.buffer);};
+    const a3={pageSize:'A3',pattern:'grid'},a5={pageSize:'A5',pattern:'grid'},held={...stroke,id:'held',pointerType:'pen',points:[[500,700,1],[700,900,1]]};
+    scene.setScene([stroke],a3);scene.render(target,{extra:[held]});check(a3);
+    // A collaborator shrinks the page mid-stroke, then the stroke goes on.
+    scene.setScene([stroke],a5);held.points.push([200,300,1]);scene.render(target,{extra:[held]});check(a5);
+    // Enlarging again shows the samples the smaller page had clipped.
+    scene.setScene([stroke],a3);held.points.push([210,320,1]);scene.render(target,{extra:[held]});check(a3);
+});
+test('a collaborator stroke redraws when the feed fills in earlier samples',()=>{
+    const scene=new SketchScene(bitmapCanvas),target=output();scene.setScene([stroke],meta);
+    const full=Array.from({length:60},(_,i)=>[20+i*5,200+Math.sin(i/6)*60,.5]),held={...stroke,id:'feed',pointerType:'pen',revision:1,points:[]};
+    full.slice(30).forEach((point,i)=>{held.points[30+i]=point;});scene.render(target,{extra:[held]});
+    full.slice(0,30).forEach((point,i)=>{held.points[i]=point;});held.revision=2;scene.render(target,{extra:[held]});
+    const direct=output();paint(direct,[stroke,{...held,points:full}],[],meta);assert.deepEqual(target.buffer,direct.buffer);
+});
