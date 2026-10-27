@@ -103,3 +103,28 @@ test('Escape from the canvas or text tool requests a guarded close and removes i
         sketch.dispose();sketch=null;canvas.emit('keydown',{key:'Escape'});assert.equal(calls.filter(method=>method==='Close').length,2);
     }finally{sketch?.dispose();dom.restore();}
 });
+
+test('someone joining a long held stroke receives all of it while the pen rests',async t=>{
+    const dom=installDOM(),remote=new Y.Doc(),awareness=new Awareness(remote);let sketch;
+    awareness.setLocalState(null);
+    const bridge={invokeMethodAsync:async(method,kind,raw)=>{
+        if(method!=='Send')return 0;
+        const packet=JSON.parse(raw);if(raw.length>hubLimit)return 3;
+        if(kind==='awareness')applyAwarenessUpdate(awareness,decode(packet.data),'relay');
+        if(kind==='update'){Y.applyUpdate(remote,decode(packet.data));await sketch.receive('ack',JSON.stringify({id:packet.id,seq:'1'}));}
+        return 0;
+    }};
+    sketch=await mountSketch(dom.root,bridge,{canWrite:true,user:{userId:'writer',name:'Writer',color:'#8043ad'},meta:{pageSize:'A5',pattern:'dots'},explosionUrl:'/unused'});
+    t.after(()=>{try{sketch.dispose();awareness.destroy();remote.destroy();}finally{dom.restore();}});
+    sketch.connected(true);await sketch.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));await wait(90);sketch.presence([{userId:'writer'}]);
+    const viewport=dom.root.querySelector('.design-docs-sketch-viewport'),canvas=dom.root.querySelector('canvas');
+    const point=n=>({pointerType:'pen',pointerId:7,button:0,clientX:200+Math.sin(n/20)*70,clientY:200+Math.cos(n/30)*70,pressure:.6});
+    canvas.emit('pointerdown',point(0));
+    for(let frame=0;frame<165;frame++){const samples=Array.from({length:8},(_,i)=>point(frame*8+i+1));viewport.emit('pointermove',{...samples.at(-1),getCoalescedEvents:()=>samples});await wait(2);}
+    await wait(200);
+    // A newcomer arrives; the pen stays down and still from here on.
+    const newcomer=new StrokeFeed();awareness.on('change',({added,updated,removed})=>{for(const id of [...added,...updated])newcomer.apply(id,awareness.getStates().get(id)?.stroke);for(const id of removed)newcomer.delete(id);});
+    sketch.presence([{userId:'writer'},{userId:'newcomer'}]);await wait(800);
+    const [preview]=[...newcomer.values()],received=preview?preview.points.filter(Boolean).length:0;
+    assert.equal(received,1321,'the newcomer must get the whole held stroke without further input; got '+received);
+});
