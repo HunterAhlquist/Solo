@@ -26,6 +26,7 @@
     <MudTooltip Text="Link a task"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.AddLink" OnClick="InsertTask" aria-label="Link a task" /></MudTooltip>
     <MudTooltip Text="New sketch"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.Draw" OnClick="NewSketch" aria-label="New sketch" /></MudTooltip>
     <MudTooltip Text="Add image"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.AddPhotoAlternate" OnClick="AddImage" aria-label="Add image" /></MudTooltip>
+    <MudTooltip Text="Attachments"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.PermMedia" OnClick="OpenAttachments" aria-label="Attachments" /></MudTooltip>
 </MudPaper>}
 <EditorSurface Ready="Mount" />
 </div>
@@ -50,7 +51,7 @@
             var slot=await Api.SendAsync<ColorDto>(HttpMethod.Post,$"api/ext/design-docs/projects/{ProjectId}/colors",new{});
             var color=DocPresenceColor.Value(slot.Slot);
             var module=await DesignDocsAssets.ModuleAsync(Js,new DesignDocsApi(Api));_reference=DotNetObjectReference.Create(this);
-            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,documentId=Note.Id,vaultId=Note.VaultId,projectId=ProjectId,icons=new{close=Icons.Material.Filled.Close,previous=Icons.Material.Filled.ChevronLeft,next=Icons.Material.Filled.ChevronRight,edit=Icons.Material.Filled.Edit,remove=Icons.Material.Filled.Delete,download=Icons.Material.Filled.Download,replace=Icons.Material.Filled.FindReplace},fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color,colorLight=DocPresenceColor.Value(slot.Slot,true)}});
+            _editor=await module.InvokeAsync<IJSObjectReference>("mountEditor",_root,_reference,new{canWrite=CanWrite,documentId=Note.Id,vaultId=Note.VaultId,projectId=ProjectId,icons=new{close=Icons.Material.Filled.Close,previous=Icons.Material.Filled.ChevronLeft,next=Icons.Material.Filled.ChevronRight,edit=Icons.Material.Filled.Edit,remove=Icons.Material.Filled.Delete,download=Icons.Material.Filled.Download,replace=Icons.Material.Filled.FindReplace,owner=Icons.Material.Filled.OpenInNew},fragment=new Uri(Navigation.Uri).Fragment,user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color,colorLight=DocPresenceColor.Value(slot.Slot,true)}});
             await _editor.InvokeVoidAsync("connected",false);
             _subscription=await Live.SubscribeAsync(ProjectId,Topic,async m=>{
                 if(_editor is null||_disposed)return;
@@ -63,6 +64,11 @@
                 if(m.Kind=="sketch"&&System.Text.Json.JsonSerializer.Deserialize<SketchPreviewChange>(m.Data??"{}",new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) is {} change&&change.NoteId==Note.Id){
                     _sketchRefreshes.Add(change.Name);_sketchRefreshes.Add(change.Path[..^7]);
                     if(change.PreviousName is {} old){_sketchRefreshes.Add(old);_sketchRefreshes.Add(AttachmentPaths.ForNote(Note.Id,old+".sketch")[..^7]);}
+                    _refreshTask??=RefreshSketches();
+                }else if(m.Kind=="sketch"&&System.Text.Json.JsonSerializer.Deserialize<SketchPreviewChange>(m.Data??"{}",new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)) is {} other){
+                    // Another note's sketch is embedded here only by its full path.
+                    _sketchRefreshes.Add(other.Path[..^7]);
+                    if(other.PreviousName is {} old)_sketchRefreshes.Add(AttachmentPaths.ForNote(other.NoteId,old+".sketch")[..^7]);
                     _refreshTask??=RefreshSketches();
                 }
             });
@@ -101,7 +107,6 @@
             if(sketch){
                 var found=(await Api.GetAsync<List<SketchDto>>(SketchRoot)).SingleOrDefault(s=>s.Id==target);
                 if(found is null){await Status("This sketch was already deleted.");return false;}
-                if(found.NoteId!=Note.Id){await Status("Only sketches created in this note can be deleted from it.");return false;}
                 await Api.SendAsync(HttpMethod.Delete,$"{SketchRoot}/{found.Id}?version={found.Version}");
             }else{
                 var found=(await Api.GetAsync<List<ImageDto>>(ImageRoot)).SingleOrDefault(i=>i.Id==target);
@@ -111,6 +116,49 @@
             return true;
         }catch(SoloApiException e){await Status(e.StatusCode==HttpStatusCode.NotFound?"This attachment was already deleted.":e.Message);return false;}
     }
+    private string VaultRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}";
+    private async Task OpenAttachments(){
+        if(_editor is null)return;
+        try{
+            var list=await Api.GetAsync<AttachmentListDto>(VaultRoot+"/attachments");var tree=await Api.GetAsync<TreeDto>(VaultRoot);
+            // The open note's own embeds come from the editor, which is ahead of its saved copy.
+            var live=await _editor.InvokeAsync<string[]>("embedTargets");
+            var dialog=await Dialogs.ShowAsync<AttachmentsDialog>("Attachments",new DialogParameters<AttachmentsDialog>{
+                {x=>x.Items,AttachmentCatalog.Build(list,tree,Note.Id,live)},{x=>x.NoteId,Note.Id},{x=>x.CanWrite,CanWrite},{x=>x.Delete,DeleteListed}},
+                new DialogOptions{MaxWidth=MaxWidth.Small,FullWidth=true,CloseButton=true});
+            if(await dialog.Result is not {Canceled:false,Data:AttachmentsDialog.Choice choice}||_editor is null||_disposed)return;
+            var path=choice.Item.Path;
+            switch(choice.Action){
+                case "insert":await _editor.InvokeVoidAsync("insert",$"![[{path}]]");break;
+                case "view":await _editor.InvokeVoidAsync("view",path,choice.Item.Sketch);break;
+                case "edit":await OpenSketch(path[..^7]);break;
+                case "replace":await _editor.InvokeVoidAsync("replaceImage",path);break;
+            }
+        }catch(SoloApiException e){await Status(e.Message);}
+    }
+    private async Task<bool> DeleteListed(AttachmentItem item){
+        var others=item.EmbeddedIn.Count(n=>n!=Note.Id);
+        var where=item.EmbeddedIn.Count==0?"It isn’t embedded in any note.":
+            (item.EmbeddedIn.Contains(Note.Id)?"Its embeds in this note are removed. ":"")+(others>0?$"{others} other {(others==1?"note shows":"notes show")} it as unavailable.":"");
+        if(!await DocDialogs.Confirm(Dialogs,item.Sketch?"Delete sketch":"Delete image",
+            $"Delete “{item.Name}” permanently? It is deleted from the vault and cannot be recovered. {where}".TrimEnd(),"Delete permanently"))return false;
+        if(!await DeleteAttachment(item.Path,item.Sketch,item.Id.ToString()))return false;
+        if(_editor is not null&&!_disposed){
+            if(item.Targets.Count>0)await _editor.InvokeVoidAsync("removeEmbeds",item.Targets);
+            await _editor.InvokeVoidAsync("forget",item.Path);
+        }
+        return true;
+    }
+    // The viewer offers a way to the note an attachment was created in, when that isn't this note.
+    [JSInvokable] public async Task<object?> AttachmentOwner(string path,bool sketch,string? id){
+        if(!Guid.TryParse(id,out var target))return null;
+        Guid? owner=sketch?(await Api.GetAsync<List<SketchDto>>(SketchRoot)).SingleOrDefault(s=>s.Id==target)?.NoteId
+            :(await Api.GetAsync<List<ImageDto>>(ImageRoot)).SingleOrDefault(i=>i.Id==target) is {} image?AttachmentPaths.Owner(image.Path):null;
+        if(owner is not {} note||note==Note.Id)return null;
+        var found=(await Api.GetAsync<TreeDto>(VaultRoot)).Notes.SingleOrDefault(n=>n.Id==note);
+        return found is null?null:new{url=NoteAddress.Url(found.Id),name=found.Name};
+    }
+    [JSInvokable] public void OpenNote(string url){if(NoteAddress.TryReadUrl(url,out _))Navigation.NavigateTo(url);}
     [JSInvokable] public Task<string?> SpellingMenu(string[] suggestions,double x,double y)
     {
         if(!CanWrite)return Task.FromResult<string?>(null);
@@ -138,7 +186,7 @@
     private string SketchRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches";
     private string ImageRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/images";
     private bool PendingAttachment(string path,Guid id)=>path.StartsWith(AttachmentPaths.ForNote(Note.Id,id+"/"),StringComparison.Ordinal)||path.StartsWith($"offline/{id}/",StringComparison.Ordinal);
-    private bool MatchesSketch(SketchDto sketch,string name)=>sketch.NoteId==Note.Id&&(sketch.Name==name||sketch.Path==name+".sketch"||PendingAttachment(name,sketch.Id));
+    private bool MatchesSketch(SketchDto sketch,string name)=>AttachmentCatalog.MatchesSketch(sketch,name,Note.Id);
     private async Task<ImageDto> FindImage(string path){
         var images=await Api.GetAsync<List<ImageDto>>(ImageRoot);
         var exact=images.FirstOrDefault(i=>i.Path==path)??images.FirstOrDefault(i=>PendingAttachment(path,i.Id));if(exact is not null)return exact;

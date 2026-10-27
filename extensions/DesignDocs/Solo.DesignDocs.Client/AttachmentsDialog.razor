@@ -1,0 +1,70 @@
+@* Every image and sketch in the vault, so an attachment removed from every note can still be
+   found, inserted again, or deleted. Actions that leave the dialog (insert, view, edit, replace)
+   close it and are carried out by the note editor; delete happens in place. *@
+
+<MudDialog Class="design-docs-attachments-dialog">
+    <DialogContent>
+        <MudTextField @bind-Value="_filter" @bind-Value:after="StateHasChanged" Immediate="true" Placeholder="Filter by name or note"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" aria-label="Filter attachments" />
+        @if(Items.Count==0){
+            <MudText Typo="Typo.body2" Class="pa-4">This design doc has no images or sketches yet.</MudText>
+        }else{
+            @foreach(var (title,group) in Groups()){
+                <MudText Typo="Typo.overline" Class="d-block mt-2" role="heading" aria-level="3">@title</MudText>
+                @if(group.Count==0){<MudText Typo="Typo.body2" Class="pa-2">None</MudText>}
+                <ul class="design-docs-attachment-list" aria-label="@title">
+                @foreach(var item in group){
+                    <li class="design-docs-attachment-row" data-attachment="@item.Id">
+                        <MudIcon Icon="@(item.Sketch?Icons.Material.Filled.Draw:Icons.Material.Filled.Image)" aria-hidden="true" />
+                        <div class="design-docs-attachment-text">
+                            <MudText Typo="Typo.body1" Class="design-docs-attachment-name">@item.Name</MudText>
+                            <MudText Typo="Typo.caption">@Describe(item)</MudText>
+                        </div>
+                        @if(item.EmbeddedIn.Count==0){<MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Not embedded</MudChip>}
+                        <div class="design-docs-attachment-actions">
+                            @if(CanWrite){<MudTooltip Text="Insert into this note"><MudIconButton Icon="@Icons.Material.Filled.AddToPhotos" Size="Size.Small" OnClick="@(()=>Choose("insert",item))" aria-label="@($"Insert {item.Name}")" /></MudTooltip>}
+                            <MudTooltip Text="View"><MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" OnClick="@(()=>Choose("view",item))" aria-label="@($"View {item.Name}")" /></MudTooltip>
+                            @if(CanWrite){
+                                @if(item.Sketch){<MudTooltip Text="Edit sketch"><MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(()=>Choose("edit",item))" aria-label="@($"Edit {item.Name}")" /></MudTooltip>}
+                                else{<MudTooltip Text="Replace image"><MudIconButton Icon="@Icons.Material.Filled.FindReplace" Size="Size.Small" OnClick="@(()=>Choose("replace",item))" aria-label="@($"Replace {item.Name}")" /></MudTooltip>}
+                                <MudTooltip Text="Delete permanently"><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" Disabled="_busy" OnClick="@(()=>Remove(item))" aria-label="@($"Delete {item.Name}")" /></MudTooltip>
+                            }
+                        </div>
+                    </li>
+                }
+                </ul>
+            }
+        }
+    </DialogContent>
+    <DialogActions><MudButton OnClick="@(()=>Dialog.Cancel())">Close</MudButton></DialogActions>
+</MudDialog>
+
+@code {
+    public sealed record Choice(string Action,AttachmentItem Item);
+    [CascadingParameter] private IMudDialogInstance Dialog {get;set;}=default!;
+    [Parameter,EditorRequired] public required List<AttachmentItem> Items {get;set;}
+    [Parameter] public Guid NoteId {get;set;}
+    [Parameter] public bool CanWrite {get;set;}
+    // Confirms and deletes; true once the attachment is gone.
+    [Parameter] public Func<AttachmentItem,Task<bool>>? Delete {get;set;}
+    private string _filter="";private bool _busy;
+    private IEnumerable<(string,List<AttachmentItem>)> Groups(){
+        var shown=Items.Where(i=>_filter.Length==0||i.Name.Contains(_filter,StringComparison.CurrentCultureIgnoreCase)||(i.OwnerName?.Contains(_filter,StringComparison.CurrentCultureIgnoreCase)??false)).ToList();
+        yield return ("This note",shown.Where(i=>i.InThisNote(NoteId)).ToList());
+        yield return ("Other notes",shown.Where(i=>!i.InThisNote(NoteId)).ToList());
+    }
+    private string Describe(AttachmentItem item){
+        var parts=new List<string>{item.Sketch?"Sketch":"Image"};
+        if(item.Detail is {} detail)parts.Add(detail);
+        if(item.OwnerId==NoteId)parts.Add("created here");else if(item.OwnerName is {} owner)parts.Add($"from “{owner}”");else if(item.OwnerId is null)parts.Add(item.Path);
+        var elsewhere=item.EmbeddedIn.Count(n=>n!=NoteId);
+        if(item.EmbeddedIn.Contains(NoteId))parts.Add(elsewhere>0?$"embedded here and in {elsewhere} other {(elsewhere==1?"note":"notes")}":"embedded here");
+        else if(elsewhere>0)parts.Add($"embedded in {elsewhere} {(elsewhere==1?"note":"notes")}");
+        return string.Join(" · ",parts);
+    }
+    private void Choose(string action,AttachmentItem item)=>Dialog.Close(DialogResult.Ok(new Choice(action,item)));
+    private async Task Remove(AttachmentItem item){
+        if(Delete is null||_busy)return;_busy=true;
+        try{if(await Delete(item))Items.Remove(item);}finally{_busy=false;}
+    }
+}

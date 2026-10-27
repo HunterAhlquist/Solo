@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { imageAngle,Images,loadingPreview } from './images.js';
 const img=src=>({src,alt:'',dataset:{},removeAttribute(name){delete this[name];}});
-import { attachmentName } from './vault-paths.js';
+import { attachmentName,embeds,imageTargets } from './vault-paths.js';
 test('paper angles are stable and bounded per image path',()=>{
     for(let n=0;n<1000;n++){const path=`attachments/${n}.webp`;assert.equal(imageAngle(path),imageAngle(path));assert.ok(Math.abs(imageAngle(path))<=3.5);}
     assert.notEqual(imageAngle('a.webp'),imageAngle('b.webp'));
@@ -155,4 +155,12 @@ test('a failed stale image request cannot remove the replacement cache entry',as
     requests[0].reject(new Error('Old request failed'));await assert.rejects(first);
     assert.equal(images.cache.has('photo.png'),true);
     requests[1].resolve({base64:'AA==',contentType:'image/png'});assert.equal(await second,'blob:new');images.dispose();
+});
+
+test('embeds report raw targets and their place in the text, skipping code',()=>{
+    const text='![[a.png|wide]] x ![alt](b%20c.webp)\n`![[inline.png]]`\n```\n![[fenced.png]]\n```\n![[Map.sketch]]';
+    const found=embeds(text);
+    assert.deepEqual(found.map(e=>e.raw),['a.png|wide','b%20c.webp','Map.sketch']);
+    for(const e of found)assert.match(text.slice(e.from,e.to),/^!\[/);
+    assert.deepEqual(imageTargets(text),found.map(e=>e.raw));
 });

@@ -90,21 +90,37 @@ Select the background or **Close viewer** to close it.
 
 The viewer can download images and export sketches as PNG.
 Writers can also replace an image, edit a sketch, or remove an attachment.
+If the attachment was created in a different note, select **Open “*note name*”** in the viewer to go to that note.
 Use the viewer to remove an attachment. **Backspace** and **Delete** do not remove rendered attachments.
 
 ### Remove or delete an attachment
 
 Select **Remove attachment** in the viewer, then choose one of these options:
 
-- **Remove from note** removes the embed from this note only. The image or sketch stays stored in the vault, and other notes that embed it are not changed.
+- **Remove from note** removes the embed from this note only. The image or sketch stays stored in the vault, and other notes that embed it are not changed. To add it back, use [the attachments list](#find-every-attachment).
 - **Delete permanently** deletes the image or sketch from the vault and removes the embed from this note. You must confirm the deletion. You cannot undo it.
 
 After a permanent deletion, other notes that embed the attachment show it as unavailable.
 A person who has the sketch open sees it change to read-only. They can export a PNG to keep a copy.
 If they have strokes that were not saved, closing the sketch asks them to discard those strokes.
-You can delete a sketch only from the note that created it.
 In a downloaded vault, the deletion is queued and synchronized like other offline changes.
 The server refuses it if someone else changed the attachment first.
+
+### Find every attachment
+
+Select **Attachments** in the palette to list every image and sketch in the design doc.
+**This note** lists attachments that were created in or are embedded in the open note. **Other notes** lists the rest, with the note that created each one.
+**Not embedded** marks an attachment that no note embeds, for example after you remove it from its only note.
+Type in the filter box to find an attachment by its name or its note's name.
+
+Writers can do these actions from the list:
+
+- **Insert** adds the attachment's embed at the cursor. You can insert an attachment from any note.
+- **View** opens the attachment in the viewer.
+- **Edit sketch** opens the sketch. **Replace image** uploads a new file in place of the image.
+- **Delete permanently** deletes the attachment after you confirm. Its embeds in the open note are removed, and other notes show it as unavailable.
+
+The list uses the last saved copy of the other notes, so an embed added a few seconds ago in another note can show as **Not embedded**.
 
 ## Work with other people
 

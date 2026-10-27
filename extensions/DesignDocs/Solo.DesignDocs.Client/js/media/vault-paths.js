@@ -18,9 +18,11 @@ export function resolvePath(paths,target,from=''){
     const relative=normalizePath(from.split('/').slice(0,-1).concat(value).join('/'));if(relative&&paths.includes(relative))return relative;
     const name=value.split('/').at(-1),matches=paths.filter(path=>path.split('/').at(-1)===name);return matches.length===1?matches[0]:null;
 }
-export function imageTargets(markdown){
+// Image and sketch embeds outside code, with their raw targets and where they sit in the text.
+export function embeds(markdown){
     const result=[],tree=parser.parse(markdown);for(const match of markdown.matchAll(/!\[\[([^\]]+)\]\]|!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/g)){
         let node=tree.resolveInner(match.index,1),code=false;for(;node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name)){code=true;break;}
-        if(!code)result.push(match[1]??match[2]??match[3]);
+        if(!code)result.push({raw:match[1]??match[2]??match[3],from:match.index,to:match.index+match[0].length});
     }return result;
 }
+export const imageTargets=markdown=>embeds(markdown).map(e=>e.raw);

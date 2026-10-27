@@ -79,7 +79,7 @@ public sealed class SketchPreviewComponentTests : ComponentTestBase
         Assert.Equal("AQID",result.GetProperty("base64").GetString());
     }
     [Fact]
-    public async Task Deleting_an_attachment_sends_its_current_version_and_leaves_other_notes_sketches_alone()
+    public async Task Deleting_an_attachment_sends_its_current_version_whichever_note_created_it()
     {
         var project=Guid.NewGuid();var vault=Guid.NewGuid();var note=Guid.NewGuid();var sketch=Guid.NewGuid();var foreign=Guid.NewGuid();var image=Guid.NewGuid();
         var (cut,http,_,_)=Mount(project,vault,note,canWrite:true);
@@ -88,9 +88,10 @@ public sealed class SketchPreviewComponentTests : ComponentTestBase
         http.RouteJson("/images",new[]{new ImageDto(image,AttachmentPaths.ForNote(note,"photo.png"),"image/png",1,1,3,9)});
         Assert.True(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"Map.sketch"),true,sketch.ToString())));
         Assert.True(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"photo.png"),false,image.ToString())));
-        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Other.sketch",true,foreign.ToString())));
+        // The attachments dialog lists the whole vault, so another note's sketch can be deleted too.
+        Assert.True(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Other.sketch",true,foreign.ToString())));
         var deletes=http.Paths.Where(p=>p.StartsWith("DELETE",StringComparison.Ordinal)).ToList();
-        Assert.Equal([$"DELETE /api/ext/design-docs/projects/{project}/vaults/{vault}/sketches/{sketch}?version=7",$"DELETE /api/ext/design-docs/projects/{project}/vaults/{vault}/images/{image}?version=9"],deletes);
+        Assert.Equal([$"DELETE /api/ext/design-docs/projects/{project}/vaults/{vault}/sketches/{sketch}?version=7",$"DELETE /api/ext/design-docs/projects/{project}/vaults/{vault}/images/{image}?version=9",$"DELETE /api/ext/design-docs/projects/{project}/vaults/{vault}/sketches/{foreign}?version=3"],deletes);
     }
     [Fact]
     public async Task A_read_only_editor_never_deletes_an_attachment()

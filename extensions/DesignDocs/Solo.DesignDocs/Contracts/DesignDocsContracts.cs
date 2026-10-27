@@ -29,4 +29,6 @@ public sealed record SketchDto(Guid Id,Guid NoteId,string Name,string PageSize,s
     public string Path {get;init;} = AttachmentPaths.ForNote(NoteId, Name + ".sketch");
 }
 public sealed record SketchChange(string Name,string PageSize,string Orientation,string Pattern,uint Version);
+// Every image and sketch in a vault, and the raw embed targets in each note's saved Markdown.
+public sealed record AttachmentListDto(IReadOnlyList<ImageDto> Images,IReadOnlyList<SketchDto> Sketches,IReadOnlyDictionary<Guid,string[]> Embeds);
 public sealed record SketchPreviewChange(Guid NoteId,string Name,string Path,string? PreviousName=null);
