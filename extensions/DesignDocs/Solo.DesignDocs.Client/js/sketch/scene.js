@@ -1,4 +1,4 @@
-import {pageSize,rasterize,applyStrokes,paint,paintTexts,paintPixels,splitSelection,repaint,footprint,paintStroke} from './render.js';
+import {pageSize,rasterize,applyStrokes,paint,paintTexts,paintPixels,paintPaper,splitSelection,footprint,paintStroke} from './render.js';
 
 // The three seeded boil frames are immutable until the shared strokes change.
 // Pointer feedback copies a bitmap; it never replays the committed drawing.
@@ -15,12 +15,14 @@ export class SketchScene {
             const added=ops.slice(previous.length),region=footprint(added);
             for(const [number,value] of this.frames){
                 applyStrokes(value.raster,added,width,height,number,previous.length);
-                if(value.canvas)repaint(value.canvas.getContext('2d'),value.raster,meta,this.style,region);
+                if(value.canvas)this.repaint(value.canvas,value.raster,region);
+                // An eraser held over the old page starts again from the new one.
+                value.erase=null;
             }
         }
         this.ops=ops;this.meta=meta;this.width=width;this.height=height;this.drag=null;
     }
-    setStyle(style){this.style=style;this.held.clear();for(const value of this.frames.values())value.canvas=null;if(this.drag)this.drag.frames.clear();}
+    setStyle(style){this.style=style;this.held.clear();for(const value of this.frames.values()){value.canvas=null;value.erase=null;}if(this.drag)this.drag.frames.clear();}
     frame(number){
         let value=this.frames.get(number);
         if(!value){value={raster:rasterize(this.ops,this.width,this.height,number)};this.frames.set(number,value);}
@@ -28,7 +30,53 @@ export class SketchScene {
         return value;
     }
     hitRaster(){let value=this.frames.get(0);if(!value){value={raster:rasterize(this.ops,this.width,this.height,0)};this.frames.set(0,value);}return value.raster;}
-    layer(raster,paper){const canvas=this.createCanvas();paint(canvas.getContext('2d'),[],[],this.meta,{...this.style,raster,paper});return canvas;}
+    layer(raster){
+        const canvas=this.createCanvas(),context=canvas.getContext('2d');canvas.width=this.width;canvas.height=this.height;
+        context.clearRect(0,0,this.width,this.height);context.imageSmoothingEnabled=false;context.drawImage(this.paper(),0,0);
+        paintPixels(context,raster,this.width,this.height,this.style.themeInk);return canvas;
+    }
+    // The page's paper and ruling, drawn once and copied wherever ink is repainted.
+    paper(){
+        const key=[this.width,this.height,this.meta?.pattern,this.style.paperColor].join('|');
+        if(this.paperKey!==key){
+            const canvas=this.paperCanvas??=this.createCanvas(),context=canvas.getContext('2d');canvas.width=this.width;canvas.height=this.height;
+            context.clearRect(0,0,this.width,this.height);paintPaper(context,this.meta??{},this.style.paperColor);this.paperKey=key;
+        }
+        return this.paperCanvas;
+    }
+    // Repaints one rectangle of a page layer to the pixels a full paint gives it.
+    repaint(canvas,raster,region){
+        const {width,height}=this,left=Math.max(0,region.left),top=Math.max(0,region.top),right=Math.min(width,region.right),bottom=Math.min(height,region.bottom);
+        if(right<=left||bottom<=top)return;
+        const context=canvas.getContext('2d');context.imageSmoothingEnabled=false;context.clearRect(left,top,right-left,bottom-top);
+        context.drawImage(this.paper(),left,top,right-left,bottom-top,left,top,right-left,bottom-top);
+        paintPixels(context,raster,width,height,this.style.themeInk,{left,top,right,bottom});
+    }
+    // A held eraser erases a copy of the committed frame, extended by its new samples each
+    // frame. Copying, replaying and repainting the whole page every frame instead grew with
+    // the eraser's length and the page's ink, for everyone watching it. Held pen strokes draw
+    // over the copy, so a preview erases saved ink only; the saved erase follows stroke order.
+    erased(value,erasers,frame){
+        let erase=value.erase;
+        const current=state=>{const stroke=erasers.find(s=>s.id===state.id),points=stroke?.points;if(!stroke||state.points!==points||state.pointerType!==stroke.pointerType||state.next>points.length)return false;
+            const last=state.next?points[state.next-1]:null;return !state.next||(last?.[0]===state.last[0]&&last?.[1]===state.last[1]&&last?.[2]===state.last[2]);};
+        if(!erase||![...erase.strokes.values()].every(current)){
+            // The collaborator feed rewrote a tail, or an eraser lifted without its stroke
+            // saved yet: start over from the committed frame.
+            const canvas=value.eraseCanvas??=this.createCanvas(),context=canvas.getContext('2d');canvas.width=this.width;canvas.height=this.height;
+            context.clearRect(0,0,this.width,this.height);context.drawImage(value.canvas,0,0);
+            erase=value.erase={raster:{pixels:value.raster.pixels.slice()},canvas,strokes:new Map()};
+        }
+        for(const stroke of erasers){
+            const points=Array.isArray(stroke.points)?stroke.points:[];
+            let state=erase.strokes.get(stroke.id);if(!state){state={id:stroke.id,points,pointerType:stroke.pointerType,next:0,last:null};erase.strokes.set(stroke.id,state);}
+            if(points.length<=state.next)continue;
+            const region=footprint([{points:points.slice(Math.max(0,state.next-1))}]);
+            paintStroke(erase.raster,stroke,this.width,this.height,frame,0,state);
+            this.repaint(erase.canvas,erase.raster,region);state.last=points.at(-1).slice(0,3);
+        }
+        return erase.canvas;
+    }
     dragFrame(selection,number){
         if(this.drag?.selection!==selection){this.drag={selection,parts:splitSelection(this.ops,selection.region,this.width,this.height,0,0,selection.ids),frames:new Map()};}
         let value=this.drag.frames.get(number);
@@ -40,7 +88,7 @@ export class SketchScene {
             const overlay=this.createCanvas(),context=overlay.getContext('2d');
             overlay.width=width;overlay.height=height;
             paintPixels(context,moving,width,height,this.style.themeInk);
-            value={base,moving,padding,width,height,canvas:this.layer(base,true),overlay};this.drag.frames.set(number,value);
+            value={base,moving,padding,width,height,canvas:this.layer(base),overlay};this.drag.frames.set(number,value);
         }
         return value;
     }
@@ -103,10 +151,11 @@ export class SketchScene {
             }
         }else{
             this.drag=null;const value=this.frame(frame);
-            if(!erasing)context.drawImage(value.canvas,0,0);else raster={pixels:value.raster.pixels.slice()};
+            if(erasing)context.drawImage(this.erased(value,extra.filter(stroke=>stroke.tool==='eraser'),frame),0,0);
+            else{context.drawImage(value.canvas,0,0);for(const other of this.frames.values())other.erase=null;}
         }
         if(raster){applyStrokes(raster,extra,w,h,frame,this.ops.length);paint(context,[],[],this.meta,{...this.style,raster});}
-        else this.paintExtra(context,extra,frame);
+        else this.paintExtra(context,extra.filter(stroke=>stroke.tool!=='eraser'),frame);
         const boxes=moving?(selectionContext?texts.filter(t=>!selection.textIds.has(t.id)):texts.map(t=>selection.textIds.has(t.id)?{...t,x:t.x+selection.dx,y:t.y+selection.dy}:t)):texts;
         paintTexts(context,boxes,{...this.style,font});
         if(moving&&selectionContext){
@@ -120,5 +169,5 @@ export class SketchScene {
         }
         return null;
     }
-    dispose(){this.frames.clear();this.drag=null;this.ops=[];this.held.clear();}
+    dispose(){this.frames.clear();this.drag=null;this.ops=[];this.held.clear();this.paperCanvas=null;this.paperKey=null;}
 }
