@@ -101,6 +101,7 @@ Select **Remove attachment** in the viewer, then choose one of these options:
 
 After a permanent deletion, other notes that embed the attachment show it as unavailable.
 A person who has the sketch open sees it change to read-only. They can export a PNG to keep a copy.
+If they have strokes that were not saved, closing the sketch asks them to discard those strokes.
 You can delete a sketch only from the note that created it.
 In a downloaded vault, the deletion is queued and synchronized like other offline changes.
 The server refuses it if someone else changed the attachment first.

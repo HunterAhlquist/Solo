@@ -255,3 +255,24 @@ test('only presence the relay accepted is reported as delivered', async () => {
         assert.deepEqual(delivered.map(s=>s.base),[0]);
     } finally {p.dispose();}
 });
+
+test('a deleted document stays read-only through reconnects and offline access changes',async()=>{
+    const sent=[];const p=new Provider({send:async(kind,raw)=>{sent.push(kind);return 0;}},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));assert.equal(p.canWrite,true);
+        p.doc.getText('markdown').insert(0,'unsaved');p.markDeleted();assert.equal(p.canWrite,false);
+        // A downloaded vault keeps its own binding; its access callback must not re-enable writes.
+        p.offline={canWrite:true,hasDraft:()=>true,save:async()=>false};p.setWritable(true);assert.equal(p.canWrite,false);
+        const syncs=sent.filter(k=>k==='sync').length;
+        await p.connected(true);await tick();assert.equal(p.canWrite,false);assert.equal(sent.filter(k=>k==='sync').length,syncs,'no resync of a deleted document');
+    }finally{p.offline=null;p.dispose();}
+});
+test('discarding a deleted document lets it close without its unsaved edits',async()=>{
+    const p=new Provider({send:async()=>0},{canWrite:true});
+    try{
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+        p.doc.getText('markdown').insert(0,'unsaved');await tick();assert.equal(p.hasPending,true);
+        p.markDeleted();const waiting=p.waitForSave(60000);
+        p.discard();assert.equal(await waiting,true);assert.equal(p.hasPending,false);assert.equal(await p.waitForSave(10),true);
+    }finally{p.dispose();}
+});

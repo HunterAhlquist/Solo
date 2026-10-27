@@ -90,17 +90,26 @@
     [JSInvokable] public Task<string?> ConfirmRemoveAttachment(string path,bool sketch)=>CanWrite
         ?DocDialogs.RemoveAttachment(Dialogs,AttachmentPaths.FileName(path),sketch)
         :Task.FromResult<string?>(null);
-    // The embed is removed by the editor afterwards, so a failed delete leaves the note unchanged.
-    [JSInvokable] public async Task<bool> DeleteAttachment(string path,bool sketch){
+    // The id is the attachment the viewer loaded and showed when the person chose to delete it.
+    // A path is never resolved again here: if that attachment is gone, a fallback match could be
+    // another note's file of the same name. The embed is removed afterwards, so a refusal leaves
+    // the note unchanged.
+    [JSInvokable] public async Task<bool> DeleteAttachment(string path,bool sketch,string? id){
         if(!CanWrite)return false;
+        if(!Guid.TryParse(id,out var target)){await Status("This attachment hasn’t loaded, so it can’t be deleted. Remove it from the note instead.");return false;}
         try{
             if(sketch){
-                var found=(await Api.GetAsync<List<SketchDto>>(SketchRoot)).SingleOrDefault(s=>MatchesSketch(s,path.EndsWith(".sketch",StringComparison.OrdinalIgnoreCase)?path[..^7]:path));
-                if(found is null){await Status("Only sketches created in this note can be deleted from it.");return false;}
+                var found=(await Api.GetAsync<List<SketchDto>>(SketchRoot)).SingleOrDefault(s=>s.Id==target);
+                if(found is null){await Status("This sketch was already deleted.");return false;}
+                if(found.NoteId!=Note.Id){await Status("Only sketches created in this note can be deleted from it.");return false;}
                 await Api.SendAsync(HttpMethod.Delete,$"{SketchRoot}/{found.Id}?version={found.Version}");
-            }else{var image=await FindImage(path);await Api.SendAsync(HttpMethod.Delete,$"{ImageRoot}/{image.Id}?version={image.Version}");}
+            }else{
+                var found=(await Api.GetAsync<List<ImageDto>>(ImageRoot)).SingleOrDefault(i=>i.Id==target);
+                if(found is null){await Status("This image was already deleted.");return false;}
+                await Api.SendAsync(HttpMethod.Delete,$"{ImageRoot}/{found.Id}?version={found.Version}");
+            }
             return true;
-        }catch(Exception e)when(e is SoloApiException or InvalidOperationException){await Status(e.Message);return false;}
+        }catch(SoloApiException e){await Status(e.StatusCode==HttpStatusCode.NotFound?"This attachment was already deleted.":e.Message);return false;}
     }
     [JSInvokable] public Task<string?> SpellingMenu(string[] suggestions,double x,double y)
     {
@@ -139,7 +148,7 @@
         var resolved=VaultPaths.ResolveImage(images.Select(i=>i.Path).ToArray(),path,string.Join('/',parts));
         return images.SingleOrDefault(i=>i.Path==resolved)??throw new InvalidOperationException("Image not found or ambiguous.");
     }
-    [JSInvokable] public async Task<object> Image(string path){var image=await FindImage(path);var bytes=await Api.GetBytesAsync(ImageRoot+"/"+image.Id);return new{base64=Convert.ToBase64String(bytes.Content),image.ContentType,image.Version};}
+    [JSInvokable] public async Task<object> Image(string path){var image=await FindImage(path);var bytes=await Api.GetBytesAsync(ImageRoot+"/"+image.Id);return new{image.Id,base64=Convert.ToBase64String(bytes.Content),image.ContentType,image.Version};}
     [JSInvokable] public async Task<string> UploadImage(byte[] bytes,string contentType,string path,bool replace){
         if(replace){var image=await FindImage(path);await Api.SendBytesAsync<ImageDto>(HttpMethod.Put,ImageRoot+"/"+image.Id+"?version="+image.Version,bytes,contentType);}
         else return (await Api.SendBytesAsync<ImageDto>(HttpMethod.Post,ImageRoot+"/notes/"+Note.Id+"?path="+Uri.EscapeDataString(path),bytes,contentType)).Path;

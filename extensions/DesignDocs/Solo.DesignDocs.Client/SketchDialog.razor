@@ -58,7 +58,15 @@
     [Parameter] public bool CanWrite {get;set;}
     private string _tool="pen",_ink="theme";private int _level;private bool _constrain,_writable,_touchDrawing,_supportsTouch;
     private SaveBeforeLeave? _saveGuard;
-    private Task<bool> SaveBeforeClose()=>_sketch is null?Task.FromResult(true):_sketch.InvokeAsync<bool>("close",10000).AsTask();
+    private async Task<bool> SaveBeforeClose(){
+        if(_sketch is null)return true;
+        if(!_deleted)return await _sketch.InvokeAsync<bool>("close",10000);
+        // Strokes the server never acknowledged can't be saved to a deleted sketch; waiting for them
+        // would keep the dialog open for good, so leaving means discarding them.
+        if(await _sketch.InvokeAsync<bool>("unsaved")&&!await DocDialogs.Confirm(Dialogs,"Sketch deleted",
+            "This sketch was deleted, so your latest strokes can’t be saved. Export a PNG first to keep a copy, or discard them and close.","Discard and close"))return false;
+        await _sketch.InvokeVoidAsync("discard");return true;
+    }
     private async Task RequestClose(){if(_saveGuard is not null&&await _saveGuard.TryLeaveAsync())CloseSaved();}
     private void CloseSaved(){if(!_disposed)Dialog.Close();}
     [JSInvokable] public Task Close()=>RequestClose();
@@ -85,7 +93,7 @@
         _sketch=await module.InvokeAsync<IJSObjectReference>("mountSketch",root,_reference,new{canWrite=CanWrite,documentId=Sketch.Id,vaultId=VaultId,projectId=ProjectId,name=Sketch.Name,explosionUrl=api.Content("explosion.gif").ToString(),explosionSoundUrl=api.Content("explosion.wav").ToString(),
             meta=new{Sketch.PageSize,Sketch.Orientation,Sketch.Pattern},user=new{userId=user.Id,name=user.DisplayName??user.Email,avatarUrl=string.IsNullOrEmpty(user.AvatarUrl)?null:$"api/users/{user.Id}/avatar",color=DocPresenceColor.Value(slot.Slot)}});
         await _sketch.InvokeVoidAsync("connected",false);
-        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){_deleted=true;_writable=false;await _sketch.InvokeVoidAsync("connected",false);await InvokeAsync(StateHasChanged);return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},Presence);
+        _subscription=await Live.SubscribeAsync(ProjectId,DocTopics.Doc(Sketch.Id),async m=>{if(_sketch is null||_disposed)return;if(m.Kind=="deleted"){await Deleted();return;}await _sketch.InvokeVoidAsync("receive",m.Kind,m.Data);},Presence);
         _vault=await Live.SubscribeAsync(ProjectId,DocTopics.Vault(VaultId),async m=>{if(m.Kind is "closed" or "deleted"&&_sketch is not null)await _sketch.InvokeVoidAsync("connected",false);});
         Live.ConnectionChanged+=Connection;if(Live.IsConnected)await Live.SetPresenceAsync(ProjectId,DocTopics.Doc(Sketch.Id),CanWrite?PresenceMode.Editing:PresenceMode.Viewing);await Connection();
     }
@@ -94,8 +102,14 @@
         if(_sketch is not null)await _sketch.InvokeVoidAsync("presence",people);
         await InvokeAsync(()=>{StateHasChanged();Dialog.StateHasChanged();});
     }
-    // A deleted sketch stays disconnected; reconnecting would only fail against a missing document.
+    // A deleted sketch stays read-only; reconnecting would only fail against a missing document.
     private bool _deleted;
+    private async Task Deleted(){
+        _deleted=true;_writable=false;
+        if(_sketch is not null)await _sketch.InvokeVoidAsync("deleted");
+        // The title is rendered by the dialog container, which this component's render doesn't reach.
+        await InvokeAsync(()=>{StateHasChanged();Dialog.StateHasChanged();});
+    }
     private Task Connection()=>_sketch is null||_deleted?Task.CompletedTask:_sketch.InvokeVoidAsync("connected",Live.IsConnected).AsTask();
     [JSInvokable]public Task<LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,DocTopics.Doc(Sketch.Id),kind,data);
     [JSInvokable]public Task<bool> Confirm(string message)=>DocDialogs.Confirm(Dialogs,"Sketch",message,"Continue");

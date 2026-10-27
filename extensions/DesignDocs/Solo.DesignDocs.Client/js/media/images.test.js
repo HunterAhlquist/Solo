@@ -47,10 +47,29 @@ const deleting=(answers,actions={})=>{
 for(const sketch of [false,true])test(`deleting a ${sketch?'sketch':'image'} permanently deletes it before removing the embed`,async()=>{
     const entry={path:sketch?'attachments/note/Plan.sketch':'attachments/note/photo.png',sketch},order=[];
     const {images,calls,removed}=deleting({ConfirmRemoveAttachment:'delete',DeleteAttachment:true},{removable:()=>{order.push('check');return true;},remove:item=>{order.push('remove');return true;}});
-    const deleteCall=images.bridge.invokeMethodAsync;images.bridge.invokeMethodAsync=async(method,...args)=>{if(method==='DeleteAttachment')order.push('delete');return deleteCall(method,...args);};
+    images.identities.set(entry.path,'shown-id');const deleteCall=images.bridge.invokeMethodAsync;images.bridge.invokeMethodAsync=async(method,...args)=>{if(method==='DeleteAttachment')order.push('delete');return deleteCall(method,...args);};
     assert.equal(await images.remove(entry),true);
-    assert.deepEqual(calls,[['ConfirmRemoveAttachment',entry.path,sketch],['DeleteAttachment',entry.path,sketch]]);
+    assert.deepEqual(calls,[['ConfirmRemoveAttachment',entry.path,sketch],['DeleteAttachment',entry.path,sketch,'shown-id']]);
     assert.deepEqual(order,['check','delete','remove']);assert.deepEqual(removed,[]);
+});
+test('a delete targets the attachment shown when the dialog opened, not whatever the path resolves to later',async()=>{
+    const {images,calls}=deleting({DeleteAttachment:true});
+    images.identities.set('photo.png','image-a');
+    images.bridge.invokeMethodAsync=async(method,...args)=>{calls.push([method,...args]);
+        // A collaborator deletes image A while the dialog is open; the path now resolves to B.
+        if(method==='ConfirmRemoveAttachment'){images.identities.set('photo.png','image-b');return 'delete';}return true;};
+    assert.equal(await images.remove({path:'photo.png'}),true);
+    assert.deepEqual(calls.at(-1),['DeleteAttachment','photo.png',false,'image-a']);
+});
+test('an attachment that never loaded is deleted by no id at all',async()=>{
+    const {images,calls}=deleting({ConfirmRemoveAttachment:'delete',DeleteAttachment:false});
+    assert.equal(await images.remove({path:'photo.png'}),false);assert.deepEqual(calls.at(-1),['DeleteAttachment','photo.png',false,null]);
+});
+test('loading an attachment records its id, and a refresh forgets it',async t=>{
+    t.mock.method(URL,'createObjectURL',()=>'blob:x');t.mock.method(URL,'revokeObjectURL',()=>{});
+    const images=new Images({invokeMethodAsync:async()=>({id:'image-a',base64:'AA==',contentType:'image/png',version:3})},false,()=>{},()=>{});
+    await images.resolve('photo.png');assert.equal(images.identities.get('photo.png'),'image-a');
+    await images.refresh(path=>path==='photo.png');assert.equal(images.identities.has('photo.png'),false);images.dispose();
 });
 test('a refused permanent delete leaves the embed in the note',async()=>{
     const {images,calls,removed}=deleting({ConfirmRemoveAttachment:'delete',DeleteAttachment:false});

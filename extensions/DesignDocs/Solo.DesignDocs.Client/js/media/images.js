@@ -27,7 +27,7 @@ export function imageAngle(path) {let seed=0;for(const c of path)seed=(seed*31+c
 export class Images {
     constructor(bridge,canWrite,insert,status,actions={}) {
         Object.assign(this,{bridge,canWrite,insert,status,actions});
-        this.revisions=new Map();this.cache=new Map();this.cards=new Set();this.inputs=new Set();this.disposed=false;this.dragged=null;
+        this.revisions=new Map();this.cache=new Map();this.identities=new Map();this.cards=new Set();this.inputs=new Set();this.disposed=false;this.dragged=null;
     }
     get canWrite(){return this._canWrite;}
     set canWrite(value){this._canWrite=value;for(const entry of this.cards??[]){entry.button.draggable=value;for(const image of entry.button.querySelectorAll('img'))image.draggable=value;}
@@ -37,12 +37,14 @@ export class Images {
     // The bridge answers 'remove' (the embed only), 'delete' (the stored attachment too) or nothing.
     async remove(reference) {
         if(!this.canWrite||this.disposed)return false;
+        // Taken before the dialog opens: what the person is looking at is what they delete.
+        const shown=this.identities.get(reference.path);
         const choice=await this.bridge.invokeMethodAsync('ConfirmRemoveAttachment',reference.path,!!reference.sketch);
         if(choice!=='remove'&&choice!=='delete'||!this.canWrite||this.disposed)return false;
         if(choice==='delete'){
             // Check the embed first: deleting and then failing to remove it would leave a broken embed.
             if(this.actions.removable&&!this.actions.removable(reference)){this.status('Attachment changed elsewhere. Reopen the viewer to remove it.');return false;}
-            if(!await this.bridge.invokeMethodAsync('DeleteAttachment',reference.path,!!reference.sketch)||this.disposed)return false;
+            if(!await this.bridge.invokeMethodAsync('DeleteAttachment',reference.path,!!reference.sketch,shown??null)||this.disposed)return false;
             // Other embeds of the same file show it as unavailable; the open viewer moves on by itself.
             this.refresh(path=>path===reference.path,false);
             this.actions.remove?.(reference);return true;
@@ -51,18 +53,19 @@ export class Images {
     }
     async resolve(path) {
         if(!this.cache.has(path)){const loading=(async()=>{
-            let blob;
+            let blob,id;
             if(/\.sketch$/i.test(path)){
                 const canvas=document.createElement('canvas');canvas.dataset.sketch=path.slice(0,-7);
-                await refreshSketchPreview(canvas,this.bridge);
+                id=(await refreshSketchPreview(canvas,this.bridge))?.id;
                 blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
                 if(!blob)throw new Error('Sketch preview could not be rendered.');
             }else{
-                const data=await this.bridge.invokeMethodAsync('Image',path);
+                const data=await this.bridge.invokeMethodAsync('Image',path);id=data.id;
                 blob=new Blob([decode(data.base64)],{type:data.contentType});
             }
             const url=URL.createObjectURL(blob);
             if(this.disposed){URL.revokeObjectURL(url);throw new Error('Page closed');}
+            if(this.cache.get(path)===loading&&id)this.identities.set(path,id);
             return url;
         })().catch(e=>{if(this.cache.get(path)===loading)this.cache.delete(path);throw e;});this.cache.set(path,loading);}
         return this.cache.get(path);
@@ -238,6 +241,7 @@ export class Images {
     async refresh(matches=()=>true,viewer=true){
         const paths=new Set([...this.cache.keys(),...[...this.cards].flatMap(card=>card.entries.map(item=>item.path))]);
         for(const path of paths)if(matches(path))this.revisions.set(path,(this.revisions.get(path)??0)+1);
+        for(const path of [...this.identities.keys()])if(matches(path))this.identities.delete(path);
         for(const [path,promise] of this.cache)if(matches(path)){this.cache.delete(path);promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});}
         if(viewer&&this.dialog?.open)this.refreshViewer?.(matches);
         for(const entry of [...this.cards]){
@@ -245,5 +249,5 @@ export class Images {
             const images=entry.button.querySelectorAll('img');entry.entries.forEach((item,i)=>{if(matches(item.path))this.thumbnail(images[i],item.path);});
         }
     }
-    dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.closeViewer?.();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.cards.clear();this.revisions.clear();}
+    dispose(){this.disposed=true;for(const input of this.inputs)input.remove();this.inputs.clear();this.closeViewer?.();for(const promise of this.cache.values())promise.then(url=>URL.revokeObjectURL(url)).catch(()=>{});this.cache.clear();this.identities.clear();this.cards.clear();this.revisions.clear();}
 }

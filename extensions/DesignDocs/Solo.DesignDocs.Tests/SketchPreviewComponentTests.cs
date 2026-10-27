@@ -86,9 +86,9 @@ public sealed class SketchPreviewComponentTests : ComponentTestBase
         http.Route("/sketches/",System.Net.HttpStatusCode.NoContent,(object?)null,HttpMethod.Delete);http.Route("/images/",System.Net.HttpStatusCode.NoContent,(object?)null,HttpMethod.Delete);
         http.RouteJson("/sketches",new[]{new SketchDto(sketch,note,"Map","A4","portrait","dots",null,null,7),new SketchDto(foreign,Guid.NewGuid(),"Other","A4","portrait","dots",null,null,3)});
         http.RouteJson("/images",new[]{new ImageDto(image,AttachmentPaths.ForNote(note,"photo.png"),"image/png",1,1,3,9)});
-        Assert.True(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"Map.sketch"),true)));
-        Assert.True(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"photo.png"),false)));
-        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Other.sketch",true)));
+        Assert.True(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"Map.sketch"),true,sketch.ToString())));
+        Assert.True(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"photo.png"),false,image.ToString())));
+        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Other.sketch",true,foreign.ToString())));
         var deletes=http.Paths.Where(p=>p.StartsWith("DELETE",StringComparison.Ordinal)).ToList();
         Assert.Equal([$"DELETE /api/ext/design-docs/projects/{project}/vaults/{vault}/sketches/{sketch}?version=7",$"DELETE /api/ext/design-docs/projects/{project}/vaults/{vault}/images/{image}?version=9"],deletes);
     }
@@ -99,7 +99,7 @@ public sealed class SketchPreviewComponentTests : ComponentTestBase
         var (cut,http,_,_)=Mount(project,vault,note);
         http.RouteJson("/sketches",new[]{new SketchDto(Guid.NewGuid(),note,"Map","A4","portrait","dots",null,null,7)});
         Assert.Null(await cut.InvokeAsync(()=>cut.Instance.ConfirmRemoveAttachment("Map.sketch",true)));
-        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Map.sketch",true)));
+        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Map.sketch",true,Guid.NewGuid().ToString())));
         Assert.DoesNotContain(http.Paths,p=>p.StartsWith("DELETE",StringComparison.Ordinal));
     }
     [Fact]
@@ -109,8 +109,29 @@ public sealed class SketchPreviewComponentTests : ComponentTestBase
         var (cut,http,_,_)=Mount(project,vault,note,canWrite:true);
         http.Route("/sketches/",System.Net.HttpStatusCode.Conflict,new{title="Content changed",detail="Refresh and try again."},HttpMethod.Delete);
         http.RouteJson("/sketches",new[]{new SketchDto(sketch,note,"Map","A4","portrait","dots",null,null,7)});
-        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Map.sketch",true)));
+        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment("Map.sketch",true,sketch.ToString())));
         Assert.Contains(http.Paths,p=>p.StartsWith("DELETE",StringComparison.Ordinal));
         cut.WaitForAssertion(()=>Assert.DoesNotContain("Connecting",cut.Find(".design-docs-note-status").TextContent));
+    }
+    [Fact]
+    public async Task A_delete_never_falls_back_to_another_notes_image_with_the_same_name()
+    {
+        var project=Guid.NewGuid();var vault=Guid.NewGuid();var note=Guid.NewGuid();var shown=Guid.NewGuid();var other=Guid.NewGuid();
+        var (cut,http,_,_)=Mount(project,vault,note,canWrite:true);
+        http.Route("/images/",System.Net.HttpStatusCode.NoContent,(object?)null,HttpMethod.Delete);
+        // The image that was shown has been deleted by someone else; note B still has its own photo.png.
+        http.RouteJson("/images",new[]{new ImageDto(other,AttachmentPaths.ForNote(Guid.NewGuid(),"photo.png"),"image/png",1,1,3,4)});
+        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"photo.png"),false,shown.ToString())));
+        Assert.False(await cut.InvokeAsync(()=>cut.Instance.DeleteAttachment(AttachmentPaths.ForNote(note,"photo.png"),false,null)));
+        Assert.DoesNotContain(http.Paths,p=>p.StartsWith("DELETE",StringComparison.Ordinal));
+    }
+    [Fact]
+    public async Task A_loaded_image_reports_the_id_a_delete_will_use()
+    {
+        var project=Guid.NewGuid();var vault=Guid.NewGuid();var note=Guid.NewGuid();var id=Guid.NewGuid();
+        var (cut,http,_,_)=Mount(project,vault,note);
+        http.RouteBytes("/images/"+id,[1,2,3]);http.RouteJson("/images",new[]{new ImageDto(id,AttachmentPaths.ForNote(note,"photo.png"),"image/png",1,1,3,1)});
+        var result=JsonSerializer.SerializeToElement(await cut.Instance.Image(AttachmentPaths.ForNote(note,"photo.png")),new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(id,result.GetProperty("id").GetGuid());
     }
 }
