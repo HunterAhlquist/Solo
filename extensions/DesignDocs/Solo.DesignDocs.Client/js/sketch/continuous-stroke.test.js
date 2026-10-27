@@ -6,6 +6,7 @@ import {Awareness,applyAwarenessUpdate} from 'y-protocols/awareness';
 import {mountSketch} from './index.js';
 import {decode} from '../sync/protocol.js';
 import {installDOM} from './input-dom-fixture.js';
+import {StrokeFeed} from './stroke-presence.js';
 
 const contract=readFileSync(new URL('../../../../../src/Solo.Shared/Hubs/BoardHubContract.cs',import.meta.url),'utf8');
 const hubLimit=Number(contract.match(/ClientMessageMaxLength\s*=\s*([\d_]+)/)[1].replaceAll('_',''));
@@ -14,6 +15,7 @@ const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 test('a continuous coalesced Pencil stroke stays writable and saves every sample on release',async t=>{
     const dom=installDOM(),remote=new Y.Doc(),awareness=new Awareness(remote),packets=[],writable=[],chunks=new Map();let sketch;
     awareness.setLocalState(null);
+    const feed=new StrokeFeed();awareness.on('change',({added,updated,removed})=>{for(const id of [...added,...updated])feed.apply(id,awareness.getStates().get(id)?.stroke);for(const id of removed)feed.delete(id);});
     const bridge={invokeMethodAsync:async(method,kind,raw)=>{
         if(method==='Writable'){writable.push(kind);return;}
         if(method!=='Send')return 0;
@@ -45,9 +47,9 @@ test('a continuous coalesced Pencil stroke stays writable and saves every sample
         await wait(8);
     }
     assert.ok(!writable.includes(false),'continuous drawing must not interrupt sync and erase the held stroke; packets='+JSON.stringify(packets.slice(-4)));
-    const preview=[...awareness.getStates().values()].find(state=>state.stroke)?.stroke;
-    assert.ok(preview?.points.length>1,'collaborators must still see the held stroke through the relay presence limit');
-    assert.ok(preview.points.length<=128,'the disposable preview stays bounded throughout a long stroke');
+    const message=[...awareness.getStates().values()].find(state=>state.stroke)?.stroke,[preview]=[...feed.values()];
+    assert.ok(message.points.length<1001,'each presence message carries only what collaborators lack');
+    assert.ok(preview?.points.length>900,'collaborators see every sample of the held stroke, not a thinned copy; got '+preview?.points.length);
     viewport.emit('pointerup',point(1001));await wait(400);
     assert.equal(remote.getArray('ops').length,1,'release must persist one complete stroke');
     assert.equal(remote.getArray('ops').get(0).points.length,1002,'presence limits must not discard actual Pencil samples');

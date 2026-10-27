@@ -236,3 +236,22 @@ test('presence queued just before disconnection does not block the next online u
         assert.deepEqual(sent.map(packet=>packet.data),['new']);
     }finally{p.dispose();}
 });
+test('a close notice goes out once, only after this editor changed something, and never interrupts', async () => {
+    const sent=[];let result=0;const p=new Provider({send:async(kind)=>{sent.push(kind);return kind==='closed'?result:0;}},{canWrite:true});
+    try {
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+        await p.closed();assert.ok(!sent.includes('closed'),'opening and closing unchanged is not an edit');
+        p.doc.getArray('ops').push([{id:'a'}]);await tick();await p.receive('ack',JSON.stringify({id:[...p.pending.keys()][0],seq:'1'}));
+        result=5;await p.closed();assert.equal(sent.filter(k=>k==='closed').length,1);assert.equal(p.canWrite,true,'a lost notice is not a sync failure');
+        await p.closed();assert.equal(sent.filter(k=>k==='closed').length,1);
+    } finally {p.dispose();}
+});
+test('only presence the relay accepted is reported as delivered', async () => {
+    const delivered=[];let result=0;const p=new Provider({send:async()=>result},{canWrite:true,awarenessSent:state=>delivered.push(state.stroke)});
+    try {
+        p.connected(true);await p.receive('synced',JSON.stringify({seq:'0',updates:0,canWrite:true}));
+        p.awareness.setLocalStateField('stroke',{id:'s',base:0,points:[[1,2,3]]});await tick();
+        result=4;p.awareness.setLocalStateField('stroke',{id:'s',base:1,points:[[4,5,6]]});await tick();
+        assert.deepEqual(delivered.map(s=>s.base),[0]);
+    } finally {p.dispose();}
+});

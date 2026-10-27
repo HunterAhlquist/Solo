@@ -22,3 +22,9 @@ test('moving a thin cut piece leaves no original jitter fragments behind',()=>{
     const region=connectedRegion(original,64,40,10,20),moved=rasterize(splitMove([stroke,eraser],region,64,40,0,10),64,40,0);
     for(let i=0;i<region.mask.length;i++)if(region.mask[i])assert.equal(moved.pixels[i],0,`original pixel ${i} remained`);
 });
+test('a long continuous stroke renders to its last sample',()=>{
+    // 200 passes back and forth is ~76,000 px of line, past the cap that used to cut strokes off.
+    const points=[];for(let pass=0;pass<200;pass++)points.push([pass%2?400:20,20,.5]);points.push([300,500,.5]);
+    const raster=rasterize([{...stroke,pointerType:'pen',points}],420,595);
+    assert.ok(raster.pixels[500*420+300]||raster.pixels[499*420+300]||raster.pixels[501*420+300],'the end of a long stroke must be drawn');
+});
