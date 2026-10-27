@@ -87,9 +87,21 @@
     private async Task Connection(){if(_editor is null||_disposed)return;await _editor.InvokeVoidAsync("connected",Live.IsConnected);if(Live.IsConnected)await _editor.InvokeVoidAsync("sketchesChanged");}
     [JSInvokable] public Task<Solo.Shared.Hubs.LiveSendResult> Send(string kind,string data)=>Live.SendAsync(ProjectId,Topic,kind,data);
     [JSInvokable] public void Notice(string value)=>Snackbar.Add(value,Severity.Info);
-    [JSInvokable] public Task<bool> ConfirmRemoveAttachment(string path,bool sketch)=>CanWrite
-        ?DocDialogs.Confirm(Dialogs,sketch?"Remove sketch":"Remove image",$"Remove “{AttachmentPaths.FileName(path)}” from this note? The attachment will remain stored in the vault.","Remove")
-        :Task.FromResult(false);
+    [JSInvokable] public Task<string?> ConfirmRemoveAttachment(string path,bool sketch)=>CanWrite
+        ?DocDialogs.RemoveAttachment(Dialogs,AttachmentPaths.FileName(path),sketch)
+        :Task.FromResult<string?>(null);
+    // The embed is removed by the editor afterwards, so a failed delete leaves the note unchanged.
+    [JSInvokable] public async Task<bool> DeleteAttachment(string path,bool sketch){
+        if(!CanWrite)return false;
+        try{
+            if(sketch){
+                var found=(await Api.GetAsync<List<SketchDto>>(SketchRoot)).SingleOrDefault(s=>MatchesSketch(s,path.EndsWith(".sketch",StringComparison.OrdinalIgnoreCase)?path[..^7]:path));
+                if(found is null){await Status("Only sketches created in this note can be deleted from it.");return false;}
+                await Api.SendAsync(HttpMethod.Delete,$"{SketchRoot}/{found.Id}?version={found.Version}");
+            }else{var image=await FindImage(path);await Api.SendAsync(HttpMethod.Delete,$"{ImageRoot}/{image.Id}?version={image.Version}");}
+            return true;
+        }catch(Exception e)when(e is SoloApiException or InvalidOperationException){await Status(e.Message);return false;}
+    }
     [JSInvokable] public Task<string?> SpellingMenu(string[] suggestions,double x,double y)
     {
         if(!CanWrite)return Task.FromResult<string?>(null);
@@ -114,6 +126,7 @@
         return new(Aliases.Serial(project.Alias,board.Alias,task.Number),task.Name);
     }
     [JSInvokable] public Task OpenTask(string value)=>TaskDrawer.OpenAsync(Guid.Parse(value));
+    private string SketchRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/sketches";
     private string ImageRoot=>$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/images";
     private bool PendingAttachment(string path,Guid id)=>path.StartsWith(AttachmentPaths.ForNote(Note.Id,id+"/"),StringComparison.Ordinal)||path.StartsWith($"offline/{id}/",StringComparison.Ordinal);
     private bool MatchesSketch(SketchDto sketch,string name)=>sketch.NoteId==Note.Id&&(sketch.Name==name||sketch.Path==name+".sketch"||PendingAttachment(name,sketch.Id));

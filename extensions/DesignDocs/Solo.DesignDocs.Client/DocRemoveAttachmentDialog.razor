@@ -1,0 +1,29 @@
+@* Removing an embed and deleting the attachment look alike in the viewer but differ in
+   what survives, so the choice is spelled out rather than hidden behind one button. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body1">What do you want to do with “@Name”?</MudText>
+        <MudText Typo="Typo.body2" Class="mt-2"><b>Remove from note</b> takes the embed out of this note. The @Kind stays stored in the vault.</MudText>
+        <MudText Typo="Typo.body2" Class="mt-2"><b>Delete permanently</b> also deletes the @Kind from the vault. Anywhere else it is embedded shows it as unavailable.</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Color="Color.Error" OnClick="@(() => Dialog.Close(DialogResult.Ok("delete")))">Delete permanently</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="@(() => Dialog.Close(DialogResult.Ok("remove")))">Remove from note</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public required string Name { get; set; }
+
+    [Parameter]
+    public bool Sketch { get; set; }
+
+    private string Kind => Sketch ? "sketch" : "image";
+}

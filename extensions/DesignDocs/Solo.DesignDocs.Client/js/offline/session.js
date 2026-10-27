@@ -369,8 +369,14 @@ async function localRequest(active,method,path,json=null,bytes=null,contentType=
         }
     }else if(kind==='sketches'){
         const creating=method==='POST'&&id==='notes',old=view.sketches.find(s=>s.id===id);
+        if(!creating&&!old)throw new Error('The sketch no longer exists.');
         command={entity:'sketch',action:creating?'create':method==='DELETE'?'delete':'update',targetId:creating?crypto.randomUUID():id,noteId:creating?parts[9]:old?.noteId,...body};
+        // A delete carries its version in the query, as online.
+        if(method==='DELETE')command.version=Number(url.searchParams.get('version'));
         if(creating)command.path=attachmentPath(command.noteId,command.targetId+'/'+command.name+'.sketch');
+    }else if(kind==='images'&&id&&method==='DELETE'){
+        const old=view.images.find(i=>i.id===id);if(!old)throw new Error('The image no longer exists.');
+        command={entity:'image',action:'delete',targetId:id,version:Number(url.searchParams.get('version'))};
     }else if(kind==='images'&&bytes){
         const creating=method==='POST'&&(!id||id==='notes'||id==='import'),old=view.images.find(i=>i.id===id),targetId=creating?crypto.randomUUID():id;
         if(!creating&&!old)return {handled:false};

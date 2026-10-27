@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import * as Y from 'yjs';
-import {VaultStore,projectVault,applyCommand,attachmentPath} from './store.js';
+import {VaultStore,projectVault,applyCommand,attachmentPath,order} from './store.js';
 import {OfflineSession} from './session.js';
 import {encode,decode} from '../sync/protocol.js';
 import {sketchStrokes} from '../sketch/objects.js';
@@ -90,6 +90,27 @@ test('the editor API queues complete offline CRUD and uploads nothing through a 
         await offlineRequest('DELETE',root+'/notes/'+note.id+'?version=0');tree=(await offlineRequest('GET',root)).value;
         assert.equal(tree.notes.length,1);assert.equal((await store.all('queue')).length,6);
         await agent.dispose();const before=calls;await agent.sync();assert.equal(calls,before);
+    }finally{await agent.dispose();}
+});
+
+test('a downloaded vault queues permanent sketch and image deletes with the versions the server checks',async()=>{
+    const {startOffline,offlineRequest}=await import('./session.js');
+    const store=new VaultStore(id()),vaultId=id(),noteId=id(),projectId=id(),sketchId=id(),imageId=id();const base=snapshot(vaultId,noteId);
+    base.sketches.push({id:sketchId,noteId,name:'Map',pageSize:'A4',orientation:'portrait',pattern:'dots',path:attachmentPath(noteId,'Map.sketch'),version:4});
+    base.images.push({id:imageId,path:attachmentPath(noteId,'photo.webp'),contentType:'image/webp',width:1,height:1,bytes:1,version:6});base.documents[sketchId]='3';
+    await store.put('vaults',{id:vaultId,projectId,projectAlias:'PARK',ready:true,base,color:{userId:'writer',slot:1},colors:[],list:{canManage:true,vaults:[base.tree.vault]}});
+    await store.put('documents',{id:sketchId,projectId,vaultId,state:Y.encodeStateAsUpdate(new Y.Doc()),seq:'3'});
+    const agent=await startOffline({invokeMethodAsync:async()=>({status:0})},{instance:'test',userId:'writer',store});
+    try{
+        const root=`api/ext/design-docs/projects/${projectId}/vaults/${vaultId}`;
+        await offlineRequest('DELETE',root+'/sketches/'+sketchId+'?version=4');
+        await offlineRequest('DELETE',root+'/images/'+imageId+'?version=6');
+        assert.deepEqual((await offlineRequest('GET',root+'/sketches')).value,[]);assert.deepEqual((await offlineRequest('GET',root+'/images')).value,[]);
+        const queued=(await store.all('queue')).sort(order).map(row=>row.command);
+        assert.deepEqual(queued.map(c=>[c.entity,c.action,c.targetId,c.version]),[['sketch','delete',sketchId,4],['image','delete',imageId,6]]);
+        assert.deepEqual(queued[0].baseVersions,{[sketchId]:4});assert.deepEqual(queued[0].baseDocuments,{[sketchId]:'3'});
+        await assert.rejects(offlineRequest('DELETE',root+'/sketches/'+sketchId+'?version=4'),/no longer exists/);
+        await assert.rejects(offlineRequest('DELETE',root+'/images/'+imageId+'?version=6'),/no longer exists/);
     }finally{await agent.dispose();}
 });
 

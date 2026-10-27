@@ -30,6 +30,7 @@ export function mountEditor(root, bridge, options) {
         icons:options.icons,
         reference:entry=>mediaReference(text,entry),
         text:(from,to)=>view.state.doc.sliceString(from,to),
+        removable:reference=>provider.canWrite&&!!mediaRange(provider.doc,text,reference),
         remove:reference=>{
             if(!provider.canWrite)return false;
             const range=mediaRange(provider.doc,text,reference);
