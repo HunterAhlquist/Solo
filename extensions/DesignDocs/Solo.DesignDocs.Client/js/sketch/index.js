@@ -35,8 +35,12 @@ export async function mountSketch(root,bridge,options){
     const say=message=>{status.textContent=message;};
     const provider=new Provider({send:(kind,data)=>bridge.invokeMethodAsync('Send',kind,data)}, {canWrite:options.canWrite,user:options.user,documentId:options.documentId,projectId:options.projectId,vaultId:options.vaultId,atomicSync:true,hasDraft:()=>!!active||(selected?.pointer!==undefined&&(selected.dx!==0||selected.dy!==0))||clearing||commands.size>0,
         status:message=>{say(message);if(provider.synced&&provider.canWrite&&!meta.size)provider.doc.transact(()=>Object.entries(options.meta).forEach(([k,v])=>meta.set(k,v)),local);},
-        // Presence that reached the relay; the next message starts after it.
-        awarenessSent:state=>{const stroke=state?.stroke;if(stroke&&stroke.id===active?.id)delivered={id:stroke.id,count:Math.max(delivered.id===stroke.id?delivered.count:0,stroke.base+stroke.points.length)};},
+        // Presence that reached the relay; the next message starts after it. A message holds
+        // at most one bounded chunk, so while samples remain unsent (a newcomer being filled
+        // in) the next chunk goes out now, rather than waiting for the pen to move.
+        awarenessSent:state=>{const stroke=state?.stroke;if(!stroke||stroke.id!==active?.id)return;
+            delivered={id:stroke.id,count:Math.max(delivered.id===stroke.id?delivered.count:0,stroke.base+stroke.points.length)};
+            if(delivered.count<active.points.length&&provider.canWrite)provider.awareness.setLocalStateField('stroke',heldPresence());},
         // Someone arriving mid-stroke has none of it yet.
         peerJoined:()=>{delivered={id:null,count:0};if(active&&provider.canWrite)provider.awareness.setLocalStateField('stroke',heldPresence());},
         writable:value=>{bridge.invokeMethodAsync('Writable',value&&!closing);if(!value){finishStroke();if(selected?.pointer!==undefined)up({pointerId:selected.pointer,type:'pointerup'},true);selected=null;marquee=null;viewport.querySelector('textarea')?.blur();requestDraw();}},
