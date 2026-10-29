@@ -2,9 +2,12 @@ name: CI
 
 on:
   push:
-    # Stable server and desktop versions are independent. preview-v* runs both
-    # workflows from one branch commit without moving stable channels.
-    tags: ["server-v*", "preview-v*"]
+    # One release series for the whole train. A `v*` tag runs this workflow and
+    # Desktop Release from the same commit, and both attach to the one GitHub
+    # release for that tag — so a train that moved the server and the app does
+    # not bury one behind the other, and exactly one release holds "latest".
+    # `preview-v*` is the same thing published as a prerelease.
+    tags: ["v*", "preview-v*"]
   pull_request:
     branches: [main]
 
@@ -15,7 +18,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/hunterahlquist/solo
-  TAG_PREFIX: server-v
+  TAG_PREFIX: v
 
 jobs:
   # Decide what this tag actually releases. The server image and the extension
@@ -26,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       server: ${{ steps.diff.outputs.server }}
+      previous: ${{ steps.diff.outputs.previous }}
       version: ${{ steps.channel.outputs.version }}
       prerelease: ${{ steps.channel.outputs.prerelease }}
       preview_channel: ${{ steps.channel.outputs.preview_channel }}
@@ -43,7 +47,7 @@ jobs:
       - name: Classify the release channel
         id: channel
         if: github.event_name == 'push'
-        run: bash build/release-channel.sh server "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+        run: bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       # Stable tags must have landed on main; prereleases can test an unmerged branch.
       - name: Verify tagged commit is on main
@@ -56,12 +60,22 @@ jobs:
             exit 1
           fi
 
-      - name: Diff against the previous server release
+      - name: Diff against the previous release
         id: diff
         env:
           IS_PRERELEASE: ${{ steps.channel.outputs.prerelease }}
         run: |
           set -euo pipefail
+
+          # Nearest earlier stable tag in this series that HEAD descends from.
+          # The --exclude keeps the tag being pushed from matching itself; when a
+          # second tag sits on the same commit the diff is correctly empty.
+          # Resolved before the short-circuits below because the release job
+          # needs it whatever this one decides: it is where an unchanged
+          # component's manifest entry is carried forward from.
+          PREVIOUS=$(git describe --tags --abbrev=0 --match "${TAG_PREFIX}*" \
+            --exclude "${GITHUB_REF_NAME}" --exclude "${TAG_PREFIX}*-*" HEAD 2>/dev/null || true)
+          echo "previous=${PREVIOUS}" >> "$GITHUB_OUTPUT"
 
           if [ "${GITHUB_EVENT_NAME}" != "push" ] || [ "$IS_PRERELEASE" = "true" ]; then
             echo "server=true" >> "$GITHUB_OUTPUT"
@@ -122,12 +136,10 @@ jobs:
             ":(exclude)extensions/DesignDocs/Solo.DesignDocs.Client/README.md"
           )
 
-          # Nearest earlier tag in this series that HEAD descends from. The
-          # --exclude keeps the tag being pushed from matching itself; when a
-          # second tag sits on the same commit the diff is correctly empty.
-          PREVIOUS=$(git describe --tags --abbrev=0 --match "${TAG_PREFIX}*" \
-            --exclude "${GITHUB_REF_NAME}" --exclude "${TAG_PREFIX}*-*" HEAD 2>/dev/null || true)
-
+          # The first release of this unified series has no earlier `v*` tag to
+          # measure against, so it builds and attaches everything. That is also
+          # what establishes the complete manifest every later release carries
+          # its unchanged components forward from.
           if [ -z "${PREVIOUS}" ]; then
             echo "No earlier ${TAG_PREFIX}* tag in this history — building."
             echo "server=true" >> "$GITHUB_OUTPUT"
@@ -191,11 +203,14 @@ jobs:
         with:
           node-version: 24
 
-      - name: Check browser input and offline caching
-        run: node --test build/test-tooltip-input.mjs build/test-offline-cache.mjs
+      - name: Check browser input, offline caching and release assembly
+        run: node --test build/test-tooltip-input.mjs build/test-offline-cache.mjs build/test-release-artifacts.mjs
 
-      - name: Check release channels
-        run: bash build/test-release-channel.sh
+      - name: Check release channels, manifest baselines and release gating
+        run: |
+          bash build/test-release-channel.sh
+          bash build/test-release-baseline.sh
+          bash build/test-release-gating.sh
 
       - name: Restore
         run: dotnet restore Solo.slnx
@@ -301,7 +316,7 @@ jobs:
     name: Publish image to GHCR
     needs: [changes, build-test]
     # PR builds just validate. An extension-only tag must not move the server tags.
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/server-v') || startsWith(github.ref, 'refs/tags/preview-v')) && needs.changes.outputs.server == 'true'
+    if: github.event_name == 'push' && needs.changes.outputs.version != '' && needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -329,11 +344,11 @@ jobs:
             type=raw,value=latest,enable=${{ needs.changes.outputs.prerelease != 'true' }}
             type=raw,value=${{ needs.changes.outputs.preview_channel }},enable=${{ needs.changes.outputs.prerelease == 'true' }}
             type=raw,value=${{ needs.changes.outputs.version }}
-            type=match,pattern=server-v(\d+\.\d+)\.\d+$,group=1
+            type=match,pattern=^v(\d+\.\d+)\.\d+$,group=1
             type=sha,prefix=sha-
 
       # The version the image tags carry, for the app itself to report
-      # (Dockerfile SOLO_VERSION): `server-v1.6.0-rc1` → `1.6.0-rc1`.
+      # (Dockerfile SOLO_VERSION): `v1.18.0-rc.1` → `1.18.0-rc.1`.
       - name: Release version
         id: version
         env:
@@ -354,28 +369,40 @@ jobs:
           cache-to: type=gha,mode=max
 
   release:
+    # Both this workflow and Desktop Release write the one GitHub release for
+    # this tag, and both merge into the one release-manifest.json on it. A
+    # concurrency group is repository-wide, so naming the same one in both
+    # serialises them and neither loses the other's merge.
     concurrency:
       group: github-release-${{ github.ref }}
       cancel-in-progress: false
-    name: Publish changed release artifacts
+    name: Publish the changed release artifacts
     needs: [changes, build-test, publish-image]
-    # `always()` lets an extension-only release proceed past the intentionally
-    # skipped image job. A changed server must have published successfully
-    # before its GitHub release is created.
+    # `always()` lets this proceed past the intentionally skipped image job, and
+    # lets a train that changed nothing on the server still publish the release
+    # and carry its manifest forward. A changed server must have published to
+    # GHCR successfully before its release is created.
     if: >-
       always() &&
       github.event_name == 'push' &&
-      (startsWith(github.ref, 'refs/tags/server-v') || startsWith(github.ref, 'refs/tags/preview-v')) &&
-      needs.build-test.result == 'success' &&
-      (needs.changes.outputs.server == 'true' ||
-       needs.changes.outputs.mcp == 'true' ||
-       needs.changes.outputs.roadmap == 'true' ||
-       needs.changes.outputs.design_docs == 'true') &&
+      needs.changes.outputs.version != '' &&
+      (needs.build-test.result == 'success' || needs.build-test.result == 'skipped') &&
       (needs.changes.outputs.server != 'true' || needs.publish-image.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      PREVIOUS: ${{ needs.changes.outputs.previous }}
+      GH_TOKEN: ${{ github.token }}
     steps:
+      # For build/release-manifest.mjs and the contract version it records.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.changes.outputs.mcp == 'true'
         with:
@@ -404,25 +431,61 @@ jobs:
             mv "$package" "${package%.zip}-$PACKAGE_LABEL.zip"
           done
 
-      # A changed server still gets release notes when no extension changed;
-      # an already-published package is not attached again.
-      - name: Create release without unchanged extension packages
-        if: needs.changes.outputs.mcp != 'true' && needs.changes.outputs.roadmap != 'true' && needs.changes.outputs.design_docs != 'true'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          generate_release_notes: true
-          prerelease: ${{ needs.changes.outputs.prerelease == 'true' }}
-          make_latest: ${{ needs.changes.outputs.prerelease == 'true' && 'false' || 'legacy' }}
+      # What this release's manifest starts from. An extension, the server or
+      # the desktop app that this train did not rebuild keeps the entry it
+      # already had — version, release tag and download URL — so the newest
+      # release's manifest always describes the whole product even though its
+      # own assets are only the parts that changed.
+      - name: Resolve the baseline manifest
+        id: baseline
+        run: |
+          set -euo pipefail
+          path=$(bash build/release-baseline.sh "$TAG" "$PREVIOUS" baseline)
+          echo "path=${path}" >> "$GITHUB_OUTPUT"
 
-      # Creates the release for the tag if it doesn't exist yet; otherwise
-      # attaches the changed packages — only those were downloaded above. The
-      # image is published separately to GHCR; these assets are what an
-      # operator installs by hand.
-      - name: Create release and attach the changed extension packages
-        if: needs.changes.outputs.mcp == 'true' || needs.changes.outputs.roadmap == 'true' || needs.changes.outputs.design_docs == 'true'
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      # The server half. `contract` is the version soloApiVersion is checked
+      # against (ContractVersion.Current), so an extension updater can tell
+      # whether a newer package would load on this server at all.
+      - name: Describe the server
+        if: needs.changes.outputs.server == 'true'
+        env:
+          VERSION: ${{ needs.changes.outputs.version }}
+        run: |
+          set -euo pipefail
+          contract=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' build/contract-package.props | head -1)
+          node -e '
+            const [version, tag, image, contract] = process.argv.slice(1);
+            process.stdout.write(JSON.stringify({ server: {
+              version, release: tag, image: `${image}:${version}`, contract,
+            } }));
+          ' "$VERSION" "$TAG" "$IMAGE" "$contract" > server.json
+          cat server.json
+
+      - name: Assemble the release manifest
+        env:
+          VERSION: ${{ needs.changes.outputs.version }}
+          PRERELEASE: ${{ needs.changes.outputs.prerelease }}
+          BASELINE: ${{ steps.baseline.outputs.path }}
+        run: |
+          set -euo pipefail
+          args=(--out release-manifest.json --tag "$TAG" --version "$VERSION" --prerelease "$PRERELEASE"
+                --packages artifacts
+                --base "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${TAG}/")
+          if [ -n "$BASELINE" ]; then args+=(--baseline "$BASELINE"); fi
+          if [ -f server.json ]; then args+=(--fragment server.json); fi
+          node build/release-manifest.mjs "${args[@]}"
+
+      # Creates the release for the tag if it doesn't exist yet; otherwise adds
+      # to the one Desktop Release created. Only the extension packages that
+      # changed were downloaded above, so only those are attached — the rest
+      # stay on the release that built them, which the manifest still points at.
+      # The image went to GHCR; these assets are what an operator installs.
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          files: artifacts/solo-*.zip
+          files: |
+            release-manifest.json
+            artifacts/solo-*.zip
+          fail_on_unmatched_files: false
           generate_release_notes: true
           prerelease: ${{ needs.changes.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.changes.outputs.prerelease == 'true' && 'false' || 'legacy' }}

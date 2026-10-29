@@ -3,9 +3,9 @@ name: SDK Release
 on:
   push:
     # The extension SDK only: the two contract packages an extension compiles
-    # against, published to nuget.org. The container image and the desktop
-    # client have their own `server-v*` and `desktop-v*` series and workflows,
-    # and the contract versions independently of both.
+    # against, published to nuget.org. The container image, the desktop client
+    # and the extension packages are released together on a `v*` tag by ci.yml
+    # and release-desktop.yml; the contract versions independently of all three.
     #
     # `templates-v*` publishes the `dotnet new` template package instead. It is
     # a series of its own because a template can be fixed without the contract

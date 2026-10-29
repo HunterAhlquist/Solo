@@ -109,8 +109,9 @@ public sealed record SkippedExtension(string Id, string Reason);
 /// checked each package's <c>soloApiVersion</c> against its own contract, but
 /// that says nothing about the client: the Electron shell serves a
 /// <c>Solo.Client</c> bundled with the app and proxies <c>/api/*</c> to whatever
-/// instance is configured, and the two version independently (<c>server-v*</c>
-/// vs <c>desktop-v*</c>). So an assembly compiled against a newer contract than
+/// instance is configured. They are released together on one <c>v*</c> tag, but
+/// an installed shell only moves when its user updates it, so the two drift all
+/// the same. An assembly compiled against a newer contract than
 /// this build can arrive, and loading it would throw
 /// <c>MissingMethodException</c> at first render — on desktop only, for users
 /// who have not updated.</para>

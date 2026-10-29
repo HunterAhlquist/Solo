@@ -9,6 +9,12 @@ function identityForVersion(version) {
         appId: preview ? 'com.solo.desktop.preview' : 'com.solo.desktop',
         executableName: preview ? 'solo-preview' : 'solo-desktop',
         iconSource: preview ? 'Solo Preview.icon' : 'Solo.icon',
+        // The installer filenames. Deliberately free of spaces and brackets:
+        // GitHub rewrites a space in a release asset's name to a dot, so
+        // `Solo (Preview) Setup 1.18.0.exe` arrives as
+        // `Solo.Preview..Setup.1.18.0.exe` and the updater feed would have to
+        // learn its own asset names back from the API after uploading them.
+        artifactBase: preview ? 'Solo-Preview' : 'Solo',
     };
 }
 

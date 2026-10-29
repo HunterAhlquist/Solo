@@ -280,7 +280,7 @@ Produces `artifacts/solo-roadmap-<version>.zip`, containing `extension.json`,
 The script refuses to run if the manifest and either csproj disagree about the
 version; bump all three together.
 
-CI builds this package on every pull request. For a `server-v*` tag, it attaches
+CI builds this package on every pull request. For a `v*` tag, it attaches
 the package to the GitHub release only when the Roadmaps sources, shared
 contracts, or packaging script changed since the previous server release.
 

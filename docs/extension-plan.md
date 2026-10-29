@@ -365,11 +365,11 @@ Works unchanged, no shell code required:
 - `serveStatic` falls back to `index.html` for any non-file path, so an extension route (`/roadmap/ACME`) boots the client and the router resolves it. Deep links work.
 - The desktop bundle is produced by the same `dotnet publish Solo.Client`, so the `PublishTrimmed` decision above applies to it automatically.
 
-**What breaks is version skew.** The image and the desktop client version independently (`server-v*` vs `desktop-v*`), so an extension page in the shell composes two separately-updated halves:
+**What breaks is version skew.** The image and the desktop client are released together on one `v*` tag, but each is rebuilt only when its own inputs changed and an installed app updates whenever its user lets it — so an extension page in the shell still composes two separately-updated halves:
 
 | Half | Comes from | Versioned by |
 |---|---|---|
-| Host client — `Solo.Client`, MudBlazor, `Solo.Shared`, the contract's client half | the shell's own bundle | `desktop-v*`, i.e. whenever the user last updated the app |
+| Host client — `Solo.Client`, MudBlazor, `Solo.Shared`, the contract's client half | the shell's own bundle | whenever the user last updated the app |
 | The extension's client assembly | the instance, over the proxy | the extension package on the server |
 
 On web these are always one build. In the shell they are not, and an RCL compiled against a newer contract than the installed shell bundles fails at `Assembly.Load` or first render — on desktop only, only for users who haven't updated. This is the [stale-build gotcha](../src/Solo.Desktop/README.md) generalised, and it is why the client check below is not optional.

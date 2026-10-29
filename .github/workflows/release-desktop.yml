@@ -2,9 +2,11 @@ name: Desktop Release
 
 on:
   push:
-    # Stable desktop versions are independent; preview-v* also builds a server
-    # and extension train from this same commit in ci.yml.
-    tags: ["desktop-v*", "preview-v*"]
+    # One release series for the whole train: a `v*` tag runs ci.yml for the
+    # server and the extension packages and this workflow for the installers,
+    # and both attach to the one GitHub release for the tag. `preview-v*` is
+    # the same train as a prerelease.
+    tags: ["v*", "preview-v*"]
   # Manual runs build the installers as workflow artifacts without touching
   # a release — useful for testing the packaging on a branch.
   workflow_dispatch:
@@ -15,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  TAG_PREFIX: desktop-v
+  TAG_PREFIX: v
 
 jobs:
   # Gate for the whole run. A tag that changes nothing the installers are built
@@ -26,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.diff.outputs.build }}
+      previous: ${{ steps.diff.outputs.previous }}
       version: ${{ steps.channel.outputs.version }}
       prerelease: ${{ steps.channel.outputs.prerelease }}
     steps:
@@ -38,7 +41,7 @@ jobs:
       - name: Classify the release channel
         id: channel
         if: github.event_name == 'push'
-        run: bash build/release-channel.sh desktop "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+        run: bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       # Stable tags must have landed on main; prereleases can test an unmerged branch.
       - name: Verify tagged commit is on main
@@ -51,12 +54,22 @@ jobs:
             exit 1
           fi
 
-      - name: Diff against the previous desktop release
+      - name: Diff against the previous release
         id: diff
         env:
           IS_PRERELEASE: ${{ steps.channel.outputs.prerelease }}
         run: |
           set -euo pipefail
+
+          # Nearest earlier stable tag in this series that HEAD descends from.
+          # The --exclude keeps the tag being pushed from matching itself; when a
+          # second tag sits on the same commit the diff is correctly empty.
+          # Resolved before the short-circuits below because the release job
+          # needs it either way: it is where the updater feed and the desktop's
+          # manifest entry are carried forward from when nothing was rebuilt.
+          PREVIOUS=$(git describe --tags --abbrev=0 --match "${TAG_PREFIX}*" \
+            --exclude "${GITHUB_REF_NAME}" --exclude "${TAG_PREFIX}*-*" HEAD 2>/dev/null || true)
+          echo "previous=${PREVIOUS}" >> "$GITHUB_OUTPUT"
 
           if [ "${GITHUB_EVENT_NAME}" != "push" ] || [ "$IS_PRERELEASE" = "true" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"
@@ -75,12 +88,6 @@ jobs:
             Icons
             .github/workflows/release-desktop.yml
           )
-
-          # Nearest earlier tag in this series that HEAD descends from. The
-          # --exclude keeps the tag being pushed from matching itself; when a
-          # second tag sits on the same commit the diff is correctly empty.
-          PREVIOUS=$(git describe --tags --abbrev=0 --match "${TAG_PREFIX}*" \
-            --exclude "${GITHUB_REF_NAME}" --exclude "${TAG_PREFIX}*-*" HEAD 2>/dev/null || true)
 
           if [ -z "${PREVIOUS}" ]; then
             echo "No earlier ${TAG_PREFIX}* tag in this history — building."
@@ -347,31 +354,188 @@ jobs:
             src/Solo.Desktop/dist/*.dmg
             src/Solo.Desktop/dist/*.exe
             src/Solo.Desktop/dist/*.AppImage
+            src/Solo.Desktop/dist/*.zip
+            src/Solo.Desktop/dist/*.blockmap
           if-no-files-found: error
 
   release:
+    # ci.yml names the same group, so the two workflows never write this tag's
+    # release — or merge into its manifest — at the same time.
     concurrency:
       group: github-release-${{ github.ref }}
       cancel-in-progress: false
-    name: Attach to GitHub release
+    name: Attach to the GitHub release
     needs: [changes, build]
-    if: github.event_name == 'push'
+    # Runs on every tag push, including one whose installers were deliberately
+    # not rebuilt. electron-updater refuses to look past the newest release, so
+    # that release has to carry a channel file whether or not this train built
+    # one — otherwise an app checking for updates gets a 404 until the next
+    # desktop change. A failed build carries the last good feed forward for the
+    # same reason; the run still reports the failure.
+    if: always() && github.event_name == 'push' && needs.changes.outputs.version != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
       # For the artifact sweep below.
       actions: write
+    env:
+      TAG: ${{ github.ref_name }}
+      PREVIOUS: ${{ needs.changes.outputs.previous }}
+      GH_TOKEN: ${{ github.token }}
     steps:
+      # For build/updater-feed.mjs and build/release-manifest.mjs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.build.result == 'success'
         with:
           path: artifacts
           merge-multiple: true
 
-      # Creates the release for the tag if it doesn't exist yet; otherwise
-      # attaches the installers to the existing one.
+      # The channel files electron-updater reads, pointing at the installers
+      # this run is about to attach. Their URLs are absolute, which is why the
+      # app is configured with the `generic` provider: the GitHub provider
+      # rebuilds every URL from the tag it found the feed on, and this train
+      # deliberately leaves installers in the release that built them.
+      - name: Write the updater feed
+        id: written
+        if: needs.build.result == 'success'
+        # Reported as a failure by the last step in this job, not here: the
+        # steps in between are what keep this release's update checks working,
+        # and they have to run before the job gives up.
+        continue-on-error: true
+        env:
+          VERSION: ${{ needs.changes.outputs.version }}
+        run: |
+          node build/updater-feed.mjs --dist artifacts --out artifacts \
+            --version "$VERSION" --tag "$TAG" \
+            --base "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${TAG}/"
+
+      # The manifest already on this release if ci.yml got here first, else the
+      # previous release's. A component this train did not rebuild keeps its
+      # entry, so the newest release's manifest still describes all of it.
+      # `!cancelled()` rather than the default gating: if the feed above failed,
+      # the steps that keep this release usable still have to run, and the job
+      # still reports the failure at the end.
+      - name: Resolve the baseline manifest
+        id: baseline
+        run: |
+          set -euo pipefail
+          path=$(bash build/release-baseline.sh "$TAG" "$PREVIOUS" baseline)
+          echo "path=${path}" >> "$GITHUB_OUTPUT"
+
+      # The invariant this whole design rests on: the newest release always
+      # carries a channel file. electron-updater reads only the newest release
+      # and treats a missing one as an error, not as "no update", so a release
+      # without it breaks every installed app's update check until the next
+      # desktop build.
+      #
+      # Keyed on whether a feed is actually present rather than on the build
+      # job's result, because there are two ways to arrive here without one: the
+      # installers were deliberately not rebuilt, or building the feed failed.
+      # Gating on the build job would cover only the first and leave the second
+      # publishing a release with no feed at all.
+      #
+      # Carrying it forward is a copy of three small files: every URL in them is
+      # absolute and already points at the release holding the matching
+      # installers, so no installer is uploaded twice.
+      - name: Ensure the release carries an updater feed
+        env:
+          BASELINE: ${{ steps.baseline.outputs.path }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          shopt -s nullglob
+
+          fresh=(artifacts/latest*.yml)
+          if [ ${#fresh[@]} -gt 0 ]; then
+            echo "Built in this release: ${fresh[*]}"
+            exit 0
+          fi
+
+          # Anything built but not described by a feed this run produced is
+          # undescribed by the manifest too, and a release must not offer an
+          # installer nothing vouches for. Reachable only when the feed write
+          # itself failed; a train that simply skipped the build has none.
+          undescribed=(artifacts/*.dmg artifacts/*.zip artifacts/*.exe artifacts/*.AppImage artifacts/*.blockmap)
+          if [ ${#undescribed[@]} -gt 0 ]; then
+            echo "::warning::Discarding installers no updater feed describes: ${undescribed[*]}"
+            rm -f "${undescribed[@]}"
+          fi
+
+          if [ -n "$PREVIOUS" ] && gh release download "$PREVIOUS" -p 'latest*.yml' -D artifacts 2>/dev/null; then
+            echo "Carried forward from $PREVIOUS:"
+            for feed in artifacts/latest*.yml; do
+              echo "--- $feed"
+              cat "$feed"
+            done
+            exit 0
+          fi
+
+          # Nothing to carry forward. Fatal once a desktop app has been
+          # released, because its installs are reading this file; before the
+          # first one there is nothing out there to break. The baseline is
+          # trustworthy here: release-baseline.sh refuses to report an
+          # unreadable release as an absent one, and a failure there stops this
+          # job before it reaches this point.
+          if [ -n "$BASELINE" ] && [ -f "$BASELINE" ] && \
+             node -e 'process.exit(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).desktop ? 0 : 1)' "$BASELINE"; then
+            echo "::error::This release has no updater feed, and ${PREVIOUS:-no previous release} has none to carry forward," \
+                 "while a desktop app whose update checks read it has already shipped." \
+                 "Refusing to publish a release that breaks them — re-run the desktop build."
+            exit 1
+          fi
+          echo "::warning::No updater feed on this release and no earlier desktop release to carry one forward from."
+
+      # The client bundled in the installers is what soloClientVersion is
+      # checked against, so the contract version rides along with the desktop
+      # entry: an extension updater can tell whether a newer package's pages
+      # would load in this build of the app. Conditional on the fragment rather
+      # than on the build job, which is the actual precondition.
+      - name: Describe the desktop
+        run: |
+          set -euo pipefail
+          if [ ! -f artifacts/desktop-manifest.json ]; then
+            echo "No desktop entry to record: no installers were built into this release."
+            exit 0
+          fi
+          contract=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' build/contract-package.props | head -1)
+          node -e '
+            const fs = require("fs");
+            const fragment = JSON.parse(fs.readFileSync("artifacts/desktop-manifest.json", "utf8"));
+            fragment.desktop.contract = process.argv[1];
+            fs.writeFileSync("desktop.json", JSON.stringify(fragment, null, 2));
+          ' "$contract"
+          cat desktop.json
+          # Not a release asset: the manifest carries this.
+          rm artifacts/desktop-manifest.json
+
+      - name: Assemble the release manifest
+        env:
+          VERSION: ${{ needs.changes.outputs.version }}
+          PRERELEASE: ${{ needs.changes.outputs.prerelease }}
+          BASELINE: ${{ steps.baseline.outputs.path }}
+        run: |
+          set -euo pipefail
+          args=(--out release-manifest.json --tag "$TAG" --version "$VERSION" --prerelease "$PRERELEASE")
+          if [ -n "$BASELINE" ]; then args+=(--baseline "$BASELINE"); fi
+          if [ -f desktop.json ]; then args+=(--fragment desktop.json); fi
+          node build/release-manifest.mjs "${args[@]}"
+
+      # Creates the release for the tag if it doesn't exist yet; otherwise adds
+      # to the one ci.yml created.
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          files: artifacts/*
+          files: |
+            release-manifest.json
+            artifacts/*
+          # A build that failed with no earlier feed to carry forward leaves
+          # artifacts/ empty; the manifest still has to reach the release.
+          fail_on_unmatched_files: false
           generate_release_notes: true
           prerelease: ${{ needs.changes.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.changes.outputs.prerelease == 'true' && 'false' || 'legacy' }}
@@ -383,8 +547,7 @@ jobs:
       # `if: always()` — a failed upload must leave the artifacts behind, or
       # the build would have to be re-run to recover them.
       - name: Drop the hand-off artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
+        if: needs.build.result == 'success' && steps.written.outcome == 'success'
         run: |
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
             --jq '.artifacts[] | select(.name | startswith("desktop-")) | "\(.id)\t\(.name)"' |
@@ -392,3 +555,15 @@ jobs:
             echo "Deleting $name ($id)"
             gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/$id"
           done
+
+      # The failure deferred above, once the release is consistent again: it
+      # carries the previous feed and a manifest that matches it, and the
+      # installers this run could not describe were discarded. Last in the job
+      # so everything that keeps the release usable has already run.
+      - name: Report a failed updater feed
+        if: always() && steps.written.outcome == 'failure'
+        run: |
+          echo "::error::Building this release's updater feed failed. The release kept the previous" \
+               "feed, so installed apps still resolve to the last good installers, and this release's" \
+               "own installers were not attached. Fix the cause and re-run."
+          exit 1

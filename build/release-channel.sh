@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
-# One classification for image tags, branch guards, installer versions and GitHub releases.
+# One classification for image tags, branch guards, installer versions, the
+# desktop updater feed and the GitHub release.
+#
+# There is one release series. A `v<version>` tag releases the whole train —
+# server image, desktop installers, extension packages — as a single GitHub
+# release, so exactly one release per train can hold "latest" and nothing gets
+# buried behind a sibling. `preview-v<version>` is the same train published as a
+# prerelease, which leaves every stable channel where it is.
+#
+# The per-component `server-v*` and `desktop-v*` series are retired and are
+# rejected here: they are what produced two releases for one commit.
 set -euo pipefail
 
-series=${1:?Usage: release-channel.sh server|desktop tag}
-tag=${2:?Usage: release-channel.sh server|desktop tag}
-case "$series" in server|desktop) ;; *) echo "Unknown release series: $series" >&2; exit 1 ;; esac
+tag=${1:?Usage: release-channel.sh <tag>}
 case "$tag" in
     preview-v*) version=${tag#preview-v}; preview=true ;;
-    "$series-v"*) version=${tag#"$series-v"}; preview=false ;;
-    *) echo "Expected ${series}-v<version> or preview-v<version>." >&2; exit 1 ;;
+    v*)         version=${tag#v};         preview=false ;;
+    *) echo "Expected v<version> or preview-v<version>." >&2; exit 1 ;;
 esac
 
 # Build metadata is not used in Docker tags. Each preview uses a distinct
@@ -28,7 +36,7 @@ if [[ "$version" == *-* ]]; then
     done
 fi
 if [ "$preview" = true ] && [ "$prerelease" != true ]; then
-    echo "Preview tags require a prerelease suffix, for example preview-v1.10.0-design-docs.1." >&2; exit 1
+    echo "Preview tags require a prerelease suffix, for example preview-v1.18.0-design-docs.1." >&2; exit 1
 fi
 preview_channel=preview
 package_label=

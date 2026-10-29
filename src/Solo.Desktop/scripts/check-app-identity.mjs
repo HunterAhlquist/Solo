@@ -64,5 +64,37 @@ for (const [version, preview] of [['1.17.0', false], ['1.17.0-design-docs-codex.
         assert.equal(config.win.icon, 'build/icon-preview.png');
         assert.equal(config.linux.icon, 'build/icon-preview.png');
     }
+
+    // GitHub rewrites a space in a release asset's name to a dot, so an
+    // installer named with one arrives under a name the updater feed never
+    // wrote down. Every name is fixed here rather than left to a default
+    // derived from productName, which does contain spaces on the preview
+    // channel.
+    const base = preview ? 'Solo-Preview' : 'Solo';
+    for (const [target, name] of [['mac', config.mac.artifactName], ['nsis', config.nsis.artifactName],
+        ['linux', config.linux.artifactName]]) {
+        assert.ok(name, `${target}: no artifactName`);
+        assert.doesNotMatch(name.replace(/\$\{\w+\}/g, 'x'), /[\s()]/, `${target}: ${name}`);
+        assert.ok(name.startsWith(`${base}-`), `${target}: ${name} should start with ${base}-`);
+    }
+
+    // Squirrel.Mac installs an update from a zip; a .dmg cannot be an update
+    // payload, so dropping the zip target would leave macOS unable to update.
+    assert.deepEqual(config.mac.target.map(t => t.target).sort(), ['dmg', 'zip']);
+
+    // Baked into the package as app-update.yml at packaging time, so it has to
+    // be right in every build, not just once an updater reads it.
+    if (preview) {
+        assert.equal(config.publish, null, 'a preview must not read the stable feed');
+    } else {
+        // Compared as JSON: the config is evaluated in its own vm context, so
+        // its objects do not share this realm's Object prototype.
+        assert.equal(JSON.stringify(config.publish), JSON.stringify([{
+            provider: 'generic',
+            url: 'https://github.com/hunterahlquist/Solo/releases/latest/download/',
+            channel: 'latest',
+            useMultipleRangeRequest: false,
+        }]));
+    }
 }
-console.log('PASS: installer product names, app identifiers and platform icons follow the release channel.');
+console.log('PASS: installer names, product names, app identifiers, platform icons and the update feed follow the release channel.');

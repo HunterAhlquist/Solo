@@ -10,7 +10,7 @@ The desktop app is a window around the Solo web client. It connects to a Solo in
 ## Install
 
 1. Open the [releases page](https://github.com/HunterAhlquist/Solo/releases) of the repository.
-2. Find the newest release with a name that starts with `desktop-v`.
+2. Find the newest release with a name that starts with `v`.
 3. Download the installer for your system:
 
 | System | File |

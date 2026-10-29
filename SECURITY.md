@@ -22,8 +22,8 @@ before you disclose anything publicly.
 
 Security fixes go into the latest release only:
 
-- the server image (`server-v*` releases)
-- the desktop app (`desktop-v*` releases)
+- the server image (`v*` releases)
+- the desktop app (`v*` releases)
 - the bundled extensions (MCP server, Roadmaps), which are released alongside
   the server
 

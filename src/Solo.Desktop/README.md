@@ -298,12 +298,20 @@ reports the pinned version as *ahead* of latest and a bare
 `^26.18.0` so the range itself refuses an older build; `npm ci` follows the
 lockfile either way.
 
-CI does this automatically: pushing a `desktop-v*` tag runs
+CI does this automatically: pushing a `v<version>` tag runs
 [release-desktop.yml](../../.github/workflows/release-desktop.yml), which
 packages macOS (Apple silicon), Windows, and Linux installers and attaches them
-to the GitHub release for the tag. Builds are unsigned unless the Apple
-signing/notarization secrets are configured; a manual `workflow_dispatch` run
-uploads the installers as workflow artifacts without creating a release.
+to that tag's GitHub release, alongside the server image's and the extension
+packages' own artifacts from `ci.yml`. The macOS build produces a `.zip` beside
+the `.dmg` because an update installs from the zip — Squirrel.Mac cannot use a
+disk image. Builds are unsigned unless the Apple signing/notarization secrets
+are configured; a manual `workflow_dispatch` run uploads the installers as
+workflow artifacts without creating a release.
+
+The installers are named explicitly in `electron-builder.config.cjs` rather than
+from `productName`, and carry a `generic` electron-updater feed rather than the
+`github` provider. Both are load-bearing; [docs/releases.md](../../docs/releases.md)
+explains why.
 
 Notarization is a step of its own in that workflow, not electron-builder's
 (`mac.notarize` is `false`), so a local `npm run dist` signs but doesn't

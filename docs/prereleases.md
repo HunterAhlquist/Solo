@@ -1,8 +1,9 @@
 # Preview builds
 
 A `preview-v<version>` tag builds the server, extension packages, and desktop installers from one commit.
+It is the stable `v<version>` train published as a prerelease — see [releases.md](releases.md).
 Preview commits can remain on an unmerged branch.
-Stable `server-v…` and `desktop-v…` tags require a commit on `main`.
+A stable `v…` tag requires a commit on `main`.
 
 ## Publish a preview
 
