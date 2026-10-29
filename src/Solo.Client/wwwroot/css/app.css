@@ -148,17 +148,30 @@ code {
 .grid-inset { padding-top: 24px; }
 
 /* ---------------------------------------------------------------------------
-   Add tile — square dashed affordance closing a card grid. height:100% picks
-   up the row height from the sibling cards; aspect-ratio keeps it square. The
-   min-height covers a row it has to itself (matches the card skeletons).
+   Add tile — square dashed affordance closing a card grid. The cell takes the
+   row height from the sibling cards and the column width from the grid; the
+   square is the smaller of the two, so a wide-but-short row and a tall-but-
+   narrow one both keep it inside the cell. Sizing on height alone let it spill
+   past the column whenever the cards were taller than they were wide.
+
+   The cell is a size container so the tile can measure it (cqw/cqh); a size
+   container ignores its content, so the min-height covers a row the tile has
+   to itself (matches the card skeletons).
    --------------------------------------------------------------------------- */
+.add-card-cell {
+    container-type: size;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    min-height: 96px;
+}
+
 .add-card {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
+    width: min(100cqw, 100cqh);
     aspect-ratio: 1 / 1;
-    min-height: 96px;
     padding: 0;
     cursor: pointer;
     border: 1px dashed var(--mud-palette-lines-default);
