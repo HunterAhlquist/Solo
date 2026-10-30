@@ -27,6 +27,12 @@ else if (_settings is null)
 }
 else
 {
+    @* First, because it answers the question an operator opens this page with.
+       It owns the check; the Extensions panel below reads the same answer
+       through StatusChanged so a forced re-check cannot leave the two
+       disagreeing. *@
+    <UpdatePanel StatusChanged="OnUpdateStatus" />
+
     <MudPaper Elevation="1" Class="pa-4 mb-4">
         <MudText Typo="Typo.h4" Class="mb-1">Branding</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
@@ -356,19 +362,22 @@ else
             return;
         }
 
-        // Separate from the load above, and after it, because it is the only
-        // thing on this page that depends on reaching a third party. Folding it
-        // into that try block would let an unreachable feed — or an instance
-        // with no outbound access at all — replace the whole settings page with
-        // an error, which is a far worse failure than not knowing about an
-        // update. The panel reads _updates being null as "nothing to report".
-        try
-        {
-            _updates = await Api.GetUpdatesAsync();
-        }
-        catch (ApiException)
-        {
-        }
+    }
+
+    /// <summary>
+    /// The update check lives in <see cref="UpdatePanel"/>, which fetches it
+    /// once on load and again whenever the operator forces a check.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not fetched by this page as well. It is the only thing here
+    /// that depends on reaching a third party, and an unreachable feed — or an
+    /// instance with no outbound access at all — must not be able to replace the
+    /// settings page with an error. A null status reads as "nothing to report".
+    /// </remarks>
+    private void OnUpdateStatus(UpdateStatusDto status)
+    {
+        _updates = status;
+        StateHasChanged();
     }
 
     private async Task SelectThemeAsync(string themeId)

@@ -112,6 +112,13 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
     // -- Updates ------------------------------------------------------------
 
     /// <summary>
+    /// What this instance is running. Anonymous and independent of any feed, so
+    /// the version is known even when an update check cannot be made.
+    /// </summary>
+    public Task<InstanceVersionDto> GetInstanceVersionAsync(CancellationToken ct = default) =>
+        GetAsync<InstanceVersionDto>("api/config/version", ct);
+
+    /// <summary>
     /// Server and extension updates, super admin only. Read from the API rather
     /// than from GitHub because the CSP allows no other origin — see
     /// <c>UpdatesController</c>.

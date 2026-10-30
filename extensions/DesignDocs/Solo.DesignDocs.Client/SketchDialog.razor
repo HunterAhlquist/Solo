@@ -24,9 +24,18 @@
                 <MudTooltip Text="Export PNG" Placement="Placement.Right"><MudIconButton Icon="@Icons.Material.Filled.Download" OnClick='@(()=>Command("export"))' aria-label="Export PNG" /></MudTooltip>
             </MudPaper>
             <MudPaper Class="design-docs-sketch-palette design-docs-sketch-ink-palette" Elevation="4" role="toolbar" aria-label="Ink and brush size">
-                <div class="design-docs-swatches">
+                <div class="design-docs-swatches" @onmousedown:preventDefault>
+                    @* mousedown's default action is what moves focus, so cancelling it keeps the
+                       caret in the text being edited. Without this a click here blurs the
+                       textarea first, and the sketch's blur handler tears the editor down
+                       before the click ever reaches Blazor — the format would no-op and an
+                       ink click would fall through to the pen. Chromium focuses buttons on
+                       click; Safari does not, which is why it only breaks in the app. *@
                     @foreach(var color in new[]{"theme","red","blue","green","purple"}) {
-                        <MudTooltip Text="@(color=="theme"?"Theme ink":color)"><MudIconButton Icon="@Icons.Material.Filled.Circle" Style="@($"color:var(--design-docs-ink-{color})")" Class="@(_ink==color?"is-selected":null)" Disabled="@(!_writable)" OnClick="@(()=>SetInk(color))" aria-label="@(color=="theme"?"Theme ink":color+" ink")" aria-pressed="@(_ink==color)" /></MudTooltip>
+                        @* While text is being edited this shows the selection's
+                           colour, not the pen's — and shows none at all when the
+                           selection is more than one colour. *@
+                        <MudTooltip Text="@(color=="theme"?"Theme ink":color)"><MudIconButton Icon="@Icons.Material.Filled.Circle" Style="@($"color:var(--design-docs-ink-{color})")" Class="@(SelectedInk==color?"is-selected":null)" Disabled="@(!_writable)" OnClick="@(()=>SetInk(color))" aria-label="@(color=="theme"?"Theme ink":color+" ink")" aria-pressed="@(SelectedInk==color)" /></MudTooltip>
                     }
                 </div>
                 <div class="design-docs-brushes">
@@ -36,6 +45,47 @@
                     }
                 </div>
             </MudPaper>
+            @* Only while a text box is open for editing: it acts on that box's
+               selection and has nothing to say otherwise. The sketch floats it
+               over the box being edited; colour still comes from the ink
+               palette, which doubles as this panel's swatches. *@
+            @if(_format is not null) {
+                <MudPaper Class="design-docs-sketch-palette design-docs-sketch-text-palette" Elevation="4" role="toolbar" aria-label="Text formatting">
+                    <div class="design-docs-text-styles" @onmousedown:preventDefault>
+                        @foreach(var style in TextStyles) {
+                            <MudTooltip Text="@style.Label">
+                                @* Three states, not two. A selection that is
+                                   partly bold reports null, and the button then
+                                   shows neither on nor off — pressing it makes
+                                   the whole selection bold. *@
+                                <MudIconButton Icon="@style.Icon"
+                                               Color="@(style.Active(_format)==true?Color.Primary:Color.Default)"
+                                               Class="@(style.Active(_format)==true?"is-selected":style.Active(_format)is null?"is-mixed":null)"
+                                               Disabled="@(!_writable)"
+                                               OnClick="@(()=>Command(style.Id))"
+                                               aria-label="@style.Label"
+                                               aria-pressed="@(style.Active(_format)==true)" />
+                            </MudTooltip>
+                        }
+                    </div>
+                    <MudDivider Vertical="true" FlexItem="true" />
+                    <div class="design-docs-text-sizes" @onmousedown:preventDefault>
+                        <MudTooltip Text="Smaller"><MudIconButton Icon="@Icons.Material.Filled.TextDecrease" Disabled="@(!_writable)" OnClick="@(()=>StepSize(-1))" aria-label="Smaller text" /></MudTooltip>
+                        @* The size of a mixed selection is unknown, so it reads
+                           as a dash rather than as one of the sizes in it. *@
+                        <MudText Typo="Typo.caption" Class="design-docs-text-size" aria-live="polite">@(_format.Size?.ToString()??"–")</MudText>
+                        <MudTooltip Text="Larger"><MudIconButton Icon="@Icons.Material.Filled.TextIncrease" Disabled="@(!_writable)" OnClick="@(()=>StepSize(1))" aria-label="Larger text" /></MudTooltip>
+                    </div>
+                    <MudDivider Vertical="true" FlexItem="true" />
+                    <div class="design-docs-text-actions" @onmousedown:preventDefault>
+                        @* The whole box, not the selection — there is no other
+                           way to remove an empty one, and the eraser only takes
+                           line work. Undo brings it back, so it does not ask. *@
+                        <MudTooltip Text="Delete text"><MudIconButton Icon="@Icons.Material.Filled.Delete" Disabled="@(!_writable)" OnClick='@(()=>Command("deleteText"))' aria-label="Delete text" /></MudTooltip>
+                    </div>
+                </MudPaper>
+            }
+
             <MudPaper Class="design-docs-sketch-palette design-docs-sketch-history-palette" Elevation="4" role="toolbar" aria-label="Sketch history">
                 <MudTooltip Text="Undo"><MudIconButton Icon="@Icons.Material.Filled.Undo" Disabled="@(!_writable)" OnClick='@(()=>Command("undo"))' aria-label="Undo" /></MudTooltip>
                 <MudTooltip Text="Redo"><MudIconButton Icon="@Icons.Material.Filled.Redo" Disabled="@(!_writable)" OnClick='@(()=>Command("redo"))' aria-label="Redo" /></MudTooltip>
@@ -76,7 +126,92 @@
     private static string BrushIcon(int level)=>$"<circle cx='12' cy='12' r='{new[]{1,2,3,5,8}[level]}' />";
     private Task Command(string action,object? value=null)=>_sketch is null?Task.CompletedTask:_sketch.InvokeVoidAsync("command",action,value).AsTask();
     private async Task SetTool(string value){_tool=value;await Command("tool",value);}
-    private async Task SetInk(string value){_ink=value;await Command("ink",value);}
+    // Two meanings, decided by whether a text box is open. Editing text, this
+    // paints the selection and leaves the pen's colour alone; otherwise it is
+    // the pen's colour, as before.
+    private async Task SetInk(string value){
+        if(_format is null)_ink=value;
+        await Command("ink",value);
+    }
+
+    // -- text formatting ----------------------------------------------------
+
+    /// <summary>
+    /// The formatting of the text selection, as the sketch reports it. Null when
+    /// no text box is open, which is what hides the panel.
+    /// </summary>
+    /// <remarks>
+    /// Each style is <c>true</c>, <c>false</c>, or <c>null</c> for a selection
+    /// that mixes them — the distinction the panel exists to show. A button for
+    /// a mixed value is drawn neither on nor off, and pressing it makes the
+    /// whole selection match.
+    /// </remarks>
+    private sealed record TextFormatState(bool? Bold,bool? Italic,bool? Underline,int? Size,string? Ink,bool Selected);
+
+    private TextFormatState? _format;
+
+    private static readonly (string Id,string Label,string Icon,Func<TextFormatState,bool?> Active)[] TextStyles=[
+        ("bold","Bold",Icons.Material.Filled.FormatBold,f=>f.Bold),
+        ("italic","Italic",Icons.Material.Filled.FormatItalic,f=>f.Italic),
+        ("underline","Underline",Icons.Material.Filled.FormatUnderlined,f=>f.Underline),
+    ];
+
+    /// <summary>
+    /// Which ink swatch is lit. The pen's colour when no text box is open;
+    /// otherwise the text's.
+    /// </summary>
+    /// <remarks>
+    /// Three cases while editing. A selection all one colour lights that colour.
+    /// A selection of several lights <em>none</em> — the palette would otherwise
+    /// have to pick one and claim the text is that colour. And with nothing
+    /// selected the last colour that was definite comes back, so clearing a
+    /// mixed selection restores the swatch rather than leaving the palette
+    /// blank.
+    /// </remarks>
+    private string? SelectedInk=>_format is null
+        ?_ink
+        :_format.Ink??(_format.Selected?null:_restoreInk);
+
+    // The last colour a selection or caret resolved to, for the blank case above.
+    private string _restoreInk="theme";
+
+    private static readonly System.Text.Json.JsonSerializerOptions FormatJson=new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    [JSInvokable]
+    public Task TextFormat(string state){
+        var next=string.IsNullOrEmpty(state)||state=="null"
+            ?null
+            :System.Text.Json.JsonSerializer.Deserialize<TextFormatState>(state,FormatJson);
+
+        // The pen's own colour needs no saving: SetInk leaves _ink alone while a
+        // text box is open, so it is still there when the editor closes.
+        // _restoreInk is the text's, and starts from the pen's.
+        if(_format is null&&next is not null)_restoreInk=_ink;
+
+        // Remember any colour the text actually resolved to, so a later mixed
+        // selection has something to fall back to when it is cleared.
+        if(next?.Ink is {} resolved)_restoreInk=resolved;
+
+        _format=next;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    // Steps through the sizes the renderer clamps to. A mixed selection has no
+    // size to step from, so it starts at the box default.
+    private static readonly int[] TextSizes=[8,10,12,14,16,20,24,28,32,40,48,64];
+
+    private async Task StepSize(int direction){
+        if(_format is null)return;
+        var current=_format.Size??16;
+        var index=Array.FindIndex(TextSizes,size=>size>=current);
+        if(index<0)index=TextSizes.Length-1;
+        // A size between two steps moves to the nearer one in that direction
+        // rather than skipping past it.
+        var next=direction>0
+            ?TextSizes[Math.Min(TextSizes.Length-1,TextSizes[index]>current?index:index+1)]
+            :TextSizes[Math.Max(0,TextSizes[index]<current?index:index-1)];
+        if(next!=current)await Command("textSize",next.ToString());
+    }
     private async Task SetLevel(int value){_level=value;await Command("level",value);}
     private async Task ToggleTouchDrawing(){_touchDrawing=!_touchDrawing;await Command("touchDrawing",_touchDrawing);}
     private async Task Constrain(){_constrain=!_constrain;await Command("constrain",_constrain);}

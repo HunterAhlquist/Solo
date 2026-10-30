@@ -1,0 +1,208 @@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+@*
+    What this instance is running and whether anything newer exists. First panel
+    on Admin settings because it answers the question an operator opens the page
+    with, and because the two things it reports — the server and the extensions
+    — are acted on in different places: the server by redeploying it, the
+    extensions further down.
+
+    The check behind it is cached for six hours on the server, so this renders
+    from memory. "Check for updates" is the only way to force a fresh read; the
+    button exists because without it the cache is unobservable and nobody can
+    tell a stale answer from a current one.
+*@
+<MudPaper Elevation="1" Class="pa-4 mb-4">
+    <div class="d-flex align-center flex-wrap gap-2 mb-1">
+        <MudText Typo="Typo.h4">Version</MudText>
+        @if (_status?.Server is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.SystemUpdateAlt">
+                Update available
+            </MudChip>
+        }
+        <MudSpacer />
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   Disabled="@_checking"
+                   OnClick="CheckAsync">
+            @(_checking ? "Checking…" : "Check for updates")
+        </MudButton>
+    </div>
+
+    <div class="d-flex flex-wrap gap-6 mt-3">
+        <div>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">This instance</MudText>
+            <MudText Typo="Typo.h6">@Running</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Extension contract @(_version?.ExtensionApiVersion ?? "—")
+            </MudText>
+        </div>
+
+        @if (_status?.Server is { } update)
+        {
+            <div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">Latest release</MudText>
+                <MudText Typo="Typo.h6" Color="Color.Info">@update.AvailableVersion</MudText>
+                @if (update.Published is { } published)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Published @published.ToLocalTime().ToString("d MMM yyyy")
+                    </MudText>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_status?.Server is { } available)
+    {
+        <MudButton Href="@available.ReleaseUrl" Target="_blank" Class="mt-4"
+                   Variant="Variant.Filled" Color="Color.Primary"
+                   EndIcon="@Icons.Material.Filled.OpenInNew">
+            Release notes
+        </MudButton>
+    }
+    else if (_status is { Enabled: false })
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-3">
+            Update checks are disabled on this instance (<code>Updates__Enabled</code>).
+        </MudText>
+    }
+    else if ((_checkError ?? _status?.Error) is { } error)
+    {
+        @* Never silently equivalent to "up to date": that distinction is the
+           whole point of checking. _checkError covers the call itself failing,
+           which leaves no status to read an error off. *@
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+            Couldn't check for updates: @error
+        </MudAlert>
+    }
+    else if (_status is not null)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-3">
+            This instance is up to date.
+            @if (_status.CheckedAt is { } checkedAt)
+            {
+                <text>Checked @Ago(checkedAt).</text>
+            }
+        </MudText>
+    }
+
+    @if (_status?.Extensions.Count > 0)
+    {
+        <MudText Typo="Typo.body2" Class="mt-3">
+            @_status.Extensions.Count extension @(_status.Extensions.Count == 1 ? "update" : "updates")
+            available — see Extensions below.
+        </MudText>
+    }
+</MudPaper>
+
+@code {
+    /// <summary>
+    /// Raised after a forced check so the page can redraw the extension list
+    /// against the same answer. Without it the two panels could disagree: this
+    /// one refreshed, that one still on the cached read from page load.
+    /// </summary>
+    [Parameter]
+    public EventCallback<UpdateStatusDto> StatusChanged { get; set; }
+
+    private UpdateStatusDto? _status;
+    private InstanceVersionDto? _version;
+    private bool _checking;
+
+    // The call itself failing, as opposed to the server reporting that it could
+    // not read the feed. Kept apart from _status because a failed check must not
+    // be able to leave a previous "up to date" answer on screen.
+    private string? _checkError;
+
+    private string Running => _version?.ServerVersion is { } v && v.Length > 0
+        // CI stamps the commit as build metadata. It is useful in a bug report
+        // and noise in a heading, so the heading drops it.
+        ? v.Split('+')[0]
+        : "—";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Anonymous and always available, so it is fetched separately from the
+        // update check: knowing what this instance runs should not depend on
+        // reaching GitHub.
+        try
+        {
+            _version = await Api.GetInstanceVersionAsync();
+        }
+        catch
+        {
+            // Rendered as "—". This panel sits at the top of Admin settings, so
+            // anything it cannot fetch has to degrade to a blank rather than
+            // throw: a malformed or truncated response (a proxy serving HTML,
+            // say) arrives as a JsonException rather than an ApiException, and
+            // either way the page below still has to draw.
+        }
+
+        await LoadAsync(refresh: false);
+    }
+
+    private async Task CheckAsync()
+    {
+        _checking = true;
+        try
+        {
+            await LoadAsync(refresh: true);
+
+            // Read after the load, and from the same two places the panel reads:
+            // a check that threw has no status to carry an error, and reporting
+            // "no updates" for it would be the exact confusion this panel is
+            // here to prevent.
+            var failure = _checkError ?? _status?.Error;
+            Snackbar.Add(
+                failure is not null
+                    ? $"Couldn't check for updates: {failure}"
+                    : _status?.Server is { } update
+                        ? $"Solo {update.AvailableVersion} is available."
+                        : "No updates available.",
+                failure is null ? Severity.Info : Severity.Warning);
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private async Task LoadAsync(bool refresh)
+    {
+        try
+        {
+            _status = await Api.GetUpdatesAsync(refresh);
+            _checkError = null;
+            await StatusChanged.InvokeAsync(_status);
+        }
+        catch (Exception e)
+        {
+            // Caught broadly: this is the one thing on the page that depends on
+            // reaching a third party, and no shape of failure from it may stop
+            // Admin settings rendering. A malformed or truncated response (a
+            // proxy serving HTML) arrives as a JsonException, not an
+            // ApiException.
+            //
+            // The stale status goes with it. Keeping it would leave the panel
+            // saying "up to date" after a check that never completed.
+            _checkError = e is ApiException { Detail: { } detail } ? detail : e.Message;
+            _status = null;
+        }
+    }
+
+    private static string Ago(DateTimeOffset at)
+    {
+        var elapsed = DateTimeOffset.UtcNow - at;
+        return elapsed switch
+        {
+            { TotalMinutes: < 2 } => "just now",
+            { TotalHours: < 1 } => $"{(int)elapsed.TotalMinutes} minutes ago",
+            { TotalHours: < 2 } => "an hour ago",
+            { TotalDays: < 1 } => $"{(int)elapsed.TotalHours} hours ago",
+            _ => at.ToLocalTime().ToString("d MMM HH:mm"),
+        };
+    }
+}

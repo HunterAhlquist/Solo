@@ -100,6 +100,11 @@ export function footprint(ops){
     return {left,top,right,bottom};
 }
 export function paintTexts(context,texts,{font,themeInk='#111'}={}){
-    const palette={theme:themeInk,red:'#b52c32',blue:'#2164b4',green:'#23763e',purple:'#8043ad'};
-    if(font)for(const text of texts){context.fillStyle=palette[text.ink]??themeInk;font(context,text);}
+    const palette=inkPalette(themeInk);
+    // The box's ink is the fill a run inherits; a run that names its own ink
+    // resolves it from the same palette.
+    if(font)for(const text of texts){context.fillStyle=palette[text.ink]??themeInk;font(context,text,palette);}
+}
+export function inkPalette(themeInk='#111'){
+    return {theme:themeInk,red:'#b52c32',blue:'#2164b4',green:'#23763e',purple:'#8043ad'};
 }

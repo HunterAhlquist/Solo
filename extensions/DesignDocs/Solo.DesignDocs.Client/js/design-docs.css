@@ -120,11 +120,24 @@
 .design-docs-sketch-ink-palette { top:12px; left:68px; flex-direction:column; }
 .design-docs-swatches,.design-docs-brushes { display:flex; }
 .design-docs-sketch-history-palette { top:12px; right:12px; }
+/* Floats over the box being edited. The sketch sets both properties from the
+   box's rectangle on every frame (see sketch/text-panel.js); the fallbacks only
+   stand in for the frame between the editor opening and that first placement. */
+.design-docs-sketch-text-palette { left:var(--design-docs-text-panel-x,50%); top:var(--design-docs-text-panel-y,108px); transform:translateX(-50%); align-items:center; }
+.design-docs-text-styles,.design-docs-text-sizes,.design-docs-text-actions { display:flex; align-items:center; }
+.design-docs-sketch-text-palette .mud-divider-vertical { margin:0 4px; }
+.design-docs-text-size { min-width:28px; text-align:center; font-variant-numeric:tabular-nums; }
+/* A style the selection only partly has: neither lit nor plain, because the
+   honest answer is "some of it". */
+.design-docs-sketch-palette .is-mixed { outline:1px dashed var(--mud-palette-lines-default); outline-offset:-2px; }
 .design-docs-sketch-zoom-palette { bottom:20px; right:12px; }
 .design-docs-sketch-viewport { border:0; background:var(--mud-palette-background); }
 .design-docs-sketch-viewport canvas { image-rendering:auto; }
-.design-docs-sketch-text { left:0; top:0; min-width:0; min-height:0; margin:0; padding:0; border:0; outline:1px dashed var(--mud-palette-primary); outline-offset:3px; border-radius:0; resize:none; overflow:hidden; background:transparent; color:transparent; caret-color:var(--mud-palette-text-primary); transform-origin:0 0; white-space:pre; }
-.design-docs-sketch-text::selection { background:color-mix(in srgb,var(--mud-palette-primary) 25%,transparent); color:transparent; }
+.design-docs-sketch-text { left:0; top:0; min-width:0; min-height:0; margin:0; padding:0; border:0; outline:1px dashed var(--mud-palette-primary); outline-offset:3px; border-radius:0; resize:none; overflow:hidden; background:transparent; color:transparent; caret-color:transparent; transform-origin:0 0; white-space:pre; }
+/* Both are drawn on the canvas instead, from the same layout as the glyphs: the
+   textarea has one font for all of its text, so its own caret and highlight
+   kept the geometry of unformatted text once a run changed size. */
+.design-docs-sketch-text::selection { background:transparent; color:transparent; }
 .design-docs-sketch-status { position:absolute; bottom:4px; left:12px; z-index:2; font-size:11px; pointer-events:none; }
 .design-docs-clear-explosion { position:absolute; top:0; left:0; z-index:2; transform-origin:0 0; pointer-events:none; object-fit:fill; }
 .design-docs-clear-explosion[hidden] { display:none; }
