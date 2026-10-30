@@ -64,13 +64,31 @@ Four situations skip the check, because electron-updater cannot work in them:
   different user data. `scripts/check-updater.mjs` pins this.
 - **Linux outside an AppImage**, the only Linux target electron-updater can
   replace in place.
-- **a build with no `app-update.yml`.** electron-builder writes that file per
-  *target*, so `--publish never` is fine but a `--dir` pack produces a perfectly
-  good `.app` with no update config in it — and copying that out of `dist/`
-  instead of installing from the `.dmg` is the normal way to try a local build.
-  Without the check, electron-updater reads the missing file and the user gets a
-  raw `ENOENT` and a path. Verified both ways: a `--dir` pack writes no such
-  file, and a real target build writes `provider: generic` with the feed URL.
+- **a build with no `app-update.yml`.** Without the check, electron-updater
+  reads the missing file and the user gets a raw `ENOENT` and a path.
+
+### Where `app-update.yml` comes from
+
+electron-builder writes it while building a **target**, and the mac build never
+reaches that phase: it packs with `--dir` to stop at the signed app, notarizes
+and staples it, then wraps the finished bundle with `--prepackaged`, which skips
+packing. Both stages therefore produce no update config, and the first builds of
+this feature shipped a dmg whose every update check failed on the missing file.
+
+So `scripts/after-pack.mjs` writes it, derived from the resolved `publish`
+config so the URL and channel cannot drift from
+`electron-builder.config.cjs`. `afterPack` is the last hook that runs **before
+signing**, which is the only window there is: adding a file to
+`Contents/Resources` after codesign has sealed the bundle breaks the signature,
+so the `--prepackaged` stage is far too late. A full single-platform build does
+reach the target phase, and electron-builder's own copy is left alone there.
+
+A preview build has no publish config, so nothing is written and the updater
+reports the absence rather than reading a feed meant for the stable app.
+
+`npm run test:updater` pins the file's contents for all three platforms and goes
+through the `afterPack` hook itself on Windows and Linux, so deleting the call —
+not merely breaking the function — fails the check.
 
 A check the user asked for reports those out loud. The one on startup is silent,
 and so is a failed one — the next launch tries again, and a dialog about a

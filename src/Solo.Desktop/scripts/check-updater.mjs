@@ -12,7 +12,7 @@
 // inside an Electron process, and spawning one to ask four questions about a
 // version string is not worth the seconds.
 import { createRequire } from 'node:module';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,6 +30,26 @@ require.cache[require.resolve('electron')] = {
 };
 
 const { unsupportedReason } = require(path.join(desktopDir, 'main', 'updater.js'));
+
+// Where each platform's packaged resources live, as electron-builder lays them out.
+function resourcesDirFor(platform, appOutDir) {
+    return platform === 'darwin'
+        ? path.join(appOutDir, 'Solo.app', 'Contents', 'Resources')
+        : path.join(appOutDir, 'resources');
+}
+
+// The slice of electron-builder's afterPack context that writeUpdateConfig reads.
+function fakeContext(electronPlatformName, appOutDir, publish) {
+    mkdirSync(appOutDir, { recursive: true });
+    return {
+        electronPlatformName,
+        appOutDir,
+        packager: {
+            info: { config: { publish } },
+            appInfo: { productFilename: 'Solo', updaterCacheDirName: 'solo-desktop-updater' },
+        },
+    };
+}
 
 // Two real resource directories rather than a mocked fs: one with the
 // app-update.yml a target build writes, one without it, which is exactly what a
@@ -97,9 +117,75 @@ try {
         as('linux', { appImage: '/tmp/Solo.AppImage', updateConfig: false }),
         /no update configuration/);
 
+    // The other half: the file has to be *there* in a real build. This
+    // repository's mac flow packs with --dir and wraps with --prepackaged, so it
+    // never reaches the target phase where electron-builder would write it —
+    // which shipped apps that could not check for updates at all. afterPack
+    // fills that gap, and these pin it.
+    const afterPackModule = await import('./after-pack.mjs');
+    const { writeUpdateConfig } = afterPackModule;
+    const afterPack = afterPackModule.default;
+
+    for (const platform of ['darwin', 'win32', 'linux']) {
+        const out = mkdtempSync(path.join(os.tmpdir(), 'solo-afterpack-'));
+        const context = fakeContext(platform, out, [{
+            provider: 'generic',
+            url: 'https://example.test/download/',
+            channel: 'latest',
+            useMultipleRangeRequest: false,
+        }]);
+
+        // Through the real hook on the platforms where it returns straight after
+        // writing, so that deleting the call — not just breaking the function —
+        // fails this check. darwin goes on to rewrite Mach-O launcher UUIDs,
+        // which needs an actual bundle, so it gets the function directly.
+        if (platform === 'darwin') {
+            writeUpdateConfig(context);
+        } else {
+            await afterPack(context);
+        }
+
+        const written = path.join(resourcesDirFor(platform, out), 'app-update.yml');
+        const body = readFileSync(written, 'utf8');
+        // The exact keys electron-builder's own copy carries, which is what
+        // electron-updater reads. updaterCacheDirName is the one that is derived
+        // rather than copied, so a wrong value would be invisible until an
+        // update tried to cache a download.
+        assert.match(body, /^provider: generic$/m, `${platform} feed provider`);
+        assert.match(body, /^url: https:\/\/example\.test\/download\/$/m, `${platform} feed url`);
+        assert.match(body, /^channel: latest$/m);
+        assert.match(body, /^useMultipleRangeRequest: false$/m);
+        assert.match(body, /^updaterCacheDirName: solo-desktop-updater$/m);
+        rmSync(out, { recursive: true, force: true });
+    }
+
+    // The hook is also driven directly by the other checks here, with only the
+    // fields the behaviour under test needs. Reading the publish config off a
+    // known shape threw a TypeError from inside afterPack and broke
+    // check-mac-network-identity.mjs, which the release workflow requires — so
+    // the exact context that check passes is pinned here too.
+    const minimalOut = mkdtempSync(path.join(os.tmpdir(), 'solo-afterpack-minimal-'));
+    await afterPack({
+        electronPlatformName: 'win32',
+        appOutDir: minimalOut,
+        packager: { appInfo: { productFilename: 'Solo' } },
+    });
+    rmSync(minimalOut, { recursive: true, force: true });
+
+    // A preview build has no publish config on purpose, so there is nothing to
+    // write and nothing to mislead an updater with.
+    const previewOut = mkdtempSync(path.join(os.tmpdir(), 'solo-afterpack-preview-'));
+    await afterPack(fakeContext('win32', previewOut, null));
+    assert.equal(
+        existsSync(path.join(resourcesDirFor('win32', previewOut), 'app-update.yml')),
+        false,
+        'a preview build must get no update config');
+    rmSync(previewOut, { recursive: true, force: true });
+
     console.log(
         'PASS: update checks are skipped exactly for development runs, preview builds, ' +
-        'non-AppImage Linux and builds with no app-update.yml.');
+        'non-AppImage Linux and builds with no app-update.yml — and afterPack writes ' +
+        'that file for every platform, which the --dir/--prepackaged mac flow depends on.');
 } finally {
     Object.defineProperty(process, 'platform', { value: platform, configurable: true });
     Object.defineProperty(process, 'resourcesPath', { value: resources, configurable: true });
