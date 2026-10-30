@@ -24,6 +24,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- A real release-manifest.json, taken verbatim off a published release.
+         ReleaseFeedTests parses it so the shape build/release-manifest.mjs
+         writes and the shape this server reads cannot drift apart silently. -->
+    <None Include="../fixtures/release-manifest.json" Link="release-manifest.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Solo.Api\Solo.Api.csproj" />
     <ProjectReference Include="..\Solo.Api.Testing\Solo.Api.Testing.csproj" />
     <!-- Built, but deliberately NOT referenced: the fixture extension has to

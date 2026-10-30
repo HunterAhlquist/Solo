@@ -49,6 +49,30 @@ public sealed class ExtensionManifest
     /// failing the request. Opt-in, for advisory hooks only.
     /// </summary>
     public bool FailOpen { get; set; }
+
+    /// <summary>
+    /// Absolute <c>https</c> URL of the <c>release-manifest.json</c> this
+    /// package publishes its updates through. Omit it and the package is only
+    /// updated when it ships in the host's own release manifest.
+    /// </summary>
+    /// <remarks>
+    /// <para>This is what gives a package from outside this repository the same
+    /// update path as a first-party one: the admin page reads the feed, compares
+    /// the <c>extensions</c> entry for this id against what is installed, and
+    /// offers the update. The shape is the one Solo's own releases use, so an
+    /// author publishes a GitHub release carrying a manifest with a single
+    /// <c>extensions</c> entry and nothing else.</para>
+    ///
+    /// <para>The URL is trusted exactly as far as the package is. Installing an
+    /// extension is deploying code that runs in-process with the database
+    /// connection, so an operator who installed this package has already
+    /// accepted its author; letting that author name where updates come from
+    /// adds no privilege they did not already have. What the host does not do is
+    /// take the author's word for the bytes — the download is checked against
+    /// the <c>sha512</c> in the feed before anything is written, and
+    /// <c>http</c> URLs are refused.</para>
+    /// </remarks>
+    public string? Updates { get; set; }
 }
 
 /// <summary>A sidebar entry, rendered from the manifest without loading the client assembly.</summary>

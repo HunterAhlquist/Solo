@@ -16,6 +16,7 @@ const { attachContextMenu, popupClientMenu } = require('./main/context-menu');
 const { DesktopAuth } = require('./main/desktop-auth');
 const { presentAuthSheet } = require('./main/auth-sheet');
 const { openAboutWindow, registerAboutIpc } = require('./main/about');
+const { registerUpdater, checkForUpdates } = require('./main/updater');
 
 let settings = null;
 let settingsWindow = null;
@@ -27,6 +28,10 @@ let liquidGlass;
 // "current" window an instance can be opened into.
 //   BrowserWindow → { instance, pageTitle, themeSource, reconnectPending }
 const windows = new Map();
+
+// Long enough that the first window is up and painted before the update check
+// touches the network: a dialog over a half-drawn app reads as a fault.
+const STARTUP_UPDATE_CHECK_DELAY = 8000;
 
 // The local servers, by instance id. One is started the first time its
 // instance is opened and then left running: it is an idle listener, and
@@ -68,6 +73,7 @@ if (!gotLock) {
 function onReady() {
     settings = settingsStore.load();
     registerIpc();
+    registerUpdater({ getWindow: focusedWindow });
     refreshInstanceViews();
 
     const instance = findInstance(settings.lastInstanceId) ?? settings.instances[0];
@@ -77,6 +83,29 @@ function onReady() {
         // First run: no instance to talk to yet, so settings is the app.
         openSettingsWindow();
     }
+
+    // Deferred so the first window paints before any of this touches the
+    // network, and so a dialog cannot appear over a half-drawn app. Silent
+    // unless there is something to offer.
+    setTimeout(() => checkForUpdates({ getWindow: focusedWindow }), STARTUP_UPDATE_CHECK_DELAY);
+}
+
+// The window update dialogs hang off. Prefers the focused window so a dialog
+// appears over what the user is looking at; falls back to any instance window,
+// because the check also runs at startup when focus may not have settled.
+function focusedWindow() {
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused && windows.has(focused)) {
+        return focused;
+    }
+
+    for (const win of windows.keys()) {
+        if (!win.isDestroyed()) {
+            return win;
+        }
+    }
+
+    return null;
 }
 
 function handleUncaughtException(error) {
@@ -185,6 +214,7 @@ function refreshInstanceViews() {
         appName: app.getName(),
         openAboutWindow: () => openAboutWindow(HARDENED_WEB_PREFERENCES),
         openSettingsWindow,
+        checkForUpdates: () => checkForUpdates({ fromMenu: true, getWindow: focusedWindow }),
         instances: instanceList(),
         openInstance: requestOpenInstance,
     }));

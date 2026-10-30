@@ -149,6 +149,22 @@ else
             updating, or removing one requires a restart; extensions cannot be rescanned.
         </MudText>
 
+        @* Why a check produced no updates, when that is the reason. Without it
+           "no updates" and "could not reach the feed" look identical, and the
+           second one is the one an operator needs to act on. *@
+        @if (_updates is { Enabled: false })
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2">
+                Update checks are disabled on this instance (Updates__Enabled).
+            </MudText>
+        }
+        else if (_updates?.Error is { } checkError)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                Couldn't check for updates: @checkError
+            </MudAlert>
+        }
+
         @if (_extensions is null)
         {
             <MudProgressCircular Size="Size.Small" Indeterminate="true" />
@@ -173,6 +189,25 @@ else
                             @extension.ExtensionId@(extension.Version is null ? "" : $" · {extension.Version}")
                             @(extension.SchemaName is null ? "" : $" · {extension.SchemaName}")
                         </MudText>
+
+                        @* An update this instance could not load is still worth
+                           showing — otherwise the extension just looks neglected —
+                           but it is stated as a blocker rather than offered. *@
+                        @if (UpdateFor(extension.ExtensionId) is { } update)
+                        {
+                            <MudText Typo="Typo.caption"
+                                     Color="@(update.Compatible ? Color.Info : Color.Warning)"
+                                     Class="d-block">
+                                @if (update.Compatible)
+                                {
+                                    @($"Version {update.AvailableVersion} is available ({FormatBytes(update.SizeBytes)}).")
+                                }
+                                else
+                                {
+                                    @update.Incompatibility
+                                }
+                            </MudText>
+                        }
 
                         @if (extension.FailureReason is not null)
                         {
@@ -221,6 +256,16 @@ else
                         }
                     </div>
 
+                    @if (UpdateFor(extension.ExtensionId) is { Compatible: true } available)
+                    {
+                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                   Class="mr-2"
+                                   Disabled="@(_updating is not null)"
+                                   OnClick="@(() => UpdateExtensionAsync(extension, available))">
+                            @(_updating == extension.ExtensionId ? "Updating…" : "Update")
+                        </MudButton>
+                    }
+
                     @if (extension.CanPurge)
                     {
                         <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
@@ -256,6 +301,8 @@ else
     private bool _savingBranding;
     private bool _rescanning;
     private string? _error;
+    private UpdateStatusDto? _updates;
+    private string? _updating;
 
     private ExtensionCatalog? Catalog => Services.GetService<ExtensionCatalog>();
 
@@ -306,6 +353,21 @@ else
             _error = e.StatusCode == System.Net.HttpStatusCode.Forbidden
                 ? "Only the instance super admin can change these settings."
                 : e.Detail ?? "Couldn't load instance settings.";
+            return;
+        }
+
+        // Separate from the load above, and after it, because it is the only
+        // thing on this page that depends on reaching a third party. Folding it
+        // into that try block would let an unreachable feed — or an instance
+        // with no outbound access at all — replace the whole settings page with
+        // an error, which is a far worse failure than not knowing about an
+        // update. The panel reads _updates being null as "nothing to report".
+        try
+        {
+            _updates = await Api.GetUpdatesAsync();
+        }
+        catch (ApiException)
+        {
         }
     }
 
@@ -433,6 +495,86 @@ else
             Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
             await ReloadAsync();
             return false;
+        }
+    }
+
+    private ExtensionUpdateDto? UpdateFor(string extensionId) =>
+        _updates?.Extensions.FirstOrDefault(u =>
+            string.Equals(u.ExtensionId, extensionId, StringComparison.OrdinalIgnoreCase));
+
+    private static string FormatBytes(long bytes) => bytes <= 0
+        ? "size unknown"
+        : bytes >= 1024 * 1024
+            ? $"{bytes / 1024.0 / 1024.0:0.#} MB"
+            : $"{bytes / 1024.0:0.#} KB";
+
+    /// <summary>
+    /// Confirms, then downloads the package, replaces it on disk and restarts
+    /// the instance to load it.
+    /// </summary>
+    /// <remarks>
+    /// <para>The confirmation says the instance will restart, because there is
+    /// no way to apply an extension update without one — hooks, controllers and
+    /// the extension's DbContext are all registered before the host is built —
+    /// and because the restart depends on something outside Solo bringing the
+    /// container back. On a host with no restart policy this ends with the
+    /// instance down.</para>
+    ///
+    /// <para>The success path deliberately does not reload anything. The server
+    /// stops right after answering, so every subsequent request fails until it
+    /// is back; re-fetching here would only turn a successful update into an
+    /// error toast.</para>
+    /// </remarks>
+    private async Task UpdateExtensionAsync(
+        ExtensionRegistrationDto extension, ExtensionUpdateDto update)
+    {
+        var name = extension.DisplayName ?? extension.ExtensionId;
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            $"Update {name}?",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message,
+                    $"This downloads {name} {update.AvailableVersion} ({FormatBytes(update.SizeBytes)}), "
+                    + $"replaces the installed {update.InstalledVersion ?? "package"}, and then restarts "
+                    + "this instance — extensions are only loaded at startup, so the restart is how the "
+                    + "update takes effect. Everyone signed in is disconnected for as long as that takes, "
+                    + "and if this host has no restart policy the instance stays down until it is started "
+                    + "again. The package it replaces is kept as solo-<id>.rollback.zip.bak, "
+                    + "replacing any previous rollback." },
+                { d => d.ConfirmText, "Update and restart" },
+            });
+
+        var confirmed = await dialog.Result;
+        if (confirmed is null || confirmed.Canceled)
+        {
+            return;
+        }
+
+        _updating = extension.ExtensionId;
+        try
+        {
+            var result = await Api.UpdateExtensionAsync(extension.ExtensionId);
+            Snackbar.Add(
+                $"{name} {result.Version} installed. The instance is restarting — reload this page in a moment.",
+                Severity.Success,
+                config => config.RequireInteraction = true);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't update that extension.", Severity.Error);
+            _updating = null;
+        }
+        catch (Exception)
+        {
+            // The server can drop the connection as it goes down, which arrives
+            // here as a transport failure rather than an ApiException. The
+            // package was already written and verified before the restart was
+            // scheduled, so this is more likely a successful update than a
+            // failed one — say so without claiming either.
+            Snackbar.Add(
+                $"{name} was updated and the instance is restarting. Reload this page in a moment.",
+                Severity.Info,
+                config => config.RequireInteraction = true);
         }
     }
 

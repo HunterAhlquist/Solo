@@ -73,13 +73,16 @@ If you need something the contract doesn't offer, that's a finding about the con
       "icon": "Timeline", "requires": "Read" }
   ],
   "hooks": ["task.setStatus"],      // operations your hooks may run on
-  "failOpen": false
+  "failOpen": false,
+  "updates": "https://github.com/me/roadmap/releases/latest/download/release-manifest.json"
 }
 ```
 
 **`schema` is derived, not chosen.** The loader computes `ext_` + your id (hyphens become underscores) and rejects a manifest that says anything else — so a purge can never be pointed at core's data or another extension's.
 
 **`hooks` is a declaration, not a suggestion.** A hook registered for an operation the manifest doesn't list is dropped at dispatch, so the admin page's "which extensions sit on this write path" stays honest.
+
+**`updates` is how your extension gets an update path** (contract 1.12.0, and optional). Point it at an `https` `release-manifest.json` carrying one `extensions` entry for your id, and Admin settings offers the update beside your extension exactly as it does for a first-party one. Omit it and your package can only be updated by hand. The host checks the download against the `sha512` in your feed and refuses an entry whose `soloApiVersion` *or* `soloClientVersion` the instance doesn't satisfy, so get both ranges right — they are what stops someone being offered a build whose server half their instance could not load, or whose pages would silently fail to render. [updates.md](updates.md#publishing-updates-for-a-third-party-extension) has the file to publish.
 
 ## 3. The entry point
 

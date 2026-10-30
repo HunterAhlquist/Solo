@@ -48,6 +48,8 @@
                     </ErrorBoundary>
                 }
                 <ConnectionIndicator />
+                @* Super-admin only, and silent unless a newer release exists. *@
+                <UpdateIndicator />
                 @* MudMenu's built-in Icon activator (not ActivatorContent, which never
                    opens here). The SSO picture rides in as a circular SVG image; with
                    no picture it falls back to the default account glyph. *@

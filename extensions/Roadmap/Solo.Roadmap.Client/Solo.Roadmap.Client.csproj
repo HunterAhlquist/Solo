@@ -30,7 +30,7 @@
     <PackageReference Include="MudBlazor" Version="9.11.0" />
     <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj; Solo.Client
          supplies the host's copy to Solo.Roadmap.Tests. -->
-    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.11.1" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.12.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

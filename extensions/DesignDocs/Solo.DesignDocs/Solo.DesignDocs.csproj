@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <!-- Keep the contract package out of host tests, which must bind to the host's assembly. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.1" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.12.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

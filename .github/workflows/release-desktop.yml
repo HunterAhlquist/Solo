@@ -200,6 +200,7 @@ jobs:
           npm run test:desktop-auth
           npm run test:instance-extensions
           npm run test:rotation-gesture
+          npm run test:updater
 
       - name: Publish Blazor client into shell
         run: npm run build:client

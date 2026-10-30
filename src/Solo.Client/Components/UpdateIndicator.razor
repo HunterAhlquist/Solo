@@ -1,0 +1,61 @@
+@inject ApiClient Api
+@inject UserSession Session
+
+@*
+    Shows only when a newer server release exists, and only to a super admin:
+    updating the server means pulling a new image, so for anybody else this is a
+    badge they can neither act on nor dismiss. Silent when the check is
+    disabled, when it failed, and when the instance is current — a failed check
+    belongs on the settings page, which can explain it, not in the app bar,
+    where an icon would have to stand for "we don't know".
+
+    Clicking opens the release on GitHub in a new tab. The app bar is the one
+    place this is offered; the same information with the detail (the image to
+    pull, extension updates) lives in Admin settings.
+*@
+@if (_update is not null)
+{
+    <MudTooltip Text="@($"Solo {_update.AvailableVersion} is available (running {_update.RunningVersion}).")">
+        <MudIconButton Icon="@Icons.Material.Filled.SystemUpdateAlt"
+                       Color="Color.Inherit"
+                       Href="@_update.ReleaseUrl"
+                       Target="_blank"
+                       aria-label="@($"Solo {_update.AvailableVersion} is available")" />
+    </MudTooltip>
+}
+
+@code {
+    private ServerUpdateDto? _update;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Awaited rather than reading IsSuperAdmin straight away, and that
+            // ordering is the whole trick: this component initializes during the
+            // layout's first render, which is before MainLayout has finished
+            // hydrating the session. Reading the flag now would read false for
+            // everyone and the indicator would never appear at all. LoadAsync is
+            // idempotent and shares one in-flight request, so this is the same
+            // fetch the layout makes, not a second one.
+            await Session.LoadAsync();
+            if (!Session.IsSuperAdmin)
+            {
+                return;
+            }
+
+            // Cached server-side for hours, so this costs a local round trip and
+            // not a call to GitHub on every page load.
+            var status = await Api.GetUpdatesAsync();
+            _update = status.Server;
+        }
+        catch
+        {
+            // Swallowed on purpose, and this is the one place that is right. The
+            // app bar renders on every page, so letting this throw would take the
+            // whole layout down over something purely advisory — and there is no
+            // icon that honestly means "we could not tell". Admin settings shows
+            // the same check with the reason it failed.
+        }
+    }
+}

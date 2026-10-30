@@ -65,10 +65,18 @@ namespace Solo.Shared.Extensibility;
 /// Both server and client contracts changed.</para>
 /// <para>1.11.0 adds scoped client workspace layout requests and initial task
 /// picker filters for reference pickers that include completed work.</para>
+/// <para>1.12.0 adds <c>updates</c> to <c>extension.json</c>: the URL of the
+/// release manifest a package publishes its own updates through, so an
+/// extension from outside this repository can be updated by the same admin
+/// action as a first-party one. Manifest metadata rather than a seam, so
+/// nothing compiles against it — but it is a member of a published assembly,
+/// and a package that declares it needs a host that reads it, which is what the
+/// range check is for. Server-side only, so a package that sets it needs 1.12
+/// in <c>soloApiVersion</c> alone.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.11.1";
+    public const string Current = "1.12.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "release": {
+    "tag": "preview-v1.18.0-rc.1",
+    "version": "1.18.0-rc.1",
+    "prerelease": true,
+    "published": "2026-10-29T23:24:24.996Z"
+  },
+  "server": {
+    "version": "1.18.0-rc.1",
+    "release": "preview-v1.18.0-rc.1",
+    "image": "ghcr.io/hunterahlquist/solo:1.18.0-rc.1",
+    "contract": "1.11.1"
+  },
+  "desktop": {
+    "version": "1.18.0-rc.1",
+    "release": "preview-v1.18.0-rc.1",
+    "channels": {
+      "mac": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/latest-mac.yml",
+      "win": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/latest.yml",
+      "linux": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/latest-linux.yml"
+    },
+    "installers": [
+      {
+        "platform": "mac",
+        "asset": "Solo-Preview-1.18.0-rc.1-arm64.dmg",
+        "url": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/Solo-Preview-1.18.0-rc.1-arm64.dmg",
+        "size": 109948691,
+        "sha512": "AHRPeLY2IaLDNsyRNOw62NpXsXQoT80ghjmnJkUZ/ztwZmFSqzpLZVchwmQJGq7o45umDPdxL2ijuF+EPxGPbA==",
+        "primary": false
+      },
+      {
+        "platform": "mac",
+        "asset": "Solo-Preview-1.18.0-rc.1-arm64.zip",
+        "url": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/Solo-Preview-1.18.0-rc.1-arm64.zip",
+        "size": 140910981,
+        "sha512": "JpU08JteDMNv4pnOigfrZOOqqjwXiOmJGAwEMxp0266yvRMNTKHxBNghP1kvr81nU/95jSrzmDvd+GLgRJjGpQ==",
+        "primary": true
+      },
+      {
+        "platform": "win",
+        "asset": "Solo-Preview-1.18.0-rc.1-setup.exe",
+        "url": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/Solo-Preview-1.18.0-rc.1-setup.exe",
+        "size": 131205681,
+        "sha512": "79bOkmnKl6Wt5PdliVRdD1QsjBpbVFgW9dtsxo2RtkSXuS8/HLuPLRdXG19MsBUDrAvMiHO3Q75MXeYe4Zx6gg==",
+        "primary": true
+      },
+      {
+        "platform": "linux",
+        "asset": "Solo-Preview-1.18.0-rc.1.AppImage",
+        "url": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/Solo-Preview-1.18.0-rc.1.AppImage",
+        "size": 140682133,
+        "sha512": "PwCwb07vFPcf4+dlw09apUXrFdYJ9Vn2YntLcz9R2R65O0PPAXItLKLCld7y5kMfXbC2VptYzs1TP/MPZj0tBA==",
+        "primary": true
+      }
+    ],
+    "contract": "1.11.1"
+  },
+  "extensions": [
+    {
+      "id": "design-docs",
+      "version": "1.2.1",
+      "release": "preview-v1.18.0-rc.1",
+      "asset": "solo-design-docs-1.2.1.zip",
+      "url": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/solo-design-docs-1.2.1.zip",
+      "size": 923467,
+      "sha512": "OPfWnbthp66BJS13IyXBUwA1zDcMAlGzrWcP+pjKmeG9CorcD/vkMursb9zj9QLNPcuyuTQI9WvgHBodW68tGQ==",
+      "soloApiVersion": ">=1.10 <2.0",
+      "soloClientVersion": ">=1.11 <2.0"
+    },
+    {
+      "id": "mcp",
+      "version": "1.6.2",
+      "release": "preview-v1.18.0-rc.1",
+      "asset": "solo-mcp-1.6.2.zip",
+      "url": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/solo-mcp-1.6.2.zip",
+      "size": 121291,
+      "sha512": "6QHQDJsMkO2AjfbWrIbJdSV7lDUMS6Zc38r6oHQfT4QuFQLIg1Qqupqwo5LenzpC9/8kX9+YeWn7WIxtDbtIYw==",
+      "soloApiVersion": ">=1.7 <2.0",
+      "soloClientVersion": ">=1.2 <2.0"
+    },
+    {
+      "id": "roadmap",
+      "version": "1.8.1",
+      "release": "preview-v1.18.0-rc.1",
+      "asset": "solo-roadmap-1.8.1.zip",
+      "url": "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-rc.1/solo-roadmap-1.8.1.zip",
+      "size": 149283,
+      "sha512": "xfZlBusvto0y/aT4+rHUN7Og+df2Lo5Nq8NuxZe3GXlixKYOT2pojAoAWwXrkh0mYOIzI9xEeV4sGdio17bqQQ==",
+      "soloApiVersion": ">=1.4 <2.0",
+      "soloClientVersion": ">=1.6 <2.0"
+    }
+  ]
+}

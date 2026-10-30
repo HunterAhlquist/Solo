@@ -13,6 +13,7 @@ using Solo.Api.Controllers;
 using Solo.Api.Realtime;
 using Solo.Api.Services;
 using Solo.Api.Theming;
+using Solo.Api.Updates;
 using Solo.Data;
 using Solo.Data.Auditing;
 using Solo.Data.Domain;
@@ -165,38 +166,25 @@ builder.Services.AddHttpClient(AvatarConstants.HttpClient, client =>
     client.Timeout = TimeSpan.FromSeconds(10);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Solo-Avatar-Proxy/1.0");
 })
-    // This is the only place the server fetches a URL it did not choose — the
-    // picture claim out of an OIDC token. On a self-hosted instance the API can
-    // reach the database, the container network and the LAN, so the guard sits
-    // on the socket rather than on the URL: it holds for redirects (which
-    // HttpClient follows on its own) and leaves no window between resolving a
-    // name and connecting to it.
-    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
-    {
-        MaxAutomaticRedirections = 5,
-        ConnectCallback = async (context, ct) =>
-        {
-            var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, ct);
-            var reachable = addresses.Where(address => !TrustedProxies.IsPrivate(address)).ToArray();
-            if (reachable.Length == 0)
-            {
-                throw new HttpRequestException(
-                    $"Refusing to fetch from a non-public address ({context.DnsEndPoint.Host}).");
-            }
+    // The picture claim out of an OIDC token is a URL the server did not choose,
+    // so it only ever connects to a public address. See PublicOnlyHttpHandler
+    // for why the guard is on the socket and not on the URL.
+    .ConfigurePrimaryHttpMessageHandler(PublicOnlyHttpHandler.Create);
 
-            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-            try
-            {
-                await socket.ConnectAsync(reachable, context.DnsEndPoint.Port, ct);
-                return new NetworkStream(socket, ownsSocket: true);
-            }
-            catch
-            {
-                socket.Dispose();
-                throw;
-            }
-        },
-    });
+// Update checks: the release manifest of this repository's newest release, plus
+// the feed any third-party extension names in its own manifest. Same handler as
+// the avatar proxy, and for the same reason — an extension author chooses one of
+// those URLs. Disabled entirely by Updates__Enabled=false.
+builder.Services.Configure<UpdateOptions>(builder.Configuration.GetSection(UpdateOptions.Section));
+builder.Services.AddHttpClient(UpdateOptions.HttpClient, client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan;
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Solo-Update-Check/1.0");
+})
+    .ConfigurePrimaryHttpMessageHandler(PublicOnlyHttpHandler.Create);
+builder.Services.AddSingleton<ReleaseFeedClient>();
+builder.Services.AddSingleton<UpdateChecker>();
+builder.Services.AddSingleton<ExtensionUpdateInstaller>();
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddSingleton<TopicRegistry>();
 builder.Services.AddSingleton<LiveMessageLimits>();

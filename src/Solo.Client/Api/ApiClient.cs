@@ -109,6 +109,28 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
         SendAsync(HttpMethod.Delete, $"api/extensions/{extensionId}/data",
             new PurgeExtensionRequest { ConfirmExtensionId = extensionId }, ct);
 
+    // -- Updates ------------------------------------------------------------
+
+    /// <summary>
+    /// Server and extension updates, super admin only. Read from the API rather
+    /// than from GitHub because the CSP allows no other origin — see
+    /// <c>UpdatesController</c>.
+    /// </summary>
+    /// <param name="refresh">Re-read the feeds instead of using the cached answer.</param>
+    public Task<UpdateStatusDto> GetUpdatesAsync(bool refresh = false, CancellationToken ct = default) =>
+        GetAsync<UpdateStatusDto>(refresh ? "api/updates?refresh=true" : "api/updates", ct);
+
+    /// <summary>
+    /// Installs an extension update and restarts the instance to load it. The
+    /// response is the last thing this instance sends before it goes down, so a
+    /// caller should expect the connection to drop immediately afterwards.
+    /// </summary>
+    public Task<ExtensionUpdateResultDto> UpdateExtensionAsync(
+        string extensionId, CancellationToken ct = default) =>
+        SendAsync<ExtensionUpdateResultDto>(
+            HttpMethod.Post, $"api/updates/extensions/{extensionId}",
+            new UpdateExtensionRequest { ConfirmExtensionId = extensionId }, ct);
+
     public Task<UserDto> GetCurrentUserAsync(CancellationToken ct = default) =>
         GetAsync<UserDto>("api/users/me", ct);
 

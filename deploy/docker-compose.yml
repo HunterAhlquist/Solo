@@ -13,6 +13,11 @@
 services:
   solo:
     image: ghcr.io/hunterahlquist/solo:latest
+    # Load-bearing, not just hygiene: applying an extension update from Admin
+    # settings works by exiting so the new package is loaded at the next boot
+    # (extensions register their routes, hooks and DbContext before the host is
+    # built, so there is no rescan). Without a restart policy the instance stays
+    # down until it is started by hand.
     restart: unless-stopped
     depends_on:
       postgres:
@@ -67,6 +72,18 @@ services:
       # See docs/extension-plan.md.
       Extensions__Directory: "/data/extensions"
 
+      # -- Updates ------------------------------------------------------------
+      # The instance checks this repository's newest release for a newer server
+      # version and newer versions of the extensions installed below, and shows
+      # what it finds to the super admin (an icon in the app bar, detail in
+      # Admin settings). The check is an unauthenticated GET of a public JSON
+      # file: nothing about this instance is sent, and there is no telemetry.
+      # It is still an outbound call, so it can be switched off:
+      #   Updates__Enabled: "false"
+      # A fork or an air-gapped mirror can point it somewhere else instead:
+      #   Updates__ManifestUrl: "https://example.com/release-manifest.json"
+      # See docs/updates.md.
+
       # -- Reverse proxy ------------------------------------------------------
       # X-Forwarded-For is what per-IP rate limiting reads, so it is only
       # trusted from a peer that looks like a local reverse proxy: loopback or
@@ -95,9 +112,14 @@ services:
       - solo-themes:/data/themes
 
       # Extension packages. Same ownership caveat as themes above if you swap
-      # this for a host path. Removing a package leaves its data in the database
-      # on purpose — Admin settings then lists it as installed-but-absent and
-      # offers to drop it.
+      # this for a host path — and more pointedly, because Admin settings can
+      # install an extension update by writing here: a host path the app (UID
+      # 1654) cannot write to means the Update button refuses with that reason
+      # rather than failing halfway. An update keeps the package it replaced
+      # beside the new one as a .zip.bak, which the loader ignores.
+      #
+      # Removing a package leaves its data in the database on purpose — Admin
+      # settings then lists it as installed-but-absent and offers to drop it.
       - solo-extensions:/data/extensions
 
     # The aspnet base image ships no curl/wget; probe the TCP port via bash.

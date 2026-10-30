@@ -11,8 +11,24 @@ const { Menu } = require('electron');
 // `instances` is [{ id, label, open }]. An instance that already has a window
 // is listed but disabled: each gets one window at most, and the Window menu is
 // what brings an open one forward.
-function buildMenu({ appName = 'Solo', openAboutWindow, openSettingsWindow, instances, openInstance }) {
+function buildMenu({
+    appName = 'Solo',
+    openAboutWindow,
+    openSettingsWindow,
+    checkForUpdates,
+    instances,
+    openInstance,
+}) {
     const isMac = process.platform === 'darwin';
+
+    // Where each platform's users look for it: under the app menu next to About
+    // on macOS, under Help on Windows and Linux. The item always exists — a
+    // build that cannot update says so when clicked, which is more use than an
+    // item that is missing for reasons the user cannot see.
+    const updatesItem = {
+        label: 'Check for Updates…',
+        click: () => checkForUpdates?.(),
+    };
 
     const settingsItem = {
         label: 'Settings…',
@@ -41,6 +57,7 @@ function buildMenu({ appName = 'Solo', openAboutWindow, openSettingsWindow, inst
                     // Not the `about` role: that is the native panel, and
                     // Solo's has a page in it (main/about.js).
                     { label: `About ${appName}`, click: () => openAboutWindow() },
+                    updatesItem,
                     { type: 'separator' },
                     settingsItem,
                     openInstanceItem,
@@ -77,6 +94,16 @@ function buildMenu({ appName = 'Solo', openAboutWindow, openSettingsWindow, inst
             ],
         },
         { role: 'windowMenu' },
+        ...(isMac
+            ? []
+            : [{
+                role: 'help',
+                submenu: [
+                    updatesItem,
+                    { type: 'separator' },
+                    { label: `About ${appName}`, click: () => openAboutWindow() },
+                ],
+            }]),
     ];
 
     return Menu.buildFromTemplate(template);

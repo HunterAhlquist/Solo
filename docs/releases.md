@@ -68,22 +68,23 @@ URL included, so it keeps resolving.
 ```
 
 It is one file because the three updaters this exists for all read the same
-thing, at `/releases/latest/download/release-manifest.json`:
+thing, at `/releases/latest/download/release-manifest.json`
+([updates.md](updates.md) is the consuming side):
 
-- **Server update notification.** Compare `server.version` with the running
-  version and point an operator at `server.image`.
-- **Extension auto-update.** For each installed extension, compare
-  `extensions[].version` with what's on disk and fetch `extensions[].url`.
-  `soloApiVersion` is checked against the server's `server.contract`
-  (`ContractVersion.Current`) and `soloClientVersion` against the running
-  client's, which in the desktop shell is `desktop.contract` — so an updater can
-  refuse a package the host could not load *before* downloading it.
+- **The server indicator.** The instance compares `server.version` with its own
+  build and shows a super admin the release, with `server.image` to pull.
+- **Extension updates.** For each installed extension the instance compares
+  `extensions[].version` with what's on disk and, on confirmation, fetches
+  `extensions[].url` and checks it against `extensions[].sha512`.
+  `soloApiVersion` is checked against `ContractVersion.Current` before the
+  update is offered, so a package the host could not load is never downloaded.
 - **Desktop updates.** `desktop.channels` are the electron-updater channel
   files, described below.
 
 A third-party extension publishes the same shape on its own GitHub release, with
 only an `extensions` entry, so the host reads one format whoever built the
-package.
+package — see [updates.md](updates.md#publishing-updates-for-a-third-party-extension).
+A package names its own feed as `updates` in its `extension.json`.
 
 `schema` is the version of this contract. Add fields freely; bump it only when
 an existing field changes meaning.

@@ -24,7 +24,7 @@
     <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj. The host's
          copy reaches Solo.Roadmap.Tests through Solo.Api; Solo.Roadmap.Data.Tests,
          which has no host, references the package itself. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.11.1" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.12.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
