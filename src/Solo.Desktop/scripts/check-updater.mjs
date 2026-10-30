@@ -12,6 +12,8 @@
 // inside an Electron process, and spawning one to ask four questions about a
 // version string is not worth the seconds.
 import { createRequire } from 'node:module';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
@@ -29,9 +31,24 @@ require.cache[require.resolve('electron')] = {
 
 const { unsupportedReason } = require(path.join(desktopDir, 'main', 'updater.js'));
 
+// Two real resource directories rather than a mocked fs: one with the
+// app-update.yml a target build writes, one without it, which is exactly what a
+// `--dir` pack leaves behind.
+const configured = mkdtempSync(path.join(os.tmpdir(), 'solo-updater-configured-'));
+const bare = mkdtempSync(path.join(os.tmpdir(), 'solo-updater-bare-'));
+writeFileSync(path.join(configured, 'app-update.yml'), 'provider: generic\n');
+
 const platform = process.platform;
-function as(target, { packaged = true, version = '1.18.0', appImage = undefined } = {}) {
+const resources = process.resourcesPath;
+function as(
+    target,
+    { packaged = true, version = '1.18.0', appImage = undefined, updateConfig = true } = {},
+) {
     Object.defineProperty(process, 'platform', { value: target, configurable: true });
+    Object.defineProperty(process, 'resourcesPath', {
+        value: updateConfig ? configured : bare,
+        configurable: true,
+    });
     app.isPackaged = packaged;
     app.version = version;
     if (appImage === undefined) {
@@ -68,7 +85,24 @@ try {
     // distro package is the package manager's business.
     assert.match(as('linux'), /AppImage/);
 
-    console.log('PASS: update checks are skipped exactly for development runs, preview builds and non-AppImage Linux.');
+    // A `--dir` pack, or a .app copied out of dist/ rather than installed from
+    // the installer: a real bundle with no app-update.yml in it. Without this
+    // the user gets electron-updater's raw ENOENT on the missing path.
+    for (const target of ['darwin', 'win32']) {
+        const reason = as(target, { updateConfig: false });
+        assert.match(reason, /no update configuration/, `${target} must explain a missing app-update.yml`);
+        assert.doesNotMatch(reason, /ENOENT/);
+    }
+    assert.match(
+        as('linux', { appImage: '/tmp/Solo.AppImage', updateConfig: false }),
+        /no update configuration/);
+
+    console.log(
+        'PASS: update checks are skipped exactly for development runs, preview builds, ' +
+        'non-AppImage Linux and builds with no app-update.yml.');
 } finally {
     Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+    Object.defineProperty(process, 'resourcesPath', { value: resources, configurable: true });
+    rmSync(configured, { recursive: true, force: true });
+    rmSync(bare, { recursive: true, force: true });
 }

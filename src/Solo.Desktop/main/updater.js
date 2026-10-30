@@ -22,6 +22,8 @@
 // A manual check reports those out loud instead, because a user who picked
 // "Check for Updates…" is owed an answer.
 const { app, dialog } = require('electron');
+const fs = require('fs');
+const path = require('path');
 const { identityForVersion } = require('./app-identity');
 
 let autoUpdater = null;
@@ -42,6 +44,21 @@ function unsupportedReason() {
 
     if (process.platform === 'linux' && !process.env.APPIMAGE) {
         return 'In-app updates on Linux are only supported for the AppImage build.';
+    }
+
+    // electron-builder writes app-update.yml per *target*, so a `--dir` pack
+    // produces a perfectly good .app with no update config in it. Copying that
+    // .app out of dist/ instead of installing from the dmg is the normal way to
+    // test a local build, and without this check electron-updater reads the
+    // missing file and the user gets a raw ENOENT path in a dialog.
+    //
+    // Checked rather than inferred from the publish config, because this file
+    // cannot see that config — and because the same absence covers a fork that
+    // builds without one.
+    if (!fs.existsSync(path.join(process.resourcesPath, 'app-update.yml'))) {
+        return 'This build carries no update configuration, so it cannot check for updates. ' +
+            'That is what an app packed with --dir looks like: install from the .dmg, .exe or ' +
+            'AppImage rather than running the .app copied out of dist/.';
     }
 
     return null;

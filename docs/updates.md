@@ -54,7 +54,7 @@ icon → install on quit, or restart now.
 `autoInstallOnAppQuit` stays on, so an update that was downloaded applies at the
 next quit whether or not the user took the "Restart Now" offer.
 
-Three situations skip the check, because electron-updater cannot work in them:
+Four situations skip the check, because electron-updater cannot work in them:
 
 - **a development run**, which has no `app-update.yml`;
 - **a preview build**, whose publish config is `null` deliberately. The feed
@@ -64,6 +64,13 @@ Three situations skip the check, because electron-updater cannot work in them:
   different user data. `scripts/check-updater.mjs` pins this.
 - **Linux outside an AppImage**, the only Linux target electron-updater can
   replace in place.
+- **a build with no `app-update.yml`.** electron-builder writes that file per
+  *target*, so `--publish never` is fine but a `--dir` pack produces a perfectly
+  good `.app` with no update config in it — and copying that out of `dist/`
+  instead of installing from the `.dmg` is the normal way to try a local build.
+  Without the check, electron-updater reads the missing file and the user gets a
+  raw `ENOENT` and a path. Verified both ways: a `--dir` pack writes no such
+  file, and a real target build writes `provider: generic` with the feed URL.
 
 A check the user asked for reports those out loud. The one on startup is silent,
 and so is a failed one — the next launch tries again, and a dialog about a
