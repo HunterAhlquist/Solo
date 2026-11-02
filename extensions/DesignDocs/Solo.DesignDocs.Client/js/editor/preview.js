@@ -42,6 +42,7 @@ class UnsupportedMedia extends WidgetType {
 function build(view, bridge, images) {
     const ranges = [], doc = view.state.doc, cursorLines = new Set();
     if (view.state.facet(EditorView.editable)) for (const r of view.state.selection.ranges) for (let n=doc.lineAt(r.from).number;n<=doc.lineAt(r.to).number;n++) cursorLines.add(n);
+    const touches=(from,to)=>view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(r=>r.from<=to&&r.to>=from);
     const tree=syntaxTree(view.state);
     const insideCode=from=>{for(let node=tree.resolveInner(from,1);node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name))return true;return false;};
     const embedded=[];
@@ -87,8 +88,12 @@ function build(view, bridge, images) {
             const url=match?.[2]??match?.[3],label=match?.[1].replace(/\\([\\[\]])/g,'$1');
             if (match && isSafeUrl(url)) { ranges.push(Decoration.replace({widget:(/^[^:#?]+\.md(?:#.*)?$/i.test(url)?new WikiLink(url,label,bridge):new Link(label,url,bridge))}).range(node.from,node.to)); return false; }
         }
-        if (cursorLines.has(line.number)) return;
         if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark|HighlightMark)$/.test(node.name)) {
+            // Inline markup shows only while the cursor touches its own span, so
+            // the rest of the line keeps rendering; headings and fences go by line.
+            const span=node.node.parent;
+            const inline=span&&/^(Emphasis|StrongEmphasis|InlineCode|Strikethrough|Highlight)$/.test(span.name);
+            if(inline?touches(span.from,span.to):cursorLines.has(line.number))return;
             // An ATX marker's separator belongs to its syntax, not the rendered title.
             const separator=node.name==='HeaderMark'&&/^ATXHeading/.test(node.node.parent?.name??'')&&node.from===line.from
                 ? /^[ \t]*/.exec(doc.sliceString(node.to,line.to))[0].length:0;

@@ -75,3 +75,11 @@ test('highlight renders with its markup hidden off the caret line',()=>{
     assert.deepEqual(decorations(doc.length),{marks:['design-docs-highlight'],hidden:['==','==']});
     assert.deepEqual(decorations(0).hidden,[]);
 });
+
+test('inline markers hide when the cursor is elsewhere on the same line',()=>{
+    const doc='**and** *having* ==specific== real-world',field=livePreview({},{});
+    const hidden=anchor=>{const list=[];EditorState.create({doc,selection:{anchor},extensions:[markdownEditing(),EditorView.editable.of(true),field]}).field(field).between(0,doc.length,(from,to,value)=>{if(value.isReplace&&!value.spec.widget)list.push(doc.slice(from,to));});return list;};
+    assert.deepEqual(hidden(doc.length-5),['**','**','*','*','==','==']);
+    assert.deepEqual(hidden(doc.indexOf('having')),['**','**','==','==']);
+    assert.deepEqual(hidden(doc.indexOf('**and**')+7),['*','*','==','==']);
+});
