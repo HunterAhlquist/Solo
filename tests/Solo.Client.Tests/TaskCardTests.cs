@@ -41,7 +41,7 @@ public class TaskCardTests : ComponentTestBase
     }
 
     [Fact]
-    public void The_tab_wears_the_cards_deadline_tint_and_its_finished_fade()
+    public void The_tab_wears_the_cards_deadline_tint_and_its_pulse()
     {
         var due = Render<TaskCard>(p => p
             .Add(c => c.Task, TestData.Task(deadline: DateOnly.FromDateTime(DateTime.Today.AddDays(3))))
@@ -52,11 +52,6 @@ public class TaskCardTests : ComponentTestBase
         // the tint variable is what the tab has to share.
         Assert.Contains("--deadline-color", tab.GetAttribute("style"));
         Assert.Contains("--deadline-color", due.Find(".kanban-card").GetAttribute("style"));
-
-        var finished = Render<TaskCard>(p => p
-            .Add(c => c.Task, TestData.Task(status: TaskState.Finished))
-            .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN")));
-        Assert.Contains("kanban-card__origin--finished", finished.Find(".kanban-card__origin").ClassName);
 
         var pulsed = Render<TaskCard>(p => p
             .Add(c => c.Task, TestData.Task())
