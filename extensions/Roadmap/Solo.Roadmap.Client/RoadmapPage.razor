@@ -16,11 +16,12 @@
     Everyone else's changes arrive live, and whoever else has it open shows in
     the header.
 
-    With Personal, it's the person's own roadmap on the dashboard: their
-    assigned tasks from every project, with the dashboard drawing the header.
-    Rows and bars move the same way, but a bar's dates are the person's plan,
-    kept here, and the task's own dates stay — a bar planned past its deadline
-    is hatched from the deadline on, with a warning at that point.
+    With Personal, it's the person's own roadmap on the dashboard: the tasks
+    assigned to them that they put on it, from any project, with the dashboard
+    drawing the header. Rows and bars move the same way, but a bar's dates are
+    the person's plan, kept here, and the task's own dates stay — a bar planned
+    past its deadline is hatched from the deadline on, with a warning at that
+    point.
 *@
 
 @if (!Personal)
@@ -91,6 +92,15 @@ else
                 </MudMenu>
             }
         </div>
+        }
+        else
+        {
+            <div class="roadmap-toolbar">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => PickAsync(_today))">
+                    Add task
+                </MudButton>
+            </div>
         }
 
         <div class="roadmap-timeline" @ref="_scroller"
@@ -172,7 +182,7 @@ else
                     {
                         <div class="roadmap-empty">
                             @(Personal
-                                ? "No tasks are assigned to you. A task assigned to you on any board shows up here."
+                                ? "Nothing on your roadmap yet. Use Add task, or right-click a day in the grid (or press and hold one), to put one of your tasks on it."
                                 : CanWrite
                                     ? "No tasks on this roadmap yet. Right-click a day in the grid (or press and hold one), or use Add task, to put one on it."
                                     : "No tasks on this roadmap yet.")

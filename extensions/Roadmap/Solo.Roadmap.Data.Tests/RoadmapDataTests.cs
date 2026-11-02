@@ -189,6 +189,28 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
             (settings.PastDays, settings.FutureDays, settings.SprintStartDay, settings.SprintLengthWeeks));
     }
 
+    /// <summary>1.9 put every assigned task on a person's roadmap; 1.10 keeps only the rows they planned.</summary>
+    [SkippableFact]
+    public async Task Upgrading_from_1_9_drops_the_rows_nobody_planned()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await _db.GetService<IMigrator>().MigrateAsync("20261102203755_PersonalRoadmap");
+        var user = Guid.NewGuid();
+        var planned = Guid.NewGuid();
+        await _db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO ext_roadmap."PersonalEntries" ("Id", "UserId", "TaskId", "Rank", "AnchorDay", "StartAt", "EndAt", "AddedAt")
+            VALUES ({0}, {1}, {2}, 1024, '2026-11-02', '2026-11-04', '2026-11-18', now()),
+                   ({3}, {1}, {4}, 2048, '2026-11-02', NULL, NULL, now())
+            """,
+            planned, user, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        await _db.Database.MigrateAsync();
+
+        await using var upgraded = PostgresFixture.Context(_connectionString);
+        Assert.Equal(planned, (await upgraded.PersonalEntries.SingleAsync()).Id);
+    }
+
     private async Task<Data.Roadmap> RoadmapAsync()
     {
         var roadmap = new Data.Roadmap { ProjectId = Guid.NewGuid(), Title = "Plan", CreatedByUserId = Guid.NewGuid() };

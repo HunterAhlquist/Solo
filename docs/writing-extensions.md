@@ -1086,3 +1086,21 @@ left out.
 _nudges = await Live.SubscribeUserAsync(BoardHubConstants.AssignedTasksTopic,
     message => InvokeAsync(ReloadAsync));
 ```
+
+## Contract 1.14: picking from one person's work
+
+```csharp
+var task = await Picker.PickAssignedAsync(new TaskPickerOptions
+{
+    Title = "Add one of your tasks",
+    Exclude = alreadyShown,
+}, ct);
+```
+
+`ISoloTaskPicker.PickAssignedAsync` opens the host picker over the signed-in
+person's own work rather than one project: every task `api/users/me/tasks`
+returns, grouped under "Project · Board" headings and then by epic in each
+board's order. Closed boards are never in it, as they are never on the
+dashboard, so `IncludeClosedBoards` is ignored and the dialog has no switch for
+it. Everything else in `TaskPickerOptions` means what it does for `PickAsync`.
+Client-only: a package that calls it needs 1.14 in `soloClientVersion`.

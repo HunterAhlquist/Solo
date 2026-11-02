@@ -224,7 +224,7 @@ public sealed partial class RoadmapPage
     /// browser's today, which is where a task new to it is anchored.
     /// </summary>
     private Task<RoadmapTimelineDto> ReadTimelineAsync() => Personal
-        ? Api.MyTimelineAsync(DateOnly.FromDateTime(DateTime.Now))
+        ? Api.MyTimelineAsync()
         : Api.TimelineAsync(_project!.Id, RoadmapId);
 
     /// <summary>Opens the roadmap: its rows, and a view around the day it starts on.</summary>
@@ -520,7 +520,7 @@ public sealed partial class RoadmapPage
             StateHasChanged();
         }
 
-        if (!CanWrite || Personal)
+        if (!CanWrite)
         {
             return;
         }
@@ -531,14 +531,20 @@ public sealed partial class RoadmapPage
         // while the picker is open could shift.
         var lines = Layout().Lines;
         var beside = line >= 0 && line < lines.Count ? lines[line].Entries[0].Id : (Guid?)null;
-        switch (await Menu.ShowAsync(clientX, clientY,
-                [
-                    new ContextMenuItem(AddItem, $"Add a task on {Dates.Day(day)}") { Icon = Icons.Material.Filled.Add },
-                    new ContextMenuItem(AddMilestoneItem, $"Add a milestone on {Dates.Day(day)}")
-                    {
-                        Icon = Icons.Material.Filled.Flag,
-                    },
-                ]))
+        // Milestones are a project's, and a person's own roadmap spans projects.
+        var items = new List<ContextMenuItem>
+        {
+            new(AddItem, $"Add a task on {Dates.Day(day)}") { Icon = Icons.Material.Filled.Add },
+        };
+        if (!Personal)
+        {
+            items.Add(new ContextMenuItem(AddMilestoneItem, $"Add a milestone on {Dates.Day(day)}")
+            {
+                Icon = Icons.Material.Filled.Flag,
+            });
+        }
+
+        switch (await Menu.ShowAsync(clientX, clientY, items))
         {
             case AddItem:
                 await PickAsync(day, beside);
@@ -601,7 +607,7 @@ public sealed partial class RoadmapPage
     [JSInvokable]
     public Task OnRemoveSelected() => InvokeAsync(async () =>
     {
-        if (CanWrite && !Personal && _selected.Count > 0)
+        if (CanWrite && _selected.Count > 0)
         {
             await RemoveAsync(_entries.Where(e => _selected.Contains(e.Id)).ToList());
             StateHasChanged();
@@ -1104,18 +1110,23 @@ public sealed partial class RoadmapPage
     /// <param name="beside">An entry on the row it should go on, if it fits there.</param>
     private async Task PickAsync(DateOnly day, Guid? beside = null)
     {
-        if (!CanWrite || _project is null)
+        if (!CanWrite || (!Personal && _project is null))
         {
             return;
         }
 
-        var project = _project.Id;
-        var picked = await WhileEditingAsync(() => Picker.PickAsync(project, new TaskPickerOptions
+        var options = new TaskPickerOptions
         {
             Title = $"Add a task on {Dates.Day(day)}",
             Exclude = _entries.Select(e => e.Task.Id).ToHashSet(),
-            AllExcludedText = "Every task in this project is already on this roadmap.",
-        }));
+            AllExcludedText = Personal
+                ? "Every task assigned to you is already on your roadmap."
+                : "Every task in this project is already on this roadmap.",
+        };
+        var project = _project?.Id;
+        var picked = await WhileEditingAsync(() => project is { } projectId
+            ? Picker.PickAsync(projectId, options)
+            : Picker.PickAssignedAsync(options));
 
         if (picked is not null)
         {
@@ -1127,21 +1138,26 @@ public sealed partial class RoadmapPage
     /// Puts the task on the roadmap: beside <paramref name="beside"/> on its
     /// row when its bar fits there, else on a row of its own at the end. A task
     /// with no dates gets them from the chosen day (see
-    /// <see cref="Timeline.ScheduleOnAdd"/>); one that has dates keeps them —
-    /// nobody's deadline moves without them seeing it — and the view goes to
-    /// where its bar is.
+    /// <see cref="Timeline.ScheduleOnAdd"/>) — on a person's own roadmap, a
+    /// week's plan of theirs instead, the task left undated; one that has dates
+    /// keeps them — nobody's deadline moves without them seeing it — and the
+    /// view goes to where its bar is.
     /// </summary>
     private async Task AddAsync(TaskDto picked, DateOnly day, Guid? beside)
     {
         // Whether it fits is judged on the dates it's about to have.
-        var span = picked.DeadlineAt is null ? Timeline.ScheduleOnAdd(day, _today) : Timeline.Span(picked, day);
+        var span = picked.DeadlineAt is not null ? Timeline.Span(picked, day)
+            : Personal ? new DaySpan(day, RoadmapScheduleDto.OnAdd(day).End)
+            : Timeline.ScheduleOnAdd(day, _today);
         var joinId = beside is { } id && FitsBeside(id, span) ? id : (Guid?)null;
 
         await using var saving = Saving();
         RoadmapEntryDto entry;
         try
         {
-            entry = await Api.AddEntryAsync(_project!.Id, RoadmapId, picked.Id, day, joinId);
+            entry = Personal
+                ? await Api.AddMineAsync(picked.Id, day, joinId)
+                : await Api.AddEntryAsync(_project!.Id, RoadmapId, picked.Id, day, joinId);
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
@@ -1153,7 +1169,13 @@ public sealed partial class RoadmapPage
         await LoadLabelsAsync();
 
         string? note = null;
-        if (entry.Task.DeadlineAt is null)
+        if (Personal)
+        {
+            note = entry.Schedule is { } plan
+                ? $"It has no deadline, so it's planned for {Dates.Range(plan.Start, plan.End)} on your roadmap only."
+                : $"It follows the task's dates ({Dates.Range(span.Start, span.End)}).";
+        }
+        else if (entry.Task.DeadlineAt is null)
         {
             if (await ScheduleOnAddAsync(entry.Task, span) is { } scheduled)
             {
@@ -1259,7 +1281,9 @@ public sealed partial class RoadmapPage
         {
             foreach (var chunk in ids.Chunk(RoadmapLimits.MaxEntriesAtOnce))
             {
-                await Api.RemoveEntriesAsync(_project!.Id, RoadmapId, chunk);
+                await (Personal
+                    ? Api.RemoveMineAsync(chunk)
+                    : Api.RemoveEntriesAsync(_project!.Id, RoadmapId, chunk));
             }
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
@@ -1275,9 +1299,10 @@ public sealed partial class RoadmapPage
 
         _entries.RemoveAll(e => ids.Contains(e.Id));
         _selected.ExceptWith(ids);
+        var roadmap = Personal ? "your roadmap" : "the roadmap";
         Snackbar.Add(targets.Count == 1
-            ? $"Removed {Serial(targets[0])} from the roadmap."
-            : $"Removed {targets.Count} tasks from the roadmap.", Severity.Info);
+            ? $"Removed {Serial(targets[0])} from {roadmap}."
+            : $"Removed {targets.Count} tasks from {roadmap}.", Severity.Info);
     }
 
     // -- The task drawer --------------------------------------------------------------
@@ -1396,7 +1421,6 @@ public sealed partial class RoadmapPage
 
         if (Personal)
         {
-            // Their own roadmap: a task leaves it by reassignment, not from here.
             if (targets.Count == 1)
             {
                 items.Add(new ContextMenuItem(BoardItem, $"Go to {targets[0].BoardName}")
@@ -1417,15 +1441,18 @@ public sealed partial class RoadmapPage
                 });
             }
         }
-        else if (CanWrite)
+
+        if (CanWrite)
         {
+            var roadmap = Personal ? "your roadmap" : "roadmap";
             items.Add(new ContextMenuItem(RemoveItem, targets.Count == 1
-                ? "Remove from roadmap"
-                : $"Remove {targets.Count} tasks from roadmap")
+                ? $"Remove from {roadmap}"
+                : $"Remove {targets.Count} tasks from {roadmap}")
             {
                 Icon = Icons.Material.Filled.RemoveCircleOutline,
                 Danger = true,
-                SeparatorBefore = true,
+                // Below the plan reset when there is one, which already starts a group.
+                SeparatorBefore = !items.Any(i => i.Id == FollowItem),
             });
         }
 

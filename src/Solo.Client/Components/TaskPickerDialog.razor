@@ -4,9 +4,10 @@
 @inject IJSRuntime JS
 
 @*
-    The dialog behind ISoloTaskPicker: any task in the project, searchable by
-    name, serial or epic, grouped by board and then by epic in the board's own
-    order. Finished tasks and closed boards' tasks are hidden until switched on.
+    The dialog behind ISoloTaskPicker: any task in the project, or with no
+    project every task assigned to the signed-in person, searchable by name,
+    serial or epic, grouped by board and then by epic in the board's own order.
+    Finished tasks and closed boards' tasks are hidden until switched on.
     Arrow keys move through the results and Enter takes the highlighted one.
 *@
 
@@ -20,9 +21,12 @@
         <div class="task-picker__filters">
             <MudSwitch T="bool" Value="@_filter.Finished" ValueChanged="@(on => Refilter(_filter with { Finished = on }))"
                        Label="Finished tasks" Color="Color.Primary" Size="Size.Small" />
-            <MudSwitch T="bool" Value="@_filter.ClosedBoards"
-                       ValueChanged="@(on => Refilter(_filter with { ClosedBoards = on }))"
-                       Label="Closed boards" Color="Color.Primary" Size="Size.Small" />
+            @if (!Assigned)
+            {
+                <MudSwitch T="bool" Value="@_filter.ClosedBoards"
+                           ValueChanged="@(on => Refilter(_filter with { ClosedBoards = on }))"
+                           Label="Closed boards" Color="Color.Primary" Size="Size.Small" />
+            }
         </div>
 
         <div class="task-picker__results" role="listbox" aria-label="Tasks">
@@ -45,7 +49,7 @@
                 {
                     var board = result.Board;
                     <div class="task-picker__board" role="presentation">
-                        @board.Name@(board.IsOpen ? "" : " · closed")
+                        @BoardHeading(board)@(board.IsOpen ? "" : " · closed")
                     </div>
                     @foreach (var lane in result.Epics)
                     {
@@ -95,6 +99,7 @@
 @code {
     private MudTextField<string>? _search;
     private IReadOnlyList<BoardDetailDto>? _boards;
+    private Dictionary<Guid, string> _projectNames = [];
     private IReadOnlyList<TaskPickerBoard> _results = [];
     private List<TaskDto> _flat = [];
     private string _query = string.Empty;
@@ -105,11 +110,14 @@
     [CascadingParameter]
     private IMudDialogInstance Dialog { get; set; } = default!;
 
-    [Parameter, EditorRequired]
-    public Guid ProjectId { get; set; }
+    /// <summary>Null for the signed-in person's assigned tasks across every project.</summary>
+    [Parameter]
+    public Guid? ProjectId { get; set; }
 
     [Parameter]
     public TaskPickerOptions Options { get; set; } = new();
+
+    private bool Assigned => ProjectId is null;
 
     /// <summary>
     /// The board payload rather than its tasks and epics separately: one read
@@ -118,18 +126,41 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        _filter = new(Options.IncludeFinished, Options.IncludeClosedBoards);
+        _filter = new(Options.IncludeFinished, Options.IncludeClosedBoards && !Assigned);
         try
         {
-            var boards = await Api.GetBoardsAsync(ProjectId);
-            _boards = await Task.WhenAll(boards.Select(b => Api.GetBoardAsync(b.Id)));
+            _boards = ProjectId is { } projectId
+                ? await Task.WhenAll((await Api.GetBoardsAsync(projectId)).Select(b => Api.GetBoardAsync(b.Id)))
+                : await AssignedBoardsAsync();
             Filter();
         }
         catch (Exception e) when (e is ApiException or HttpRequestException)
         {
-            _error = "Couldn't load this project's tasks.";
+            _error = Assigned ? "Couldn't load your tasks." : "Couldn't load this project's tasks.";
         }
     }
+
+    /// <summary>
+    /// The boards the person's tasks are on, in the sidebar's project order,
+    /// each cut down to their own tasks. Read whole rather than built from the
+    /// assigned list because the epics and their order come with the board.
+    /// </summary>
+    private async Task<IReadOnlyList<BoardDetailDto>> AssignedBoardsAsync()
+    {
+        var assigned = await Api.GetAssignedTasksAsync();
+        var mine = assigned.Tasks.Select(t => t.Id).ToHashSet();
+        var projectOrder = assigned.Projects.Select((p, i) => (p.Id, i)).ToDictionary(p => p.Id, p => p.i);
+        _projectNames = assigned.Projects.ToDictionary(p => p.Id, p => p.Name);
+        var boards = await Task.WhenAll(assigned.Boards
+            .Where(b => projectOrder.ContainsKey(b.ProjectId))
+            .OrderBy(b => projectOrder[b.ProjectId])
+            .ThenBy(b => b.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(b => Api.GetBoardAsync(b.Id)));
+        return boards.Select(b => b with { Tasks = b.Tasks.Where(t => mine.Contains(t.Id)).ToList() }).ToList();
+    }
+
+    private string BoardHeading(BoardDetailDto board) =>
+        _projectNames.TryGetValue(board.ProjectId, out var project) ? $"{project} · {board.Name}" : board.Name;
 
     /// <summary>
     /// Focused explicitly: the dialog's own focus handling runs after the field's
@@ -151,17 +182,24 @@
             var tasks = _boards!.SelectMany(b => b.Tasks).ToList();
             if (tasks.Count == 0)
             {
-                return "This project has no tasks yet.";
+                return Assigned ? "No tasks are assigned to you." : "This project has no tasks yet.";
             }
 
             if (tasks.All(t => Options.Exclude.Contains(t.Id)))
             {
-                return Options.AllExcludedText ?? "There are no other tasks in this project to pick.";
+                return Options.AllExcludedText ?? (Assigned
+                    ? "There are no other tasks of yours to pick."
+                    : "There are no other tasks in this project to pick.");
             }
 
-            return string.IsNullOrWhiteSpace(_query)
-                ? "No open tasks left to pick. Finished tasks and closed boards are hidden unless switched on above."
-                : "No tasks match.";
+            if (!string.IsNullOrWhiteSpace(_query))
+            {
+                return "No tasks match.";
+            }
+
+            return Assigned
+                ? "No open tasks left to pick. Finished tasks are hidden unless switched on above."
+                : "No open tasks left to pick. Finished tasks and closed boards are hidden unless switched on above.";
         }
     }
 

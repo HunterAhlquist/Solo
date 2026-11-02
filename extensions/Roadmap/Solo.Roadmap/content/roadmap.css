@@ -221,6 +221,13 @@ html[data-color-scheme="dark"] {
     pointer-events: none;
 }
 
+/* A person's own roadmap has no header (the dashboard draws one), so its one action sits above the grid. */
+.roadmap-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.5rem;
+}
+
 .roadmap-empty {
     position: sticky;
     left: 0;

@@ -24,6 +24,15 @@ public interface ISoloTaskPicker
     /// which closes the dialog.
     /// </summary>
     Task<TaskDto?> PickAsync(Guid projectId, TaskPickerOptions? options = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// The same picker over the signed-in person's own work instead of one
+    /// project: every task assigned to them, from every project they're in,
+    /// grouped by project and board. It offers what the Your Tasks dashboard
+    /// shows, so closed boards' tasks are never in it and
+    /// <see cref="TaskPickerOptions.IncludeClosedBoards"/> is ignored.
+    /// </summary>
+    Task<TaskDto?> PickAssignedAsync(TaskPickerOptions? options = null, CancellationToken ct = default);
 }
 
 /// <summary>What the picker asks for and leaves out.</summary>
@@ -45,7 +54,7 @@ public sealed record TaskPickerOptions
     public IReadOnlySet<Guid> Exclude { get; init; } = new HashSet<Guid>();
 
     /// <summary>
-    /// What the picker says when the project has tasks but <see cref="Exclude"/>
+    /// What the picker says when there are tasks but <see cref="Exclude"/>
     /// covers every one, such as "Every task is already on this roadmap."
     /// </summary>
     public string? AllExcludedText { get; init; }

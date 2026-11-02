@@ -111,12 +111,16 @@ and the instance loses roadmaps and nothing else:
     pulsing avatar means they're dragging a bar or have a roadmap dialog open.
 - **Your Roadmap, on the dashboard**: a section above the Your Tasks board,
   collapsible, drawn by core from the `[DashboardSection]` seam. It's the
-  timeline page in its personal mode, holding every task assigned to the
-  signed-in person from every project they're in, on rows of their own.
-  - Which tasks are on it is core's word on assignments, read fresh each
-    time: a task assigned to them shows up, one handed on or deleted goes. There
-    is no adding or removing from here, no header, and no milestones, which
-    belong to a project.
+  timeline page in its personal mode, holding the tasks the signed-in person
+  chose to put on it, from any project they're in, on rows of their own.
+  - Nothing is added for them. **Add task** above the grid, or right-clicking
+    a day, opens the host picker over their own assigned tasks from every
+    project (contract 1.14), and the bar menu removes one. Only a task assigned
+    to them can go on, and one handed on or deleted leaves on its own. There is
+    no header and no milestones, which belong to a project.
+  - A task with no deadline would be a one-day pill too narrow to name it, so
+    it goes on with a week's plan from the day it was added on. The task itself
+    stays undated.
   - Bars carry their full serial (`PROJ-BOARD-n`), and their tooltip and the
     missed-deadlines table name the project and board. The bar menu has **Go
     to *board***.
@@ -194,7 +198,9 @@ with the project's writers.
 | POST | `projects/{projectId}/roadmaps/{id}/milestones` | write | `{ name, day, color? }`. The colour is `#rrggbb` and defaults to `#e53935`. 400 without a name or day. |
 | PUT | `projects/{projectId}/roadmaps/{id}/milestones/{milestoneId}` | write | `{ name, day, color, version }`. 409 on a stale version. |
 | DELETE | `projects/{projectId}/roadmaps/{id}/milestones/{milestoneId}` | write | Deletes the milestone. |
-| GET | `me?today=` | signed in | The caller's own roadmap: every task assigned to them on an open board of a project they're in, each with its row and, when they've planned it, its `schedule`. A task new to it gets a row at the end, anchored on `today` (the browser's; the server's when absent); one no longer theirs loses its row. Title "Your Roadmap", no milestones. |
+| GET | `me` | signed in | The caller's own roadmap: the tasks they added, each with its row and, when they've planned it, its `schedule`. A row whose task is no longer theirs, or gone, is dropped. Title "Your Roadmap", no milestones. |
+| POST | `me/entries` | signed in | `{ taskId, anchorDay, joinId? }`: puts one of the caller's assigned tasks on, beside `joinId` or on a row of its own at the end. A task with no deadline gets a seven-day `schedule` from `anchorDay`. 400 for a task not assigned to them or on a closed board, 409 if it's already on. |
+| POST | `me/entries/remove` | signed in | `{ entryIds }`: takes rows off. Only the caller's own rows go; the tasks are untouched. |
 | PUT | `me/entries/{entryId}/rank` | signed in | As the roadmap's, on the caller's own rows. 404 for anyone else's. |
 | PUT | `me/entries/rank` | signed in | As the roadmap's, on the caller's own rows. |
 | PUT | `me/entries/{entryId}/anchor` | signed in | `{ anchorDay }`: moves a no-deadline pill. |
@@ -273,12 +279,12 @@ When it's due is worked out in the browser from the sprint settings
 
 **A person's roadmap stores where, never what.** `PersonalEntries` holds one
 row per person and task — rank, anchor day and, once they've dragged or
-resized the bar, their own start and end — and nothing about which tasks
-belong on it. That is core's `ISoloQuery.AssignedTasksAsync` (contract 1.13),
-read on every request, so the roadmap can't drift from the assignments: the
-read adds a row for each task without one and drops the rows whose task is no
-longer theirs. Two reads racing to add the same row leave one with a unique
-violation, which it answers by reading what the other wrote.
+resized the bar, their own start and end. A row exists because they added
+it, and only for a task core's `ISoloQuery.AssignedTasksAsync` (contract 1.13)
+says is theirs. Every read asks again and drops the rows whose task is no
+longer theirs, so the roadmap can't outlive an assignment. 1.9 added a row for
+every assigned task on each read instead; people found a page of unreadable
+one-day pills they hadn't asked for, which is why it's their choice now.
 
 The plan deliberately doesn't write back to the task. A project's roadmap
 reschedules through core because the roadmap and the board must agree about a
@@ -293,11 +299,12 @@ cache, could otherwise pair a new page with an old script.
 
 ## Its dependency on core
 
-Contract **1.13** on both halves since 1.9: `ISoloQuery.AssignedTasksAsync`
-on the server for the person's assigned tasks across projects, and in the
-browser the `[DashboardSection]` seam the roadmap renders under, core's
-`GET api/users/me/tasks` for the people on their projects, and the
-`solo:assigned-tasks` user topic that says when one of their tasks changed.
+Contract **1.13** on the server since 1.9, for `ISoloQuery.AssignedTasksAsync`:
+the person's assigned tasks across projects. Contract **1.14** in the browser
+since 1.10, for `ISoloTaskPicker.PickAssignedAsync`, the host picker over
+those tasks; with it, the 1.13 `[DashboardSection]` seam the roadmap renders
+under, core's `GET api/users/me/tasks` for the people on their projects, and
+the `solo:assigned-tasks` user topic that says when one of their tasks changed.
 
 Before 1.9: contract **1.4** on the server and **1.6** in the browser. From 1.3, two
 things on the server:
@@ -347,6 +354,14 @@ dotnet ef migrations add <Name> --project extensions/Roadmap/Solo.Roadmap --star
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.9
+
+1.10 adds the `PersonalRoadmapByChoice` migration, which deletes the rows 1.9
+put on people's own roadmaps that they never dragged or resized: those are the
+ones it added for them. A row someone planned is kept. The browser half needs a
+client on contract 1.14 for the picker; until then the client skips the
+package and shows no roadmaps, while the server keeps them.
 
 ## Upgrading from 1.8
 
