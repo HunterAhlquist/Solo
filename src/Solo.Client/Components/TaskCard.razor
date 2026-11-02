@@ -10,7 +10,7 @@
 {
     @* Outside the paper, so the tab's click is a navigation and never a drawer
        open; stopPropagation covers the slot's context menu as well. *@
-    <a class="kanban-card__origin" href="@Origin.Href" @onclick:stopPropagation
+    <a class="@OriginClass" style="@CardStyle" href="@Origin.Href" @onclick:stopPropagation
        aria-label="@($"Open {Origin.BoardName} in {Origin.ProjectName}")">
         <span class="kanban-card__origin-name">@Origin.ProjectName</span>
         <span class="kanban-card__origin-dot" aria-hidden="true">▪</span>
@@ -235,4 +235,10 @@
 
     private string? CardStyle =>
         ShowDeadline ? $"--deadline-color:{DeadlineColor}" : null;
+
+    /// <summary>The tab wears the card's outline: the same deadline tint and the same fade once finished.</summary>
+    private string OriginClass =>
+        "kanban-card__origin" +
+        (ShowDeadline ? " kanban-card__origin--deadline" : string.Empty) +
+        (IsFinished ? " kanban-card__origin--finished" : string.Empty);
 }
