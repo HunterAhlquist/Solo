@@ -48,6 +48,7 @@ Markdown formatting appears as you write. The cursor reveals the syntax that you
 | Create a numbered list | Type `1. ` at the start of a line. |
 | Continue a list | Press **Return**. |
 | Indent or outdent | Press **Tab** or **Shift+Tab**. |
+| Format text | Select it, then use the formatting panel above the selection. |
 | Change text size | Use **Editor font size** in the vault header. |
 | Change text margins | Use **Editor margin width** in the vault header. |
 
@@ -57,6 +58,24 @@ They do not change the stored Markdown.
 The insertion palette follows the current line beside the left text margin.
 Move the pointer to show it. Typing hides it.
 **Alt+Insert** moves keyboard focus to the palette.
+
+### Format selected text
+
+Select text to show the formatting panel. It floats above the selection, or below it when there isn't room.
+On touch screens it prefers below, clear of the system's own selection menu.
+Each button turns a style on for the selection, or off when the whole selection already has it.
+
+| Button | Markdown | Shortcut |
+|---|---|---|
+| **Bold** | `**text**` | **Ctrl+B** or **⌘B** |
+| **Italic** | `*text*` | **Ctrl+I** or **⌘I** |
+| **Underline** | `<u>text</u>` | **Ctrl+U** or **⌘U** |
+| **Highlight** | `==text==` | |
+| **Link** | `[text](url)` | |
+
+**Link** asks for an address; on a link it removes the link and keeps the text.
+Markdown has no underline, so the panel writes the `<u>` tag that Obsidian also renders.
+`==highlight==` is extended Markdown: Obsidian renders it, but some other Markdown apps show the equals signs.
 
 ## Link notes and tasks
 

@@ -28,6 +28,15 @@
     <MudTooltip Text="Add image"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.AddPhotoAlternate" OnClick="AddImage" aria-label="Add image" /></MudTooltip>
     <MudTooltip Text="Attachments"><MudIconButton Disabled="_leaving" Icon="@Icons.Material.Filled.PermMedia" OnClick="OpenAttachments" aria-label="Attachments" /></MudTooltip>
 </MudPaper>}
+@if(CanWrite&&_format is not null){<MudPaper Class="design-docs-note-format-palette" Elevation="4" role="toolbar" aria-label="Format selection">
+    @* Keeps the editor's focus, and with it the selection being formatted. *@
+    <div class="design-docs-note-format-styles" @onmousedown:preventDefault>
+    @foreach(var style in FormatStyles){
+        var on=style.Active(_format);var label=style.Id=="link"&&on?"Remove link":style.Label;
+        <MudTooltip Text="@label"><MudIconButton Disabled="_leaving" Icon="@style.Icon" Color="@(on?Color.Primary:Color.Default)" Class="@(on?"is-selected":null)" OnClick="@(()=>ApplyFormat(style.Id,on))" aria-label="@label" aria-pressed="@(on?"true":"false")" /></MudTooltip>
+    }
+    </div>
+</MudPaper>}
 <EditorSurface Ready="Mount" />
 </div>
 @code {
@@ -170,6 +179,30 @@
     [JSInvokable] public Task Status(string value){_status=value;return InvokeAsync(StateHasChanged);}
     [JSInvokable] public Task Focus(bool focused)=>!Live.IsConnected?Task.CompletedTask:Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
     [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}
+    // What the editor's selection already has; null with no selection, which hides the panel.
+    private sealed record FormatState(bool Bold,bool Italic,bool Underline,bool Highlight,bool Link);
+    private FormatState? _format;
+    private static readonly System.Text.Json.JsonSerializerOptions FormatJson=new(System.Text.Json.JsonSerializerDefaults.Web);
+    private static readonly (string Id,string Label,string Icon,Func<FormatState,bool> Active)[] FormatStyles=[
+        ("bold","Bold",Icons.Material.Filled.FormatBold,f=>f.Bold),
+        ("italic","Italic",Icons.Material.Filled.FormatItalic,f=>f.Italic),
+        ("underline","Underline",Icons.Material.Filled.FormatUnderlined,f=>f.Underline),
+        ("highlight","Highlight",Icons.Material.Filled.BorderColor,f=>f.Highlight),
+        ("link","Link",Icons.Material.Filled.Link,f=>f.Link),
+    ];
+    [JSInvokable] public Task FormatChanged(string state){
+        _format=string.IsNullOrEmpty(state)||state=="null"?null:System.Text.Json.JsonSerializer.Deserialize<FormatState>(state,FormatJson);
+        return InvokeAsync(StateHasChanged);
+    }
+    private async Task ApplyFormat(string kind,bool on){
+        if(_editor is null)return;
+        if(kind=="link"&&!on){
+            var url=await DocDialogs.Name(Dialogs,"Link","",label:"URL",maxLength:2000);
+            if(url is null){await _editor.InvokeVoidAsync("focus");return;}
+            await _editor.InvokeVoidAsync("format",kind,url);return;
+        }
+        await _editor.InvokeVoidAsync("format",kind,null);
+    }
     private Task AddImage()=>_editor is null?Task.CompletedTask:_editor.InvokeVoidAsync("chooseImage").AsTask();
     private async Task InsertTask(){
         var task=await TaskPicker.PickAsync(ProjectId,new TaskPickerOptions{IncludeFinished=true,IncludeClosedBoards=true});if(task is null||_editor is null)return;

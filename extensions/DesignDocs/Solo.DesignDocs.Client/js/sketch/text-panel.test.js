@@ -42,3 +42,10 @@ test('a box panned out of the view keeps the panel on screen', () => {
     const over=panelPosition(box(400,-900),view,panel);
     assert.ok(over.y>=8,`y ${over.y} is off the top`);
 });
+
+// Touch screens draw their own selection menu above the text, so the note
+// editor asks for below first and only goes above when below doesn't fit.
+test('a panel that prefers below flips above near the bottom of the view', () => {
+    assert.equal(panelPosition(box(400,300),view,panel,10,true).y,300+40+10);
+    assert.equal(panelPosition(box(400,520),view,panel,10,true).y,520-48-10);
+});

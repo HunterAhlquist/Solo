@@ -11,7 +11,10 @@ import { protectMedia, mediaEdit } from './media-protection.js';
 import { mediaReference, mediaRange } from '../media/references.js';
 import { embeds, imageTargets } from '../media/vault-paths.js';
 import { caretPalettePosition } from './palette.js';
-import { markdownEditing } from './commands.js';
+import { markdownEditing, formatCommand } from './commands.js';
+import { formatState } from './format.js';
+import { isSafeUrl } from './markdown.js';
+import { panelPosition } from '../sketch/text-panel.js';
 import { localSpelling,needsSpellingFallback } from './spelling.js';
 export function mountEditor(root, bridge, options) {
     const readOnly = new Compartment(); let view,suspended=false;
@@ -39,7 +42,7 @@ export function mountEditor(root, bridge, options) {
             view.dispatch({changes:{...range,insert:''},annotations:mediaEdit.of(true)});return true;
         },
     });
-    function applyAccess(){const editable=provider.canWrite&&!suspended;images.canWrite=editable;view?.dispatch({effects:readOnly.reconfigure([EditorState.readOnly.of(!editable),EditorView.editable.of(editable)])});}
+    function applyAccess(){const editable=provider.canWrite&&!suspended;images.canWrite=editable;view?.dispatch({effects:readOnly.reconfigure([EditorState.readOnly.of(!editable),EditorView.editable.of(editable)])});reportFormat();}
     const noteBody=root.closest('.design-docs-note-body');
     let paletteTimer;
     const palette=noteBody?.querySelector('.design-docs-note-palette');
@@ -53,6 +56,40 @@ export function mountEditor(root, bridge, options) {
         write(position){if(!palette)return;palette.toggleAttribute('data-caret-hidden',!position);if(position){palette.style.left=position.left+'px';palette.style.top=position.top+'px';}},
     };
     const positionPalette=()=>view?.requestMeasure(paletteMeasure);
+    // The formatting panel is Blazor's markup, shown while the editor reports a
+    // selection, so it is placed through custom properties on the note body.
+    // It waits for a mouse drag to finish rather than chasing the pointer.
+    let lastFormat='null',dragging=false;
+    const formatMeasure={
+        read(current){
+            const range=current.state.selection.main;
+            if(!noteBody||lastFormat==='null'||range.empty)return null;
+            const start=current.coordsAtPos(range.from,1),end=current.coordsAtPos(range.to,-1);if(!start||!end)return null;
+            const body=noteBody.getBoundingClientRect(),scroller=current.scrollDOM.getBoundingClientRect(),content=current.contentDOM.getBoundingClientRect();
+            const visible={left:Math.max(body.left,scroller.left),top:Math.max(body.top,scroller.top),right:Math.min(body.right,scroller.right),bottom:Math.min(body.bottom,scroller.bottom)};
+            const oneLine=start.bottom>end.top;
+            const rect={left:oneLine?start.left:content.left,right:oneLine?end.right:content.right,top:Math.min(start.top,end.top),bottom:Math.max(start.bottom,end.bottom)};
+            if(rect.bottom<visible.top||rect.top>visible.bottom)return null;
+            const panel=noteBody.querySelector('.design-docs-note-format-palette');
+            // Touch screens draw their own selection menu above the text, so go below there.
+            const position=panelPosition({left:rect.left-visible.left,top:rect.top-visible.top,bottom:rect.bottom-visible.top,width:rect.right-rect.left},
+                {width:visible.right-visible.left,height:visible.bottom-visible.top},{width:panel?.offsetWidth||216,height:panel?.offsetHeight||48},10,matchMedia('(pointer:coarse)').matches);
+            return {x:position.x+visible.left-body.left,y:position.y+visible.top-body.top};
+        },
+        write(position){
+            if(!noteBody)return;noteBody.toggleAttribute('data-format-hidden',!position);
+            if(position){noteBody.style.setProperty('--design-docs-format-x',position.x+'px');noteBody.style.setProperty('--design-docs-format-y',position.y+'px');}
+        },
+    };
+    const positionFormat=()=>view?.requestMeasure(formatMeasure);
+    function reportFormat(){
+        if(!view)return;
+        const state=provider.canWrite&&!suspended&&!dragging&&view.hasFocus?formatState(view.state):null,message=JSON.stringify(state);
+        if(message!==lastFormat){lastFormat=message;bridge.invokeMethodAsync('FormatChanged',message).then(positionFormat,()=>{});}
+        positionFormat();
+    }
+    const dragStart=event=>{if(event.button===0&&event.pointerType==='mouse')dragging=true;};
+    const dragEnd=()=>{if(!dragging)return;dragging=false;reportFormat();};
     const showPalette=event=>{if(event.pointerType==='touch'||event.movementX||event.movementY){noteBody?.classList.add('is-pointer-active');positionPalette();clearTimeout(paletteTimer);paletteTimer=setTimeout(()=>noteBody?.classList.remove('is-pointer-active'),2400);}};
     const typing=event=>{if(event.altKey&&event.key==='Insert'){event.preventDefault();noteBody?.classList.add('is-pointer-active');noteBody?.querySelector('.design-docs-note-palette button')?.focus();return;}if(event.key.length===1||event.key==='Backspace'||event.key==='Delete')noteBody?.classList.remove('is-pointer-active');};
     noteBody?.addEventListener('pointermove',showPalette);root.addEventListener('keydown',typing);
@@ -60,7 +97,7 @@ export function mountEditor(root, bridge, options) {
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
         EditorView.contentAttributes.of({spellcheck:"true"}),
         ...(needsSpellingFallback(navigator)?[localSpelling(bridge)]:[]),
-        ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
+        ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();if(update.selectionSet||update.docChanged||update.focusChanged||update.geometryChanged||update.viewportChanged)reportFormat();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
         // Inline presence widgets split words for the native spellchecker.
         yCollab(provider.doc.getText('markdown'),null),textPresence(provider),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),
@@ -90,8 +127,9 @@ export function mountEditor(root, bridge, options) {
         view.dispatch({changes:{from:position,insert:markdown},selection:{anchor:position+markdown.length}});view.focus();
     };
     root.addEventListener('solo-note-drop',linkDrop);
-    view.scrollDOM.addEventListener('scroll',positionPalette);
-    const paletteResize=new ResizeObserver(positionPalette);if(noteBody)paletteResize.observe(noteBody);positionPalette();
+    view.scrollDOM.addEventListener('scroll',positionPalette);view.scrollDOM.addEventListener('scroll',positionFormat);
+    view.contentDOM.addEventListener('pointerdown',dragStart);window.addEventListener('pointerup',dragEnd);
+    const paletteResize=new ResizeObserver(()=>{positionPalette();positionFormat();});if(noteBody)paletteResize.observe(noteBody);positionPalette();
     const previewTheme=()=>{const style=getComputedStyle(root);return style.fontFamily+'|'+style.color+'|'+style.getPropertyValue('--mud-palette-surface');};
     let lastPreviewTheme=previewTheme();
     const themeObserver=new MutationObserver(()=>{const nextTheme=previewTheme();if(nextTheme!==lastPreviewTheme){lastPreviewTheme=nextTheme;images.refresh(path=>/\.sketch$/i.test(path));}presenceTheme(root);});
@@ -117,6 +155,11 @@ export function mountEditor(root, bridge, options) {
         waitForSave:timeout=>provider.waitForSave(timeout),
         presence:users=>provider.presence(users),
         insert,
+        format(kind,url){
+            if(kind==='link'&&url&&!isSafeUrl(url)){bridge.invokeMethodAsync('Status','Links can only use http, https or mailto addresses.');view.focus();return;}
+            formatCommand(kind,url)(view);view.focus();
+        },
+        focus:()=>view.focus(),
         chooseImage:()=>images.choose(),
         sketchesChanged:()=>images.refresh(path=>/\.sketch$/i.test(path)),
         imagesChanged:()=>images.refresh(path=>!/\.sketch$/i.test(path)),
@@ -131,6 +174,6 @@ export function mountEditor(root, bridge, options) {
             const wanted=new Set(targets),changes=embeds(text.toString()).filter(e=>wanted.has(e.raw)).map(e=>({from:e.from,to:e.to,insert:''}));
             if(changes.length)view.dispatch({changes,annotations:mediaEdit.of(true)});
         },
-        dispose(){removeSaveGuard?.();root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
+        dispose(){removeSaveGuard?.();root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);view.scrollDOM.removeEventListener('scroll',positionFormat);window.removeEventListener('pointerup',dragEnd);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }
