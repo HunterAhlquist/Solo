@@ -236,9 +236,10 @@
     private string? CardStyle =>
         ShowDeadline ? $"--deadline-color:{DeadlineColor}" : null;
 
-    /// <summary>The tab wears the card's outline: the same deadline tint and the same fade once finished.</summary>
+    /// <summary>The tab wears the card's outline: the same deadline tint, the same fade once finished, the same pulse.</summary>
     private string OriginClass =>
         "kanban-card__origin" +
         (ShowDeadline ? " kanban-card__origin--deadline" : string.Empty) +
-        (IsFinished ? " kanban-card__origin--finished" : string.Empty);
+        (IsFinished ? " kanban-card__origin--finished" : string.Empty) +
+        (Pulse ? " solo-pulse" : string.Empty);
 }
