@@ -3,7 +3,7 @@ import {EditorState} from '@codemirror/state';import {syntaxTree} from '@codemir
 import {markdownEditing} from './commands.js';import {formatState,toggleFormat} from './format.js';
 // `{` and `}` in the fixture mark the selection.
 function editor(marked){
-    const anchor=marked.indexOf('{'),doc=marked.replace('{','').replace('}',''),head=marked.indexOf('}')-1;
+    const anchor=marked.indexOf('{'),head=marked.indexOf('}')-1,doc=marked.slice(0,anchor)+marked.slice(anchor+1,head+1)+marked.slice(head+2);
     return EditorState.create({doc,selection:{anchor,head},extensions:markdownEditing()});
 }
 function toggle(state,kind,url){return state.update(toggleFormat(state,kind,url)).state;}
