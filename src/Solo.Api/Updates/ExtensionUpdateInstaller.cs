@@ -57,6 +57,11 @@ public sealed class ExtensionUpdateInstaller(
             return InstallOutcome.NotFound();
         }
 
+        // From here on, the id the package declares rather than the one the
+        // request carried: the lookup ignores case, and the request's copy is
+        // caller text that would otherwise reach the logs and the file names.
+        extensionId = package.Id;
+
         var directory = _extensions.Directory;
         if (string.IsNullOrWhiteSpace(directory))
         {

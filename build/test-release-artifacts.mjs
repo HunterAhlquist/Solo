@@ -48,7 +48,7 @@ test('the feed links absolute URLs and offers the mac zip, not the image', async
     // one electron-updater reaches for.
     assert.match(byFile['latest-mac.yml'], /^path: Solo-1\.18\.0-arm64\.zip$/m);
     const expectedZip = createHash('sha512').update('payload').digest('base64');
-    assert.match(byFile['latest-mac.yml'], new RegExp(`^sha512: ${expectedZip.replace(/[+/=]/g, '\\$&')}$`, 'm'));
+    assert.ok(byFile['latest-mac.yml'].split('\n').includes(`sha512: ${expectedZip}`));
 
     // Absolute, so a later release's feed can still point here.
     assert.match(byFile['latest.yml'], /^ {2}- url: https:\/\/github\.com\/owner\/repo\/releases\/download\/v1\.18\.0\/Solo-1\.18\.0-setup\.exe$/m);
