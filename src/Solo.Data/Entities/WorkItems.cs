@@ -101,6 +101,12 @@ public class TaskItem : IVersioned
     /// <summary>The countdown's fallback anchor, for a task with a deadline but no <see cref="StartAt"/>.</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     /// <summary>
+    /// When the task last entered <see cref="TaskState.Finished"/>, and null while
+    /// it is anywhere else. Lets Your Tasks let go of work that was finished a
+    /// while ago without the board having to.
+    /// </summary>
+    public DateTime? FinishedAt { get; set; }
+    /// <summary>
     /// Optional first day of the work, turning the deadline into a date range. A
     /// date like the deadline, and only meaningful alongside one: the API refuses
     /// a start without a deadline or after it, and clears it when an update takes

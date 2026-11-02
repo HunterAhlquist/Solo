@@ -93,6 +93,14 @@ public sealed class AssignedTasksStore(ApiClient api, ISoloLiveTopics live, User
         {
             tasks[index] = task;
         }
+        else if (task.Status == TaskState.Finished)
+        {
+            // The server drops finished work after a while, and a task carries no
+            // finish time to tell which side of that line it is on. An edit to a
+            // long-finished task must not bring it back; one finished recently
+            // shows up again on the next load.
+            return;
+        }
         else
         {
             tasks.Add(task);

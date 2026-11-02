@@ -1043,7 +1043,9 @@ member entry per distinct user, for avatars, not a membership list. It is
 scoped to the caller the way every `ISoloQuery` read is, and empty for an
 anonymous caller or outside a request. Membership is the filter, not the
 assignment: a person removed from a project stops seeing its tasks even where
-an assignment row survives.
+an assignment row survives. Finished tasks are included for 12 days after they
+were finished and then drop out, as they do from the dashboard; for a task's
+full history, read its board with `TasksAsync`.
 
 The browser reads the same shape from core at `GET api/users/me/tasks`, through
 `ISoloClientApi`:

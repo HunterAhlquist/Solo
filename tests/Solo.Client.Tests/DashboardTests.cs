@@ -147,6 +147,22 @@ public class DashboardTests : ComponentTestBase
     }
 
     [Fact]
+    public async Task A_nudge_does_not_bring_back_finished_work_the_page_was_not_showing()
+    {
+        var shipped = TestData.Task(id: Guid.NewGuid(), assignees: [TestData.MeId], status: TaskState.Finished)
+            with { Name = "Shipped long ago" };
+        RouteServer();
+        _http.Route($"api/tasks/{shipped.Id}", HttpStatusCode.OK, () => shipped);
+        var page = RenderPage();
+
+        await page.InvokeAsync(() => _hub.RaiseTopicMessage(new TopicMessage(
+            Guid.Empty, BoardHubConstants.AssignedTasksTopic, EntityTypes.Task, shipped.Id.ToString(), TestData.OtherId)));
+
+        Assert.Contains($"GET /api/tasks/{shipped.Id}", _http.Paths);
+        Assert.DoesNotContain("Shipped long ago", page.Markup);
+    }
+
+    [Fact]
     public async Task A_structural_nudge_reloads_the_whole_payload()
     {
         RouteServer();

@@ -218,6 +218,17 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             return NotFound();
         }
 
+        // Moving within Finished keeps the original time, so a re-drop does not
+        // restart the dashboard's clock on old work.
+        if (request.Status != TaskState.Finished)
+        {
+            task.FinishedAt = null;
+        }
+        else if (task.Status != TaskState.Finished)
+        {
+            task.FinishedAt = DateTime.UtcNow;
+        }
+
         task.Status = request.Status;
         await db.SaveChangesAsync(ct);
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.Task, taskId,

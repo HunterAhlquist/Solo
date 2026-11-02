@@ -622,6 +622,9 @@ namespace Solo.Data.Migrations
                     b.Property<string>("Extensions")
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("LabelId")
                         .HasColumnType("uuid");
 
