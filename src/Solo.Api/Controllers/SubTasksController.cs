@@ -113,6 +113,11 @@ public sealed class SubTasksController(SoloDbContext db, IBoardNotifier notifier
         await db.SaveChangesAsync(ct);
 
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.SubTask, subTaskId, ChangeKind.Deleted);
+        // The row is gone, so the notifier can't walk from it to the parent's
+        // assignees; the parent's progress ring still has to move on their dashboards.
+        var assignees = await db.Assignments.AsNoTracking()
+            .Where(a => a.TaskId == task.Id).Select(a => a.UserId).ToListAsync(ct);
+        await notifier.AssignedTasksChanged(assignees, EntityTypes.SubTask, subTaskId, ChangeKind.Deleted);
         return NoContent();
     }
 

@@ -77,6 +77,17 @@ public class NavMenuTests : ComponentTestBase
     // -- The tree ------------------------------------------------------------
 
     [Fact]
+    public void Your_tasks_is_the_home_page_and_all_projects_a_page_of_its_own()
+    {
+        Route(isSuperAdmin: false);
+
+        var links = RenderNav().FindAll("a.mud-nav-link");
+
+        Assert.Equal("", links.First(a => a.TextContent.Contains("Your tasks")).GetAttribute("href"));
+        Assert.Equal("projects", links.First(a => a.TextContent.Contains("All projects")).GetAttribute("href"));
+    }
+
+    [Fact]
     public void Every_project_the_user_can_see_is_listed()
     {
         Route(isSuperAdmin: false);

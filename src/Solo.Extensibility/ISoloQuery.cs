@@ -60,6 +60,15 @@ public interface ISoloQuery
     Task<IReadOnlyList<CommentDto>> TaskCommentsAsync(Guid taskId, CancellationToken ct = default);
 
     /// <summary>
+    /// The caller's own work (contract 1.13): every task assigned to them on an
+    /// open board of a project they are a member of, with the projects, boards,
+    /// labels and people those tasks need to be drawn. What core's Your Tasks
+    /// dashboard shows, and what <c>GET api/users/me/tasks</c> returns to the
+    /// browser. Empty for an anonymous caller.
+    /// </summary>
+    Task<AssignedTasksDto> AssignedTasksAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// The signed-in caller — who to record as the author of a row the extension
     /// writes. <see cref="ExtensionCaller.UserId"/> is empty for an anonymous
     /// request; role and owner flag are set on a project-scoped route. Inside

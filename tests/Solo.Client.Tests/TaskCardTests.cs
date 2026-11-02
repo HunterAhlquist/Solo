@@ -28,6 +28,28 @@ public class TaskCardTests : ComponentTestBase
     }
 
     [Fact]
+    public void Off_its_board_a_card_wears_a_tab_naming_where_it_came_from()
+    {
+        var card = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task())
+            .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN")));
+
+        var tab = card.Find("a.kanban-card__origin");
+        Assert.Equal("projects/SOLO/boards/MAIN", tab.GetAttribute("href"));
+        Assert.Equal(["Solo", "Main"], card.FindAll(".kanban-card__origin-name").Select(n => n.TextContent));
+        Assert.Contains("kanban-card--tabbed", card.Find(".kanban-card").ClassName);
+    }
+
+    [Fact]
+    public void On_its_own_board_a_card_has_no_tab()
+    {
+        var card = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task()));
+
+        Assert.Empty(card.FindAll(".kanban-card__origin"));
+        Assert.DoesNotContain("kanban-card--tabbed", card.Find(".kanban-card").ClassName);
+    }
+
+    [Fact]
     public void A_task_without_sub_tasks_shows_no_progress_ring()
     {
         var card = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task()));

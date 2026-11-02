@@ -117,6 +117,15 @@ public static class BoardHubConstants
     /// <summary>One user's own topic. A different prefix from <see cref="TopicGroup"/>, so no project id can collide with a user id.</summary>
     public static string UserTopicGroup(Guid userId, string topic) => $"usertopic:{userId:N}:{topic}";
 
+    /// <summary>
+    /// Core's own user topic (contract 1.13): a nudge whenever a task assigned
+    /// to the subscriber changes, or the board, labels or project around one
+    /// does. <c>Kind</c> is the entity type, <c>Data</c> the entity's id — a
+    /// prompt to refetch, as with every topic. The "solo:" prefix is core's; an
+    /// extension's topics carry its own id.
+    /// </summary>
+    public const string AssignedTasksTopic = "solo:assigned-tasks";
+
     /// <summary>Longest topic name accepted; topics are short keys like "roadmap:{id}", not payloads.</summary>
     public const int TopicMaxLength = 200;
 

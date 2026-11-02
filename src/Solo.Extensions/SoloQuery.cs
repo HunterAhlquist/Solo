@@ -178,6 +178,14 @@ public sealed class SoloQuery(
         return comments.Select(ToDto).ToList();
     }
 
+    public async Task<AssignedTasksDto> AssignedTasksAsync(CancellationToken ct = default)
+    {
+        var user = await CallerAsync(ct);
+        return user.UserId == Guid.Empty
+            ? AssignedTasks.Empty
+            : await AssignedTasks.QueryAsync(db, user.UserId, ct);
+    }
+
     private async Task<bool> CanAccessBoardAsync(Guid boardId, ProjectAccessLevel level, CancellationToken ct)
     {
         var projectId = await db.Boards.AsNoTracking()

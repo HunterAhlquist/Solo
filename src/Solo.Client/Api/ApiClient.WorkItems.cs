@@ -42,6 +42,10 @@ public sealed partial class ApiClient
     public Task<TaskDto> GetTaskAsync(Guid taskId, CancellationToken ct = default) =>
         GetAsync<TaskDto>($"api/tasks/{taskId}", ct);
 
+    /// <summary>The signed-in user's tasks across every project, with what a card needs to draw them.</summary>
+    public Task<AssignedTasksDto> GetAssignedTasksAsync(CancellationToken ct = default) =>
+        GetAsync<AssignedTasksDto>("api/users/me/tasks", ct);
+
     public Task<TaskDto> CreateTaskAsync(
         Guid boardId, CreateTaskRequest request, CancellationToken ct = default) =>
         SendAsync<TaskDto>(HttpMethod.Post, $"api/boards/{boardId}/tasks", request, ct);

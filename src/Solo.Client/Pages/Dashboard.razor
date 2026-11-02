@@ -1,0 +1,376 @@
+@page "/"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject AssignedTasksStore Store
+@inject UserSession Session
+@inject SaveGuard Guard
+@inject ISnackbar Snackbar
+@inject DragBridge Drag
+@inject ExtensionCatalog Extensions
+@inject TaskMenuService TaskMenu
+@inject TaskDrawerService Drawer
+@inject AppConfig Config
+@inject IJSRuntime JS
+@using System.Text.Json
+@using Solo.Client.Extensions
+@using Solo.Shared.Extensibility
+
+@*
+    The landing page: one person's work across every project, laid out as a
+    board. The same cards and the same columns as a board, moved with the same
+    drag, but nothing is created here — a task belongs to a board, and this page
+    only shows where each one came from and lets the person move it along.
+*@
+
+<PageTitle>Your tasks · @Config.SiteName</PageTitle>
+
+<div class="board-header">
+    <MudIcon Icon="@Icons.Material.Filled.AssignmentInd" Color="Color.Primary" />
+    <MudText Typo="Typo.h1" Class="board-header__title">Your Tasks</MudText>
+</div>
+
+@* Extensions' sections — a personal roadmap — above the board, each folding
+   away on its own and staying folded for this person. A collapsed section is
+   not rendered at all, so a heavy one costs nothing until it is wanted. *@
+@foreach (var contributed in Sections)
+{
+    var collapsed = _collapsed.Contains(contributed.Component.FullName!);
+    <section class="dashboard-section" @key="contributed.Component">
+        <button type="button" class="dashboard-section__header"
+                aria-expanded="@(collapsed ? "false" : "true")"
+                @onclick="@(() => ToggleSectionAsync(contributed.Component))">
+            <MudIcon Icon="@(collapsed ? Icons.Material.Filled.ChevronRight : Icons.Material.Filled.ExpandMore)"
+                     Size="Size.Small" />
+            <MudText Typo="Typo.h2" Class="dashboard-section__title">@contributed.Title</MudText>
+        </button>
+        @if (!collapsed)
+        {
+            <div class="dashboard-section__body">
+                <ErrorBoundary @key="contributed.Component">
+                    <ChildContent>
+                        <DynamicComponent Type="@contributed.Component" />
+                    </ChildContent>
+                    <ErrorContent>
+                        <MudText Typo="Typo.body2" Color="Color.Error">@contributed.Title couldn't load.</MudText>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </div>
+        }
+    </section>
+}
+
+@if (Store.Work is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    @* One lane with no gutter: there is no epic to name beside a column that
+       mixes every board. The header and the zones are the board's own, so the
+       phone carousel and the sticky column titles come along. *@
+    <div class="kanban kanban--personal">
+        <div class="kanban-header">
+            <div class="kanban-header__columns">
+                @foreach (var status in BoardZones.Statuses)
+                {
+                    <div class="kanban-header__column">
+                        <MudText Typo="Typo.overline" Color="Color.Secondary" Class="px-2">
+                            @BoardZones.Title(status) (@ZoneCount(status))
+                        </MudText>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="kanban-lane kanban-lane--personal">
+            <div class="kanban-lane__zones">
+                @foreach (var status in BoardZones.Statuses)
+                {
+                    <KanbanZone @key="status" Identifier="@BoardZones.Id(null, status)"
+                                Title="@BoardZones.Title(status)"
+                                IsFinished="@(status == TaskState.Finished)"
+                                Count="@ZoneCount(status)"
+                                HiddenCount="@HiddenCount(status)"
+                                OnExpand="@ExpandFinished">
+                        @foreach (var card in CardsIn(status))
+                        {
+                            <div class="kanban-card-slot" @key="card.Task.Id"
+                                 data-drag-item="@(card.CanWrite ? card.Task.Id.ToString() : null)"
+                                 @oncontextmenu="@(e => OnCardMenuAsync(e, card))"
+                                 @oncontextmenu:preventDefault="@TaskMenu.HasContributors">
+                                <TaskCard Task="@card.Task"
+                                          ProjectId="@card.Project.Id"
+                                          CanWrite="@card.CanWrite"
+                                          Extensions="@CardExtensions"
+                                          Label="@LabelOf(card.Task)"
+                                          Assignees="@MembersOf(card.Task.AssigneeIds)"
+                                          Origin="@card.Origin"
+                                          Pulse="@_pulsing.Contains(card.Task.Id)"
+                                          OnOpen="@OpenTaskAsync" />
+                            </div>
+                        }
+                    </KanbanZone>
+                }
+            </div>
+        </div>
+
+        @if (_cards.Count == 0)
+        {
+            <EmptyState Message="Nothing is assigned to you."
+                        Icon="@Icons.Material.Filled.AssignmentInd" />
+        }
+    </div>
+
+    <div class="board-edge board-edge--left" aria-hidden="true"></div>
+    <div class="board-edge board-edge--right" aria-hidden="true"></div>
+}
+
+@code {
+    private const string CollapsedStorageKey = "solo.dashboard.collapsed";
+
+    /// <summary>A task with the board and project it came from, resolved once per payload.</summary>
+    private sealed record Card(TaskDto Task, BoardDto Board, ProjectSummaryDto Project, TaskOrigin Origin, bool CanWrite);
+
+    private List<Card> _cards = [];
+    private HashSet<Guid> _folded = [];
+    private bool _finishedExpanded;
+    private readonly HashSet<Guid> _pulsing = [];
+    private HashSet<string> _collapsed = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnStoreChanged;
+        Store.Pulsed += OnPulsed;
+        Drawer.Changed += OnDrawerChanged;
+        Extensions.Changed += OnExtensionsChanged;
+        await Drag.RegisterAsync("task", OnTaskDropAsync);
+
+        // The first page after sign-in, so the session is usually still on its
+        // way; the store needs the user's id to tell its own tasks from the rest.
+        if (Session.Current is null)
+        {
+            try
+            {
+                await Session.LoadAsync();
+            }
+            catch (ApiException)
+            {
+                // The load below reports the real problem.
+            }
+        }
+
+        try
+        {
+            _collapsed = await ReadCollapsedAsync();
+            await Store.LoadAsync();
+            Rebuild();
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't load your tasks.", Severity.Error);
+        }
+    }
+
+    // -- Rendering ----------------------------------------------------------
+
+    /// <summary>
+    /// Project, then board, then the board's own order: the tab on each card
+    /// reads as a heading when its neighbours share it.
+    /// </summary>
+    private void Rebuild()
+    {
+        var work = Store.Work;
+        if (work is null)
+        {
+            _cards = [];
+            _folded = [];
+            return;
+        }
+
+        var boards = work.Boards.ToDictionary(b => b.Id);
+        var projects = work.Projects.ToDictionary(p => p.Id);
+        _cards = work.Tasks
+            .Select(task => boards.TryGetValue(task.BoardId, out var board) &&
+                            projects.TryGetValue(board.ProjectId, out var project)
+                ? new Card(task, board, project,
+                    new TaskOrigin(project.Name, board.Name, $"projects/{project.Alias}/boards/{board.Alias}"),
+                    ProjectNavStore.CanWrite(project))
+                : null)
+            .OfType<Card>()
+            .OrderBy(c => c.Project.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(c => c.Board.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(c => c.Task.Rank)
+            .ToList();
+
+        // Finished-column hygiene, as on a board: past 25 cards the overflow folds away.
+        _folded = _finishedExpanded
+            ? []
+            : _cards.Where(c => c.Task.Status == TaskState.Finished)
+                .Skip(BoardZones.FinishedVisibleLimit)
+                .Select(c => c.Task.Id)
+                .ToHashSet();
+    }
+
+    private List<Card> CardsIn(TaskState status) =>
+        _cards.Where(c => c.Task.Status == status && !_folded.Contains(c.Task.Id)).ToList();
+
+    private int ZoneCount(TaskState status) => _cards.Count(c => c.Task.Status == status);
+
+    private int HiddenCount(TaskState status) =>
+        status == TaskState.Finished ? _folded.Count : 0;
+
+    private void ExpandFinished()
+    {
+        _finishedExpanded = true;
+        Rebuild();
+    }
+
+    private LabelDto? LabelOf(TaskDto task) =>
+        task.LabelId is null ? null : Store.Work?.Labels.FirstOrDefault(l => l.Id == task.LabelId);
+
+    private List<ProjectMemberDto> MembersOf(IReadOnlyList<Guid> userIds) =>
+        (Store.Work?.Members ?? []).Where(m => m.UserId is { } id && userIds.Contains(id)).ToList();
+
+    // -- Drag & drop --------------------------------------------------------
+
+    /// <summary>
+    /// A column move and nothing else. A card's rank is its place among its own
+    /// board's cards, which the neighbours here — from other boards — say
+    /// nothing about, so a drop within a column leaves it where its board has it.
+    /// </summary>
+    private async Task OnTaskDropAsync(DragDrop drop)
+    {
+        var card = _cards.FirstOrDefault(c => c.Task.Id == drop.ItemGuid);
+        if (card is null || !card.CanWrite ||
+            !BoardZones.TryParse(drop.ZoneId, out _, out var status) || card.Task.Status == status)
+        {
+            return;
+        }
+
+        var moved = await Guard.RunAsync(() => Api.SetTaskStatusAsync(card.Task.Id, status), Store.RefreshAsync);
+        if (moved is not null)
+        {
+            Store.ApplyTask(moved);
+        }
+
+        StateHasChanged();
+    }
+
+    // -- Drawer -------------------------------------------------------------
+
+    /// <summary>
+    /// The host's drawer, as an extension page opens it: it borrows the board
+    /// store for the card's own board, so labels, members and presence there are
+    /// that board's. What it saves comes back through <see cref="OnDrawerChanged"/>.
+    /// </summary>
+    private async Task OpenTaskAsync(TaskDto task)
+    {
+        try
+        {
+            await Drawer.OpenAsync(task.Id);
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't open that task.", Severity.Error);
+        }
+    }
+
+    private void OnDrawerChanged(TaskDrawerChange change) => InvokeAsync(() =>
+    {
+        if (change.Task is { } task)
+        {
+            Store.ApplyTask(task);
+        }
+        else
+        {
+            Store.RemoveTask(change.TaskId);
+        }
+    });
+
+    // -- Extensions -----------------------------------------------------------
+
+    private IReadOnlyList<Type>? _cardExtensions;
+    private IReadOnlyList<ContributedSection>? _sections;
+
+    /// <summary>Found once per catalog change rather than per card.</summary>
+    private IReadOnlyList<Type> CardExtensions => _cardExtensions ??=
+        ContributedSections.Components<TaskCardExtensionAttribute>(Extensions, a => a.Order);
+
+    private IReadOnlyList<ContributedSection> Sections => _sections ??=
+        ContributedSections.Find<DashboardSectionAttribute>(Extensions, a => a.Title, a => a.Order);
+
+    private async Task ToggleSectionAsync(Type component)
+    {
+        var key = component.FullName!;
+        if (!_collapsed.Add(key))
+        {
+            _collapsed.Remove(key);
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("solo.storage.set", CollapsedStorageKey, JsonSerializer.Serialize(_collapsed));
+        }
+        catch (JSException)
+        {
+            // Storage unavailable — the fold still holds for this visit.
+        }
+    }
+
+    private async Task<HashSet<string>> ReadCollapsedAsync()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("solo.storage.get", CollapsedStorageKey);
+            return string.IsNullOrWhiteSpace(raw) ? [] : JsonSerializer.Deserialize<HashSet<string>>(raw) ?? [];
+        }
+        catch (Exception e) when (e is JSException or JsonException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Core's task menu, offered on a right click only while an extension adds to it.</summary>
+    private Task OnCardMenuAsync(MouseEventArgs e, Card card) =>
+        TaskMenu.HasContributors
+            ? TaskMenu.ShowAsync(e.ClientX, e.ClientY, new TaskMenuContext(card.Task, card.Project.Id, card.CanWrite),
+                [(new ContextMenuItem("open", "Open task") { Icon = Icons.Material.Filled.OpenInNew },
+                    () => OpenTaskAsync(card.Task))])
+            : Task.CompletedTask;
+
+    private void OnExtensionsChanged()
+    {
+        _cardExtensions = null;
+        _sections = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    // -- Live updates -------------------------------------------------------
+
+    private void OnStoreChanged() => InvokeAsync(() =>
+    {
+        Rebuild();
+        StateHasChanged();
+    });
+
+    /// <summary>Remote changes apply silently; the card flashes its outline once.</summary>
+    private void OnPulsed(Guid taskId) => _ = InvokeAsync(async () =>
+    {
+        _pulsing.Add(taskId);
+        StateHasChanged();
+        await Task.Delay(650);
+        _pulsing.Remove(taskId);
+        StateHasChanged();
+    });
+
+    public async ValueTask DisposeAsync()
+    {
+        Store.Changed -= OnStoreChanged;
+        Store.Pulsed -= OnPulsed;
+        Drawer.Changed -= OnDrawerChanged;
+        Extensions.Changed -= OnExtensionsChanged;
+        Drag.Unregister("task", OnTaskDropAsync);
+        await Store.DetachAsync();
+    }
+}
