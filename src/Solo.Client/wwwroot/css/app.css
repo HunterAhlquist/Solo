@@ -637,18 +637,21 @@ code {
 
 /* Finished work recedes: over the near-black lane the fade reads as a grey,
    darkened card, so the live columns hold the eye first. Hover brings it back
-   to full strength — a done card is still readable, draggable and openable. */
-.kanban-card--finished {
+   to full strength — a done card is still readable, draggable and openable.
+   The slot fades, not the card: on the dashboard the board tab sits over the
+   card's top border, and a tab faded on its own turns translucent and lets
+   that border show through. Faded together, the tab still covers it. */
+.kanban-card-slot:has(.kanban-card--finished) {
     opacity: 0.55;
     transition: opacity 120ms ease-in-out;
 }
 
-.kanban-card:hover {
-    border-color: var(--mud-palette-primary);
+.kanban-card-slot:has(.kanban-card--finished):hover {
+    opacity: 1;
 }
 
-.kanban-card--finished:hover {
-    opacity: 1;
+.kanban-card:hover {
+    border-color: var(--mud-palette-primary);
 }
 
 .kanban-card:active {
@@ -693,15 +696,9 @@ code {
 }
 
 /* One outline for tab and card: the deadline tint rides in on the same
-   --deadline-color the card sets, hovering either lights both, and a finished
-   card's fade takes its tab with it. */
+   --deadline-color the card sets, and hovering either lights both. */
 .kanban-card__origin--deadline {
     border-color: var(--deadline-color);
-}
-
-.kanban-card__origin--finished {
-    opacity: 0.55;
-    transition: opacity 120ms ease-in-out;
 }
 
 .kanban-card-slot:hover .kanban-card__origin,
@@ -709,11 +706,6 @@ code {
     color: var(--mud-palette-primary);
     border-color: var(--mud-palette-primary);
     text-decoration: none;
-}
-
-.kanban-card-slot:hover .kanban-card__origin--finished,
-.kanban-card-slot:hover .kanban-card--finished {
-    opacity: 1;
 }
 
 .kanban-card-slot:hover .kanban-card--tabbed {
