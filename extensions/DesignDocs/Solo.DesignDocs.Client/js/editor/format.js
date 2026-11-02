@@ -7,11 +7,10 @@ export { inlineSyntax } from './markdown.js';
 const children=node=>{const list=[];for(let child=node.firstChild;child;child=child.nextSibling)list.push(child);return list;};
 // Each style's opening and closing markup inside one of its nodes. A link's
 // closing markup is everything after the label: `](url "title")`.
-const wrapped=(open,close)=>node=>{const marks=children(node).filter(c=>c.name===open);return marks.length<2?null:[marks[0],marks.at(-1)];};
+const wrapped=open=>node=>{const marks=children(node).filter(c=>c.name===open);return marks.length<2?null:[marks[0],marks.at(-1)];};
 const STYLES={
     bold:{node:'StrongEmphasis',open:'**',close:'**',marks:wrapped('EmphasisMark')},
     italic:{node:'Emphasis',open:'*',close:'*',marks:wrapped('EmphasisMark')},
-    underline:{node:'Underline',open:'<u>',close:'</u>',marks:wrapped('UnderlineMark')},
     highlight:{node:'Highlight',open:'==',close:'==',marks:wrapped('HighlightMark')},
     link:{node:'Link',open:'[',marks:(node,doc)=>{
         const marks=children(node).filter(c=>c.name==='LinkMark'),end=marks.find(m=>doc.sliceString(m.from,m.to)===']');
