@@ -44,7 +44,7 @@ public static class Timeline
             var ends = new List<int>();
             var onLines = new List<List<RoadmapEntryDto>>();
             foreach (var (entry, place) in row
-                         .Select(e => (e, window.Place(Span(e.Task, e.AnchorDay))))
+                         .Select(e => (e, window.Place(Span(e))))
                          .OrderBy(x => x.Item2.StartIndex)
                          .ThenBy(x => x.Item2.EndIndex))
             {
@@ -114,6 +114,23 @@ public static class Timeline
         return new DaySpan(start <= end ? start : end, end);
     }
 
+    /// <summary>The days an entry's bar covers: where the person put it on their own roadmap, else the task's.</summary>
+    public static DaySpan Span(RoadmapEntryDto entry) =>
+        entry.Schedule is { } planned ? new DaySpan(planned.Start, planned.End) : Span(entry.Task, entry.AnchorDay);
+
+    /// <summary>A one-day pill: no deadline, and nobody has planned it either.</summary>
+    public static bool IsPill(RoadmapEntryDto entry) => entry.Schedule is null && entry.Task.DeadlineAt is null;
+
+    /// <summary>
+    /// How many days past the task's deadline the person has planned it to run on
+    /// their own roadmap, which the deadline doesn't follow: zero when the plan
+    /// ends by it, or the task has none.
+    /// </summary>
+    public static int DaysPastDeadline(RoadmapEntryDto entry) =>
+        entry.Schedule is { } planned && entry.Task.DeadlineAt is { } deadline
+            ? Math.Max(planned.End.DayNumber - deadline.DayNumber, 0)
+            : 0;
+
     /// <summary>
     /// Which stripe a day falls in, counted continuously from the anchor so the
     /// pattern never restarts at a year boundary. Floor division: the day before
@@ -174,15 +191,16 @@ public static class Timeline
     /// way: dragging its right edge keeps the start on the pill's day, dragging
     /// its left edge makes the pill's day the deadline.
     /// </remarks>
-    public static (DateOnly? Start, DateOnly Deadline) Resize(TaskDto task, DateOnly anchorDay, Edge edge, DateOnly day)
+    public static (DateOnly? Start, DateOnly Deadline) Resize(RoadmapEntryDto entry, Edge edge, DateOnly day)
     {
-        var span = Span(task, anchorDay);
-        var pill = task.DeadlineAt is null;
+        var span = Span(entry);
+        var anchorDay = entry.AnchorDay;
+        var start = entry.Schedule?.Start ?? entry.Task.StartAt;
         return edge switch
         {
-            Edge.End when pill => (anchorDay, Max(day, anchorDay)),
-            Edge.End => (task.StartAt, Max(day, span.Start)),
-            _ when pill => (Min(day, anchorDay), anchorDay),
+            Edge.End when IsPill(entry) => (anchorDay, Max(day, anchorDay)),
+            Edge.End => (start, Max(day, span.Start)),
+            _ when IsPill(entry) => (Min(day, anchorDay), anchorDay),
             _ => (Min(day, span.End), span.End),
         };
     }

@@ -161,7 +161,7 @@
         {
             await Api.DeleteProjectAsync(Project.Id);
             await Nav.RefreshProjectsAsync();
-            Navigation.NavigateTo("");
+            Navigation.NavigateTo("projects");
         }
         catch (ApiException e)
         {

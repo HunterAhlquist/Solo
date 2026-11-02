@@ -62,6 +62,7 @@ public static class SoloClientServices
         services.AddScoped<LiveTopics>();
         services.AddScoped<ISoloLiveTopics>(sp => sp.GetRequiredService<LiveTopics>());
         services.AddScoped<BoardStore>();
+        services.AddScoped<AssignedTasksStore>();
         services.AddScoped<ProjectNavStore>();
         services.AddScoped<UserSession>();
         services.AddScoped<RecentProjectsStore>();

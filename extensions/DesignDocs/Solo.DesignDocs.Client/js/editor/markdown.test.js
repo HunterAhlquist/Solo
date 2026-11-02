@@ -13,3 +13,5 @@ test('URL safety matches the shared .NET fixture including Unicode whitespace',a
     const {readFile}=await import('node:fs/promises');const cases=JSON.parse(await readFile(new URL('../../../../../tests/fixtures/markdown-safe-urls.json',import.meta.url),'utf8'));
     for(const item of cases)assert.equal(isSafeUrl(item.url),item.safe,JSON.stringify(item.url));
 });
+test('highlight markup is left out of heading text and slugs',()=>{assert.deepEqual(headings('# ==Key== rules').map(h=>[h.text,h.slug]),[['Key rules','key-rules']]);});
+test('URL trimming stays linear on a long run of inner spaces',()=>{const start=performance.now();assert.equal(isSafeUrl('a'+' '.repeat(50000)+'b'),true);assert.ok(performance.now()-start<200);});

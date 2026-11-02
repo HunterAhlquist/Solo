@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Solo.Api.Auth;
 using Solo.Api.Services;
 using Solo.Data;
+using Solo.Extensions;
 using Solo.Shared.Dtos;
 
 namespace Solo.Api.Controllers;
@@ -39,6 +40,26 @@ public sealed class UsersController : ApiControllerBase
         var hasAnyAccess = user.IsSuperAdmin ||
             await db.ProjectMembers.AsNoTracking().AnyAsync(m => m.UserId == user.Id, ct);
         return hasAnyAccess ? user.ToDto() : Forbid();
+    }
+
+    /// <summary>
+    /// The signed-in user's work across every project: what the Your Tasks
+    /// dashboard draws. No project in the route, so no project policy; the query
+    /// scopes itself to the caller's memberships, as it does for extensions
+    /// reading the same thing through <c>ISoloQuery.AssignedTasksAsync</c>.
+    /// </summary>
+    [HttpGet("me/tasks")]
+    public async Task<ActionResult<AssignedTasksDto>> MyTasks(
+        [FromServices] CurrentUserAccessor currentUser,
+        [FromServices] SoloDbContext db,
+        CancellationToken ct)
+    {
+        if (currentUser.User is not { } user)
+        {
+            return Forbid();
+        }
+
+        return await AssignedTasks.QueryAsync(db, user.Id, ct);
     }
 
     /// <summary>

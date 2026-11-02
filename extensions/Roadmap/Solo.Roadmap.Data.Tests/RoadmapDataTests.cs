@@ -46,7 +46,7 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
         var added = (await TablesAsync()).Except(before).ToList();
         Assert.All(added, table => Assert.StartsWith("ext_roadmap.", table));
         Assert.Equal(
-            ["ext_roadmap.Entries", "ext_roadmap.Milestones", "ext_roadmap.Roadmaps", "ext_roadmap.Settings", "ext_roadmap.__EFMigrationsHistory"],
+            ["ext_roadmap.Entries", "ext_roadmap.Milestones", "ext_roadmap.PersonalEntries", "ext_roadmap.Roadmaps", "ext_roadmap.Settings", "ext_roadmap.__EFMigrationsHistory"],
             added.Order(StringComparer.Ordinal));
     }
 
@@ -269,6 +269,9 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<CommentDto>> TaskCommentsAsync(Guid taskId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<AssignedTasksDto> AssignedTasksAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
     }
 }

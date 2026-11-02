@@ -31,7 +31,7 @@
          own Solo.Extensibility through Solo.Api — the copy this binds to at
          runtime. The src project and the package share an ID, and left to
          itself NuGet can settle on the package there instead. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.12.0" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.13.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
@@ -45,7 +45,7 @@
   <ItemGroup>
     <!-- Migrations are scaffolded at build time by the extension author, exactly
          as core's are; the host only applies them. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

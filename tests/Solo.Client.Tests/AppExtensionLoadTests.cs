@@ -78,8 +78,15 @@ public class AppExtensionLoadTests : SoloBunitContext
         Services.AddScoped<BoardStore>();
         Services.AddScoped<TaskDrawerService>();
         Services.AddScoped<ContextMenuService>();
+        // The landing page is the Your Tasks dashboard, which the signed-in
+        // tests below render on their way to the fixture's route.
+        Services.AddScoped<TaskMenuService>();
+        Services.AddScoped<LiveTopics>();
+        Services.AddScoped<ISoloLiveTopics>(sp => sp.GetRequiredService<LiveTopics>());
+        Services.AddScoped<AssignedTasksStore>();
 
         _http.RouteBytes($"{Inventory}/fixture/client/{AssemblyName}.dll", AssemblyBytes)
+             .RouteJson("api/users/me/tasks", new AssignedTasksDto([], [], [], [], []))
              .RouteJson(Inventory, new[]
              {
                  new ClientExtensionDto("fixture", "Fixture", "1.0.0", ">=1.0 <2.0", AssemblyName,

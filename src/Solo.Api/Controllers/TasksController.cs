@@ -183,7 +183,7 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<IActionResult> Delete(Guid taskId, CancellationToken ct)
     {
-        var task = await db.Tasks.Include(t => t.SubTasks)
+        var task = await db.Tasks.Include(t => t.SubTasks).Include(t => t.Assignments)
             .FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null)
         {
@@ -191,9 +191,13 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
         }
 
         var boardId = task.BoardId;
+        // Read before the delete takes the assignment rows with it: these are
+        // the dashboards the card has to leave.
+        var assignees = task.Assignments.Select(a => a.UserId).ToList();
         db.Tasks.Remove(task);
         await db.SaveChangesAsync(ct);
         await notifier.BoardEntityChanged(boardId, EntityTypes.Task, taskId, ChangeKind.Deleted);
+        await notifier.AssignedTasksChanged(assignees, EntityTypes.Task, taskId, ChangeKind.Deleted);
         return NoContent();
     }
 
@@ -392,11 +396,15 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
             return AssignmentHelper.InvalidAssigneesProblem(this, invalid);
         }
 
+        // Whoever this takes the task away from hears about it too: the board
+        // broadcast reaches only those still assigned.
+        var unassigned = task.Assignments.Select(a => a.UserId).Except(request.UserIds).ToList();
         AssignmentHelper.Sync(db, task.Assignments, request.UserIds, userId =>
             new Assignment { UserId = userId, TaskId = taskId });
         await db.SaveChangesAsync(ct);
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.Task, taskId,
             ChangeKind.Updated, "Assignees");
+        await notifier.AssignedTasksChanged(unassigned, EntityTypes.Task, taskId, ChangeKind.Updated);
         return task.ToDto();
     }
 

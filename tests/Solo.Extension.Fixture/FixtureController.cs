@@ -60,6 +60,12 @@ public sealed class FixtureController(FixtureDbContext db, ISoloQuery query) : C
     public async Task<IReadOnlyList<string>> TaskComments(Guid taskId, CancellationToken ct) =>
         (await query.TaskCommentsAsync(taskId, ct)).Select(c => c.Body).ToList();
 
+    /// <summary>Contract 1.13's read of the caller's own work, anonymous so an empty answer is observable.</summary>
+    [HttpGet("my-tasks")]
+    [AllowAnonymous]
+    public async Task<Solo.Shared.Dtos.AssignedTasksDto> MyTasks(CancellationToken ct) =>
+        await query.AssignedTasksAsync(ct);
+
     /// <summary>
     /// Where a person turns on the fixture's background work. A refusal — from
     /// background work itself, say — comes back as a 409 the test can read.

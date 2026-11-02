@@ -14,14 +14,14 @@
   <ItemGroup>
     <!-- The version is the contract version this compiles against. The manifest
          declares the lowest one the code needs, which can be older. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.12.0" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.13.0" />
   </ItemGroup>
 
   <!--#if (Database) -->
   <ItemGroup>
     <!-- For `dotnet ef migrations add`. Build-time only: the instance applies
          the migrations, so none of this ships. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

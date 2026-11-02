@@ -72,7 +72,7 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
         await connection.OpenAsync();
         var tables = await StringsAsync(connection,
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'ext_roadmap' ORDER BY 1");
-        Assert.Equal(["Entries", "Milestones", "Roadmaps", "Settings", "__EFMigrationsHistory"], tables);
+        Assert.Equal(["Entries", "Milestones", "PersonalEntries", "Roadmaps", "Settings", "__EFMigrationsHistory"], tables);
     }
 
     /// <summary>The page's stylesheet and module load as ordinary same-origin subresources.</summary>
@@ -856,6 +856,129 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             .Build();
 
     // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // A person's own roadmap
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Which tasks are on it is core's word on assignments, read fresh each
+    /// time; the rows it adds for them are its own, kept between reads, and go
+    /// when the task is handed on or deleted.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_persons_roadmap_holds_their_assigned_tasks_from_every_project()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        var (first, firstBoard) = await ProjectAsync("Mine One", "MINE1");
+        var (second, secondBoard) = await ProjectAsync("Mine Two", "MINE2");
+        var one = await TaskAsync(firstBoard, "Save system");
+        var two = await TaskAsync(secondBoard, "Trailer cut");
+        await TaskAsync(secondBoard, "Somebody else's");
+        await AssignAsync(one, me.Id);
+        await AssignAsync(two, me.Id);
+
+        var roadmap = await _admin.GetJson<JsonObject>($"{Base}/me?today=2026-11-02");
+
+        Assert.Equal("Your Roadmap", roadmap["title"]!.GetValue<string>());
+        Assert.Empty(roadmap["milestones"]!.AsArray());
+        var entries = roadmap["entries"]!.AsArray().Select(e => e!).ToList();
+        Assert.Equal(["Save system", "Trailer cut"], entries.Select(e => e["task"]!["name"]!.GetValue<string>()));
+        Assert.Equal(["MINE1", "MINE2"], entries.Select(e => e["projectAlias"]!.GetValue<string>()));
+        Assert.Equal("Mine Two", entries[1]["projectName"]!.GetValue<string>());
+        Assert.Equal("2026-11-02", entries[0]["anchorDay"]!.GetValue<string>());
+        Assert.All(entries, e => Assert.Null(e["schedule"]));
+        Assert.True(entries[0]["rank"]!.GetValue<decimal>() < entries[1]["rank"]!.GetValue<decimal>());
+
+        // The same rows again: nothing was added twice.
+        var again = (await MineAsync()).Select(e => e["id"]!.GetValue<Guid>()).ToList();
+        Assert.Equal(entries.Select(e => e["id"]!.GetValue<Guid>()), again);
+
+        await AssignAsync(one, []);
+        (await _admin.DeleteAsync($"/api/tasks/{two.Id}")).EnsureSuccessStatusCode();
+
+        Assert.Empty(await MineAsync());
+        Assert.Equal(0, await PersonalEntryCountAsync(one.Id) + await PersonalEntryCountAsync(two.Id));
+    }
+
+    /// <summary>The plan is the person's; the task's deadline is the board's and doesn't move with it.</summary>
+    [SkippableFact]
+    public async Task Planning_a_task_on_a_persons_roadmap_leaves_the_tasks_dates_alone()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        var (_, board) = await ProjectAsync("Planned", "PLAN");
+        var task = await TaskAsync(board, "Boss fight");
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/schedule",
+            new { startAt = "2026-11-02", deadlineAt = "2026-11-05", version = task.Version });
+        await AssignAsync(task, me.Id);
+        var entry = Assert.Single(await MineAsync())["id"]!.GetValue<Guid>();
+
+        var url = $"{Base}/me/entries/{entry}/schedule";
+        (await _admin.PutAsJsonAsync(url, new { start = "2026-11-04", end = "2026-11-09" }, TestClients.Json))
+            .EnsureSuccessStatusCode();
+
+        var planned = Assert.Single(await MineAsync());
+        Assert.Equal("2026-11-04", planned["schedule"]!["start"]!.GetValue<string>());
+        Assert.Equal("2026-11-09", planned["schedule"]!["end"]!.GetValue<string>());
+        var unchanged = await _admin.GetJson<TaskDto>($"/api/tasks/{task.Id}");
+        Assert.Equal(new DateOnly(2026, 11, 5), unchanged.DeadlineAt);
+        Assert.Equal(new DateOnly(2026, 11, 2), unchanged.StartAt);
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _admin.PutAsJsonAsync(url, new { start = "2026-11-09", end = "2026-11-04" }, TestClients.Json)).StatusCode);
+
+        (await _admin.DeleteAsync(url)).EnsureSuccessStatusCode();
+        Assert.Null(Assert.Single(await MineAsync())["schedule"]);
+    }
+
+    /// <summary>Two people assigned the same task each have a row of their own, and neither can move the other's.</summary>
+    [SkippableFact]
+    public async Task Rows_on_a_persons_roadmap_are_theirs_alone()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var me = await _admin.GetJson<UserDto>("/api/users/me");
+        var (project, board) = await ProjectAsync("Shared", "SHARE");
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members",
+            new { email = "pal@example.com", role = "ReadWrite" });
+        var pal = _factory.As("pal", "pal@example.com", "Pal");
+        var palId = (await pal.GetJson<UserDto>("/api/users/me")).Id;
+        var first = await TaskAsync(board, "First");
+        var second = await TaskAsync(board, "Second");
+        await AssignAsync(first, me.Id, palId);
+        await AssignAsync(second, me.Id, palId);
+
+        var mine = await MineAsync();
+        var pals = await MineAsync(pal);
+        Assert.NotEqual(mine[0]["id"]!.GetValue<Guid>(), pals[0]["id"]!.GetValue<Guid>());
+
+        // Pal's second task onto its first's row: pal's rows change, mine don't.
+        (await pal.PutAsJsonAsync($"{Base}/me/entries/{pals[1]["id"]!.GetValue<Guid>()}/rank",
+            new { joinId = pals[0]["id"]!.GetValue<Guid>() }, TestClients.Json)).EnsureSuccessStatusCode();
+        Assert.Single((await MineAsync(pal)).Select(e => e["rank"]!.GetValue<decimal>()).Distinct());
+        Assert.Equal(2, (await MineAsync()).Select(e => e["rank"]!.GetValue<decimal>()).Distinct().Count());
+
+        Assert.Equal(HttpStatusCode.NotFound, (await pal.PutAsJsonAsync(
+            $"{Base}/me/entries/{mine[0]["id"]!.GetValue<Guid>()}/anchor", new { anchorDay = "2026-11-02" },
+            TestClients.Json)).StatusCode);
+    }
+
+    private Task AssignAsync(TaskDto task, params Guid[] userIds) =>
+        _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds });
+
+    private async Task<List<JsonNode>> MineAsync(HttpClient? client = null) =>
+        (await (client ?? _admin).GetJson<JsonObject>($"{Base}/me?today=2026-11-02"))
+        ["entries"]!.AsArray().Select(e => e!).ToList();
+
+    private async Task<long> PersonalEntryCountAsync(Guid taskId)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT count(*) FROM ext_roadmap.\"PersonalEntries\" WHERE \"TaskId\" = '{taskId}'";
+        return (long)(await command.ExecuteScalarAsync())!;
+    }
 
     private static object Settings(JsonObject current, int? pastDays = null, int? futureDays = null,
         string? startDay = null, int? weeks = null) => new

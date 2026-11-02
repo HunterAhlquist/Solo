@@ -4,6 +4,7 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { livePreview } from './preview.js';
+import { markdownEditing } from './commands.js';
 
 function widgets(doc, anchor = 0) {
     const field = livePreview({}, {});
@@ -65,4 +66,12 @@ test('note links support escaped title brackets and markdown paths containing sp
     const doc='See [Plan \\[v2\\]](/docs/note/AaFp_LuhfYeo9qSF7x1Gug) and [More](<More notes.md>) after.';
     const links=widgets(doc,doc.length).filter(x=>['WikiLink','Link'].includes(x.widget.constructor.name));
     assert.deepEqual(links.map(x=>x.widget.label),['Plan [v2]','More']);
+});
+
+test('highlight renders with its markup hidden off the caret line',()=>{
+    const doc='==marked== text\n\nbody',field=livePreview({},{});
+    const state=anchor=>EditorState.create({doc,selection:{anchor},extensions:[markdownEditing(),EditorView.editable.of(true),field]});
+    const decorations=anchor=>{const marks=[],hidden=[];state(anchor).field(field).between(0,doc.length,(from,to,value)=>{if(value.spec.class)marks.push(value.spec.class);else if(value.isReplace&&!value.spec.widget)hidden.push(doc.slice(from,to));});return {marks,hidden};};
+    assert.deepEqual(decorations(doc.length),{marks:['design-docs-highlight'],hidden:['==','==']});
+    assert.deepEqual(decorations(0).hidden,[]);
 });

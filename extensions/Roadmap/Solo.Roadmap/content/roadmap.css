@@ -714,6 +714,42 @@ html[data-color-scheme="dark"] {
     color: var(--mud-palette-text-secondary);
 }
 
+/* On a person's own roadmap, a bar planned past its task's deadline: the days
+   past it are hatched, and a warning sits at the deadline. Both are positioned
+   from --bar-overrun rather than laid out, so the label, avatars and menu
+   button stay exactly where they'd be without them. */
+.roadmap-bar--overrun::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--bar-overrun);
+    right: 0;
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent 0 4px,
+        color-mix(in srgb, var(--mud-palette-warning) 45%, transparent) 4px 8px);
+    border-left: 2px solid var(--mud-palette-warning);
+    pointer-events: none;
+}
+
+.roadmap-bar__overrun {
+    position: absolute;
+    top: calc(50% - 0.5rem);
+    left: calc(var(--bar-overrun) + 0.25rem);
+    width: 1rem;
+    height: 1rem;
+    font-size: 1rem;
+    color: var(--mud-palette-warning);
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* The label keeps its place over the hatching; the warning shows past it. */
+.roadmap-bar--overrun .roadmap-bar__label {
+    z-index: 2;
+}
+
 /* Edge handles: a thin grip you can see, and a wider strip you can hit. */
 .roadmap-bar__handle {
     position: absolute;

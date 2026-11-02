@@ -103,6 +103,41 @@ public sealed class RoadmapApi(ISoloClientApi api)
         api.SendAsync(HttpMethod.Delete, $"{Base}/projects/{projectId}/roadmaps/{roadmapId}/milestones/{milestoneId}",
             null, ct);
 
+    // -- A person's own roadmap ---------------------------------------------------
+
+    /// <param name="today">The browser's today, which a task new to the roadmap is anchored on.</param>
+    public Task<RoadmapTimelineDto> MyTimelineAsync(DateOnly today, CancellationToken ct = default) =>
+        api.GetAsync<RoadmapTimelineDto>($"{Base}/me?today={today:yyyy-MM-dd}", ct);
+
+    public Task RerankMineAsync(Guid entryId, Guid? precedingId, Guid? followingId, Guid? joinId = null,
+        CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Put, $"{Base}/me/entries/{entryId}/rank",
+            new RerankRoadmapEntryRequest { PrecedingId = precedingId, FollowingId = followingId, JoinId = joinId }, ct);
+
+    public Task RerankManyMineAsync(IReadOnlyList<Guid> entryIds, Guid? precedingId, Guid? followingId,
+        Guid? joinId = null, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Put, $"{Base}/me/entries/rank",
+            new RerankRoadmapEntriesRequest
+            {
+                EntryIds = entryIds,
+                PrecedingId = precedingId,
+                FollowingId = followingId,
+                JoinId = joinId,
+            },
+            ct);
+
+    public Task SetMyAnchorAsync(Guid entryId, DateOnly anchorDay, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Put, $"{Base}/me/entries/{entryId}/anchor",
+            new SetRoadmapEntryAnchorRequest { AnchorDay = anchorDay }, ct);
+
+    /// <summary>The person's own days for a bar. The task's dates aren't touched; that's the point.</summary>
+    public Task SetMyScheduleAsync(Guid entryId, DateOnly start, DateOnly end, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Put, $"{Base}/me/entries/{entryId}/schedule",
+            new SetPersonalScheduleRequest { Start = start, End = end }, ct);
+
+    public Task ClearMyScheduleAsync(Guid entryId, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Delete, $"{Base}/me/entries/{entryId}/schedule", null, ct);
+
     public Task<List<TaskRoadmapDto>> RoadmapsOfTaskAsync(Guid taskId, CancellationToken ct = default) =>
         api.GetAsync<List<TaskRoadmapDto>>($"{Base}/tasks/{taskId}/roadmaps", ct);
 
@@ -134,6 +169,15 @@ public sealed class RoadmapApi(ISoloClientApi api)
             return false;
         }
     }
+
+    public Task<UserDto?> MeAsync(CancellationToken ct = default) => api.GetAsync<UserDto?>("api/users/me", ct);
+
+    /// <summary>
+    /// Core's own cross-project read for the signed-in person (contract 1.13):
+    /// the people on their projects, for the avatars on their own roadmap.
+    /// </summary>
+    public Task<AssignedTasksDto> AssignedTasksAsync(CancellationToken ct = default) =>
+        api.GetAsync<AssignedTasksDto>("api/users/me/tasks", ct);
 
     public Task<List<ProjectMemberDto>> MembersAsync(Guid projectId, CancellationToken ct = default) =>
         api.GetAsync<List<ProjectMemberDto>>($"api/projects/{projectId}/members", ct);

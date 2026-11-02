@@ -4,9 +4,9 @@ namespace Solo.DesignDocs.Client;
 
 internal static class DocDialogs
 {
-    public static async Task<string?> Name(IDialogService dialogs, string title, string initial="")
+    public static async Task<string?> Name(IDialogService dialogs, string title, string initial="", string label="Name", int maxLength=200)
     {
-        var d=await dialogs.ShowAsync<DocNameDialog>(title,new DialogParameters<DocNameDialog>{{x=>x.InitialName,initial}});
+        var d=await dialogs.ShowAsync<DocNameDialog>(title,new DialogParameters<DocNameDialog>{{x=>x.InitialName,initial},{x=>x.Label,label},{x=>x.MaxLength,maxLength}});
         return await d.Result is {Canceled:false,Data:string name}?name:null;
     }
     // "remove" takes only the embed out of the note; "delete" also deletes the stored attachment.
