@@ -11,9 +11,10 @@ using Solo.Shared.Hubs;
 namespace Solo.Roadmap.Tests;
 
 /// <summary>
-/// The timeline page as a person's own roadmap on the dashboard: their tasks
-/// from every project, moved on rows and days of their own, with the tasks'
-/// dates left alone and a warning where a plan runs past a deadline.
+/// The timeline page as a person's own roadmap on the dashboard: the tasks of
+/// theirs they put on it, from any project, moved on rows and days of their
+/// own, with the tasks' dates left alone and a warning where a plan runs past
+/// a deadline.
 /// </summary>
 public class PersonalRoadmapPageTests : ComponentTestBase
 {
@@ -23,6 +24,7 @@ public class PersonalRoadmapPageTests : ComponentTestBase
     private readonly FakeLiveTopics _live = new();
     private readonly RaisingDrawer _drawer = new();
     private readonly FakeMenu _menu = new();
+    private readonly FakePicker _picker = new();
     private List<RoadmapEntryDto> _entries = [Mine("Save system", 1, "SOLO", "Solo"), Mine("Trailer cut", 2, "ART", "Art")];
 
     public PersonalRoadmapPageTests()
@@ -31,7 +33,7 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         Services.AddSingleton<ISoloClientApi>(client);
         Services.AddSingleton<ISoloLiveTopics>(_live);
         Services.AddSingleton<ISoloTaskDrawer>(_drawer);
-        Services.AddSingleton<ISoloTaskPicker>(new NeverPicker());
+        Services.AddSingleton<ISoloTaskPicker>(_picker);
         Services.AddSingleton<ISoloContextMenu>(_menu);
         JSInterop.SetupModule(new RoadmapApi(client).Content("roadmap.js").ToString());
 
@@ -42,12 +44,18 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         _http.Route("api/users/me", HttpStatusCode.OK,
             () => new UserDto(TestData.MeId, "me@example.com", "Me", null, false));
         _http.RouteJson("/labels", Array.Empty<LabelDto>());
-        _http.Route("api/ext/roadmap/me?", HttpStatusCode.OK, () => new RoadmapTimelineDto(
+        _http.Route("api/ext/roadmap/me", HttpStatusCode.OK, () => new RoadmapTimelineDto(
             Guid.Empty, Guid.Empty, "", "Your Roadmap", 0,
             new RoadmapSettingsDto(30, 60, DayOfWeek.Monday, 2, 1), _entries.ToList(), []), HttpMethod.Get);
         _http.Route("/me/entries/", HttpStatusCode.NoContent, (object?)null, HttpMethod.Put);
         _http.Route("/me/entries/", HttpStatusCode.NoContent, (object?)null, HttpMethod.Delete);
+        // Before the add route, which it would otherwise match.
+        _http.Route("/me/entries/remove", HttpStatusCode.NoContent, (object?)null, HttpMethod.Post);
+        _http.Route("/me/entries", HttpStatusCode.Created, () => _added, HttpMethod.Post);
     }
+
+    /// <summary>What the server answers an add with.</summary>
+    private RoadmapEntryDto? _added;
 
     /// <summary>A task of the signed-in person's, due in three days, from the project and board given.</summary>
     private static RoadmapEntryDto Mine(string name, int number, string projectAlias, string projectName) =>
@@ -62,7 +70,7 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         return page;
     }
 
-    private int TimelineReads => _http.Paths.Count(p => p.StartsWith("GET /api/ext/roadmap/me?"));
+    private int TimelineReads => _http.Paths.Count(p => p == "GET /api/ext/roadmap/me");
 
     private List<string> Requests(string method, string fragment) =>
         _http.Paths.Select((path, i) => (path, body: _http.Bodies[i]))
@@ -79,7 +87,7 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         var page = RenderPage();
 
         Assert.Empty(page.FindAll(".roadmap-header"));
-        Assert.Empty(page.FindAll(".roadmap-page .mud-button"));
+        Assert.Equal("Add task", page.Find(".roadmap-toolbar .mud-button").TextContent.Trim());
         Assert.Equal(2, page.FindAll(".roadmap-bar").Count);
         Assert.Equal("SOLO-FEAT-1", page.Find(".roadmap-bar .roadmap-bar__serial").TextContent.Trim());
         Assert.Contains("ART-FEAT-2", Bar(page, _entries[1]).TextContent);
@@ -106,13 +114,13 @@ public class PersonalRoadmapPageTests : ComponentTestBase
     }
 
     [Fact]
-    public void With_nothing_assigned_it_says_so()
+    public void Empty_it_says_how_to_add_a_task()
     {
         _entries = [];
 
         var page = RenderPage();
 
-        Assert.Contains("No tasks are assigned to you", page.Find(".roadmap-empty").TextContent);
+        Assert.Contains("Nothing on your roadmap yet. Use Add task", page.Find(".roadmap-empty").TextContent);
     }
 
     [Fact]
@@ -181,11 +189,11 @@ public class PersonalRoadmapPageTests : ComponentTestBase
 
         _menu.Next = null;
         await page.Instance.OnBarMenu(_entries[1].Id.ToString(), 10, 10);
-        Assert.Equal(["Open task", "Go to Features"], _menu.Labels());
+        Assert.Equal(["Open task", "Go to Features", "Remove from your roadmap"], _menu.Labels());
 
         _menu.Next = "follow";
         await page.Instance.OnBarMenu(planned.Id.ToString(), 10, 10);
-        Assert.Equal(["Open task", "Go to Features", "Use the task's dates"], _menu.Labels());
+        Assert.Equal(["Open task", "Go to Features", "Use the task's dates", "Remove from your roadmap"], _menu.Labels());
         page.WaitForAssertion(() => Assert.Single(Requests("DELETE", $"/me/entries/{planned.Id}/schedule")));
         Assert.DoesNotContain("roadmap-bar--overrun", Bar(page, planned).ClassName);
         Assert.Equal(_window(Today).ToString(), Bar(page, planned).ParentElement!.GetAttribute("data-start"));
@@ -194,18 +202,57 @@ public class PersonalRoadmapPageTests : ComponentTestBase
     /// <summary>The window opens 30 days back (PastDays), so today is column 30.</summary>
     private static int _window(DateOnly day) => 30 + day.DayNumber - Today.DayNumber;
 
+    /// <summary>
+    /// Nothing turns up on its own: a task goes on by picking it, from the
+    /// person's assigned tasks in any project. One with no deadline comes back
+    /// with a week's plan, wide enough to read, and its own dates stay unset.
+    /// </summary>
     [Fact]
-    public async Task Nothing_is_added_or_removed_from_here()
+    public async Task A_day_adds_one_of_their_tasks_from_any_project_through_the_assigned_picker()
+    {
+        var page = RenderPage();
+        var undated = TestData.Task(number: 9, assignees: [TestData.MeId]) with { Name = "Loot table pass" };
+        _picker.Next = undated;
+        _added = new RoadmapEntryDto(Guid.NewGuid(), 3072m, Today.AddDays(1), "FEAT", "Features", undated,
+            "SOLO", "Solo", RoadmapScheduleDto.OnAdd(Today.AddDays(1)));
+        _menu.Next = "add";
+
+        await page.Instance.OnDayMenu(_window(Today.AddDays(1)), -1, 10, 10);
+
+        Assert.Equal([$"Add a task on {Dates.Day(Today.AddDays(1))}"], _menu.Labels());
+        var options = Assert.Single(_picker.Assigned);
+        Assert.Equal(_entries.Select(e => e.Task.Id).ToHashSet(), options!.Exclude);
+        page.WaitForAssertion(() => Assert.Equal(3, page.FindAll(".roadmap-bar").Count));
+        var add = Assert.Single(Requests("POST", "/me/entries"));
+        Assert.Contains(undated.Id.ToString(), add);
+        Assert.Contains($"\"{Today.AddDays(1):yyyy-MM-dd}\"", add);
+        Assert.Empty(Requests("PUT", "api/tasks/"));
+        Assert.Equal(_window(Today.AddDays(1)).ToString(), Bar(page, _added).ParentElement!.GetAttribute("data-start"));
+        Assert.Equal(_window(Today.AddDays(7)).ToString(), Bar(page, _added).ParentElement!.GetAttribute("data-end"));
+    }
+
+    [Fact]
+    public async Task Add_task_above_the_grid_opens_the_same_picker()
     {
         var page = RenderPage();
 
-        await page.Instance.OnDayMenu(31, 0, 10, 10);
+        await page.InvokeAsync(() => page.Find(".roadmap-toolbar .mud-button").Click());
+
+        page.WaitForAssertion(() => Assert.Single(_picker.Assigned));
+        Assert.Empty(Requests("POST", "/me/entries"));
+    }
+
+    [Fact]
+    public async Task Removing_takes_tasks_off_their_roadmap_and_nothing_else()
+    {
+        var page = RenderPage();
+
         await page.Instance.OnMarquee([_entries[0].Id.ToString()], additive: false);
         await page.Instance.OnRemoveSelected();
 
-        Assert.Empty(_menu.Shown);
-        Assert.DoesNotContain(_http.Paths, p => p.StartsWith("POST ") || p.StartsWith("DELETE "));
-        Assert.Equal(2, page.FindAll(".roadmap-bar").Count);
+        page.WaitForAssertion(() => Assert.Single(page.FindAll(".roadmap-bar")));
+        Assert.Contains(_entries[0].Id.ToString(), Assert.Single(Requests("POST", "/me/entries/remove")));
+        Assert.DoesNotContain(_http.Paths, p => p.Contains("api/tasks/") || p.Contains("/projects/"));
     }
 
     [Fact]
@@ -261,10 +308,20 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         }
     }
 
-    private sealed class NeverPicker : ISoloTaskPicker
+    private sealed class FakePicker : ISoloTaskPicker
     {
+        public TaskDto? Next { get; set; }
+
+        public List<TaskPickerOptions?> Assigned { get; } = [];
+
         public Task<TaskDto?> PickAsync(Guid projectId, TaskPickerOptions? options = null, CancellationToken ct = default) =>
-            throw new InvalidOperationException("A person's own roadmap never picks tasks.");
+            throw new InvalidOperationException("A person's own roadmap picks from their assigned tasks, not a project's.");
+
+        public Task<TaskDto?> PickAssignedAsync(TaskPickerOptions? options = null, CancellationToken ct = default)
+        {
+            Assigned.Add(options);
+            return Task.FromResult(Next);
+        }
     }
 
     private sealed class RaisingDrawer : ISoloTaskDrawer

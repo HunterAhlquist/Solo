@@ -349,6 +349,45 @@ public class TaskPickerTests : ComponentTestBase
         picker.WaitForAssertion(() => Assert.Empty(picker.FindAll(".task-picker__results")));
     }
 
+    // -- One person's work across projects ----------------------------------------------
+
+    [Fact]
+    public async Task The_assigned_picker_offers_only_the_persons_tasks_under_project_and_board()
+    {
+        var studioId = Guid.NewGuid();
+        var launchId = Guid.NewGuid();
+        var photoMode = Item("Photo mode", 7);
+        var pressKit = Item("Press kit", 1) with { BoardId = launchId };
+        var features = Features([photoMode, Item("Someone else's", 8)]);
+        var launch = new BoardDetailDto(launchId, studioId, "WEB", "Launch", "LAUNCH", null, null, true, 1, [],
+            [pressKit, Item("Not mine either", 2) with { BoardId = launchId }], []);
+        _http.RouteJson("api/users/me/tasks", new AssignedTasksDto(
+            [
+                new ProjectSummaryDto(ProjectId, "Dungeon Crawler", "SOLO", null, null, ProjectRole.ReadWrite, false),
+                new ProjectSummaryDto(studioId, "Studio Site", "WEB", null, null, ProjectRole.ReadWrite, false),
+            ],
+            [
+                new BoardDto(launchId, studioId, "Launch", "LAUNCH", null, null, true, 1),
+                new BoardDto(FeaturesId, ProjectId, "Features", "FEAT", null, null, true, 1),
+            ],
+            [], [], [photoMode, pressKit]));
+        _http.RouteJson($"api/boards/{FeaturesId}", features);
+        _http.RouteJson($"api/boards/{launchId}", launch);
+
+        var picker = Render<MudDialogProvider>();
+        var service = Services.GetRequiredService<ISoloTaskPicker>();
+        await picker.InvokeAsync(() => { _picked = service.PickAssignedAsync(ct: _cts.Token); });
+        picker.WaitForAssertion(() => Assert.NotEmpty(picker.FindAll(".task-picker__name")));
+
+        Assert.Equal(["Dungeon Crawler · Features", "Studio Site · Launch"], Boards(picker));
+        Assert.Equal(["Photo mode", "Press kit"], Options(picker));
+        // Closed boards are never on the dashboard, so there's nothing to switch on.
+        Assert.Single(picker.FindAll("input[type=checkbox]"));
+
+        picker.FindAll(".task-picker__option")[1].Click();
+        Assert.Equal(pressKit.Id, (await PickedAsync())?.Id);
+    }
+
     [Fact]
     public async Task The_dialog_carries_the_callers_title()
     {

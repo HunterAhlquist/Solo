@@ -105,9 +105,17 @@ public sealed class RoadmapApi(ISoloClientApi api)
 
     // -- A person's own roadmap ---------------------------------------------------
 
-    /// <param name="today">The browser's today, which a task new to the roadmap is anchored on.</param>
-    public Task<RoadmapTimelineDto> MyTimelineAsync(DateOnly today, CancellationToken ct = default) =>
-        api.GetAsync<RoadmapTimelineDto>($"{Base}/me?today={today:yyyy-MM-dd}", ct);
+    public Task<RoadmapTimelineDto> MyTimelineAsync(CancellationToken ct = default) =>
+        api.GetAsync<RoadmapTimelineDto>($"{Base}/me", ct);
+
+    public Task<RoadmapEntryDto> AddMineAsync(Guid taskId, DateOnly anchorDay, Guid? joinId = null,
+        CancellationToken ct = default) =>
+        api.SendAsync<RoadmapEntryDto>(HttpMethod.Post, $"{Base}/me/entries",
+            new AddRoadmapEntryRequest { TaskId = taskId, AnchorDay = anchorDay, JoinId = joinId }, ct);
+
+    public Task RemoveMineAsync(IReadOnlyList<Guid> entryIds, CancellationToken ct = default) =>
+        api.SendAsync(HttpMethod.Post, $"{Base}/me/entries/remove",
+            new RemoveRoadmapEntriesRequest { EntryIds = entryIds }, ct);
 
     public Task RerankMineAsync(Guid entryId, Guid? precedingId, Guid? followingId, Guid? joinId = null,
         CancellationToken ct = default) =>

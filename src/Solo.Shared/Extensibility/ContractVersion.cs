@@ -81,10 +81,14 @@ namespace Solo.Shared.Extensibility;
 /// <c>BoardHubConstants.AssignedTasksTopic</c> that nudges both. Both halves
 /// changed, so a package using any of it needs 1.13 in whichever range covers
 /// the half that uses it.</para>
+/// <para>1.14.0 adds <see cref="ISoloTaskPicker.PickAssignedAsync"/>: the host
+/// task picker over the signed-in person's assigned tasks from every project,
+/// for a page that collects someone's own work. It is client-only, so a package
+/// needs 1.14 only in <c>soloClientVersion</c>.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.13.0";
+    public const string Current = "1.14.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

@@ -31,6 +31,12 @@ public static class RoadmapLimits
     /// <summary>Entries one request removes or moves together; the page splits a larger selection.</summary>
     public const int MaxEntriesAtOnce = 500;
 
+    /// <summary>
+    /// How many days a task with no deadline is planned over when someone puts
+    /// it on their own roadmap: a week, wide enough to read which task it is.
+    /// </summary>
+    public const int PersonalPlanDays = 7;
+
     public const int DefaultPastDays = 365;
     public const int DefaultFutureDays = 730;
     public const DayOfWeek DefaultSprintStartDay = DayOfWeek.Monday;
@@ -159,7 +165,11 @@ public sealed record RoadmapEntryDto(
 /// which the task's own dates don't follow. An end past the task's deadline is
 /// what the page warns about.
 /// </summary>
-public sealed record RoadmapScheduleDto(DateOnly Start, DateOnly End);
+public sealed record RoadmapScheduleDto(DateOnly Start, DateOnly End)
+{
+    /// <summary>The plan a task with no deadline starts with on someone's own roadmap, from the day it was added on.</summary>
+    public static RoadmapScheduleDto OnAdd(DateOnly day) => new(day, day.AddDays(RoadmapLimits.PersonalPlanDays - 1));
+}
 
 /// <summary>A roadmap a task appears on, for the chips in its task view.</summary>
 public sealed record TaskRoadmapDto(Guid Id, string Title, string ProjectAlias);

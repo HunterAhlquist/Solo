@@ -1,9 +1,9 @@
 {
   "id": "roadmap",
   "name": "Roadmaps",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "soloApiVersion": ">=1.13 <2.0",
-  "soloClientVersion": ">=1.13 <2.0",
+  "soloClientVersion": ">=1.14 <2.0",
   "server": "server/Solo.Roadmap.dll",
   "client": "client/Solo.Roadmap.Client.dll",
   "schema": "ext_roadmap",

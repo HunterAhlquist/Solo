@@ -11,8 +11,14 @@ namespace Solo.Client.State;
 /// </summary>
 public sealed class TaskPickerService(IDialogService dialogs) : ISoloTaskPicker
 {
-    public async Task<TaskDto?> PickAsync(
-        Guid projectId, TaskPickerOptions? options = null, CancellationToken ct = default)
+    public Task<TaskDto?> PickAsync(
+        Guid projectId, TaskPickerOptions? options = null, CancellationToken ct = default) =>
+        ShowAsync(projectId, options, ct);
+
+    public Task<TaskDto?> PickAssignedAsync(TaskPickerOptions? options = null, CancellationToken ct = default) =>
+        ShowAsync(null, options, ct);
+
+    private async Task<TaskDto?> ShowAsync(Guid? projectId, TaskPickerOptions? options, CancellationToken ct)
     {
         options ??= new TaskPickerOptions();
         var dialog = await dialogs.ShowAsync<TaskPickerDialog>(

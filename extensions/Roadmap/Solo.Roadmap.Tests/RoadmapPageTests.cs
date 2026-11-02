@@ -925,6 +925,9 @@ public class RoadmapPageTests : ComponentTestBase
             During?.Invoke();
             return Task.FromResult(Next);
         }
+
+        public Task<TaskDto?> PickAssignedAsync(TaskPickerOptions? options = null, CancellationToken ct = default) =>
+            throw new InvalidOperationException("A project's roadmap picks from that project.");
     }
 
     private sealed class IdleDrawer : ISoloTaskDrawer
