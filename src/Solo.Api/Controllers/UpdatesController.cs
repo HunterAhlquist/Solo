@@ -75,8 +75,11 @@ public sealed class UpdatesController(
                 detail: "Type the extension's id exactly to confirm the update.");
         }
 
+        // Stripped of line breaks before it is logged: it is the raw route
+        // value, and nothing has yet checked it names an installed extension.
+        var loggedId = extensionId.ReplaceLineEndings(string.Empty);
         logger.LogWarning(
-            "Extension {Id} update requested by {User}.", extensionId, User.Identity?.Name);
+            "Extension {Id} update requested by {User}.", loggedId, User.Identity?.Name);
 
         var outcome = await installer.InstallAsync(extensionId, ct);
         if (!outcome.Found)
@@ -95,7 +98,7 @@ public sealed class UpdatesController(
         Response.OnCompleted(() =>
         {
             logger.LogWarning(
-                "Restarting to load extension {Id} {Version}.", extensionId, outcome.Version);
+                "Restarting to load extension {Id} {Version}.", loggedId, outcome.Version);
             lifetime.StopApplication();
             return Task.CompletedTask;
         });
