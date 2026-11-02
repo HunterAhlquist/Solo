@@ -8,7 +8,8 @@
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider Auth
 @inject NavigationManager Navigation
-<MudMenu Icon="@(_status.Conflicts>0?Icons.Material.Filled.SyncProblem:!_status.Online&&_status.Vaults.Count>0?Icons.Material.Filled.CloudOff:Icons.Material.Filled.Cloud)" aria-label="Offline vault synchronization">
+<MudMenu Icon="@(_status.Conflicts>0?Icons.Material.Filled.SyncProblem:!_status.Online&&_status.Vaults.Count>0?Icons.Material.Filled.CloudOff:Icons.Material.Filled.Cloud)" aria-label="Offline vault synchronization"
+         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
     <MudText Class="px-4 py-2" Typo="Typo.body2">@Label</MudText>
     @if(!string.IsNullOrEmpty(_status.Message)){<MudText Class="px-4 py-2" Typo="Typo.caption">@_status.Message</MudText>}
     <MudMenuItem Icon="@Icons.Material.Filled.Sync" OnClick="Sync">Sync now</MudMenuItem>
