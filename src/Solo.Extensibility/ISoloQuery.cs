@@ -62,9 +62,10 @@ public interface ISoloQuery
     /// <summary>
     /// The caller's own work (contract 1.13): every task assigned to them on an
     /// open board of a project they are a member of, with the projects, boards,
-    /// labels and people those tasks need to be drawn. What core's Your Tasks
-    /// dashboard shows, and what <c>GET api/users/me/tasks</c> returns to the
-    /// browser. Empty for an anonymous caller.
+    /// labels and people those tasks need to be drawn, less finished tasks
+    /// finished more than 12 days ago. What core's Your Tasks dashboard shows,
+    /// and what <c>GET api/users/me/tasks</c> returns to the browser. Empty for
+    /// an anonymous caller.
     /// </summary>
     Task<AssignedTasksDto> AssignedTasksAsync(CancellationToken ct = default);
 

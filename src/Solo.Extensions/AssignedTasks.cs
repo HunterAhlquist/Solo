@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Solo.Data;
+using Solo.Shared;
 using Solo.Shared.Dtos;
 
 namespace Solo.Extensions;
@@ -14,18 +15,24 @@ namespace Solo.Extensions;
 /// being removed from a project, and a person who was shown the door must not
 /// keep seeing that project's tasks on their own page. Closed boards are left
 /// out the way the sidebar leaves them out — their work is archived, and a card
-/// from one could not be moved anyway.
+/// from one could not be moved anyway. Finished work stays for
+/// <see cref="FinishedKeptFor"/> and then drops off, so the page is about what is
+/// on someone's plate rather than everything they ever closed.
 /// </remarks>
 public static class AssignedTasks
 {
     public static readonly AssignedTasksDto Empty = new([], [], [], [], []);
 
+    public static readonly TimeSpan FinishedKeptFor = TimeSpan.FromDays(12);
+
     public static async Task<AssignedTasksDto> QueryAsync(SoloDbContext db, Guid userId, CancellationToken ct)
     {
+        var finishedSince = DateTime.UtcNow - FinishedKeptFor;
         var tasks = await db.Tasks.AsNoTracking()
             .Where(t => t.Board!.IsOpen &&
                         t.Assignments.Any(a => a.UserId == userId) &&
-                        t.Board.Project!.Members.Any(m => m.UserId == userId))
+                        t.Board.Project!.Members.Any(m => m.UserId == userId) &&
+                        (t.Status != TaskState.Finished || t.FinishedAt >= finishedSince))
             .Include(t => t.SubTasks)
             .Include(t => t.Assignments)
             .AsSplitQuery()

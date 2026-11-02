@@ -2,6 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Solo.Data;
+using Solo.Extensions;
 using Solo.Shared;
 using Solo.Shared.Dtos;
 using Solo.Shared.Hubs;
@@ -94,6 +98,48 @@ public sealed class AssignedTasksApiTests(PostgresFixture postgres) : IAsyncLife
         mine = await _bob.GetJson<AssignedTasksDto>("/api/users/me/tasks");
         Assert.Equal([first.Id], mine.Tasks.Select(t => t.Id));
         Assert.Equal(["One"], mine.Projects.Select(p => p.Name));
+    }
+
+    [SkippableFact]
+    public async Task FinishedWork_StaysTwelveDays_ThenDropsOff_AndFinishingStampsTheTime()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await ProjectWithBobAsync("Done", "DONE");
+        var open = await TaskForBobAsync(board, "Still going");
+        var recent = await TaskForBobAsync(board, "Just shipped");
+        var old = await TaskForBobAsync(board, "Long shipped");
+        var before = DateTime.UtcNow;
+        await _admin.PutJson<TaskDto>($"/api/tasks/{recent.Id}/status", new { status = "Finished" });
+        await _admin.PutJson<TaskDto>($"/api/tasks/{old.Id}/status", new { status = "Finished" });
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SoloDbContext>();
+            var stamped = await db.Tasks.Where(t => t.Id == recent.Id).Select(t => t.FinishedAt).SingleAsync();
+            Assert.NotNull(stamped);
+            Assert.InRange(stamped.Value, before, DateTime.UtcNow);
+
+            // A day past the line, as if it had been finished then.
+            await db.Tasks.Where(t => t.Id == old.Id).ExecuteUpdateAsync(u => u.SetProperty(
+                t => t.FinishedAt, DateTime.UtcNow - AssignedTasks.FinishedKeptFor - TimeSpan.FromDays(1)));
+        }
+
+        var mine = await _bob.GetJson<AssignedTasksDto>("/api/users/me/tasks");
+        Assert.Equal(new[] { open.Id, recent.Id }.Order(), mine.Tasks.Select(t => t.Id).Order());
+        var viaExtension = await _bob.GetJson<AssignedTasksDto>("/api/ext/fixture/api/tasks/my-tasks");
+        Assert.Equal(mine.Tasks.Select(t => t.Id).Order(), viaExtension.Tasks.Select(t => t.Id).Order());
+
+        // Reopened, it is current work again; finished anew, the clock restarts.
+        await _admin.PutJson<TaskDto>($"/api/tasks/{old.Id}/status", new { status = "InProgress" });
+        Assert.Contains(old.Id, (await _bob.GetJson<AssignedTasksDto>("/api/users/me/tasks")).Tasks.Select(t => t.Id));
+        await _admin.PutJson<TaskDto>($"/api/tasks/{old.Id}/status", new { status = "Finished" });
+        Assert.Contains(old.Id, (await _bob.GetJson<AssignedTasksDto>("/api/users/me/tasks")).Tasks.Select(t => t.Id));
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SoloDbContext>();
+            Assert.Null(await db.Tasks.Where(t => t.Id == open.Id).Select(t => t.FinishedAt).SingleAsync());
+        }
     }
 
     [SkippableFact]
