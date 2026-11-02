@@ -35,11 +35,12 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         Services.AddSingleton<ISoloContextMenu>(_menu);
         JSInterop.SetupModule(new RoadmapApi(client).Content("roadmap.js").ToString());
 
-        _http.Route("api/users/me", HttpStatusCode.OK,
-            () => new UserDto(TestData.MeId, "me@example.com", "Me", null, false));
-        _http.Route("api/me/tasks", HttpStatusCode.OK, () => new AssignedTasksDto([], [], [],
+        _http.Route("api/users/me/tasks", HttpStatusCode.OK, () => new AssignedTasksDto([], [], [],
             [new ProjectMemberDto(Guid.NewGuid(), TestData.MeId, "me@example.com", "Me", null, ProjectRole.ReadWrite, false, false)],
             []));
+        // After the tasks route: the stub matches by fragment, and "api/users/me" is one of "api/users/me/tasks".
+        _http.Route("api/users/me", HttpStatusCode.OK,
+            () => new UserDto(TestData.MeId, "me@example.com", "Me", null, false));
         _http.RouteJson("/labels", Array.Empty<LabelDto>());
         _http.Route("api/ext/roadmap/me?", HttpStatusCode.OK, () => new RoadmapTimelineDto(
             Guid.Empty, Guid.Empty, "", "Your Roadmap", 0,
@@ -85,7 +86,7 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         Assert.Contains("Art · Features", Bar(page, _entries[1]).GetAttribute("title"));
         // Its own topic for rows moved elsewhere, core's for the tasks themselves.
         Assert.Contains((Guid.Empty, RoadmapTopics.Personal), _live.Held);
-        Assert.Contains((Guid.Empty, "solo:assigned-tasks"), _live.Held);
+        Assert.Contains((Guid.Empty, BoardHubConstants.AssignedTasksTopic), _live.Held);
         Assert.Empty(_live.Reported);
     }
 
@@ -210,7 +211,7 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         page.WaitForAssertion(() => Assert.Equal(1, TimelineReads));
         _entries = [_entries[0]];
 
-        await _live.SendAsync(Guid.Empty, "solo:assigned-tasks", EntityTypes.Task, _entries[0].Task.Id.ToString());
+        await _live.SendAsync(Guid.Empty, BoardHubConstants.AssignedTasksTopic, EntityTypes.Task, _entries[0].Task.Id.ToString());
 
         page.WaitForAssertion(() => Assert.Equal(2, TimelineReads));
         page.WaitForAssertion(() => Assert.Single(page.FindAll(".roadmap-bar")));

@@ -1556,7 +1556,7 @@ public sealed partial class RoadmapPage
         if (Personal)
         {
             _live = await Live.SubscribeUserAsync(RoadmapTopics.Personal, OnLiveAsync);
-            _liveAssigned = await Live.SubscribeUserAsync(Contract113Topics.AssignedTasks, OnLiveAsync);
+            _liveAssigned = await Live.SubscribeUserAsync(BoardHubConstants.AssignedTasksTopic, OnLiveAsync);
             return;
         }
 
