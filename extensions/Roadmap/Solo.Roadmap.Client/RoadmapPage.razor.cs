@@ -63,6 +63,12 @@ public sealed partial class RoadmapPage
     private Guid? _anchor;
 
     private IAsyncDisposable? _live;
+
+    /// <summary>On a person's own roadmap, core's word that one of their tasks changed.</summary>
+    private IAsyncDisposable? _liveAssigned;
+
+    /// <summary>Who's signed in, on their own roadmap: a task they hand to someone else leaves it.</summary>
+    private Guid _me;
     private IReadOnlyList<TopicPresenceEntry> _present = [];
     private PresenceMode _reported;
     private bool _gesturing;
@@ -103,10 +109,23 @@ public sealed partial class RoadmapPage
     [Parameter]
     public Guid RoadmapId { get; set; }
 
+    /// <summary>
+    /// The person's own roadmap instead of a project's: every task assigned to
+    /// them, from all their projects, embedded on the dashboard rather than a
+    /// page of its own. Rows and bars are theirs to move, and moving a bar
+    /// plans the task without touching its dates. No header, no adding or
+    /// removing, no milestones.
+    /// </summary>
+    [Parameter]
+    public bool Personal { get; set; }
+
     private RoadmapApi Api => new(Client);
 
-    /// <summary>The board's write rule: an owner, or a read/write member.</summary>
-    private bool CanWrite => _project is { } project && (project.IsOwner || project.Role == ProjectRole.ReadWrite);
+    /// <summary>The board's write rule: an owner, or a read/write member. A person's own roadmap is always theirs to arrange.</summary>
+    private bool CanWrite =>
+        Personal || (_project is { } project && (project.IsOwner || project.Role == ProjectRole.ReadWrite));
+
+    private bool Loaded => _timeline is not null && (Personal || _project is not null);
 
     // -- Loading ------------------------------------------------------------------
 
@@ -142,6 +161,12 @@ public sealed partial class RoadmapPage
 
     private async Task LoadAsync()
     {
+        if (Personal)
+        {
+            await LoadMineAsync();
+            return;
+        }
+
         var canDelete = Api.IsSuperAdminAsync();
         try
         {
@@ -175,6 +200,33 @@ public sealed partial class RoadmapPage
         await CatchUpAsync();
     }
 
+    private async Task LoadMineAsync()
+    {
+        try
+        {
+            _me = (await Api.MeAsync())?.Id ?? Guid.Empty;
+            await StartLiveAsync();
+            Show(await ReadTimelineAsync());
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _error = "Couldn't load your roadmap.";
+            await StopLiveAsync();
+            return;
+        }
+
+        await LoadPeopleAndLabelsAsync();
+        await CatchUpAsync();
+    }
+
+    /// <summary>
+    /// The timeline as the server has it. A person's own is read with the
+    /// browser's today, which is where a task new to it is anchored.
+    /// </summary>
+    private Task<RoadmapTimelineDto> ReadTimelineAsync() => Personal
+        ? Api.MyTimelineAsync(DateOnly.FromDateTime(DateTime.Now))
+        : Api.TimelineAsync(_project!.Id, RoadmapId);
+
     /// <summary>Opens the roadmap: its rows, and a view around the day it starts on.</summary>
     private void Show(RoadmapTimelineDto timeline)
     {
@@ -207,9 +259,11 @@ public sealed partial class RoadmapPage
     {
         try
         {
-            _members = (await Api.MembersAsync(_project!.Id))
+            var members = Personal ? (await Api.AssignedTasksAsync()).Members : await Api.MembersAsync(_project!.Id);
+            _members = members
                 .Where(m => m.UserId is not null)
-                .ToDictionary(m => m.UserId!.Value);
+                .GroupBy(m => m.UserId!.Value)
+                .ToDictionary(g => g.Key, g => g.First());
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
         {
@@ -247,14 +301,14 @@ public sealed partial class RoadmapPage
 
     private async Task ReloadAsync()
     {
-        if (_project is null)
+        if (!Personal && _project is null)
         {
             return;
         }
 
         try
         {
-            Apply(await Api.TimelineAsync(_project.Id, RoadmapId));
+            Apply(await ReadTimelineAsync());
             await LoadLabelsAsync();
             await RefreshTimelineAsync();
         }
@@ -355,7 +409,7 @@ public sealed partial class RoadmapPage
 
     /// <summary>Where the view opens: the oldest start among rows in flight today, or today.</summary>
     private DateOnly StartingDay() =>
-        Timeline.StartingDay(_entries.Select(e => Timeline.Span(e.Task, e.AnchorDay)), _today);
+        Timeline.StartingDay(_entries.Select(Timeline.Span), _today);
 
     // -- From roadmap.js --------------------------------------------------------------
 
@@ -466,7 +520,7 @@ public sealed partial class RoadmapPage
             StateHasChanged();
         }
 
-        if (!CanWrite)
+        if (!CanWrite || Personal)
         {
             return;
         }
@@ -547,7 +601,7 @@ public sealed partial class RoadmapPage
     [JSInvokable]
     public Task OnRemoveSelected() => InvokeAsync(async () =>
     {
-        if (CanWrite && _selected.Count > 0)
+        if (CanWrite && !Personal && _selected.Count > 0)
         {
             await RemoveAsync(_entries.Where(e => _selected.Contains(e.Id)).ToList());
             StateHasChanged();
@@ -615,11 +669,15 @@ public sealed partial class RoadmapPage
         {
             if (moving.Count == 1)
             {
-                await Api.RerankAsync(_project!.Id, RoadmapId, dropped.Id, preceding, following, joinId);
+                await (Personal
+                    ? Api.RerankMineAsync(dropped.Id, preceding, following, joinId)
+                    : Api.RerankAsync(_project!.Id, RoadmapId, dropped.Id, preceding, following, joinId));
             }
             else
             {
-                await Api.RerankManyAsync(_project!.Id, RoadmapId, [.. movingIds], preceding, following, joinId);
+                await (Personal
+                    ? Api.RerankManyMineAsync([.. movingIds], preceding, following, joinId)
+                    : Api.RerankManyAsync(_project!.Id, RoadmapId, [.. movingIds], preceding, following, joinId));
             }
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
@@ -654,7 +712,7 @@ public sealed partial class RoadmapPage
         }
 
         var moving = Dragged(entry);
-        var shift = moving.Aggregate(days, (shift, e) => _window.ClampMove(Timeline.Span(e.Task, e.AnchorDay), shift));
+        var shift = moving.Aggregate(days, (shift, e) => _window.ClampMove(Timeline.Span(e), shift));
         if (shift == 0)
         {
             return;
@@ -685,12 +743,12 @@ public sealed partial class RoadmapPage
 
     private Task<SaveFailure?> ShiftAsync(RoadmapEntryDto entry, int days)
     {
-        if (entry.Task.DeadlineAt is null)
+        if (Timeline.IsPill(entry))
         {
             return SaveAnchorAsync(entry, entry.AnchorDay.AddDays(days));
         }
 
-        var moved = Timeline.Move(Timeline.Span(entry.Task, entry.AnchorDay), days);
+        var moved = Timeline.Move(Timeline.Span(entry), days);
         return SaveScheduleAsync(entry, (moved.Start, moved.End));
     }
 
@@ -701,7 +759,7 @@ public sealed partial class RoadmapPage
         if (CanWrite && Find(entryId) is { } entry)
         {
             var side = edge == "start" ? Edge.Start : Edge.End;
-            await RescheduleAsync(entry, Timeline.Resize(entry.Task, entry.AnchorDay, side, _window.DayAt(index)));
+            await RescheduleAsync(entry, Timeline.Resize(entry, side, _window.DayAt(index)));
         }
     });
 
@@ -722,11 +780,21 @@ public sealed partial class RoadmapPage
     }
 
     /// <summary>
+    /// Where a dragged or resized bar's dates go: to the task, on a project's
+    /// roadmap; on the person's own, to their plan for it, and the task's dates
+    /// are left to the board.
+    /// </summary>
+    private Task<SaveFailure?> SaveScheduleAsync(RoadmapEntryDto entry, (DateOnly? Start, DateOnly Deadline) dates) =>
+        Personal
+            ? SavePlanAsync(entry, new RoadmapScheduleDto(dates.Start ?? Timeline.Span(entry).Start, dates.Deadline))
+            : SaveTaskScheduleAsync(entry, dates);
+
+    /// <summary>
     /// Saves new dates through core's schedule endpoint. The bar moves at once,
     /// before the first await; a conflict redraws it from the server's copy, and
     /// any other failure puts it back where it was.
     /// </summary>
-    private async Task<SaveFailure?> SaveScheduleAsync(RoadmapEntryDto entry, (DateOnly? Start, DateOnly Deadline) dates)
+    private async Task<SaveFailure?> SaveTaskScheduleAsync(RoadmapEntryDto entry, (DateOnly? Start, DateOnly Deadline) dates)
     {
         var before = entry.Task;
         if (before.StartAt == dates.Start && before.DeadlineAt == dates.Deadline)
@@ -757,6 +825,57 @@ public sealed partial class RoadmapPage
         return failure;
     }
 
+    /// <summary>
+    /// Saves the person's plan for a bar on their own roadmap, redrawn at once;
+    /// a failed save puts it back. The task's dates don't move, so a plan that
+    /// runs past the deadline is drawn as such rather than refused: it's their
+    /// roadmap, and the bar says where the two part.
+    /// </summary>
+    private async Task<SaveFailure?> SavePlanAsync(RoadmapEntryDto entry, RoadmapScheduleDto plan)
+    {
+        if (entry.Schedule == plan)
+        {
+            return null;
+        }
+
+        await using var saving = Saving();
+        Plan(entry.Id, plan);
+        StateHasChanged();
+        try
+        {
+            await Api.SetMyScheduleAsync(entry.Id, plan.Start, plan.End);
+            return null;
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            Plan(entry.Id, entry.Schedule);
+            StateHasChanged();
+            return new SaveFailure($"Couldn't move {Serial(entry)}: {e.Message}", Severity.Error);
+        }
+    }
+
+    /// <summary>Puts the bars back on their tasks' dates, and keeps them following those.</summary>
+    private async Task FollowTaskDatesAsync(IReadOnlyList<RoadmapEntryDto> targets)
+    {
+        await using var saving = Saving();
+        foreach (var entry in targets.Where(e => e.Schedule is not null))
+        {
+            Plan(entry.Id, null);
+            StateHasChanged();
+            try
+            {
+                await Api.ClearMyScheduleAsync(entry.Id);
+            }
+            catch (Exception e) when (e is SoloApiException or HttpRequestException)
+            {
+                Plan(entry.Id, entry.Schedule);
+                Snackbar.Add($"Couldn't reset {Serial(entry)}: {e.Message}", Severity.Error);
+            }
+        }
+
+        StateHasChanged();
+    }
+
     /// <summary>Moves a pill at once, before the first await; a failed save puts it back.</summary>
     private async Task<SaveFailure?> SaveAnchorAsync(RoadmapEntryDto entry, DateOnly day)
     {
@@ -766,7 +885,9 @@ public sealed partial class RoadmapPage
         StateHasChanged();
         try
         {
-            await Api.SetAnchorAsync(_project!.Id, RoadmapId, entry.Id, day);
+            await (Personal
+                ? Api.SetMyAnchorAsync(entry.Id, day)
+                : Api.SetAnchorAsync(_project!.Id, RoadmapId, entry.Id, day));
             return null;
         }
         catch (Exception e) when (e is SoloApiException or HttpRequestException)
@@ -811,10 +932,10 @@ public sealed partial class RoadmapPage
         }
 
         var step = e.Key == "ArrowLeft" ? -1 : 1;
-        var span = Timeline.Span(entry.Task, entry.AnchorDay);
+        var span = Timeline.Span(entry);
         var edge = e.AltKey ? Edge.Start : Edge.End;
         var day = _window.Clamp((edge == Edge.Start ? span.Start : span.End).AddDays(step));
-        await RescheduleAsync(entry, Timeline.Resize(entry.Task, entry.AnchorDay, edge, day));
+        await RescheduleAsync(entry, Timeline.Resize(entry, edge, day));
     }
 
     // -- Milestones -------------------------------------------------------------------
@@ -1116,8 +1237,7 @@ public sealed partial class RoadmapPage
         }
 
         var entry = _entries.First(e => e.Id == entryId);
-        var span = Timeline.Span(entry.Task, entry.AnchorDay);
-        await ScrollToDayAsync(_window.IndexOf(span.Start) - 2);
+        await ScrollToDayAsync(_window.IndexOf(Timeline.Span(entry).Start) - 2);
         await _timelineHandle.InvokeVoidAsync("revealLine", line);
     }
 
@@ -1189,6 +1309,13 @@ public sealed partial class RoadmapPage
         {
             case TaskDrawerChangeKind.Saved when change.Task is { } saved:
                 Replace(entry.Id, saved);
+                if (Personal && !saved.AssigneeIds.Contains(_me))
+                {
+                    // Handed to someone else: no longer theirs to plan.
+                    _entries.RemoveAll(e => e.Id == entry.Id);
+                    _selected.Remove(entry.Id);
+                }
+
                 break;
             case TaskDrawerChangeKind.Deleted:
                 _entries.Remove(entry);
@@ -1210,6 +1337,8 @@ public sealed partial class RoadmapPage
     private const string AddMilestoneItem = "add-milestone";
     private const string EditItem = "edit";
     private const string OpenItem = "open";
+    private const string BoardItem = "board";
+    private const string FollowItem = "follow";
     private const string RemoveItem = "remove";
 
     /// <remarks>
@@ -1265,7 +1394,30 @@ public sealed partial class RoadmapPage
             items.Add(new ContextMenuItem(OpenItem, "Open task") { Icon = Icons.Material.Filled.OpenInNew });
         }
 
-        if (CanWrite)
+        if (Personal)
+        {
+            // Their own roadmap: a task leaves it by reassignment, not from here.
+            if (targets.Count == 1)
+            {
+                items.Add(new ContextMenuItem(BoardItem, $"Go to {targets[0].BoardName}")
+                {
+                    Icon = Icons.Material.Filled.ViewKanban,
+                });
+            }
+
+            var planned = targets.Count(t => t.Schedule is not null);
+            if (planned > 0)
+            {
+                items.Add(new ContextMenuItem(FollowItem, planned == 1 && targets.Count == 1
+                    ? "Use the task's dates"
+                    : $"Use the tasks' dates ({planned})")
+                {
+                    Icon = Icons.Material.Filled.Restore,
+                    SeparatorBefore = true,
+                });
+            }
+        }
+        else if (CanWrite)
         {
             items.Add(new ContextMenuItem(RemoveItem, targets.Count == 1
                 ? "Remove from roadmap"
@@ -1281,6 +1433,12 @@ public sealed partial class RoadmapPage
         {
             case OpenItem:
                 await OpenTaskAsync(targets[0]);
+                break;
+            case BoardItem:
+                Navigation.NavigateTo(BoardHref(targets[0]));
+                break;
+            case FollowItem:
+                await FollowTaskDatesAsync(targets);
                 break;
             case RemoveItem:
                 await RemoveAsync(targets);
@@ -1387,8 +1545,21 @@ public sealed partial class RoadmapPage
 
     // -- Everyone else on the roadmap ---------------------------------------------------
 
+    /// <remarks>
+    /// A person's own roadmap listens on two user topics: this package's, for
+    /// rows moved from another of their tabs, and core's, for any change to a
+    /// task assigned to them — including being assigned one, or handing one
+    /// on. Nobody else can be on it, so there's no presence to report.
+    /// </remarks>
     private async Task StartLiveAsync()
     {
+        if (Personal)
+        {
+            _live = await Live.SubscribeUserAsync(RoadmapTopics.Personal, OnLiveAsync);
+            _liveAssigned = await Live.SubscribeUserAsync(Contract113Topics.AssignedTasks, OnLiveAsync);
+            return;
+        }
+
         _live = await Live.SubscribeAsync(_project!.Id, RoadmapTopics.Roadmap(RoadmapId), OnLiveAsync, OnPresenceAsync);
         await ReportPresenceAsync();
     }
@@ -1397,12 +1568,19 @@ public sealed partial class RoadmapPage
     private async Task StopLiveAsync()
     {
         var live = _live;
+        var assigned = _liveAssigned;
         _live = null;
+        _liveAssigned = null;
         _present = [];
         _reported = PresenceMode.None;
         if (live is not null)
         {
             await live.DisposeAsync();
+        }
+
+        if (assigned is not null)
+        {
+            await assigned.DisposeAsync();
         }
     }
 
@@ -1434,7 +1612,7 @@ public sealed partial class RoadmapPage
     /// <summary>Someone else changed the roadmap, or a task on it.</summary>
     private Task OnLiveAsync(TopicMessage message) => InvokeAsync(async () =>
     {
-        if (message.Kind == RoadmapTopics.Deleted)
+        if (!Personal && message.Kind == RoadmapTopics.Deleted)
         {
             await GoneAsync();
             return;
@@ -1452,8 +1630,7 @@ public sealed partial class RoadmapPage
     /// </summary>
     private async Task CatchUpAsync()
     {
-        if (!_stale || _catchingUp || _gesturing || _saving > 0 ||
-            _project is null || _timeline is null || _error is not null)
+        if (!_stale || _catchingUp || _gesturing || _saving > 0 || !Loaded || _error is not null)
         {
             return;
         }
@@ -1463,7 +1640,7 @@ public sealed partial class RoadmapPage
         var edits = _edits;
         try
         {
-            var timeline = await Api.TimelineAsync(_project.Id, RoadmapId);
+            var timeline = await ReadTimelineAsync();
             if (edits != _edits || _gesturing || _saving > 0)
             {
                 // This person changed something while the read was on its way.
@@ -1548,7 +1725,7 @@ public sealed partial class RoadmapPage
     private TimelineLayout Layout() => Timeline.Layout(_entries, _window);
 
     /// <summary>Where an entry's bar sits in the window, in columns.</summary>
-    private BarPlacement Place(RoadmapEntryDto entry) => _window.Place(Timeline.Span(entry.Task, entry.AnchorDay));
+    private BarPlacement Place(RoadmapEntryDto entry) => _window.Place(Timeline.Span(entry));
 
     /// <summary>The rows the entries make, as their ids: two lists alike say the same rows in the same order.</summary>
     private static IEnumerable<string> RowIds(IEnumerable<RoadmapEntryDto> entries) =>
@@ -1574,8 +1751,25 @@ public sealed partial class RoadmapPage
         }
     }
 
+    private void Plan(Guid entryId, RoadmapScheduleDto? schedule)
+    {
+        var index = _entries.FindIndex(e => e.Id == entryId);
+        if (index >= 0)
+        {
+            _entries[index] = _entries[index] with { Schedule = schedule };
+        }
+    }
+
+    /// <remarks>An entry says which project it's from since 1.9; one from an older server is the page's.</remarks>
     private string Serial(RoadmapEntryDto entry) =>
-        Aliases.Serial(_project?.Alias ?? ProjectAlias, entry.BoardAlias, entry.Task.Number);
+        Aliases.Serial(entry.ProjectAlias is { Length: > 0 } alias ? alias : _project?.Alias ?? ProjectAlias,
+            entry.BoardAlias, entry.Task.Number);
+
+    private string BoardHref(RoadmapEntryDto entry) =>
+        $"projects/{(entry.ProjectAlias is { Length: > 0 } alias ? alias : _project?.Alias ?? ProjectAlias)}/boards/{entry.BoardAlias}";
+
+    /// <summary>"Project · Board", for a roadmap whose rows come from more than one.</summary>
+    private static string Where(RoadmapEntryDto entry) => $"{entry.ProjectName} · {entry.BoardName}";
 
     private IReadOnlyList<ProjectMemberDto> Assignees(TaskDto task) =>
         task.AssigneeIds.Select(id => _members.GetValueOrDefault(id)).OfType<ProjectMemberDto>().ToList();
@@ -1599,25 +1793,59 @@ public sealed partial class RoadmapPage
     private string BarClass(RoadmapEntryDto entry) =>
         "roadmap-bar" +
         (_selected.Contains(entry.Id) ? " roadmap-bar--selected" : "") +
-        (entry.Task.DeadlineAt is null ? " roadmap-bar--pill" : "") +
+        (Timeline.IsPill(entry) ? " roadmap-bar--pill" : "") +
         (entry.Task.Status == TaskState.Finished ? " roadmap-bar--finished" : "") +
-        (Timeline.IsMissed(entry.Task, _today) ? " roadmap-bar--missed" : "");
+        (Timeline.IsMissed(entry.Task, _today) ? " roadmap-bar--missed" : "") +
+        (Timeline.DaysPastDeadline(entry) > 0 ? " roadmap-bar--overrun" : "");
 
+    /// <remarks>
+    /// <c>--bar-overrun</c> is where, inside the bar, the plan runs on past the
+    /// task's deadline: the stylesheet hatches the bar from there and puts the
+    /// warning at that point, so the bar's label and buttons don't move for it.
+    /// </remarks>
     private string BarStyle(RoadmapEntryDto entry, BarPlacement place)
     {
         var style = $"--bar-left:{place.StartIndex * DayWidth}px;--bar-width:{place.Length * DayWidth}px";
-        return entry.Task.LabelId is { } labelId && _labels.TryGetValue(labelId, out var label)
-            ? $"{style};--bar-label:{label.Color}"
-            : style;
+        if (entry.Task.LabelId is { } labelId && _labels.TryGetValue(labelId, out var label))
+        {
+            style += $";--bar-label:{label.Color}";
+        }
+
+        if (Timeline.DaysPastDeadline(entry) > 0)
+        {
+            var from = Math.Clamp(_window.IndexOf(entry.Task.DeadlineAt!.Value) + 1, place.StartIndex, place.EndIndex + 1);
+            style += $";--bar-overrun:{(from - place.StartIndex) * DayWidth}px";
+        }
+
+        return style;
     }
 
     private string BarTitle(RoadmapEntryDto entry, DaySpan span)
     {
-        var when = entry.Task.DeadlineAt is null
+        var when = Timeline.IsPill(entry)
             ? $"no deadline yet, added {Dates.Day(span.Start)}"
             : Dates.Range(span.Start, span.End);
-        return $"{Serial(entry)} {entry.Task.Name} ({when})";
+        var title = $"{Serial(entry)} {entry.Task.Name} ({when})";
+        if (Personal)
+        {
+            title += $" · {Where(entry)}";
+        }
+
+        if (Overrun(entry) is { } overrun)
+        {
+            title += $" — {overrun}";
+        }
+
+        return title;
     }
+
+    /// <summary>The warning on a bar planned past its task's deadline, which the plan doesn't move.</summary>
+    private static string? Overrun(RoadmapEntryDto entry) => Timeline.DaysPastDeadline(entry) switch
+    {
+        0 => null,
+        1 => $"planned a day past its deadline, {Dates.Day(entry.Task.DeadlineAt!.Value)}",
+        var days => $"planned {days} days past its deadline, {Dates.Day(entry.Task.DeadlineAt!.Value)}",
+    };
 
     /// <summary>The milestones whose day is inside the window, and so have a line to draw.</summary>
     private IEnumerable<RoadmapMilestoneDto> Placed() =>

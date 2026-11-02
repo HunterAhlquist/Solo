@@ -106,6 +106,14 @@ public static class RoadmapTopics
     public const string Renamed = "renamed";
 
     public const string Deleted = "deleted";
+
+    /// <summary>
+    /// A person's own roadmap — a user topic (see <c>ISoloLiveUpdates.PublishToUserAsync</c>),
+    /// so only their other tabs hear it: its rows were moved or rescheduled.
+    /// Which tasks are on it follows their assignments, and core's own
+    /// assigned-tasks topic says when those change.
+    /// </summary>
+    public const string Personal = "roadmap:mine";
 }
 
 /// <summary>A sidebar row.</summary>
@@ -132,7 +140,8 @@ public sealed record RoadmapMilestoneDto(Guid Id, string Name, DateOnly Day, str
 /// One task on a roadmap, in roadmap rank order. Entries sharing a
 /// <see cref="Rank"/> share a row (see <see cref="RoadmapRanking"/>).
 /// <see cref="AnchorDay"/> is the day it was added on — where a task with no
-/// deadline is drawn.
+/// deadline is drawn. On a person's own roadmap, <see cref="Schedule"/> is
+/// where they put the bar themselves; null draws it on the task's dates.
 /// </summary>
 public sealed record RoadmapEntryDto(
     Guid Id,
@@ -140,7 +149,17 @@ public sealed record RoadmapEntryDto(
     DateOnly AnchorDay,
     string BoardAlias,
     string BoardName,
-    TaskDto Task);
+    TaskDto Task,
+    string ProjectAlias = "",
+    string ProjectName = "",
+    RoadmapScheduleDto? Schedule = null);
+
+/// <summary>
+/// A bar's days on a person's own roadmap, inclusive: their plan for the task,
+/// which the task's own dates don't follow. An end past the task's deadline is
+/// what the page warns about.
+/// </summary>
+public sealed record RoadmapScheduleDto(DateOnly Start, DateOnly End);
 
 /// <summary>A roadmap a task appears on, for the chips in its task view.</summary>
 public sealed record TaskRoadmapDto(Guid Id, string Title, string ProjectAlias);
@@ -189,6 +208,14 @@ public sealed class AddRoadmapEntryRequest
 public sealed class SetRoadmapEntryAnchorRequest
 {
     public DateOnly AnchorDay { get; init; }
+}
+
+/// <summary>Where a bar goes on a person's own roadmap, from a drag or a resize there; the task's dates stay.</summary>
+public sealed class SetPersonalScheduleRequest
+{
+    public DateOnly Start { get; init; }
+
+    public DateOnly End { get; init; }
 }
 
 public sealed class CreateRoadmapMilestoneRequest
