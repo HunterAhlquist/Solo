@@ -172,9 +172,9 @@ public class TimelineTests
     {
         var task = Task(start: Today, deadline: Today.AddDays(4));
 
-        Assert.Equal((Today, Today.AddDays(7)), Timeline.Resize(task, Today, Edge.End, Today.AddDays(7)));
+        Assert.Equal((Today, Today.AddDays(7)), Timeline.Resize(On(task, Today), Edge.End, Today.AddDays(7)));
         // The start can't pass the deadline, so the bar never gets shorter than a day.
-        Assert.Equal((Today, Today), Timeline.Resize(task, Today, Edge.End, Today.AddDays(-3)));
+        Assert.Equal((Today, Today), Timeline.Resize(On(task, Today), Edge.End, Today.AddDays(-3)));
     }
 
     [Fact]
@@ -182,8 +182,8 @@ public class TimelineTests
     {
         var task = Task(deadline: Today.AddDays(4));
 
-        Assert.Equal((Today.AddDays(1), Today.AddDays(4)), Timeline.Resize(task, Today, Edge.Start, Today.AddDays(1)));
-        Assert.Equal((Today.AddDays(4), Today.AddDays(4)), Timeline.Resize(task, Today, Edge.Start, Today.AddDays(9)));
+        Assert.Equal((Today.AddDays(1), Today.AddDays(4)), Timeline.Resize(On(task, Today), Edge.Start, Today.AddDays(1)));
+        Assert.Equal((Today.AddDays(4), Today.AddDays(4)), Timeline.Resize(On(task, Today), Edge.Start, Today.AddDays(9)));
     }
 
     [Fact]
@@ -191,8 +191,48 @@ public class TimelineTests
     {
         var anchor = Today.AddDays(2);
 
-        Assert.Equal((anchor, Today.AddDays(8)), Timeline.Resize(Task(), anchor, Edge.End, Today.AddDays(8)));
-        Assert.Equal((Today.AddDays(-1), anchor), Timeline.Resize(Task(), anchor, Edge.Start, Today.AddDays(-1)));
+        Assert.Equal((anchor, Today.AddDays(8)), Timeline.Resize(On(Task(), anchor), Edge.End, Today.AddDays(8)));
+        Assert.Equal((Today.AddDays(-1), anchor), Timeline.Resize(On(Task(), anchor), Edge.Start, Today.AddDays(-1)));
+    }
+
+    /// <summary>An entry drawn from its task's dates, anchored on <paramref name="anchor"/>.</summary>
+    private static RoadmapEntryDto On(TaskDto task, DateOnly anchor) =>
+        new(Guid.NewGuid(), 1024m, anchor, "FEAT", "Features", task);
+
+    // -- A person's own plan -----------------------------------------------------------
+
+    [Fact]
+    public void A_planned_bar_is_drawn_on_the_plan_and_the_task_keeps_its_dates()
+    {
+        var task = Task(start: Today, deadline: Today.AddDays(4));
+        var planned = On(task, Today) with { Schedule = new RoadmapScheduleDto(Today.AddDays(3), Today.AddDays(9)) };
+
+        Assert.Equal(new DaySpan(Today.AddDays(3), Today.AddDays(9)), Timeline.Span(planned));
+        Assert.Equal(new DaySpan(Today, Today.AddDays(4)), Timeline.Span(On(task, Today)));
+        Assert.False(Timeline.IsPill(planned));
+        Assert.Equal(5, Timeline.DaysPastDeadline(planned));
+    }
+
+    [Fact]
+    public void A_plan_that_ends_by_the_deadline_or_has_none_to_miss_is_not_an_overrun()
+    {
+        var plan = new RoadmapScheduleDto(Today, Today.AddDays(4));
+
+        Assert.Equal(0, Timeline.DaysPastDeadline(On(Task(deadline: Today.AddDays(4)), Today) with { Schedule = plan }));
+        Assert.Equal(0, Timeline.DaysPastDeadline(On(Task(deadline: Today.AddDays(9)), Today) with { Schedule = plan }));
+        Assert.Equal(0, Timeline.DaysPastDeadline(On(Task(), Today) with { Schedule = plan }));
+        Assert.Equal(0, Timeline.DaysPastDeadline(On(Task(deadline: Today.AddDays(-9)), Today)));
+    }
+
+    [Fact]
+    public void A_planned_pill_is_no_longer_a_pill_and_resizes_from_its_plan()
+    {
+        var planned = On(Task(), Today) with { Schedule = new RoadmapScheduleDto(Today.AddDays(1), Today.AddDays(2)) };
+
+        Assert.True(Timeline.IsPill(On(Task(), Today)));
+        Assert.False(Timeline.IsPill(planned));
+        Assert.Equal((Today.AddDays(1), Today.AddDays(6)), Timeline.Resize(planned, Edge.End, Today.AddDays(6)));
+        Assert.Equal((Today.AddDays(-2), Today.AddDays(2)), Timeline.Resize(planned, Edge.Start, Today.AddDays(-2)));
     }
 
     // -- Adding and moving ----------------------------------------------------------------

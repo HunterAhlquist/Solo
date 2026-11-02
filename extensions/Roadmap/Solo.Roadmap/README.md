@@ -109,6 +109,30 @@ and the instance loses roadmaps and nothing else:
     without moving the view.
   - Whoever else has the roadmap open shows in the header. An outlined,
     pulsing avatar means they're dragging a bar or have a roadmap dialog open.
+- **Your Roadmap, on the dashboard**: a section above the Your Tasks board,
+  collapsible, drawn by core from the `[DashboardSection]` seam. It's the
+  timeline page in its personal mode, holding every task assigned to the
+  signed-in person from every project they're in, on rows of their own.
+  - Which tasks are on it is core's word on assignments, read fresh each
+    time: a task assigned to them shows up, one handed on or deleted goes. There
+    is no adding or removing from here, no header, and no milestones, which
+    belong to a project.
+  - Bars carry their full serial (`PROJ-BOARD-n`), and their tooltip and the
+    missed-deadlines table name the project and board. The bar menu has **Go
+    to *board***.
+  - Rows move as on any roadmap, but a bar dragged or resized here is the
+    person's **plan** for the task: the days are kept in this package, per
+    person, and the task's own start and deadline are never written. Everyone
+    else's view of the task is unchanged.
+  - A bar planned to end after its task's deadline is hatched from the
+    deadline on, with a warning icon at that point whose tooltip says by how
+    many days. Both are positioned inside the bar rather than laid out in it,
+    so the label, avatars and menu button don't move when the warning comes or
+    goes. **Use the task's dates** in the bar menu puts a planned bar back on
+    the task's own dates, and keeps it following them.
+  - The sprint stripes are the instance's, as on every roadmap.
+  - Changes to any of their tasks, made anywhere, redraw it; a task reassigned
+    in the drawer leaves it at once.
 - **A Roadmaps line in every task drawer** with a chip per roadmap the task is
   on. It shows nothing when the task is on none.
 - **Timeline settings in Admin settings**:
@@ -136,7 +160,8 @@ extension.json      manifest: id "roadmap", schema "ext_roadmap", both
                     entry point)
 Contracts/          DTOs, limits and the rank arithmetic, linked into the
                     client project too
-Controllers/        roadmaps and entries, a task's roadmaps, the settings
+Controllers/        roadmaps and entries, the person's own roadmap, a task's
+                    roadmaps, the settings
 Data/               RoadmapDbContext, the settings row, and the handler that
                     drops a deleted task's entries and tells open roadmaps
                     when one of their tasks changes
@@ -169,6 +194,12 @@ with the project's writers.
 | POST | `projects/{projectId}/roadmaps/{id}/milestones` | write | `{ name, day, color? }`. The colour is `#rrggbb` and defaults to `#e53935`. 400 without a name or day. |
 | PUT | `projects/{projectId}/roadmaps/{id}/milestones/{milestoneId}` | write | `{ name, day, color, version }`. 409 on a stale version. |
 | DELETE | `projects/{projectId}/roadmaps/{id}/milestones/{milestoneId}` | write | Deletes the milestone. |
+| GET | `me?today=` | signed in | The caller's own roadmap: every task assigned to them on an open board of a project they're in, each with its row and, when they've planned it, its `schedule`. A task new to it gets a row at the end, anchored on `today` (the browser's; the server's when absent); one no longer theirs loses its row. Title "Your Roadmap", no milestones. |
+| PUT | `me/entries/{entryId}/rank` | signed in | As the roadmap's, on the caller's own rows. 404 for anyone else's. |
+| PUT | `me/entries/rank` | signed in | As the roadmap's, on the caller's own rows. |
+| PUT | `me/entries/{entryId}/anchor` | signed in | `{ anchorDay }`: moves a no-deadline pill. |
+| PUT | `me/entries/{entryId}/schedule` | signed in | `{ start, end }`: the caller's plan for the task, drawn instead of its dates. The task is untouched. 400 with the end before the start. |
+| DELETE | `me/entries/{entryId}/schedule` | signed in | Back on the task's dates. |
 | GET | `tasks/{taskId}/roadmaps` | read | The roadmaps a task is on. |
 | GET | `settings` | signed in | The bounds, the sprint start day and the sprint length. |
 | PUT | `settings` | super admin | `{ pastDays, futureDays, sprintStartDay, sprintLengthWeeks, version }`, the day as a name (`"Monday"`). 400 out of range, 409 stale. |
@@ -240,6 +271,21 @@ touches a task's dates, and the same date on two roadmaps is two milestones.
 When it's due is worked out in the browser from the sprint settings
 (`RoadmapSprints.MilestoneDueFrom`), not stored.
 
+**A person's roadmap stores where, never what.** `PersonalEntries` holds one
+row per person and task — rank, anchor day and, once they've dragged or
+resized the bar, their own start and end — and nothing about which tasks
+belong on it. That is core's `ISoloQuery.AssignedTasksAsync` (contract 1.13),
+read on every request, so the roadmap can't drift from the assignments: the
+read adds a row for each task without one and drops the rows whose task is no
+longer theirs. Two reads racing to add the same row leave one with a unique
+violation, which it answers by reading what the other wrote.
+
+The plan deliberately doesn't write back to the task. A project's roadmap
+reschedules through core because the roadmap and the board must agree about a
+deadline; a personal plan is one person's intention, and pushing it onto the
+task would move a deadline the whole team sees. So the page draws the plan,
+keeps the deadline, and marks the gap between them.
+
 **Both content URLs carry the package version** (`roadmap.js?v=1.7.0`). The
 page and its script change together, and a cache between the app and the
 server, such as a proxy that adds its own headers or the desktop app's disk
@@ -247,7 +293,13 @@ cache, could otherwise pair a new page with an old script.
 
 ## Its dependency on core
 
-Contract **1.4** on the server and **1.6** in the browser. From 1.3, two
+Contract **1.13** on both halves since 1.9: `ISoloQuery.AssignedTasksAsync`
+on the server for the person's assigned tasks across projects, and in the
+browser the `[DashboardSection]` seam the roadmap renders under, core's
+`GET api/me/tasks` for the people on their projects, and the
+`solo:assigned-tasks` user topic that says when one of their tasks changed.
+
+Before 1.9: contract **1.4** on the server and **1.6** in the browser. From 1.3, two
 things on the server:
 - the task's optional `StartAt`, which turns a deadline into a range;
 - the hookable `task.setSchedule` endpoint that sets a task's start and
@@ -295,6 +347,16 @@ dotnet ef migrations add <Name> --project extensions/Roadmap/Solo.Roadmap --star
 
 A failed migration disables this extension only. Its endpoints then answer 503
 naming the reason, and Admin settings shows it.
+
+## Upgrading from 1.8
+
+1.9 adds the `PersonalRoadmap` migration, the `PersonalEntries` table in
+`ext_roadmap`, which the host applies at startup. Both halves need a host on
+contract 1.13, for the dashboard the person's roadmap renders on; on the
+desktop app, update the app as well as the server. Until a client is on 1.13,
+it skips the package and shows no roadmaps, while the server keeps them.
+Entries now carry `projectAlias` and `projectName`, and a `schedule` that is
+null everywhere but on a person's own roadmap.
 
 ## Upgrading from 1.6
 

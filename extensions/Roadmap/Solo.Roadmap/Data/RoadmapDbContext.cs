@@ -25,6 +25,8 @@ public sealed class RoadmapDbContext(DbContextOptions<RoadmapDbContext> options)
 
     public DbSet<RoadmapMilestone> Milestones => Set<RoadmapMilestone>();
 
+    public DbSet<PersonalEntry> PersonalEntries => Set<PersonalEntry>();
+
     public DbSet<RoadmapSettings> Settings => Set<RoadmapSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -62,6 +64,17 @@ public sealed class RoadmapDbContext(DbContextOptions<RoadmapDbContext> options)
             e.HasOne(m => m.Roadmap).WithMany(r => r.Milestones)
                 .HasForeignKey(m => m.RoadmapId).OnDelete(DeleteBehavior.Cascade);
             e.Property(m => m.Version).IsRowVersion();
+        });
+
+        modelBuilder.Entity<PersonalEntry>(e =>
+        {
+            e.ToTable("PersonalEntries");
+            e.Property(x => x.Rank).HasPrecision(18, 6);
+            // A task is on a person's roadmap at most once; the read adds a row
+            // per newly assigned task, and two reads at once must not add two.
+            e.HasIndex(x => new { x.UserId, x.TaskId }).IsUnique();
+            e.HasIndex(x => x.TaskId);
+            e.Property(x => x.Version).IsRowVersion();
         });
 
         modelBuilder.Entity<RoadmapSettings>(e =>
@@ -119,6 +132,44 @@ public sealed class RoadmapEntry
     public DateTimeOffset AddedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public uint Version { get; set; }
+}
+
+/// <summary>
+/// One task's place on one person's own roadmap. Which tasks are on it isn't
+/// stored — it's whatever is assigned to them, read fresh each time — only
+/// where each one goes: its row, and the days they planned it for when those
+/// aren't the task's own.
+/// </summary>
+public sealed class PersonalEntry
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+
+    /// <summary>Core user, by bare id.</summary>
+    public Guid UserId { get; set; }
+
+    /// <summary>Core task, by bare id. It may have been deleted or reassigned since.</summary>
+    public Guid TaskId { get; set; }
+
+    /// <summary>Where its row is in the roadmap's order. Entries sharing a rank share a row.</summary>
+    public decimal Rank { get; set; }
+
+    /// <summary>The day the task first appeared on this roadmap. One with no deadline is drawn here.</summary>
+    public DateOnly AnchorDay { get; set; }
+
+    /// <summary>
+    /// The person's own dates for the bar, set once they drag or resize it; both
+    /// or neither. Null means the bar sits on the task's dates and follows them.
+    /// </summary>
+    public DateOnly? StartAt { get; set; }
+
+    public DateOnly? EndAt { get; set; }
+
+    public DateTimeOffset AddedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    public uint Version { get; set; }
+
+    public RoadmapScheduleDto? Schedule =>
+        StartAt is { } start && EndAt is { } end ? new RoadmapScheduleDto(start, end) : null;
 }
 
 /// <summary>A named deadline on one roadmap, independent of any task on it.</summary>

@@ -15,27 +15,38 @@
     writers drag to move and click to edit; one due this sprint flashes.
     Everyone else's changes arrive live, and whoever else has it open shows in
     the header.
+
+    With Personal, it's the person's own roadmap on the dashboard: their
+    assigned tasks from every project, with the dashboard drawing the header.
+    Rows and bars move the same way, but a bar's dates are the person's plan,
+    kept here, and the task's own dates stay — a bar planned past its deadline
+    is hatched from the deadline on, with a warning at that point.
 *@
 
-<PageTitle>@(_timeline?.Title ?? "Roadmap") · Solo</PageTitle>
+@if (!Personal)
+{
+    <PageTitle>@(_timeline?.Title ?? "Roadmap") · Solo</PageTitle>
+}
 
 @if (_error is not null)
 {
     <MudAlert Severity="Severity.Warning">@_error</MudAlert>
 }
-else if (_timeline is null || _project is null)
+else if (!Loaded)
 {
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
 }
 else
 {
     var drawn = Layout();
-    <div class="roadmap-page">
+    <div class="@(Personal ? "roadmap-page roadmap-page--personal" : "roadmap-page")">
+        @if (!Personal)
+        {
         <div class="roadmap-header">
             <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small"
-                           Href="@($"projects/{_project.Alias}")" aria-label="Back to project" />
+                           Href="@($"projects/{_project!.Alias}")" aria-label="Back to project" />
             <MudIcon Icon="@Icons.Material.Filled.Timeline" Color="Color.Primary" />
-            <MudText Typo="Typo.h1" Class="roadmap-header__title">@_timeline.Title</MudText>
+            <MudText Typo="Typo.h1" Class="roadmap-header__title">@_timeline!.Title</MudText>
             @if (_present.Count > 0)
             {
                 <span class="roadmap-presence">
@@ -80,6 +91,7 @@ else
                 </MudMenu>
             }
         </div>
+        }
 
         <div class="roadmap-timeline" @ref="_scroller"
              style="--roadmap-day-width:@(DayWidth)px;--roadmap-row-height:@(RowHeight)px">
@@ -159,9 +171,11 @@ else
                     @if (_entries.Count == 0)
                     {
                         <div class="roadmap-empty">
-                            @(CanWrite
-                                ? "No tasks on this roadmap yet. Right-click a day in the grid (or press and hold one), or use Add task, to put one on it."
-                                : "No tasks on this roadmap yet.")
+                            @(Personal
+                                ? "No tasks are assigned to you. A task assigned to you on any board shows up here."
+                                : CanWrite
+                                    ? "No tasks on this roadmap yet. Right-click a day in the grid (or press and hold one), or use Add task, to put one on it."
+                                    : "No tasks on this roadmap yet.")
                         </div>
                     }
 
@@ -171,7 +185,7 @@ else
                     @for (var i = 0; i < drawn.Lines.Count; i++)
                     {
                         var line = drawn.Lines[i];
-                        var hinted = line.Entries.Where(e => !Timeline.IsDone(e.Task, Timeline.Span(e.Task, e.AnchorDay), _today)).ToList();
+                        var hinted = line.Entries.Where(e => !Timeline.IsDone(e.Task, Timeline.Span(e), _today)).ToList();
                         <div class="roadmap-line" @key="i" data-roadmap-line="@i" data-row="@line.Row"
                              style="top:@(i * RowHeight)px">
                             @foreach (var entry in hinted)
@@ -199,7 +213,7 @@ else
                        drag takes along. *@
                     @foreach (var entry in _entries)
                     {
-                        var span = Timeline.Span(entry.Task, entry.AnchorDay);
+                        var span = Timeline.Span(entry);
                         var place = _window.Place(span);
                         var at = drawn.LineOf(entry.Id);
                         <div class="roadmap-entry" @key="entry.Id" data-roadmap-entry="@entry.Id"
@@ -251,6 +265,13 @@ else
                                     {
                                         <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Class="roadmap-bar__clip" />
                                     }
+                                    @* Out of the flex flow, at the deadline the plan runs past, so
+                                       nothing beside it shifts when the warning comes or goes. *@
+                                    @if (Overrun(entry) is { } overrun)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.Warning" Class="roadmap-bar__overrun"
+                                                 Title="@overrun" aria-label="@overrun" />
+                                    }
                                     @if (CanWrite)
                                     {
                                         <button type="button" class="roadmap-bar__more" data-roadmap-menu
@@ -280,6 +301,10 @@ else
                             <tr>
                                 <th>Serial</th>
                                 <th>Title</th>
+                                @if (Personal)
+                                {
+                                    <th>Board</th>
+                                }
                                 <th>Assigned</th>
                                 <th>Overdue</th>
                             </tr>
@@ -293,6 +318,10 @@ else
                                     @onkeydown="@(e => e.Key == "Enter" ? OpenTaskAsync(entry) : Task.CompletedTask)">
                                     <td>@Serial(entry)</td>
                                     <td>@entry.Task.Name</td>
+                                    @if (Personal)
+                                    {
+                                        <td>@Where(entry)</td>
+                                    }
                                     <td>
                                         <span class="roadmap-missed__assignees">
                                             @foreach (var member in Assignees(entry.Task))

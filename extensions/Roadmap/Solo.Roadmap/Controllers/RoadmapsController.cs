@@ -159,7 +159,7 @@ public sealed class RoadmapsController(
             roadmap.Version,
             (await settings.GetAsync(ct)).ToDto(),
             entries.Where(e => tasks.ContainsKey(e.TaskId))
-                .Select(e => ToDto(e, tasks[e.TaskId]))
+                .Select(e => ToDto(e, tasks[e.TaskId], project))
                 .ToList(),
             milestones.Select(m => m.ToDto()).ToList());
     }
@@ -229,7 +229,8 @@ public sealed class RoadmapsController(
         }
 
         await EntriesChangedAsync(projectId, roadmapId, ct);
-        return Created((string?)null, ToDto(entry, (task, board)));
+        var project = (await query.ProjectsAsync(ct)).FirstOrDefault(p => p.Id == projectId);
+        return Created((string?)null, ToDto(entry, (task, board), project));
     }
 
     /// <summary>
@@ -539,8 +540,10 @@ public sealed class RoadmapsController(
         return tasks;
     }
 
-    private static RoadmapEntryDto ToDto(RoadmapEntry entry, (TaskDto Task, BoardDto Board) placed) =>
-        new(entry.Id, entry.Rank, entry.AnchorDay, placed.Board.Alias, placed.Board.Name, placed.Task);
+    private static RoadmapEntryDto ToDto(
+        RoadmapEntry entry, (TaskDto Task, BoardDto Board) placed, ProjectSummaryDto? project) =>
+        new(entry.Id, entry.Rank, entry.AnchorDay, placed.Board.Alias, placed.Board.Name, placed.Task,
+            project?.Alias ?? string.Empty, project?.Name ?? string.Empty);
 
     private ObjectResult ChangedElsewhere() => Problem(
         statusCode: StatusCodes.Status409Conflict,
