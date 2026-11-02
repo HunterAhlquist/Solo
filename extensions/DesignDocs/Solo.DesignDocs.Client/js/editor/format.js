@@ -2,33 +2,7 @@
 // toggling a style on or off by editing the markdown around it.
 import { EditorSelection } from '@codemirror/state';
 import { syntaxTree } from '@codemirror/language';
-
-// Delimiter syntax lezer doesn't know. `==` is the extended-markdown highlight
-// (Obsidian, markdown-it-mark). Underline has no markdown syntax, so it is the
-// `<u>` tag that Obsidian and GitHub both render.
-const HighlightDelim={resolve:'Highlight',mark:'HighlightMark'};
-const UnderlineDelim={resolve:'Underline',mark:'UnderlineMark'};
-export const inlineSyntax=[{
-    defineNodes:['Highlight','HighlightMark','Underline','UnderlineMark'],
-    parseInline:[{
-        name:'Highlight',
-        parse(cx,next,pos){
-            if(next!==61||cx.char(pos+1)!==61||cx.char(pos+2)===61||cx.char(pos-1)===61)return -1;
-            const before=cx.slice(pos-1,pos),after=cx.slice(pos+2,pos+3);
-            return cx.addDelimiter(HighlightDelim,pos,pos+2,!/\s|^$/.test(after),!/\s|^$/.test(before));
-        },
-        after:'Emphasis',
-    },{
-        name:'Underline',
-        parse(cx,next,pos){
-            if(next!==60)return -1;
-            if(/^<u>$/i.test(cx.slice(pos,pos+3)))return cx.addDelimiter(UnderlineDelim,pos,pos+3,true,false);
-            if(/^<\/u>$/i.test(cx.slice(pos,pos+4)))return cx.addDelimiter(UnderlineDelim,pos,pos+4,false,true);
-            return -1;
-        },
-        before:'HTMLTag',
-    }],
-}];
+export { inlineSyntax } from './markdown.js';
 
 const children=node=>{const list=[];for(let child=node.firstChild;child;child=child.nextSibling)list.push(child);return list;};
 // Each style's opening and closing markup inside one of its nodes. A link's
