@@ -57,6 +57,12 @@ public class TaskCardTests : ComponentTestBase
             .Add(c => c.Task, TestData.Task(status: TaskState.Finished))
             .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN")));
         Assert.Contains("kanban-card__origin--finished", finished.Find(".kanban-card__origin").ClassName);
+
+        var pulsed = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task())
+            .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN"))
+            .Add(c => c.Pulse, true));
+        Assert.Equal(2, pulsed.FindAll(".solo-pulse").Count);
     }
 
     [Fact]
