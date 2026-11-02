@@ -131,8 +131,8 @@ Create `Hello.Client/Hello.Client.csproj`:
   <ItemGroup>
     <SupportedPlatform Include="browser" />
     <PackageReference Include="HunterAhlquist.Solo.Shared" Version="1.10.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
-    <PackageReference Include="MudBlazor" Version="9.11.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.14" />
+    <PackageReference Include="MudBlazor" Version="9.12.0" />
   </ItemGroup>
 
   <ItemGroup>

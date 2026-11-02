@@ -295,8 +295,14 @@ electron-builder's `latest` dist-tag on npm has lagged the newest 26.x before
 reports the pinned version as *ahead* of latest and a bare
 `npm install electron-builder@latest` quietly downgrades it, so check
 `npm view electron-builder dist-tags` before bumping. The floor here is
-`^26.18.0` so the range itself refuses an older build; `npm ci` follows the
+`^26.18.1` so the range itself refuses an older build; `npm ci` follows the
 lockfile either way.
+
+The `app-builder-lib` override moves its own minimatch from 10.x to 11, the
+first line patched for GHSA-g3hv-75wg-m249. The `@^10` selector keeps it off
+the 3.x, 5.x and 9.x copies deeper in the tree, whose callers use APIs that 11
+changed; those lines have no patched release, so `npm audit` still lists them.
+A Linux `--dir` build packed the same asar listing under 10 and 11. Drop the override once electron-builder depends on 11 itself.
 
 CI does this automatically: pushing a `v<version>` tag runs
 [release-desktop.yml](../../.github/workflows/release-desktop.yml), which
