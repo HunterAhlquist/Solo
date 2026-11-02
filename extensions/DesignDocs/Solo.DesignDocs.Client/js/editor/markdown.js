@@ -9,7 +9,7 @@ export function headings(markdown) {
         const type=/^(ATX|Setext)Heading([1-6])$/.exec(node.name);if(!type)return;
         const raw=markdown.slice(node.from,node.to);
         let text=type[1]==='ATX'?raw.replace(/^\s{0,3}#{1,6}\s+/,'').replace(/\s+#+\s*$/,''):raw.slice(0,raw.lastIndexOf('\n'));
-        text=text.replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/[*_`]/g,'').replace(/\s+/g,' ').trim();
+        text=text.replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/[*_`]/g,'').replace(/==|<\/?u>/gi,'').replace(/\s+/g,' ').trim();
         const base=text.toLowerCase().replace(/\s+/gu,'-').replace(/[^\p{L}\p{N}_-]/gu,'');
         const count=(used.get(base)??0)+1;used.set(base,count);result.push({slug:base+(count>1?`-${count}`:''),text,level:Number(type[2]),from:node.from});
     }});return result;

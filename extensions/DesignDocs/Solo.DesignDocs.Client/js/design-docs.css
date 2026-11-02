@@ -158,6 +158,13 @@
 .design-docs-sketch-tool-palette { max-height:calc(100% - 80px); overflow-y:auto; }
 
 .design-docs-note-palette.mud-paper[data-caret-hidden] { opacity:0; visibility:hidden; pointer-events:none; }
+/* Floats over the selection it formats; editor/index.js sets both properties. */
+.design-docs-note-format-palette.mud-paper { position:absolute; z-index:5; left:var(--design-docs-format-x,50%); top:var(--design-docs-format-y,8px); transform:translateX(-50%); display:flex; padding:4px; background:color-mix(in srgb,var(--mud-palette-surface) 85%,transparent); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+.design-docs-note-body[data-format-hidden] .design-docs-note-format-palette { visibility:hidden; pointer-events:none; }
+.design-docs-note-format-styles { display:flex; }
+.design-docs-note-format-palette .is-selected { background:var(--mud-palette-action-default-hover); }
+.design-docs-highlight { background:color-mix(in srgb,var(--mud-palette-warning) 35%,transparent); border-radius:2px; }
+.design-docs-underline { text-decoration:underline; }
 
 .design-docs-heading > .mud-typography { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .design-docs-list-marker { display:inline-block; text-align:center; min-width:1ch; color:inherit; }

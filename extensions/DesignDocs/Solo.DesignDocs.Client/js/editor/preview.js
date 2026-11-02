@@ -77,6 +77,8 @@ function build(view, bridge, images) {
         if (node.name === 'StrongEmphasis') ranges.push(Decoration.mark({class:'design-docs-strong'}).range(node.from,node.to));
         if (node.name === 'Emphasis') ranges.push(Decoration.mark({class:'design-docs-emphasis'}).range(node.from,node.to));
         if (node.name === 'InlineCode') ranges.push(Decoration.mark({class:'design-docs-code'}).range(node.from,node.to));
+        if (node.name === 'Highlight') ranges.push(Decoration.mark({class:'design-docs-highlight'}).range(node.from,node.to));
+        if (node.name === 'Underline') ranges.push(Decoration.mark({class:'design-docs-underline'}).range(node.from,node.to));
         if(node.name==='ListMark'){
             const adjacent=view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(range=>range.from<=node.to&&range.to>=node.from);
             if(!adjacent)ranges.push(Decoration.replace({widget:new ListMarker(doc.sliceString(node.from,node.to)),listMarker:true}).range(node.from,node.to));
@@ -87,7 +89,7 @@ function build(view, bridge, images) {
             if (match && isSafeUrl(url)) { ranges.push(Decoration.replace({widget:(/^[^:#?]+\.md(?:#.*)?$/i.test(url)?new WikiLink(url,label,bridge):new Link(label,url,bridge))}).range(node.from,node.to)); return false; }
         }
         if (cursorLines.has(line.number)) return;
-        if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark)$/.test(node.name)) {
+        if (/^(HeaderMark|EmphasisMark|CodeMark|StrikethroughMark|HighlightMark|UnderlineMark)$/.test(node.name)) {
             // An ATX marker's separator belongs to its syntax, not the rendered title.
             const separator=node.name==='HeaderMark'&&/^ATXHeading/.test(node.node.parent?.name??'')&&node.from===line.from
                 ? /^[ \t]*/.exec(doc.sliceString(node.to,line.to))[0].length:0;

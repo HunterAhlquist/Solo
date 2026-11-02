@@ -13,16 +13,18 @@ const clamp=(value,low,high)=>Math.min(Math.max(value,low),Math.max(low,high));
 /**
  * Centred above `rect`, flipped below it when there is no room above, and kept
  * inside `view` either way. `x` is the panel's centre, `y` its top edge.
+ * `preferBelow` swaps the order: below first, above when there is no room.
  */
-export function panelPosition(rect,view,panel,gap=10){
+export function panelPosition(rect,view,panel,gap=10,preferBelow=false){
     const half=panel.width/2;
-    const above=rect.top-gap-panel.height;
+    const above=rect.top-gap-panel.height,below=rect.bottom+gap;
+    const fitsAbove=above>=EDGE,fitsBelow=below+panel.height<=view.height-EDGE;
     // Both branches are clamped, not just the flipped one: the box can be
     // anywhere on a page far larger than the view, so a box panned off the
     // bottom has plenty of room "above" it — 800px down a 600px view — and
     // following it there takes the panel off screen with it.
     return {
         x:clamp(rect.left+rect.width/2,half+EDGE,view.width-half-EDGE),
-        y:clamp(above>=EDGE?above:rect.bottom+gap,EDGE,view.height-panel.height-EDGE),
+        y:clamp(preferBelow?(fitsBelow||!fitsAbove?below:above):(fitsAbove?above:below),EDGE,view.height-panel.height-EDGE),
     };
 }
