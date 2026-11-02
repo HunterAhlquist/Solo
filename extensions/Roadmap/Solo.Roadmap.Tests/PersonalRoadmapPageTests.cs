@@ -90,6 +90,21 @@ public class PersonalRoadmapPageTests : ComponentTestBase
         Assert.Empty(_live.Reported);
     }
 
+    /// <summary>What the dashboard looks for: the section component, under its title, carrying the page in personal mode.</summary>
+    [Fact]
+    public void The_dashboard_section_renders_the_page_in_personal_mode()
+    {
+        var seam = typeof(RoadmapDashboardSection).GetCustomAttributes(typeof(DashboardSectionAttribute), false)
+            .Cast<DashboardSectionAttribute>().Single();
+        Assert.Equal("Your Roadmap", seam.Title);
+
+        var section = Render<RoadmapDashboardSection>();
+
+        section.WaitForAssertion(() => Assert.NotEmpty(section.FindAll(".roadmap-page--personal")));
+        Assert.True(section.FindComponent<RoadmapPage>().Instance.Personal);
+        Assert.Empty(section.FindAll(".roadmap-header"));
+    }
+
     [Fact]
     public void With_nothing_assigned_it_says_so()
     {
