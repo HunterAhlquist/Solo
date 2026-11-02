@@ -177,7 +177,7 @@ public sealed class RoadmapApi(ISoloClientApi api)
     /// the people on their projects, for the avatars on their own roadmap.
     /// </summary>
     public Task<AssignedTasksDto> AssignedTasksAsync(CancellationToken ct = default) =>
-        api.GetAsync<AssignedTasksDto>("api/me/tasks", ct);
+        api.GetAsync<AssignedTasksDto>("api/users/me/tasks", ct);
 
     public Task<List<ProjectMemberDto>> MembersAsync(Guid projectId, CancellationToken ct = default) =>
         api.GetAsync<List<ProjectMemberDto>>($"api/projects/{projectId}/members", ct);

@@ -296,7 +296,7 @@ cache, could otherwise pair a new page with an old script.
 Contract **1.13** on both halves since 1.9: `ISoloQuery.AssignedTasksAsync`
 on the server for the person's assigned tasks across projects, and in the
 browser the `[DashboardSection]` seam the roadmap renders under, core's
-`GET api/me/tasks` for the people on their projects, and the
+`GET api/users/me/tasks` for the people on their projects, and the
 `solo:assigned-tasks` user topic that says when one of their tasks changed.
 
 Before 1.9: contract **1.4** on the server and **1.6** in the browser. From 1.3, two
