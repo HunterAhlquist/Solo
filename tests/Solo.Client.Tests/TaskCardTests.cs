@@ -41,6 +41,25 @@ public class TaskCardTests : ComponentTestBase
     }
 
     [Fact]
+    public void The_tab_wears_the_cards_deadline_tint_and_its_finished_fade()
+    {
+        var due = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task(deadline: DateOnly.FromDateTime(DateTime.Today.AddDays(3))))
+            .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN")));
+        var tab = due.Find(".kanban-card__origin");
+        Assert.Contains("kanban-card__origin--deadline", tab.ClassName);
+        // MudPaper adds its own inline style, so the two cannot be compared whole;
+        // the tint variable is what the tab has to share.
+        Assert.Contains("--deadline-color", tab.GetAttribute("style"));
+        Assert.Contains("--deadline-color", due.Find(".kanban-card").GetAttribute("style"));
+
+        var finished = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task(status: TaskState.Finished))
+            .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN")));
+        Assert.Contains("kanban-card__origin--finished", finished.Find(".kanban-card__origin").ClassName);
+    }
+
+    [Fact]
     public void On_its_own_board_a_card_has_no_tab()
     {
         var card = Render<TaskCard>(p => p.Add(c => c.Task, TestData.Task()));

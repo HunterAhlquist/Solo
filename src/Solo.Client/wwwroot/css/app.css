@@ -692,11 +692,32 @@ code {
     white-space: nowrap;
 }
 
-.kanban-card__origin:hover,
+/* One outline for tab and card: the deadline tint rides in on the same
+   --deadline-color the card sets, hovering either lights both, and a finished
+   card's fade takes its tab with it. */
+.kanban-card__origin--deadline {
+    border-color: var(--deadline-color);
+}
+
+.kanban-card__origin--finished {
+    opacity: 0.55;
+    transition: opacity 120ms ease-in-out;
+}
+
+.kanban-card-slot:hover .kanban-card__origin,
 .kanban-card__origin:focus-visible {
     color: var(--mud-palette-primary);
     border-color: var(--mud-palette-primary);
     text-decoration: none;
+}
+
+.kanban-card-slot:hover .kanban-card__origin--finished,
+.kanban-card-slot:hover .kanban-card--finished {
+    opacity: 1;
+}
+
+.kanban-card-slot:hover .kanban-card--tabbed {
+    border-color: var(--mud-palette-primary);
 }
 
 .kanban-card__origin-name {
