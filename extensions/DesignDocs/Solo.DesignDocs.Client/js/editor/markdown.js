@@ -15,8 +15,17 @@ export const inlineSyntax=[{
 }];
 
 const parser=commonmark.configure(inlineSyntax);
+// Trimmed by index: a `[…]+$` pattern retries at every position, which is
+// quadratic on a long run of inner spaces.
+const SPACE=/[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+function trimSpace(value){
+    let start=0,end=value.length;
+    while(start<end&&SPACE.test(value[start]))start++;
+    while(end>start&&SPACE.test(value[end-1]))end--;
+    return value.slice(start,end);
+}
 export function isSafeUrl(url) {
-    const text = (url ?? '').replace(/^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g,''), colon = text.indexOf(':');
+    const text = trimSpace(url ?? ''), colon = text.indexOf(':');
     return colon < 0 || /[/?#]/u.test(text.slice(0, colon)) || ['http','https','mailto'].includes(text.slice(0, colon).toLowerCase());
 }
 export function headings(markdown) {
