@@ -54,7 +54,7 @@ public class ExtensionSettingsTests : ComponentTestBase
         page.WaitForAssertion(() => Assert.Single(page.FindAll(".test-settings-panel")));
         var panel = page.Find(".test-settings-panel");
         Assert.Equal("alpha", panel.TextContent);
-        var entry = panel.Closest(".d-flex.align-center.py-2")!;
+        var entry = panel.Closest(".extension-entry")!;
         Assert.Contains("ext_alpha", entry.TextContent);
         Assert.DoesNotContain("ext_beta", entry.TextContent);
     }

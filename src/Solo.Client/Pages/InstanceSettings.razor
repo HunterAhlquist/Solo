@@ -11,6 +11,7 @@
 @inject ThemeState Theme
 @inject IDialogService Dialogs
 @inject AppConfig Config
+@inject InstanceRestart Restart
 
 <PageTitle>Admin settings · @Config.SiteName</PageTitle>
 
@@ -149,7 +150,17 @@ else
     </MudPaper>
 
     <MudPaper Elevation="1" Class="pa-4 mt-4">
-        <MudText Typo="Typo.h4" Class="mb-1">Extensions</MudText>
+        <div class="d-flex align-center mb-1">
+            <MudText Typo="Typo.h4">Extensions</MudText>
+            <MudSpacer />
+            @if (AvailableUpdates.Count > 0)
+            {
+                <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                           Disabled="@(_updating is not null)" OnClick="@UpdateAllAsync">
+                    @(_updating == AllExtensions ? "Updating…" : $"Update all ({AvailableUpdates.Count})")
+                </MudButton>
+            }
+        </div>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
             Extension packages are installed in the extensions directory. Installing,
             updating, or removing one requires a restart; extensions cannot be rescanned.
@@ -182,105 +193,118 @@ else
                 <MudText Typo="Typo.body2" Color="Color.Secondary">No extensions installed.</MudText>
             }
 
-            @foreach (var extension in _extensions.Extensions)
+            @* A tab each, so one extension with a long settings panel doesn't push
+               every other one down the page. Kept alive, so switching tabs
+               doesn't throw away a half-edited settings form. *@
+            @if (_extensions.Extensions.Count > 0)
             {
-                <div class="d-flex align-center py-2">
-                    <div class="flex-grow-1">
-                        <MudText Typo="Typo.body1">
-                            @(extension.DisplayName ?? extension.ExtensionId)
-                            <MudChip T="string" Size="Size.Small" Class="ml-2"
-                                     Color="@StateColour(extension.State)">@StateLabel(extension)</MudChip>
-                        </MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @extension.ExtensionId@(extension.Version is null ? "" : $" · {extension.Version}")
-                            @(extension.SchemaName is null ? "" : $" · {extension.SchemaName}")
-                        </MudText>
+                <MudTabs Elevation="0" KeepPanelsAlive="true" TabPanelsClass="pt-4">
+                    @foreach (var extension in _extensions.Extensions)
+                    {
+                        <MudTabPanel Text="@(extension.DisplayName ?? extension.ExtensionId)"
+                                     BadgeDot="@(UpdateFor(extension.ExtensionId) is { Compatible: true })"
+                                     BadgeColor="Color.Info">
+                            <div class="extension-entry">
+                                @* Top-aligned, so the buttons sit level with the
+                                   version line whatever lies below it. *@
+                                <div class="d-flex align-start gap-2">
+                                    <div class="flex-grow-1">
+                                        <MudText Typo="Typo.body2" Class="extension-entry__version">
+                                            @extension.ExtensionId@(extension.Version is null ? "" : $" · {extension.Version}")
+                                            @(extension.SchemaName is null ? "" : $" · {extension.SchemaName}")
+                                            <MudChip T="string" Size="Size.Small" Class="ml-2 my-0"
+                                                     Color="@StateColour(extension.State)">@StateLabel(extension)</MudChip>
+                                        </MudText>
 
-                        @* An update this instance could not load is still worth
-                           showing — otherwise the extension just looks neglected —
-                           but it is stated as a blocker rather than offered. *@
-                        @if (UpdateFor(extension.ExtensionId) is { } update)
-                        {
-                            <MudText Typo="Typo.caption"
-                                     Color="@(update.Compatible ? Color.Info : Color.Warning)"
-                                     Class="d-block">
-                                @if (update.Compatible)
-                                {
-                                    @($"Version {update.AvailableVersion} is available ({FormatBytes(update.SizeBytes)}).")
-                                }
-                                else
-                                {
-                                    @update.Incompatibility
-                                }
-                            </MudText>
-                        }
-
-                        @if (extension.FailureReason is not null)
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
-                                @extension.FailureReason
-                            </MudText>
-                        }
-
-                        @if (Catalog?.Skipped.FirstOrDefault(e => e.Id == extension.ExtensionId) is { } skipped)
-                        {
-                            <MudAlert Severity="Severity.Warning" Dense="true" Class="extension-client-warning mt-2">
-                                Client pages unavailable: @skipped.Reason
-                            </MudAlert>
-                        }
-
-                        @* Which extensions sit on which write path. Without this,
-                           "why can't I move this card?" has no quick answer. *@
-                        @if (extension.Hooks.Count > 0)
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
-                                Intercepts: @string.Join(", ", extension.Hooks)
-                            </MudText>
-                        }
-
-                        @* The extension's own settings, from its client half. Only a
-                           loaded extension has one to offer: a disabled one's routes
-                           answer 503, and a missing package has no assembly at all. *@
-                        @if (extension.State == "Loaded")
-                        {
-                            @foreach (var panel in SettingsPanels(extension.ExtensionId))
-                            {
-                                <div class="extension-settings mt-3">
-                                    <ErrorBoundary @key="(extension.ExtensionId, panel)">
-                                        <ChildContent>
-                                            <DynamicComponent Type="@panel"
-                                                              Parameters="@PanelParameters(extension.ExtensionId)" />
-                                        </ChildContent>
-                                        <ErrorContent>
-                                            <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
-                                                This extension's settings couldn't load.
+                                        @* An update this instance could not load is still worth
+                                           showing — otherwise the extension just looks neglected —
+                                           but it is stated as a blocker rather than offered. *@
+                                        @if (UpdateFor(extension.ExtensionId) is { } update)
+                                        {
+                                            <MudText Typo="Typo.caption"
+                                                     Color="@(update.Compatible ? Color.Info : Color.Warning)"
+                                                     Class="d-block">
+                                                @if (update.Compatible)
+                                                {
+                                                    @($"Version {update.AvailableVersion} is available ({FormatBytes(update.SizeBytes)}).")
+                                                }
+                                                else
+                                                {
+                                                    @update.Incompatibility
+                                                }
                                             </MudText>
-                                        </ErrorContent>
-                                    </ErrorBoundary>
+                                        }
+
+                                        @if (extension.FailureReason is not null)
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
+                                                @extension.FailureReason
+                                            </MudText>
+                                        }
+
+                                        @if (Catalog?.Skipped.FirstOrDefault(e => e.Id == extension.ExtensionId) is { } skipped)
+                                        {
+                                            <MudAlert Severity="Severity.Warning" Dense="true" Class="extension-client-warning mt-2">
+                                                Client pages unavailable: @skipped.Reason
+                                            </MudAlert>
+                                        }
+
+                                        @* Which extensions sit on which write path. Without this,
+                                           "why can't I move this card?" has no quick answer. *@
+                                        @if (extension.Hooks.Count > 0)
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                                                Intercepts: @string.Join(", ", extension.Hooks)
+                                            </MudText>
+                                        }
+                                    </div>
+
+                                    @if (UpdateFor(extension.ExtensionId) is { Compatible: true } available)
+                                    {
+                                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
+                                                   Disabled="@(_updating is not null)"
+                                                   OnClick="@(() => UpdateExtensionAsync(extension, available))">
+                                            @(_updating == extension.ExtensionId ? "Updating…" : "Update")
+                                        </MudButton>
+                                    }
+
+                                    @if (extension.CanPurge)
+                                    {
+                                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                                   OnClick="@(() => PurgeAsync(extension))">
+                                            Delete data
+                                        </MudButton>
+                                    }
                                 </div>
-                            }
-                        }
-                    </div>
 
-                    @if (UpdateFor(extension.ExtensionId) is { Compatible: true } available)
-                    {
-                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled"
-                                   Class="mr-2"
-                                   Disabled="@(_updating is not null)"
-                                   OnClick="@(() => UpdateExtensionAsync(extension, available))">
-                            @(_updating == extension.ExtensionId ? "Updating…" : "Update")
-                        </MudButton>
+                                @* The extension's own settings, from its client half, under
+                                   the header rather than beside the buttons so they get the
+                                   tab's full width. Only a loaded extension has one to offer:
+                                   a disabled one's routes answer 503, and a missing package
+                                   has no assembly at all. *@
+                                @if (extension.State == "Loaded")
+                                {
+                                    @foreach (var panel in SettingsPanels(extension.ExtensionId))
+                                    {
+                                        <div class="extension-settings mt-3">
+                                            <ErrorBoundary @key="(extension.ExtensionId, panel)">
+                                                <ChildContent>
+                                                    <DynamicComponent Type="@panel"
+                                                                      Parameters="@PanelParameters(extension.ExtensionId)" />
+                                                </ChildContent>
+                                                <ErrorContent>
+                                                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">
+                                                        This extension's settings couldn't load.
+                                                    </MudText>
+                                                </ErrorContent>
+                                            </ErrorBoundary>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </MudTabPanel>
                     }
-
-                    @if (extension.CanPurge)
-                    {
-                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
-                                   OnClick="@(() => PurgeAsync(extension))">
-                            Delete data
-                        </MudButton>
-                    }
-                </div>
-                <MudDivider />
+                </MudTabs>
             }
 
             @foreach (var failure in _extensions.Failures)
@@ -308,7 +332,12 @@ else
     private bool _rescanning;
     private string? _error;
     private UpdateStatusDto? _updates;
+
+    /// <summary>The extension being updated, <see cref="AllExtensions"/>, or null.</summary>
     private string? _updating;
+
+    /// <summary>Not an extension id: those start with a letter or digit.</summary>
+    private const string AllExtensions = "*";
 
     private ExtensionCatalog? Catalog => Services.GetService<ExtensionCatalog>();
 
@@ -511,6 +540,14 @@ else
         _updates?.Extensions.FirstOrDefault(u =>
             string.Equals(u.ExtensionId, extensionId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>What "Update all" installs: every update shown here that can be applied.</summary>
+    private IReadOnlyList<ExtensionUpdateDto> AvailableUpdates =>
+        _extensions?.Extensions
+            .Select(e => UpdateFor(e.ExtensionId))
+            .OfType<ExtensionUpdateDto>()
+            .Where(u => u.Compatible)
+            .ToList() ?? [];
+
     private static string FormatBytes(long bytes) => bytes <= 0
         ? "size unknown"
         : bytes >= 1024 * 1024
@@ -529,10 +566,9 @@ else
     /// container back. On a host with no restart policy this ends with the
     /// instance down.</para>
     ///
-    /// <para>The success path deliberately does not reload anything. The server
-    /// stops right after answering, so every subsequent request fails until it
-    /// is back; re-fetching here would only turn a successful update into an
-    /// error toast.</para>
+    /// <para>The success path deliberately does not reload anything itself. The
+    /// server stops right after answering, so every subsequent request fails
+    /// until it is back; the restart overlay waits that out and reloads.</para>
     /// </remarks>
     private async Task UpdateExtensionAsync(
         ExtensionRegistrationDto extension, ExtensionUpdateDto update)
@@ -563,10 +599,7 @@ else
         try
         {
             var result = await Api.UpdateExtensionAsync(extension.ExtensionId);
-            Snackbar.Add(
-                $"{name} {result.Version} installed. The instance is restarting — reload this page in a moment.",
-                Severity.Success,
-                config => config.RequireInteraction = true);
+            await Restart.BeginAsync(new($"{name} {result.Version} installed.", Severity.Success));
         }
         catch (ApiException e)
         {
@@ -575,17 +608,84 @@ else
         }
         catch (Exception)
         {
-            // The server can drop the connection as it goes down, which arrives
-            // here as a transport failure rather than an ApiException. The
-            // package was already written and verified before the restart was
-            // scheduled, so this is more likely a successful update than a
-            // failed one — say so without claiming either.
-            Snackbar.Add(
-                $"{name} was updated and the instance is restarting. Reload this page in a moment.",
-                Severity.Info,
-                config => config.RequireInteraction = true);
+            await RestartedWithoutAnswerAsync();
         }
     }
+
+    /// <summary>
+    /// Confirms, then installs every applicable update and restarts the
+    /// instance once to load them all.
+    /// </summary>
+    /// <remarks>
+    /// One that fails doesn't hold back the rest or the restart; it is reported
+    /// after the reload, by which time the page shows it still out of date.
+    /// </remarks>
+    private async Task UpdateAllAsync()
+    {
+        var updates = AvailableUpdates;
+        var listed = string.Join(", ", updates.Select(u => $"{u.DisplayName ?? u.ExtensionId} {u.AvailableVersion}"));
+        var dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+            $"Update {updates.Count} extension{(updates.Count == 1 ? "" : "s")}?",
+            new DialogParameters<ConfirmDialog>
+            {
+                { d => d.Message,
+                    $"This downloads {listed} ({FormatBytes(updates.Sum(u => u.SizeBytes))}), replaces the "
+                    + "installed packages, and then restarts this instance once to load them all. Everyone "
+                    + "signed in is disconnected for as long as that takes, and if this host has no restart "
+                    + "policy the instance stays down until it is started again. Each package it replaces is "
+                    + "kept as solo-<id>.rollback.zip.bak, replacing any previous rollback." },
+                { d => d.ConfirmText, "Update all and restart" },
+            });
+
+        var confirmed = await dialog.Result;
+        if (confirmed is null || confirmed.Canceled)
+        {
+            return;
+        }
+
+        _updating = AllExtensions;
+        try
+        {
+            var result = await Api.UpdateExtensionsAsync(updates.Select(u => u.ExtensionId));
+            if (!result.Restarting)
+            {
+                Snackbar.Add(Describe(result.Failed), Severity.Error, config => config.RequireInteraction = true);
+                _updating = null;
+                return;
+            }
+
+            var installed = string.Join(", ", result.Installed.Select(i => $"{NameOf(i.ExtensionId)} {i.Version}"));
+            await Restart.BeginAsync(result.Failed.Count == 0
+                ? new($"{installed} installed.", Severity.Success)
+                : new($"{installed} installed. {Describe(result.Failed)}", Severity.Warning));
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't update the extensions.", Severity.Error);
+            _updating = null;
+        }
+        catch (Exception)
+        {
+            await RestartedWithoutAnswerAsync();
+        }
+    }
+
+    /// <summary>
+    /// The server can drop the connection as it goes down, which arrives as a
+    /// transport failure rather than an <see cref="ApiException"/>. The
+    /// packages were written and verified before the restart was scheduled, so
+    /// this is more likely a restart than a failure — wait for the instance
+    /// either way, and let the reloaded page show which it was.
+    /// </summary>
+    private Task RestartedWithoutAnswerAsync() => Restart.BeginAsync(null);
+
+    private string NameOf(string extensionId) =>
+        _extensions?.Extensions.FirstOrDefault(e =>
+            string.Equals(e.ExtensionId, extensionId, StringComparison.OrdinalIgnoreCase))?.DisplayName
+        ?? extensionId;
+
+    private string Describe(IEnumerable<ExtensionUpdateFailureDto> failures) =>
+        string.Join(" ", failures.Select(f => $"{NameOf(f.ExtensionId)} wasn't updated: {f.Reason}"));
 
     /// <summary>
     /// Confirms with a retyped id, then drops the schema and the extension's

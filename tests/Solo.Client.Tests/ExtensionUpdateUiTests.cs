@@ -1,5 +1,7 @@
+using System.Net;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using MudBlazor;
 using Solo.Client.Extensions;
 using Solo.Client.Pages;
 using Solo.Client.State;
@@ -17,11 +19,12 @@ public class ExtensionUpdateUiTests : ComponentTestBase
 {
     private readonly StubHttp _http = new();
 
-    private IRenderedComponent<InstanceSettings> Render(object? updates)
+    private IRenderedComponent<InstanceSettings> Render(object? updates, params ExtensionRegistrationDto[] installed)
     {
         _http.RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
             .RouteJson("api/themes", new ThemeScanResultDto([], []))
-            .RouteJson("api/extensions/admin", new ExtensionAdminDto([Registration()], []))
+            .RouteJson("api/extensions/admin",
+                new ExtensionAdminDto(installed.Length > 0 ? [.. installed] : [Registration()], []))
             .RouteJson("api/admin/users", new List<AdminUserDto>());
 
         // Null stands for an endpoint that answers with nothing, which is what
@@ -40,9 +43,22 @@ public class ExtensionUpdateUiTests : ComponentTestBase
         return page;
     }
 
-    private static ExtensionRegistrationDto Registration() =>
-        new("roadmap", "Roadmap", "1.0.0", "ext_roadmap", "Loaded", null,
+    private static ExtensionRegistrationDto Registration(string id = "roadmap", string name = "Roadmap") =>
+        new(id, name, "1.0.0", $"ext_{id}", "Loaded", null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], false);
+
+    private static ExtensionUpdateDto Available(string id, string name, string version = "1.1.0") =>
+        new(id, name, "1.0.0", version, 1024, Compatible: true, null);
+
+    private IEnumerable<string> Buttons(IRenderedComponent<InstanceSettings> page) =>
+        page.FindAll("button").Select(b => b.TextContent.Trim());
+
+    private InstanceRestart Restart => Services.GetRequiredService<InstanceRestart>();
+
+    /// <summary>What the restart overlay will say once the app has reloaded.</summary>
+    private InstanceRestart.Notice StoredNotice =>
+        System.Text.Json.JsonSerializer.Deserialize<InstanceRestart.Notice>(
+            (string)JSInterop.Invocations["sessionStorage.setItem"].Single().Arguments[1]!)!;
 
     private static UpdateStatusDto Status(params ExtensionUpdateDto[] extensions) =>
         new(Enabled: true, DateTimeOffset.UtcNow, null, null, extensions);
@@ -117,5 +133,117 @@ public class ExtensionUpdateUiTests : ComponentTestBase
         page.WaitForAssertion(() => Assert.Contains("ext_roadmap", page.Markup));
         Assert.Contains("Extensions", page.Markup);
         Assert.DoesNotContain("Couldn't load instance settings", page.Markup);
+    }
+
+    [Fact]
+    public void Update_all_counts_only_the_updates_that_can_be_applied()
+    {
+        var page = Render(
+            Status(Available("roadmap", "Roadmap"),
+                new ExtensionUpdateDto("mcp", "MCP", "1.0.0", "2.0.0", 1024, Compatible: false, "Needs a newer Solo.")),
+            Registration(), Registration("mcp", "MCP"));
+
+        page.WaitForAssertion(() => Assert.Contains("Update all (1)", Buttons(page)));
+    }
+
+    [Fact]
+    public void Update_all_is_not_offered_when_nothing_can_be_updated()
+    {
+        var page = Render(Status());
+
+        page.WaitForAssertion(() => Assert.Contains("ext_roadmap", page.Markup));
+        Assert.DoesNotContain(Buttons(page), b => b.StartsWith("Update all", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The ids sent are the ones the operator was shown and confirmed, and the
+    /// page hands over to the restart overlay rather than leaving a toast that
+    /// asks them to reload by hand.
+    /// </summary>
+    [Fact]
+    public async Task Update_all_confirms_installs_the_shown_updates_and_waits_out_the_restart()
+    {
+        _http.Route("api/updates/extensions", HttpStatusCode.OK,
+            new ExtensionBulkUpdateResultDto(
+                [new ExtensionUpdateResultDto("roadmap", "1.1.0", true), new ExtensionUpdateResultDto("mcp", "1.2.0", true)],
+                [], Restarting: true),
+            HttpMethod.Post);
+        var page = Render(Status(Available("roadmap", "Roadmap"), Available("mcp", "MCP", "1.2.0")),
+            Registration(), Registration("mcp", "MCP"));
+        var dialogs = Render<MudDialogProvider>();
+
+        page.WaitForAssertion(() => Assert.Contains("Update all (2)", Buttons(page)));
+        await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Contains("Update all")).Click());
+        dialogs.WaitForAssertion(() => Assert.Contains("restarts this instance once", dialogs.Markup));
+        Assert.False(Restart.InProgress);
+
+        dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Update all and restart").Click();
+
+        page.WaitForAssertion(() => Assert.True(Restart.InProgress));
+        var post = _http.Paths.IndexOf("POST /api/updates/extensions");
+        Assert.Contains("\"roadmap\"", _http.Bodies[post]);
+        Assert.Contains("\"mcp\"", _http.Bodies[post]);
+        Assert.Equal(new InstanceRestart.Notice("Roadmap 1.1.0, MCP 1.2.0 installed.", Severity.Success), StoredNotice);
+    }
+
+    /// <summary>
+    /// A failure is carried across the reload with the rest, since the page it
+    /// would otherwise have been shown on is about to go.
+    /// </summary>
+    [Fact]
+    public async Task A_partial_update_restarts_and_reports_what_failed_after_the_reload()
+    {
+        _http.Route("api/updates/extensions", HttpStatusCode.OK,
+            new ExtensionBulkUpdateResultDto(
+                [new ExtensionUpdateResultDto("roadmap", "1.1.0", true)],
+                [new ExtensionUpdateFailureDto("mcp", "The download does not match the digest in the feed, so it was discarded.")],
+                Restarting: true),
+            HttpMethod.Post);
+        var page = Render(Status(Available("roadmap", "Roadmap"), Available("mcp", "MCP")),
+            Registration(), Registration("mcp", "MCP"));
+        var dialogs = Render<MudDialogProvider>();
+
+        page.WaitForAssertion(() => Assert.Contains("Update all (2)", Buttons(page)));
+        await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Contains("Update all")).Click());
+        dialogs.WaitForAssertion(() => dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Update all and restart").Click());
+
+        page.WaitForAssertion(() => Assert.True(Restart.InProgress));
+        Assert.StartsWith("Roadmap 1.1.0 installed. MCP wasn't updated: The download does not match",
+            StoredNotice.Message, StringComparison.Ordinal);
+        Assert.Equal(Severity.Warning, StoredNotice.Severity);
+    }
+
+    [Fact]
+    public async Task An_update_that_installed_nothing_says_why_and_does_not_wait_for_a_restart()
+    {
+        _http.Route("api/updates/extensions", HttpStatusCode.OK,
+            new ExtensionBulkUpdateResultDto([], [new ExtensionUpdateFailureDto("roadmap", "No feed names an update for roadmap.")],
+                Restarting: false),
+            HttpMethod.Post);
+        var page = Render(Status(Available("roadmap", "Roadmap")));
+        var dialogs = Render<MudDialogProvider>();
+
+        page.WaitForAssertion(() => Assert.Contains("Update all (1)", Buttons(page)));
+        await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Contains("Update all")).Click());
+        dialogs.WaitForAssertion(() => dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Update all and restart").Click());
+
+        page.WaitForAssertion(() => Assert.Contains("Update all (1)", Buttons(page)));
+        Assert.False(Restart.InProgress);
+    }
+
+    [Fact]
+    public async Task A_single_update_also_waits_out_the_restart()
+    {
+        _http.Route("api/updates/extensions/roadmap", HttpStatusCode.OK,
+            new ExtensionUpdateResultDto("roadmap", "1.1.0", true), HttpMethod.Post);
+        var page = Render(Status(Available("roadmap", "Roadmap")));
+        var dialogs = Render<MudDialogProvider>();
+
+        page.WaitForAssertion(() => Assert.Contains("Update", Buttons(page)));
+        await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Trim() == "Update").Click());
+        dialogs.WaitForAssertion(() => dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Update and restart").Click());
+
+        page.WaitForAssertion(() => Assert.True(Restart.InProgress));
+        Assert.Equal("Roadmap 1.1.0 installed.", StoredNotice.Message);
     }
 }

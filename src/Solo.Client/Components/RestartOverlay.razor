@@ -1,0 +1,87 @@
+@implements IDisposable
+@inject InstanceRestart Restart
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+@* Over everything, app bar and dialogs included: while the instance is down
+   every request fails, and nothing on the page underneath is worth touching. *@
+@if (Restart.InProgress)
+{
+    <div class="restart-overlay" role="alert" aria-busy="true">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+        <MudText Typo="Typo.h6">Restarting Solo instance…</MudText>
+        @if (_slow)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="restart-overlay__slow">
+                This is taking longer than usual. If this host has no restart policy,
+                the instance stays down until it is started again.
+            </MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@Reload">Reload now</MudButton>
+        }
+    </div>
+}
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private bool _waiting;
+    private bool _slow;
+
+    protected override void OnInitialized() => Restart.Changed += OnRestartChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && await Restart.TakeNoticeAsync() is { } notice)
+        {
+            // A partial failure stays up until it is read: the reload has
+            // already taken away everything else that said so.
+            Snackbar.Add(notice.Message, notice.Severity,
+                config => config.RequireInteraction = notice.Severity != Severity.Success);
+        }
+    }
+
+    private void OnRestartChanged() => _ = InvokeAsync(async () =>
+    {
+        StateHasChanged();
+        if (!Restart.InProgress || _waiting)
+        {
+            return;
+        }
+
+        _waiting = true;
+        _ = MarkSlowAsync();
+        try
+        {
+            await Restart.WaitUntilServingAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        Reload();
+    });
+
+    private async Task MarkSlowAsync()
+    {
+        try
+        {
+            await Task.Delay(Restart.SlowAfter, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        _slow = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Reload() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+
+    public void Dispose()
+    {
+        Restart.Changed -= OnRestartChanged;
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

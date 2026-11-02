@@ -74,4 +74,22 @@ public sealed class ApiRoutingTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         Assert.True(response.Headers.CacheControl?.NoCache, $"{path} went out without Cache-Control: no-cache.");
     }
+
+    /// <summary>
+    /// What the client polls while the instance restarts. Anonymous, since the
+    /// session it would authenticate with is on the far side of the restart,
+    /// and never cached, since a stored "true" from the old process is exactly
+    /// the answer it must not get.
+    /// </summary>
+    [SkippableFact]
+    public async Task Ready_AnswersAnonymously_AndIsNeverCached()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var response = await _factory.CreateClient().GetAsync("/api/ready");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("true", await response.Content.ReadAsStringAsync());
+        Assert.True(response.Headers.CacheControl?.NoStore, "/api/ready went out without Cache-Control: no-store.");
+    }
 }

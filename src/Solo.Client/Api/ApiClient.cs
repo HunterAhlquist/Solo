@@ -138,6 +138,17 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
             HttpMethod.Post, $"api/updates/extensions/{extensionId}",
             new UpdateExtensionRequest { ConfirmExtensionId = extensionId }, ct);
 
+    /// <summary>
+    /// Installs several extension updates and restarts the instance once to load
+    /// them, when any was installed. The same caveat as
+    /// <see cref="UpdateExtensionAsync"/> applies about the connection dropping.
+    /// </summary>
+    public Task<ExtensionBulkUpdateResultDto> UpdateExtensionsAsync(
+        IEnumerable<string> extensionIds, CancellationToken ct = default) =>
+        SendAsync<ExtensionBulkUpdateResultDto>(
+            HttpMethod.Post, "api/updates/extensions",
+            new UpdateExtensionsRequest { ExtensionIds = [.. extensionIds] }, ct);
+
     public Task<UserDto> GetCurrentUserAsync(CancellationToken ct = default) =>
         GetAsync<UserDto>("api/users/me", ct);
 

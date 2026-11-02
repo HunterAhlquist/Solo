@@ -78,6 +78,8 @@ public class AppExtensionLoadTests : SoloBunitContext
         Services.AddScoped<BoardStore>();
         Services.AddScoped<TaskDrawerService>();
         Services.AddScoped<ContextMenuService>();
+        Services.AddScoped(sp => new InstanceRestart(
+            new HttpClient(_http) { BaseAddress = _http.Instance.BaseAddress }, sp.GetRequiredService<IJSRuntime>()));
         // The landing page is the Your Tasks dashboard, which the signed-in
         // tests below render on their way to the fixture's route.
         Services.AddScoped<TaskMenuService>();
