@@ -298,11 +298,17 @@ reports the pinned version as *ahead* of latest and a bare
 `^26.18.1` so the range itself refuses an older build; `npm ci` follows the
 lockfile either way.
 
-The `app-builder-lib` override moves its own minimatch from 10.x to 11, the
-first line patched for GHSA-g3hv-75wg-m249. The `@^10` selector keeps it off
-the 3.x, 5.x and 9.x copies deeper in the tree, whose callers use APIs that 11
-changed; those lines have no patched release, so `npm audit` still lists them.
-A Linux `--dir` build packed the same asar listing under 10 and 11. Drop the override once electron-builder depends on 11 itself.
+The minimatch overrides move `app-builder-lib`'s own 10.x and
+`@electron/universal`'s 9.x to 11, the first line patched for
+GHSA-g3hv-75wg-m249. Both callers use the named `minimatch` export, which 11
+kept. The 3.x and 5.x copies deeper in the tree (`@electron/asar`,
+`dir-compare`, `glob` 7, `filelist`) call the package as a function, which 11
+no longer exports, so the selectors keep the overrides off them. Those lines
+predate the preprocessing the advisory describes (`optimizationLevel`,
+`firstPhasePreProcess` appeared in 7.x) and have no patched release, so
+`npm audit` still lists them. A Linux `--dir` build packed the same asar
+listing under 10 and 11. Drop the overrides once electron-builder depends on
+11 itself.
 
 CI does this automatically: pushing a `v<version>` tag runs
 [release-desktop.yml](../../.github/workflows/release-desktop.yml), which
