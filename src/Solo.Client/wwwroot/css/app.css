@@ -1334,6 +1334,31 @@ html[data-solo-input="pen"] .mud-tooltip {
 }
 
 /* ---------------------------------------------------------------------------
+   Restart overlay — the whole app, while the instance restarts
+   --------------------------------------------------------------------------- */
+/* Opaque, and above MudBlazor's dialogs, snackbars and the context menu: every
+   request fails until the instance is back, so nothing underneath should look
+   usable. The glass shell blurs instead; see its section below. */
+.restart-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem;
+    text-align: center;
+    color: var(--mud-palette-text-primary);
+    background-color: var(--mud-palette-background);
+}
+
+.restart-overlay__slow {
+    max-width: 28rem;
+}
+
+/* ---------------------------------------------------------------------------
    Footer — small and subtle
    --------------------------------------------------------------------------- */
 /* The app bar's name is the instance's own, so it can be long: it gives way to
@@ -1457,6 +1482,14 @@ html.solo-desktop--glass .boot-splash__bar {
 html.solo-desktop--glass .boot-splash__bar span {
     border-radius: inherit;
     box-shadow: 0 0 14px color-mix(in srgb, var(--solo-boot-fg) 58%, transparent);
+}
+
+/* The restart overlay lets the desktop through, as everything else here does:
+   the page defocused under three quarters of the theme's background. */
+html.solo-desktop--glass .restart-overlay {
+    background-color: color-mix(in srgb, var(--mud-palette-background) 75%, transparent);
+    -webkit-backdrop-filter: var(--solo-glass-page-defocus);
+    backdrop-filter: var(--solo-glass-page-defocus);
 }
 
 /* The app bar keeps the theme's own opaque background here — no wash, no

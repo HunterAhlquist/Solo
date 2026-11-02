@@ -349,6 +349,22 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<BoardHub>(BoardHubConstants.Path);
 app.MapHealthChecks("/healthz").AllowAnonymous();
+// Whether this process is serving: true once startup has finished, and 503
+// false from the moment it begins to stop. The client polls it while the
+// instance restarts after an extension update, and reloads on the first true.
+// Kestrel only listens once the migrations and extension loading above are
+// done, so an answer at all means startup is over; the stopping half is what
+// keeps the process on its way out from passing for the one coming back.
+// Deliberately not /healthz, which queries the database on every call, and
+// under /api so the desktop shell proxies it to the instance.
+app.MapGet("/api/ready", (IHostApplicationLifetime lifetime, HttpResponse response) =>
+{
+    response.Headers.CacheControl = "no-store";
+    return lifetime.ApplicationStarted.IsCancellationRequested
+           && !lifetime.ApplicationStopping.IsCancellationRequested
+        ? Results.Ok(true)
+        : Results.Json(false, statusCode: StatusCodes.Status503ServiceUnavailable);
+}).AllowAnonymous();
 // An unknown route under the API namespace is a 404, not the SPA shell: a
 // client calling a route that doesn't exist should get JSON it can read, not a
 // 200 of index.html that masks the mistake. This is more specific than the SPA

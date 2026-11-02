@@ -69,6 +69,12 @@ public abstract class ComponentTestBase : SoloBunitContext
         // so every test that renders the layout needs it.
         Services.AddScoped<ContextMenuService>();
 
+        // It also hosts the restart overlay, hidden unless an update restarts the
+        // instance. A test about restarts registers its own after this, which wins.
+        Services.AddScoped(sp => new InstanceRestart(
+            new HttpClient(new StubHttp()) { BaseAddress = new Uri("https://solo.test/") },
+            sp.GetRequiredService<IJSRuntime>()));
+
         // The layout, a board and its drawer all look for extension
         // contributions. Empty, as an instance with none installed; a test about
         // extensions registers its own catalog after this, which wins.

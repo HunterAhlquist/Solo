@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Solo.Shared.Dtos;
 
 /// <summary>
@@ -84,4 +86,31 @@ public sealed class UpdateExtensionRequest
 public sealed record ExtensionUpdateResultDto(
     string ExtensionId,
     string Version,
+    bool Restarting);
+
+/// <summary>
+/// The updates to install together, behind one restart: those the operator was
+/// shown and confirmed, so nothing that appeared since is installed unseen.
+/// </summary>
+public sealed class UpdateExtensionsRequest
+{
+    [MaxLength(100)]
+    public List<string> ExtensionIds { get; set; } = [];
+}
+
+/// <summary>An update in a batch that was not installed, and why.</summary>
+public sealed record ExtensionUpdateFailureDto(string ExtensionId, string Reason);
+
+/// <summary>
+/// The outcome of installing several extension updates at once.
+/// </summary>
+/// <param name="Installed">The packages now on disk, which the next boot will load.</param>
+/// <param name="Failed">Those left as they were.</param>
+/// <param name="Restarting">
+/// Whether the instance is exiting to load them, which it does when anything was
+/// installed.
+/// </param>
+public sealed record ExtensionBulkUpdateResultDto(
+    IReadOnlyList<ExtensionUpdateResultDto> Installed,
+    IReadOnlyList<ExtensionUpdateFailureDto> Failed,
     bool Restarting);

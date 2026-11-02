@@ -50,6 +50,17 @@ public static class SoloClientServices
         // extension shares the app's credential and cannot authenticate differently.
         services.AddScoped<ISoloClientApi>(sp => sp.GetRequiredService<ApiClient>());
         services.AddHttpClient<SetupClient>(client => client.BaseAddress = instance.BaseAddress);
+        // A third, bare and short-fused, for polling the instance back up after
+        // a restart: a poll stuck behind a proxy waiting on a dead upstream
+        // would otherwise hold the next one off for the default 100 seconds.
+        services.AddHttpClient(InstanceRestart.HttpClientName, client =>
+        {
+            client.BaseAddress = instance.BaseAddress;
+            client.Timeout = TimeSpan.FromSeconds(5);
+        });
+        services.AddScoped(sp => new InstanceRestart(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(InstanceRestart.HttpClientName),
+            sp.GetRequiredService<IJSRuntime>()));
 
         // Realtime + state. BoardHubClient is scoped rather than singleton: it
         // mints its hub tickets through ApiClient, whose handler depends on the

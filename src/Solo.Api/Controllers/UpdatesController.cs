@@ -95,14 +95,78 @@ public sealed class UpdatesController(
                 detail: outcome.Error);
         }
 
+        RestartAfterResponse($"extension {loggedId} {outcome.Version}");
+        return new ExtensionUpdateResultDto(extensionId, outcome.Version!, Restarting: true);
+    }
+
+    /// <summary>
+    /// Installs each named extension's update, then restarts once to load all
+    /// of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>One restart rather than one per extension is the point: each
+    /// restart disconnects everyone, and the single-extension endpoint above
+    /// cannot be called again until the instance is back.</para>
+    ///
+    /// <para>A failure does not stop the rest, and does not stop the restart
+    /// when anything else was installed. An installed package is already on
+    /// disk in place of the old one, so holding the restart back would only
+    /// leave it waiting for whichever restart comes next. Nothing is installed
+    /// beyond the ids named, which are the updates the operator was shown and
+    /// confirmed.</para>
+    /// </remarks>
+    [HttpPost("extensions")]
+    public async Task<ActionResult<ExtensionBulkUpdateResultDto>> UpdateExtensions(
+        UpdateExtensionsRequest request, CancellationToken ct)
+    {
+        var ids = request.ExtensionIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (ids.Count == 0)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Nothing to update",
+                detail: "Name at least one extension to update.");
+        }
+
+        logger.LogWarning(
+            "Update of {Count} extensions requested by {User}.", ids.Count, User.Identity?.Name);
+
+        var installed = new List<ExtensionUpdateResultDto>();
+        var failed = new List<ExtensionUpdateFailureDto>();
+        foreach (var id in ids)
+        {
+            var outcome = await installer.InstallAsync(id, ct);
+            if (!outcome.Found)
+            {
+                failed.Add(new ExtensionUpdateFailureDto(id, "It is not installed on this instance."));
+            }
+            else if (outcome.Error is not null)
+            {
+                failed.Add(new ExtensionUpdateFailureDto(id, outcome.Error));
+            }
+            else
+            {
+                installed.Add(new ExtensionUpdateResultDto(id, outcome.Version!, Restarting: true));
+            }
+        }
+
+        if (installed.Count > 0)
+        {
+            RestartAfterResponse($"{installed.Count} updated extensions");
+        }
+
+        return new ExtensionBulkUpdateResultDto(installed, failed, Restarting: installed.Count > 0);
+    }
+
+    /// <summary>
+    /// Stops the host once the response has gone out. See
+    /// <see cref="UpdateExtension"/> for why it waits for that.
+    /// </summary>
+    private void RestartAfterResponse(string loading) =>
         Response.OnCompleted(() =>
         {
-            logger.LogWarning(
-                "Restarting to load extension {Id} {Version}.", loggedId, outcome.Version);
+            logger.LogWarning("Restarting to load {Loading}.", loading);
             lifetime.StopApplication();
             return Task.CompletedTask;
         });
-
-        return new ExtensionUpdateResultDto(extensionId, outcome.Version!, Restarting: true);
-    }
 }
