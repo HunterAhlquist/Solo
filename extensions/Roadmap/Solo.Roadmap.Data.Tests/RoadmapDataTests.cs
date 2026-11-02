@@ -270,5 +270,8 @@ public sealed class RoadmapDataTests(PostgresFixture postgres) : IAsyncLifetime
 
         public Task<IReadOnlyList<CommentDto>> TaskCommentsAsync(Guid taskId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<AssignedTasksDto> AssignedTasksAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
     }
 }

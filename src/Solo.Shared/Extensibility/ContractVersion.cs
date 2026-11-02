@@ -73,10 +73,18 @@ namespace Solo.Shared.Extensibility;
 /// and a package that declares it needs a host that reads it, which is what the
 /// range check is for. Server-side only, so a package that sets it needs 1.12
 /// in <c>soloApiVersion</c> alone.</para>
+/// <para>1.13.0 adds the Your Tasks dashboard's seams: the signed-in user's work
+/// across projects as <c>AssignedTasksDto</c>, read on the server through
+/// <c>ISoloQuery.AssignedTasksAsync</c> and in the browser from
+/// <c>GET api/users/me/tasks</c>; collapsible sections above the personal board
+/// (<see cref="DashboardSectionAttribute"/>); and the core user topic
+/// <c>BoardHubConstants.AssignedTasksTopic</c> that nudges both. Both halves
+/// changed, so a package using any of it needs 1.13 in whichever range covers
+/// the half that uses it.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.12.0";
+    public const string Current = "1.13.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

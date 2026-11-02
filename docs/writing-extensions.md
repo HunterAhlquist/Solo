@@ -1024,3 +1024,63 @@ A task picker used to reference existing work can initially include finished
 tasks and closed boards with `new TaskPickerOptions { IncludeFinished = true,
 IncludeClosedBoards = true }`. The person can still change those filters.
 Scheduling pickers keep their existing defaults.
+
+## Contract 1.13: the Your Tasks dashboard
+
+The landing page is the signed-in person's own board: every task assigned to
+them on an open board of a project they belong to, drawn with the board's cards
+and moved with the board's drag. Three seams let an extension build on it.
+
+### Reading one person's work: `ISoloQuery.AssignedTasksAsync`
+
+```csharp
+var mine = await query.AssignedTasksAsync(ct);   // AssignedTasksDto
+```
+
+`AssignedTasksDto` carries `Tasks` and, beside them, the `Projects`, `Boards`
+(open ones only), `Labels` and `Members` those tasks need to be drawn — one
+member entry per distinct user, for avatars, not a membership list. It is
+scoped to the caller the way every `ISoloQuery` read is, and empty for an
+anonymous caller or outside a request. Membership is the filter, not the
+assignment: a person removed from a project stops seeing its tasks even where
+an assignment row survives.
+
+The browser reads the same shape from core at `GET api/users/me/tasks`, through
+`ISoloClientApi`:
+
+```csharp
+var mine = await Api.GetAsync<AssignedTasksDto>("api/users/me/tasks", ct);
+```
+
+### Sections above the personal board
+
+```csharp
+[DashboardSection("Your roadmap", Order = 10)]
+public sealed class PersonalRoadmap : ComponentBase { … }
+```
+
+Core renders each section above the board under a collapsible header drawn
+from the title, and remembers per person whether they folded it away. A
+collapsed section is not rendered at all, so load inside the component rather
+than ahead of it. Components receive no parameters: the page is the signed-in
+person's, and `api/users/me/tasks` is theirs to fetch. As with every section,
+each has its own error boundary and sections order by `Order`, then extension id.
+
+Task card contributions (`[TaskCardExtension]`) render on the dashboard's cards
+as on a board's; board column contributions do not, as there is no one board
+for them to describe.
+
+### Staying current: `BoardHubConstants.AssignedTasksTopic`
+
+Core's own user topic, `"solo:assigned-tasks"`, is nudged whenever a task
+assigned to the person changes — including being assigned to or taken off
+them, a sub-task of it, or the board, labels or project around one. `Kind` is
+the entity type (`EntityTypes.Task`, `EntityTypes.SubTask`, `EntityTypes.Board`,
+`EntityTypes.Label`, `EntityTypes.Project`) and `Data` the entity id. Like every
+topic it is a prompt to refetch, and the connection that made the change is
+left out.
+
+```csharp
+_nudges = await Live.SubscribeUserAsync(BoardHubConstants.AssignedTasksTopic,
+    message => InvokeAsync(ReloadAsync));
+```

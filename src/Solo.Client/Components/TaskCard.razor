@@ -2,7 +2,21 @@
     A card is: name, label, deadline countdown, assignees, sub-task progress,
     presence, and whatever extensions add beside the countdown. It flashes its
     outline once when a remote change lands on it.
+
+    Off its own board — on the Your Tasks dashboard — it also wears a tab naming
+    the project and board it came from, which is the way back to that board.
 *@
+@if (Origin is not null)
+{
+    @* Outside the paper, so the tab's click is a navigation and never a drawer
+       open; stopPropagation covers the slot's context menu as well. *@
+    <a class="kanban-card__origin" href="@Origin.Href" @onclick:stopPropagation
+       aria-label="@($"Open {Origin.BoardName} in {Origin.ProjectName}")">
+        <span class="kanban-card__origin-name">@Origin.ProjectName</span>
+        <span class="kanban-card__origin-dot" aria-hidden="true">▪</span>
+        <span class="kanban-card__origin-name">@Origin.BoardName</span>
+    </a>
+}
 <MudPaper Elevation="1"
           Class="@CardClass"
           Style="@CardStyle"
@@ -115,6 +129,10 @@
     [Parameter]
     public bool CanWrite { get; set; }
 
+    /// <summary>Where the card came from, when it is shown off its own board; null on the board itself.</summary>
+    [Parameter]
+    public TaskOrigin? Origin { get; set; }
+
     /// <summary>
     /// Components extensions contribute to every card (<c>[TaskCardExtension]</c>),
     /// found once by the board rather than by each of its cards.
@@ -193,9 +211,11 @@
         get
         {
             var days = DaysLeft;
+            // Parenthesised: newer Razor compilers read a bare "< -1" at the start
+            // of a switch arm as the opening of a tag.
             var when = days switch
             {
-                < -1 => $"overdue by {-days} days",
+                (< -1) => $"overdue by {-days} days",
                 -1 => "overdue by 1 day",
                 0 => "due today",
                 1 => "1 day left",
@@ -210,6 +230,7 @@
         "kanban-card pa-2" +
         (ShowDeadline ? " kanban-card--deadline" : string.Empty) +
         (IsFinished ? " kanban-card--finished" : string.Empty) +
+        (Origin is not null ? " kanban-card--tabbed" : string.Empty) +
         (Pulse ? " solo-pulse" : string.Empty);
 
     private string? CardStyle =>

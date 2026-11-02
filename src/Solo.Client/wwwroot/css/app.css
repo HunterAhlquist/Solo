@@ -666,6 +666,105 @@ code {
     gap: 0.25rem;
 }
 
+/* The tab a card wears off its own board (the Your Tasks dashboard): the
+   project and board it came from, and the way back to that board. It sits on
+   the card like a folder tab — surface-coloured, its bottom edge swallowed by
+   the card's top border, the corner under it squared off — so the two read as
+   one object under the drag. Overflow clips each name separately, so a long
+   project name can't push the board name out of sight. */
+.kanban-card__origin {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: calc(100% - 1rem);
+    margin-bottom: -1px;
+    position: relative;
+    z-index: 1;
+    padding: 0.1rem 0.6rem 0.15rem;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--mud-palette-text-secondary);
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    border-bottom: none;
+    border-radius: var(--mud-default-borderradius) var(--mud-default-borderradius) 0 0;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.kanban-card__origin:hover,
+.kanban-card__origin:focus-visible {
+    color: var(--mud-palette-primary);
+    border-color: var(--mud-palette-primary);
+    text-decoration: none;
+}
+
+.kanban-card__origin-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 2ch;
+}
+
+.kanban-card__origin-dot {
+    flex-shrink: 0;
+    font-size: 0.6rem;
+    opacity: 0.7;
+}
+
+.kanban-card--tabbed {
+    border-top-left-radius: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Your Tasks: the personal board. One lane, no gutter — there is no epic to
+   name beside a column that mixes every board — so the two grids that leave a
+   gutter column for the lane's title collapse to the columns alone.
+   --------------------------------------------------------------------------- */
+.kanban--personal .kanban-header,
+.kanban--personal .kanban-lane {
+    grid-template-columns: 1fr;
+}
+
+/* An extension's section above the personal board (a roadmap), folded with
+   its own header. The header is a real button so it keys and reads as one. */
+.dashboard-section {
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    background: var(--mud-palette-background);
+    margin-bottom: 0.75rem;
+}
+
+.dashboard-section__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    background: none;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--mud-default-borderradius);
+}
+
+.dashboard-section__header:hover {
+    background: var(--mud-palette-action-default-hover);
+}
+
+.dashboard-section__title.mud-typography-h2 {
+    font-size: 1.2rem;
+    line-height: 1.3;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-section__body {
+    padding: 0.6rem;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
 /* Assignees take the remaining editor width beside the fixed deadline field. */
 .detail-drawer__ownership {
     display: grid;
