@@ -10,13 +10,13 @@ function toggle(state,kind,url){return state.update(toggleFormat(state,kind,url)
 const shown=state=>{const {from,to}=state.selection.main,doc=state.doc.toString();return doc.slice(0,from)+'{'+doc.slice(from,to)+'}'+doc.slice(to);};
 test('a caret reports no formatting',()=>{assert.equal(formatState(EditorState.create({doc:'text',extensions:markdownEditing()})),null);});
 test('each style wraps the selection and keeps the text selected',()=>{
-    for(const [kind,expected] of [['bold','a **{word}** b'],['italic','a *{word}* b'],['underline','a <u>{word}</u> b'],['highlight','a =={word}== b'],['link','a [{word}](https://x.test) b']]){
+    for(const [kind,expected] of [['bold','a **{word}** b'],['italic','a *{word}* b'],['highlight','a =={word}== b'],['link','a [{word}](https://x.test) b']]){
         const state=toggle(editor('a {word} b'),kind,'https://x.test');
         assert.equal(shown(state),expected,kind);assert.equal(formatState(state)[kind],true,kind);
     }
 });
 test('toggling a style that covers the selection removes it',()=>{
-    for(const marked of ['**{word}**','{**word**}','_{word}_','<u>{word}</u>','=={word}==','[{word}](https://x.test)']){
+    for(const marked of ['**{word}**','{**word**}','_{word}_','=={word}==','[{word}](https://x.test)']){
         const state=editor(marked),kind=Object.entries(formatState(state)).find(([,on])=>on)[0];
         assert.equal(toggle(state,kind).doc.toString(),'word',marked);
     }
@@ -39,7 +39,7 @@ test('a multi-line selection is styled only when every line is',()=>{
 });
 test('styles nest',()=>{
     const state=toggle(toggle(editor('{word}'),'bold'),'italic');
-    assert.deepEqual(formatState(state),{bold:true,italic:true,underline:false,highlight:false,link:false});
+    assert.deepEqual(formatState(state),{bold:true,italic:true,highlight:false,link:false});
     assert.equal(toggle(state,'bold').doc.toString(),'*word*');
 });
 test('link targets with spaces or parentheses are wrapped in angle brackets',()=>{
@@ -49,5 +49,4 @@ test('highlight needs non-space text on both sides and leaves === alone',()=>{
     const names=doc=>{const list=[];syntaxTree(EditorState.create({doc,extensions:markdownEditing()})).iterate({enter:n=>{list.push(n.name);}});return list;};
     assert.ok(names('==a==').includes('Highlight'));
     for(const doc of ['== a ==','===a===','a == b'])assert.ok(!names(doc).includes('Highlight'),doc);
-    assert.ok(names('<u>a</u>').includes('Underline'));
 });

@@ -180,13 +180,12 @@
     [JSInvokable] public Task Focus(bool focused)=>!Live.IsConnected?Task.CompletedTask:Live.SetPresenceAsync(ProjectId,Topic,focused&&CanWrite?PresenceMode.Editing:PresenceMode.Viewing);
     [JSInvokable] public async Task Copy(string markdown,string seq,HeadingDto[] headings){try{await Api.SendAsync(HttpMethod.Put,$"api/ext/design-docs/projects/{ProjectId}/vaults/{Note.VaultId}/notes/{Note.Id}/copy",new CopyRequest(markdown,headings,seq));}catch(SoloApiException e){await Status(e.Message);}}
     // What the editor's selection already has; null with no selection, which hides the panel.
-    private sealed record FormatState(bool Bold,bool Italic,bool Underline,bool Highlight,bool Link);
+    private sealed record FormatState(bool Bold,bool Italic,bool Highlight,bool Link);
     private FormatState? _format;
     private static readonly System.Text.Json.JsonSerializerOptions FormatJson=new(System.Text.Json.JsonSerializerDefaults.Web);
     private static readonly (string Id,string Label,string Icon,Func<FormatState,bool> Active)[] FormatStyles=[
         ("bold","Bold",Icons.Material.Filled.FormatBold,f=>f.Bold),
         ("italic","Italic",Icons.Material.Filled.FormatItalic,f=>f.Italic),
-        ("underline","Underline",Icons.Material.Filled.FormatUnderlined,f=>f.Underline),
         ("highlight","Highlight",Icons.Material.Filled.BorderColor,f=>f.Highlight),
         ("link","Link",Icons.Material.Filled.Link,f=>f.Link),
     ];

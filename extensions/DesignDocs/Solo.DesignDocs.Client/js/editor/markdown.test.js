@@ -13,4 +13,4 @@ test('URL safety matches the shared .NET fixture including Unicode whitespace',a
     const {readFile}=await import('node:fs/promises');const cases=JSON.parse(await readFile(new URL('../../../../../tests/fixtures/markdown-safe-urls.json',import.meta.url),'utf8'));
     for(const item of cases)assert.equal(isSafeUrl(item.url),item.safe,JSON.stringify(item.url));
 });
-test('highlight and underline markup is left out of heading text and slugs',()=>{assert.deepEqual(headings('# ==Key== <u>rules</u>').map(h=>[h.text,h.slug]),[['Key rules','key-rules']]);});
+test('highlight markup is left out of heading text and slugs',()=>{assert.deepEqual(headings('# ==Key== rules').map(h=>[h.text,h.slug]),[['Key rules','key-rules']]);});

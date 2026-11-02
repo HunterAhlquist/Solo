@@ -164,7 +164,6 @@
 .design-docs-note-format-styles { display:flex; }
 .design-docs-note-format-palette .is-selected { background:var(--mud-palette-action-default-hover); }
 .design-docs-highlight { background:color-mix(in srgb,var(--mud-palette-warning) 35%,transparent); border-radius:2px; }
-.design-docs-underline { text-decoration:underline; }
 
 .design-docs-heading > .mud-typography { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .design-docs-list-marker { display:inline-block; text-align:center; min-width:1ch; color:inherit; }

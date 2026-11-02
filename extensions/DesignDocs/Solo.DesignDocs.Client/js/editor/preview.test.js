@@ -68,10 +68,10 @@ test('note links support escaped title brackets and markdown paths containing sp
     assert.deepEqual(links.map(x=>x.widget.label),['Plan [v2]','More']);
 });
 
-test('highlight and underline render with their markup hidden off the caret line',()=>{
-    const doc='==marked== and <u>under</u>\n\nbody',field=livePreview({},{});
+test('highlight renders with its markup hidden off the caret line',()=>{
+    const doc='==marked== text\n\nbody',field=livePreview({},{});
     const state=anchor=>EditorState.create({doc,selection:{anchor},extensions:[markdownEditing(),EditorView.editable.of(true),field]});
     const decorations=anchor=>{const marks=[],hidden=[];state(anchor).field(field).between(0,doc.length,(from,to,value)=>{if(value.spec.class)marks.push(value.spec.class);else if(value.isReplace&&!value.spec.widget)hidden.push(doc.slice(from,to));});return {marks,hidden};};
-    assert.deepEqual(decorations(doc.length),{marks:['design-docs-highlight','design-docs-underline'],hidden:['==','==','<u>','</u>']});
+    assert.deepEqual(decorations(doc.length),{marks:['design-docs-highlight'],hidden:['==','==']});
     assert.deepEqual(decorations(0).hidden,[]);
 });

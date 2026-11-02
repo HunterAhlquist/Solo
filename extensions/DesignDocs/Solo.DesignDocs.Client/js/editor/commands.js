@@ -13,6 +13,6 @@ export const markdownEditing=()=>[
     markdown({addKeymap:false,extensions:inlineSyntax}),indentUnit.of('    '),
     keymap.of([{key:'Enter',run:insertNewlineContinueMarkupCommand({nonTightLists:false})},
         {key:'Backspace',run:deleteMarkupBackward},indentWithTab,
-        {key:'Mod-b',run:formatCommand('bold')},{key:'Mod-i',run:formatCommand('italic')},{key:'Mod-u',run:formatCommand('underline')},
+        {key:'Mod-b',run:formatCommand('bold')},{key:'Mod-i',run:formatCommand('italic')},
         ...yUndoManagerKeymap,...defaultKeymap]),
 ];

@@ -34,7 +34,7 @@ public sealed class NoteFormatComponentTests : ComponentTestBase
         cut.WaitForState(()=>live.Held.Any(h=>h.Topic==DocTopics.Vault(vault)));
         return (dialogs,cut,editor);
     }
-    private static string State(bool bold=false,bool link=false)=>System.Text.Json.JsonSerializer.Serialize(new{bold,italic=false,underline=false,highlight=false,link});
+    private static string State(bool bold=false,bool link=false)=>System.Text.Json.JsonSerializer.Serialize(new{bold,italic=false,highlight=false,link});
     private static bool Sent(BunitJSModuleInterop js,string kind,string? url)=>
         js.Invocations.Any(i=>i.Identifier=="format"&&(string?)i.Arguments[0]==kind&&(string?)i.Arguments[1]==url);
 

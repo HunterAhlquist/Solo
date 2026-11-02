@@ -69,12 +69,10 @@ Each button turns a style on for the selection, or off when the whole selection 
 |---|---|---|
 | **Bold** | `**text**` | **Ctrl+B** or **⌘B** |
 | **Italic** | `*text*` | **Ctrl+I** or **⌘I** |
-| **Underline** | `<u>text</u>` | **Ctrl+U** or **⌘U** |
 | **Highlight** | `==text==` | |
 | **Link** | `[text](url)` | |
 
 **Link** asks for an address; on a link it removes the link and keeps the text.
-Markdown has no underline, so the panel writes the `<u>` tag that Obsidian also renders.
 `==highlight==` is extended Markdown: Obsidian renders it, but some other Markdown apps show the equals signs.
 
 ## Link notes and tasks
