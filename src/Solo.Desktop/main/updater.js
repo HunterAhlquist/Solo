@@ -154,10 +154,9 @@ function registerUpdater({ getWindow, webPreferences: preferences = {} }) {
         // waits. Declining leaves nothing downloaded and nothing scheduled.
         const { response } = await show({
             type: 'info',
-            message: `${app.getName()} ${info.version} is available.`,
-            detail: `You have ${app.getVersion()}. Downloading is about ` +
-                `${describeSize(info.files)}; the update installs when you quit.`,
-            buttons: ['Download', 'Not Now'],
+            message: `Solo Desktop ${app.getVersion()}`,
+            detail: `Solo Desktop ${info.version} is available, would you like to update?`,
+            buttons: ['Update Now', 'Not Now'],
             defaultId: 0,
             cancelId: 1,
         });
@@ -295,17 +294,6 @@ function setProgress(win, value) {
     if (win && !win.isDestroyed()) {
         win.setProgressBar(value);
     }
-}
-
-// electron-updater reports the files it would fetch; the primary one is what
-// actually downloads. Falls back to saying nothing rather than guessing.
-function describeSize(files) {
-    const size = Array.isArray(files) ? files.find(file => file?.size > 0)?.size : null;
-    if (!size) {
-        return 'a few hundred megabytes';
-    }
-
-    return `${Math.round(size / 1024 / 1024)} MB`;
 }
 
 module.exports = { registerUpdater, checkForUpdates, unsupportedReason };
