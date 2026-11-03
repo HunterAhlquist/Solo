@@ -71,9 +71,16 @@ function build(view, bridge, images) {
         const [target,label]=match[1].split('|',2),from=match.index,to=from+match[0].length;
         ranges.push(Decoration.replace({widget:new WikiLink(target,label??target,bridge)}).range(from,to));embedded.push({from,to});
     }
+    const quoteDepth=new Map();
     syntaxTree(view.state).iterate({enter(node) {
         if(embedded.some(e=>node.from>=e.from&&node.to<=e.to))return false;
         const line = doc.lineAt(node.from);
+        // Every line of a quote gets a bar, lazy continuation lines (no '>') included.
+        if(node.name==='Blockquote')for(let n=line.number;n<=doc.lineAt(node.to).number;n++)quoteDepth.set(n,(quoteDepth.get(n)??0)+1);
+        if(node.name==='QuoteMark'&&!cursorLines.has(line.number)){
+            const separator=/^[ \t]?/.exec(doc.sliceString(node.to,line.to))[0].length;
+            ranges.push(Decoration.replace({}).range(node.from,node.to+separator));
+        }
         if (/^(ATX|Setext)Heading[1-6]$/.test(node.name)) ranges.push(Decoration.line({class:`design-docs-h${node.name.at(-1)}`}).range(line.from));
         if (node.name === 'StrongEmphasis') ranges.push(Decoration.mark({class:'design-docs-strong'}).range(node.from,node.to));
         if (node.name === 'Emphasis') ranges.push(Decoration.mark({class:'design-docs-emphasis'}).range(node.from,node.to));
@@ -100,6 +107,7 @@ function build(view, bridge, images) {
             ranges.push(Decoration.replace({}).range(node.from,node.to+separator));
         }
     }});
+    for(const [number,depth] of quoteDepth)ranges.push(Decoration.line({class:'design-docs-quote',attributes:{style:`--design-docs-quote-depth:${depth}`}}).range(doc.line(number).from));
     return Decoration.set(ranges, true);
 }
 export const livePreview = (bridge,images) => StateField.define({
