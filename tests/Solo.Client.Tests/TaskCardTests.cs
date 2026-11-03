@@ -41,6 +41,23 @@ public class TaskCardTests : ComponentTestBase
     }
 
     [Fact]
+    public void An_epic_line_sits_above_the_title_only_when_the_origin_has_one()
+    {
+        var placed = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task())
+            .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN", "Act One • Boss")));
+        var line = placed.Find(".kanban-card .kanban-card__epic");
+        Assert.Equal("Act One • Boss", line.TextContent);
+        Assert.True(placed.Markup.IndexOf("kanban-card__epic", StringComparison.Ordinal) <
+                    placed.Markup.IndexOf(">Task<", StringComparison.Ordinal));
+
+        var loose = Render<TaskCard>(p => p
+            .Add(c => c.Task, TestData.Task())
+            .Add(c => c.Origin, new TaskOrigin("Solo", "Main", "projects/SOLO/boards/MAIN")));
+        Assert.Empty(loose.FindAll(".kanban-card__epic"));
+    }
+
+    [Fact]
     public void The_tab_wears_the_cards_deadline_tint_and_its_pulse()
     {
         var due = Render<TaskCard>(p => p

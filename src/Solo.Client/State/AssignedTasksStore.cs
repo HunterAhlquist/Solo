@@ -81,7 +81,10 @@ public sealed class AssignedTasksStore(ApiClient api, ISoloLiveTopics live, User
             return;
         }
 
-        if (Work.Boards.All(b => b.Id != task.BoardId))
+        // A board or epic the payload doesn't carry yet has nothing to draw the
+        // card's tab or epic line from, so take the whole payload again.
+        if (Work.Boards.All(b => b.Id != task.BoardId) ||
+            (task.EpicId is { } epicId && (Work.Epics ?? []).All(e => e.Id != epicId)))
         {
             ScheduleRefetch();
             return;

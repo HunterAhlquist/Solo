@@ -85,10 +85,15 @@ namespace Solo.Shared.Extensibility;
 /// task picker over the signed-in person's assigned tasks from every project,
 /// for a page that collects someone's own work. It is client-only, so a package
 /// needs 1.14 only in <c>soloClientVersion</c>.</para>
+/// <para>1.15.0 adds <c>Epics</c> and <c>EpicGroups</c> to
+/// <c>AssignedTasksDto</c>: the epics the caller's tasks sit under and the
+/// groups those epics belong to, so a page can say where a card lives on its
+/// board. Both halves read the record, so a package using them needs 1.15 in
+/// whichever range covers the half that does.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.14.0";
+    public const string Current = "1.15.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

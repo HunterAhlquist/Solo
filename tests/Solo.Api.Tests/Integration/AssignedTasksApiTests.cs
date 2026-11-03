@@ -143,6 +143,32 @@ public sealed class AssignedTasksApiTests(PostgresFixture postgres) : IAsyncLife
     }
 
     [SkippableFact]
+    public async Task MyTasks_CarryTheEpicsAndGroupsTheTasksSitUnder()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (_, board) = await ProjectWithBobAsync("Epics", "EPICS");
+        var group = await _admin.PostJson<EpicGroupDto>($"/api/boards/{board.Id}/groups", new { name = "Act One" });
+        var grouped = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Boss", groupId = group.Id });
+        var loose = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Odd jobs" });
+        await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Nobody's epic" });
+
+        async Task<TaskDto> InEpicAsync(EpicDto epic, string name)
+        {
+            var task = await _admin.PostJson<TaskDto>($"/api/boards/{board.Id}/tasks", new { name, epicId = epic.Id });
+            return await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { _bobId } });
+        }
+
+        await InEpicAsync(grouped, "Phase two");
+        await InEpicAsync(loose, "Sweep");
+        await TaskForBobAsync(board, "Ad hoc");
+
+        var mine = await _bob.GetJson<AssignedTasksDto>("/api/users/me/tasks");
+        Assert.Equal(new[] { grouped.Id, loose.Id }.Order(), mine.Epics!.Select(e => e.Id).Order());
+        Assert.Equal(group.Id, mine.Epics!.Single(e => e.Id == grouped.Id).GroupId);
+        Assert.Equal([group.Id], mine.EpicGroups!.Select(g => g.Id));
+    }
+
+    [SkippableFact]
     public async Task AnExtension_ReadsTheSameWork_ScopedToItsCaller()
     {
         postgres.SkipUnlessDockerAvailable();
@@ -219,6 +245,11 @@ public sealed class AssignedTasksApiTests(PostgresFixture postgres) : IAsyncLife
         // the hub never crosses one person's topic into another's.
         await Task.Delay(300);
         Assert.False(adminHeard, "the admin heard nudges meant for Bob");
+
+        // An epic or group can be named above anyone's card on the board, so a
+        // change to one reaches every member, Bob included.
+        var epic = await _admin.PostJson<EpicDto>($"/api/boards/{board.Id}/epics", new { name = "Arc" });
+        Assert.Equal((EntityTypes.Epic, epic.Id.ToString()), ((await NextAsync(8)).Kind, (await NextAsync(8)).Data));
     }
 
     private HubConnection Connect(string sub, string email, string name) =>

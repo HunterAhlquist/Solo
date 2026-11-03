@@ -178,6 +178,19 @@ else
     /// Project, then board, then the board's own order: the tab on each card
     /// reads as a heading when its neighbours share it.
     /// </summary>
+    private static string? EpicLine(
+        TaskDto task, Dictionary<Guid, EpicDto> epics, Dictionary<Guid, EpicGroupDto> groups)
+    {
+        if (task.EpicId is not { } epicId || !epics.TryGetValue(epicId, out var epic))
+        {
+            return null;
+        }
+
+        return epic.GroupId is { } groupId && groups.TryGetValue(groupId, out var group)
+            ? $"{group.Name} • {epic.Name}"
+            : epic.Name;
+    }
+
     private void Rebuild()
     {
         var work = Store.Work;
@@ -190,11 +203,14 @@ else
 
         var boards = work.Boards.ToDictionary(b => b.Id);
         var projects = work.Projects.ToDictionary(p => p.Id);
+        var epics = (work.Epics ?? []).ToDictionary(e => e.Id);
+        var groups = (work.EpicGroups ?? []).ToDictionary(g => g.Id);
         _cards = work.Tasks
             .Select(task => boards.TryGetValue(task.BoardId, out var board) &&
                             projects.TryGetValue(board.ProjectId, out var project)
                 ? new Card(task, board, project,
-                    new TaskOrigin(project.Name, board.Name, $"projects/{project.Alias}/boards/{board.Alias}"),
+                    new TaskOrigin(project.Name, board.Name, $"projects/{project.Alias}/boards/{board.Alias}",
+                        EpicLine(task, epics, groups)),
                     ProjectNavStore.CanWrite(project))
                 : null)
             .OfType<Card>()
