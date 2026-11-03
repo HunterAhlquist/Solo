@@ -5,6 +5,7 @@ import { EditorView } from '@codemirror/view';
 import { yCollab } from 'y-codemirror.next';
 import { Provider } from '../sync/provider.js';
 import { livePreview } from './preview.js';
+import { hangingIndent } from './hanging-indent.js';
 import { headings } from './markdown.js';
 import { Images } from '../media/images.js';
 import { protectMedia, mediaEdit } from './media-protection.js';
@@ -49,7 +50,7 @@ export function mountEditor(root, bridge, options) {
     const paletteMeasure={
         read(current){
             if(!palette||!noteBody)return null;
-            const content=current.contentDOM,style=getComputedStyle(content),line=content.querySelector('.cm-line');
+            const content=current.contentDOM,style=getComputedStyle(content),line=content.querySelector('.cm-line:not(.design-docs-hanging)');
             const columnLeft=content.getBoundingClientRect().left+parseFloat(style.paddingLeft)+(line?parseFloat(getComputedStyle(line).paddingLeft):0);
             return caretPalettePosition(current.coordsAtPos(current.state.selection.main.head),noteBody.getBoundingClientRect(),current.scrollDOM.getBoundingClientRect(),{width:palette.offsetWidth,height:palette.offsetHeight},columnLeft);
         },
@@ -97,7 +98,7 @@ export function mountEditor(root, bridge, options) {
     view = new EditorView({parent:editorRoot,state:EditorState.create({extensions:[
         EditorView.contentAttributes.of({spellcheck:"true"}),
         ...(needsSpellingFallback(navigator)?[localSpelling(bridge)]:[]),
-        ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();if(update.selectionSet||update.docChanged||update.focusChanged||update.geometryChanged||update.viewportChanged)reportFormat();}),EditorView.lineWrapping,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
+        ...markdownEditing(),EditorView.updateListener.of(update=>{if(update.selectionSet||update.docChanged||update.geometryChanged||update.viewportChanged)positionPalette();if(update.selectionSet||update.docChanged||update.focusChanged||update.geometryChanged||update.viewportChanged)reportFormat();}),EditorView.lineWrapping,hangingIndent,preview,protectMedia(preview,message=>bridge.invokeMethodAsync('Notice',message)),
         // Inline presence widgets split words for the native spellchecker.
         yCollab(provider.doc.getText('markdown'),null),textPresence(provider),
         readOnly.of([EditorState.readOnly.of(true),EditorView.editable.of(false)]),

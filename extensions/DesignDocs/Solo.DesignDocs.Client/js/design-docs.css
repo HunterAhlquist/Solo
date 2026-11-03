@@ -171,6 +171,10 @@
 .design-docs-heading > .mud-typography { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .design-docs-list-marker { display:inline-block; text-align:center; min-width:1ch; color:inherit; }
 .design-docs-list-marker.is-ordered { font-variant-numeric:tabular-nums; text-align:right; }
+/* Hanging indent for wrapped rows (editor/hanging-indent.js). The 6px is CodeMirror's own .cm-line
+   padding; padding rather than margin keeps its selection layers lined up. Inline blocks inherit text-indent. */
+.design-docs-editor .cm-line.design-docs-hanging { padding-left:calc(6px + var(--design-docs-hang)); text-indent:calc(-1 * var(--design-docs-hang)); }
+.design-docs-editor .cm-line.design-docs-hanging * { text-indent:0; }
 
 .design-docs-hierarchy .mud-treeview-group { margin-inline-start:12px; }
 .design-docs-tree-name[data-doc-drag] { cursor:grab; touch-action:pan-y; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
