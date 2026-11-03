@@ -48,8 +48,10 @@ and why the newest release always carries a channel file.
 spending that before the user has agreed is not a reasonable default. The flow
 is: check on startup (eight seconds in, so the window paints first) and from
 **Check for Updates…** in the menu → a dialog naming the version and the
-download size → download on confirmation, with progress on the dock or taskbar
-icon → install on quit, or restart now.
+download size → download on confirmation, in a progress window with a Cancel
+button (the dock or taskbar icon shows progress too) → install on quit, or
+restart now. Closing the progress window leaves the download running, and
+**Check for Updates…** brings the window back.
 
 `autoInstallOnAppQuit` stays on, so an update that was downloaded applies at the
 next quit whether or not the user took the "Restart Now" offer.
