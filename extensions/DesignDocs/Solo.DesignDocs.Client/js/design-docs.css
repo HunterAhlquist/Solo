@@ -175,6 +175,7 @@
    padding; padding rather than margin keeps its selection layers lined up. Inline blocks inherit text-indent. */
 .design-docs-editor .cm-line.design-docs-hanging { padding-left:calc(6px + var(--design-docs-hang)); text-indent:calc(-1 * var(--design-docs-hang)); }
 .design-docs-editor .cm-line.design-docs-hanging * { text-indent:0; }
+.design-docs-editor .cm-line.design-docs-quote.design-docs-hanging { padding-left:calc(6px + var(--design-docs-quote-depth) * var(--design-docs-quote-step) + var(--design-docs-hang)); }
 
 .design-docs-hierarchy .mud-treeview-group { margin-inline-start:12px; }
 .design-docs-tree-name[data-doc-drag] { cursor:grab; touch-action:pan-y; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }

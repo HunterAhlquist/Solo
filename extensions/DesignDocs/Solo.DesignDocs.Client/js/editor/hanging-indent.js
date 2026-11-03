@@ -4,12 +4,13 @@ import { syntaxTree } from '@codemirror/language';
 
 const leadingSpace = text => /^[ \t]*/.exec(text)[0].length;
 
-// Where a line's text begins once its indentation and list marker are skipped.
-// Returns line.from when there is nothing to hang wrapped rows from.
+// Where a line's text begins once its indentation, quote markers and list
+// marker are skipped. Returns line.from when there is nothing to hang wrapped rows from.
 export function hangingStart(state, line) {
+    const tree = syntaxTree(state);
     let start = line.from + leadingSpace(line.text);
-    const node = start < line.to ? syntaxTree(state).resolveInner(start, 1) : null;
-    if (node?.name === 'ListMark' && node.from === start) start = node.to + leadingSpace(state.doc.sliceString(node.to, line.to));
+    for (let node; start < line.to && (node = tree.resolveInner(start, 1)).from === start && /^(QuoteMark|ListMark)$/.test(node.name);)
+        start = node.to + leadingSpace(state.doc.sliceString(node.to, line.to));
     return start < line.to ? start : line.from;
 }
 
