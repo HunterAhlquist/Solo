@@ -1334,6 +1334,51 @@ html[data-solo-input="pen"] .mud-tooltip {
 }
 
 /* ---------------------------------------------------------------------------
+   Admin settings — the extensions list
+   --------------------------------------------------------------------------- */
+/* A side list on a wide screen, which grows downward however many extensions
+   there are; below md it is hidden and a dropdown above the panel picks
+   instead, so the panel keeps the full width. */
+.extension-tabs {
+    display: flex;
+    gap: 1rem;
+}
+
+.extension-tabs__list {
+    flex: 0 0 12rem;
+    align-self: flex-start;
+    padding: 0;
+    border-right: 1px solid var(--mud-palette-lines-default);
+}
+
+.extension-tabs__list .mud-list-item-text p {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.extension-tabs__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* An update is waiting: the same blue as the "is available" line. */
+.extension-tabs__dot {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background-color: var(--mud-palette-info);
+}
+
+.extension-tabs__panels {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
    Restart overlay — the whole app, while the instance restarts
    --------------------------------------------------------------------------- */
 /* Opaque, and above MudBlazor's dialogs, snackbars and the context menu: every

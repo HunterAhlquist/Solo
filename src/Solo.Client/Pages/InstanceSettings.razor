@@ -193,18 +193,47 @@ else
                 <MudText Typo="Typo.body2" Color="Color.Secondary">No extensions installed.</MudText>
             }
 
-            @* A tab each, so one extension with a long settings panel doesn't push
-               every other one down the page. Kept alive, so switching tabs
-               doesn't throw away a half-edited settings form. *@
+            @* One extension at a time, so one with a long settings panel doesn't
+               push every other one down the page. Picked from a list down the
+               side on a wide screen, which stays readable however many there
+               are, and from a dropdown on a narrow one, where a side list
+               would leave the panel no room. Every panel stays rendered and
+               the others are hidden, so switching doesn't throw away a
+               half-edited settings form. *@
             @if (_extensions.Extensions.Count > 0)
             {
-                <MudTabs Elevation="0" KeepPanelsAlive="true" TabPanelsClass="pt-4">
+                <MudSelect T="string" Value="@SelectedExtension" ValueChanged="@(id => _selectedExtension = id)"
+                           Label="Extension" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Class="extension-picker d-md-none mb-4">
                     @foreach (var extension in _extensions.Extensions)
                     {
-                        <MudTabPanel Text="@(extension.DisplayName ?? extension.ExtensionId)"
-                                     BadgeDot="@(UpdateFor(extension.ExtensionId) is { Compatible: true })"
-                                     BadgeColor="Color.Info">
-                            <div class="extension-entry">
+                        <MudSelectItem T="string" Value="@extension.ExtensionId">
+                            @(extension.DisplayName ?? extension.ExtensionId)@(HasUpdate(extension) ? " · update available" : "")
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+
+                <div class="extension-tabs">
+                    <MudList T="string" SelectedValue="@SelectedExtension"
+                             SelectedValueChanged="@(id => _selectedExtension = id)"
+                             SelectionMode="SelectionMode.SingleSelection" Dense="true"
+                             Class="extension-tabs__list d-none d-md-block">
+                        @foreach (var extension in _extensions.Extensions)
+                        {
+                            <MudListItem T="string" Value="@extension.ExtensionId">
+                                <span class="extension-tabs__name">@(extension.DisplayName ?? extension.ExtensionId)</span>
+                                @if (HasUpdate(extension))
+                                {
+                                    <span class="extension-tabs__dot" title="Update available"></span>
+                                }
+                            </MudListItem>
+                        }
+                    </MudList>
+
+                    <div class="extension-tabs__panels">
+                        @foreach (var extension in _extensions.Extensions)
+                        {
+                            <div class="extension-entry" hidden="@(extension.ExtensionId != SelectedExtension)">
                                 @* Top-aligned, so the buttons sit level with the
                                    version line whatever lies below it. *@
                                 <div class="d-flex align-start gap-2">
@@ -302,9 +331,9 @@ else
                                     }
                                 }
                             </div>
-                        </MudTabPanel>
-                    }
-                </MudTabs>
+                        }
+                    </div>
+                </div>
             }
 
             @foreach (var failure in _extensions.Failures)
@@ -338,6 +367,16 @@ else
 
     /// <summary>Not an extension id: those start with a letter or digit.</summary>
     private const string AllExtensions = "*";
+
+    private string? _selectedExtension;
+
+    /// <summary>The one picked, or the first until one is — or if the picked one has gone.</summary>
+    private string? SelectedExtension =>
+        _extensions?.Extensions.FirstOrDefault(e => e.ExtensionId == _selectedExtension)?.ExtensionId
+        ?? _extensions?.Extensions.FirstOrDefault()?.ExtensionId;
+
+    private bool HasUpdate(ExtensionRegistrationDto extension) =>
+        UpdateFor(extension.ExtensionId) is { Compatible: true };
 
     private ExtensionCatalog? Catalog => Services.GetService<ExtensionCatalog>();
 

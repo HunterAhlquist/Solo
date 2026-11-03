@@ -69,6 +69,28 @@ public class ExtensionSettingsTests : ComponentTestBase
         Assert.Empty(page.FindAll(".extension-settings"));
     }
 
+    /// <summary>
+    /// One extension at a time, but the others stay rendered: a settings form
+    /// someone was halfway through must survive a look at another extension.
+    /// </summary>
+    [Fact]
+    public void Picking_an_extension_shows_only_it_and_keeps_the_others_settings_alive()
+    {
+        var page = Render(new ExtensionAdminDto([Registration("alpha"), Registration("beta")], []),
+            CatalogFor("alpha"));
+        AngleSharp.Dom.IElement Entry(string id) =>
+            page.FindAll(".extension-entry").Single(e => e.TextContent.Contains($"ext_{id}"));
+
+        page.WaitForAssertion(() => Assert.False(Entry("alpha").HasAttribute("hidden")));
+        Assert.True(Entry("beta").HasAttribute("hidden"));
+
+        page.FindAll(".extension-tabs__list .mud-list-item").Single(i => i.TextContent.Contains("beta")).Click();
+
+        page.WaitForAssertion(() => Assert.False(Entry("beta").HasAttribute("hidden")));
+        Assert.True(Entry("alpha").HasAttribute("hidden"));
+        Assert.Single(page.FindAll(".test-settings-panel"));
+    }
+
     [Fact]
     public void A_panel_that_throws_shows_an_error_line_and_the_page_keeps_working()
     {
