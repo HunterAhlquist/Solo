@@ -246,4 +246,26 @@ public class ExtensionUpdateUiTests : ComponentTestBase
         page.WaitForAssertion(() => Assert.True(Restart.InProgress));
         Assert.Equal("Roadmap 1.1.0 installed.", StoredNotice.Message);
     }
+
+    /// <summary>
+    /// A proxy that gives up on a long batch answers for the instance, which
+    /// carries on installing and then restarts. Taking that as an error would
+    /// leave the page up for a restart nobody was told about.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.GatewayTimeout)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    public async Task A_gateway_error_is_waited_out_as_a_restart(HttpStatusCode status)
+    {
+        _http.Route("api/updates/extensions", status, (object?)null, HttpMethod.Post);
+        var page = Render(Status(Available("roadmap", "Roadmap")));
+        var dialogs = Render<MudDialogProvider>();
+
+        page.WaitForAssertion(() => Assert.Contains("Update all (1)", Buttons(page)));
+        await page.InvokeAsync(() => page.FindAll("button").Single(b => b.TextContent.Contains("Update all")).Click());
+        dialogs.WaitForAssertion(() => dialogs.FindAll("button").Single(b => b.TextContent.Trim() == "Update all and restart").Click());
+
+        page.WaitForAssertion(() => Assert.True(Restart.InProgress));
+        Assert.Empty(JSInterop.Invocations["sessionStorage.setItem"]);
+    }
 }

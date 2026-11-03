@@ -26,6 +26,7 @@ namespace Solo.Api.Controllers;
 public sealed class UpdatesController(
     UpdateChecker checker,
     ExtensionUpdateInstaller installer,
+    UpdateActivity activity,
     IHostApplicationLifetime lifetime,
     ILogger<UpdatesController> logger) : ApiControllerBase
 {
@@ -65,7 +66,7 @@ public sealed class UpdatesController(
     /// </remarks>
     [HttpPost("extensions/{extensionId}")]
     public async Task<ActionResult<ExtensionUpdateResultDto>> UpdateExtension(
-        string extensionId, UpdateExtensionRequest request, CancellationToken ct)
+        string extensionId, UpdateExtensionRequest request)
     {
         if (!string.Equals(request.ConfirmExtensionId, extensionId, StringComparison.Ordinal))
         {
@@ -81,22 +82,35 @@ public sealed class UpdatesController(
         logger.LogWarning(
             "Extension {Id} update requested by {User}.", loggedId, User.Identity?.Name);
 
-        var outcome = await installer.InstallAsync(extensionId, ct);
-        if (!outcome.Found)
+        activity.Begin();
+        var restarting = false;
+        try
         {
-            return NotFound();
-        }
+            var outcome = await installer.InstallAsync(extensionId, lifetime.ApplicationStopping);
+            if (!outcome.Found)
+            {
+                return NotFound();
+            }
 
-        if (outcome.Error is not null)
+            if (outcome.Error is not null)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Update not applied",
+                    detail: outcome.Error);
+            }
+
+            restarting = true;
+            RestartAfterResponse($"extension {loggedId} {outcome.Version}");
+            return new ExtensionUpdateResultDto(extensionId, outcome.Version!, Restarting: true);
+        }
+        finally
         {
-            return Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Update not applied",
-                detail: outcome.Error);
+            if (!restarting)
+            {
+                activity.End();
+            }
         }
-
-        RestartAfterResponse($"extension {loggedId} {outcome.Version}");
-        return new ExtensionUpdateResultDto(extensionId, outcome.Version!, Restarting: true);
     }
 
     /// <summary>
@@ -114,10 +128,17 @@ public sealed class UpdatesController(
     /// leave it waiting for whichever restart comes next. Nothing is installed
     /// beyond the ids named, which are the updates the operator was shown and
     /// confirmed.</para>
+    ///
+    /// <para>Not cancelled when the caller goes away. Several downloads can
+    /// outlast a reverse proxy's timeout, and stopping partway would leave the
+    /// packages already moved into place waiting for some later restart. The
+    /// client takes a gateway error here as a restart under way, which
+    /// <see cref="UpdateActivity"/> keeps <c>api/ready</c> from contradicting
+    /// until it is one.</para>
     /// </remarks>
     [HttpPost("extensions")]
     public async Task<ActionResult<ExtensionBulkUpdateResultDto>> UpdateExtensions(
-        UpdateExtensionsRequest request, CancellationToken ct)
+        UpdateExtensionsRequest request)
     {
         var ids = request.ExtensionIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (ids.Count == 0)
@@ -131,28 +152,40 @@ public sealed class UpdatesController(
         logger.LogWarning(
             "Update of {Count} extensions requested by {User}.", ids.Count, User.Identity?.Name);
 
+        activity.Begin();
         var installed = new List<ExtensionUpdateResultDto>();
         var failed = new List<ExtensionUpdateFailureDto>();
-        foreach (var id in ids)
+        try
         {
-            var outcome = await installer.InstallAsync(id, ct);
-            if (!outcome.Found)
+            foreach (var id in ids)
             {
-                failed.Add(new ExtensionUpdateFailureDto(id, "It is not installed on this instance."));
+                var outcome = await installer.InstallAsync(id, lifetime.ApplicationStopping);
+                if (!outcome.Found)
+                {
+                    failed.Add(new ExtensionUpdateFailureDto(id, "It is not installed on this instance."));
+                }
+                else if (outcome.Error is not null)
+                {
+                    failed.Add(new ExtensionUpdateFailureDto(id, outcome.Error));
+                }
+                else
+                {
+                    installed.Add(new ExtensionUpdateResultDto(id, outcome.Version!, Restarting: true));
+                }
             }
-            else if (outcome.Error is not null)
+        }
+        finally
+        {
+            // Whatever is on disk by now is loaded only by a restart, even if
+            // something below threw on the way to the next one.
+            if (installed.Count > 0)
             {
-                failed.Add(new ExtensionUpdateFailureDto(id, outcome.Error));
+                RestartAfterResponse($"{installed.Count} updated extensions");
             }
             else
             {
-                installed.Add(new ExtensionUpdateResultDto(id, outcome.Version!, Restarting: true));
+                activity.End();
             }
-        }
-
-        if (installed.Count > 0)
-        {
-            RestartAfterResponse($"{installed.Count} updated extensions");
         }
 
         return new ExtensionBulkUpdateResultDto(installed, failed, Restarting: installed.Count > 0);

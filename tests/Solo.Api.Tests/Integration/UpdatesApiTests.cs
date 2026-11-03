@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Solo.Api.Updates;
 using Solo.Shared.Dtos;
 using Xunit;
 
@@ -83,5 +85,26 @@ public sealed class UpdatesApiTests(PostgresFixture postgres) : IAsyncLifetime
             "/api/updates/extensions", new UpdateExtensionsRequest { ExtensionIds = ["fixture"] }, TestClients.Json);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    /// <summary>
+    /// A client whose update request timed out at a proxy polls this while the
+    /// server is still downloading; "ready" then would reload it into the
+    /// process that is about to restart.
+    /// </summary>
+    [SkippableFact]
+    public async Task Ready_IsFalse_WhileUpdatesAreInstalling()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var activity = _factory.Services.GetRequiredService<UpdateActivity>();
+        var anonymous = _factory.CreateClient();
+
+        activity.Begin();
+        var during = await anonymous.GetAsync("/api/ready");
+        activity.End();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, during.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync("/api/ready")).StatusCode);
     }
 }

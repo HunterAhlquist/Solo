@@ -601,7 +601,7 @@ else
             var result = await Api.UpdateExtensionAsync(extension.ExtensionId);
             await Restart.BeginAsync(new($"{name} {result.Version} installed.", Severity.Success));
         }
-        catch (ApiException e)
+        catch (ApiException e) when (!IsNoAnswer(e))
         {
             Snackbar.Add(e.Detail ?? "Couldn't update that extension.", Severity.Error);
             _updating = null;
@@ -659,7 +659,7 @@ else
                 ? new($"{installed} installed.", Severity.Success)
                 : new($"{installed} installed. {Describe(result.Failed)}", Severity.Warning));
         }
-        catch (ApiException e)
+        catch (ApiException e) when (!IsNoAnswer(e))
         {
             Snackbar.Add(e.Detail ?? "Couldn't update the extensions.", Severity.Error);
             _updating = null;
@@ -671,13 +671,20 @@ else
     }
 
     /// <summary>
-    /// The server can drop the connection as it goes down, which arrives as a
-    /// transport failure rather than an <see cref="ApiException"/>. The
-    /// packages were written and verified before the restart was scheduled, so
-    /// this is more likely a restart than a failure — wait for the instance
-    /// either way, and let the reloaded page show which it was.
+    /// An update request that got no answer from the instance itself. The
+    /// server can drop the connection as it goes down, and installing several
+    /// packages can outlast a reverse proxy's timeout while the server carries
+    /// on regardless; the offline handler turns a dropped connection into a 503
+    /// of its own. A restart is the likelier outcome either way, so wait for
+    /// the instance — <c>api/ready</c> stays false until the installs are done —
+    /// and let the reloaded page show which it was.
     /// </summary>
     private Task RestartedWithoutAnswerAsync() => Restart.BeginAsync(null);
+
+    private static bool IsNoAnswer(ApiException e) =>
+        e.StatusCode is System.Net.HttpStatusCode.BadGateway
+            or System.Net.HttpStatusCode.ServiceUnavailable
+            or System.Net.HttpStatusCode.GatewayTimeout;
 
     private string NameOf(string extensionId) =>
         _extensions?.Extensions.FirstOrDefault(e =>

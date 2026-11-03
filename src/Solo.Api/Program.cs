@@ -185,6 +185,7 @@ builder.Services.AddHttpClient(UpdateOptions.HttpClient, client =>
 builder.Services.AddSingleton<ReleaseFeedClient>();
 builder.Services.AddSingleton<UpdateChecker>();
 builder.Services.AddSingleton<ExtensionUpdateInstaller>();
+builder.Services.AddSingleton<UpdateActivity>();
 builder.Services.AddSingleton<PresenceRegistry>();
 builder.Services.AddSingleton<TopicRegistry>();
 builder.Services.AddSingleton<LiveMessageLimits>();
@@ -350,18 +351,20 @@ app.MapControllers();
 app.MapHub<BoardHub>(BoardHubConstants.Path);
 app.MapHealthChecks("/healthz").AllowAnonymous();
 // Whether this process is serving: true once startup has finished, and 503
-// false from the moment it begins to stop. The client polls it while the
-// instance restarts after an extension update, and reloads on the first true.
-// Kestrel only listens once the migrations and extension loading above are
-// done, so an answer at all means startup is over; the stopping half is what
-// keeps the process on its way out from passing for the one coming back.
+// false while it installs extension updates (see UpdateActivity) and from the
+// moment it begins to stop. The client polls it while the instance restarts
+// after an extension update, and reloads on the first true. Kestrel only
+// listens once the migrations and extension loading above are done, so an
+// answer at all means startup is over; the rest is what keeps the process on
+// its way out from passing for the one coming back.
 // Deliberately not /healthz, which queries the database on every call, and
 // under /api so the desktop shell proxies it to the instance.
-app.MapGet("/api/ready", (IHostApplicationLifetime lifetime, HttpResponse response) =>
+app.MapGet("/api/ready", (IHostApplicationLifetime lifetime, UpdateActivity updates, HttpResponse response) =>
 {
     response.Headers.CacheControl = "no-store";
     return lifetime.ApplicationStarted.IsCancellationRequested
            && !lifetime.ApplicationStopping.IsCancellationRequested
+           && !updates.Active
         ? Results.Ok(true)
         : Results.Json(false, statusCode: StatusCodes.Status503ServiceUnavailable);
 }).AllowAnonymous();
