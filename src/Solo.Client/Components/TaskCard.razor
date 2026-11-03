@@ -22,6 +22,11 @@
           Style="@CardStyle"
           @onclick="@(() => OnOpen.InvokeAsync(Task))">
 
+    @if (Origin?.EpicLine is { } epicLine)
+    {
+        <div class="kanban-card__epic" title="@epicLine">@epicLine</div>
+    }
+
     <div class="d-flex align-start mb-1" style="gap:.35rem">
         <MudText Typo="Typo.body2" Class="flex-grow-1">@Task.Name</MudText>
 

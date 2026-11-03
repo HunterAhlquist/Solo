@@ -1039,7 +1039,10 @@ var mine = await query.AssignedTasksAsync(ct);   // AssignedTasksDto
 
 `AssignedTasksDto` carries `Tasks` and, beside them, the `Projects`, `Boards`
 (open ones only), `Labels` and `Members` those tasks need to be drawn — one
-member entry per distinct user, for avatars, not a membership list. It is
+member entry per distinct user, for avatars, not a membership list. From
+contract 1.15 it also carries the `Epics` the tasks sit under and the
+`EpicGroups` those epics belong to; both are null from a 1.13 or 1.14 host, so
+a package whose range admits those reads them with `?? []`. It is
 scoped to the caller the way every `ISoloQuery` read is, and empty for an
 anonymous caller or outside a request. Membership is the filter, not the
 assignment: a person removed from a project stops seeing its tasks even where

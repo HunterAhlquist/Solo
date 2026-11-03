@@ -21,7 +21,7 @@ namespace Solo.Extensions;
 /// </remarks>
 public static class AssignedTasks
 {
-    public static readonly AssignedTasksDto Empty = new([], [], [], [], []);
+    public static readonly AssignedTasksDto Empty = new([], [], [], [], [], [], []);
 
     public static readonly TimeSpan FinishedKeptFor = TimeSpan.FromDays(12);
 
@@ -76,6 +76,18 @@ public static class AssignedTasks
                 m.Role, m.IsOwner, false))
             .ToListAsync(ct);
 
+        // What a card needs to say where it lives on its board: its epic, and
+        // that epic's group when it has one.
+        var epicIds = tasks.Where(t => t.EpicId != null).Select(t => t.EpicId!.Value).Distinct().ToList();
+        var epics = await db.Epics.AsNoTracking()
+            .Where(e => epicIds.Contains(e.Id))
+            .Include(e => e.Assignments)
+            .ToListAsync(ct);
+        var groupIds = epics.Where(e => e.GroupId != null).Select(e => e.GroupId!.Value).Distinct().ToList();
+        var groups = await db.EpicGroups.AsNoTracking()
+            .Where(g => groupIds.Contains(g.Id))
+            .ToListAsync(ct);
+
         return new AssignedTasksDto(
             projects,
             boards.Select(b => new BoardDto(b.Id, b.ProjectId, b.Name, b.Alias, b.Icon, b.ImageId, b.IsOpen, b.Version)).ToList(),
@@ -87,6 +99,10 @@ public static class AssignedTasks
                 t.Assignments.Select(a => a.UserId).ToList(),
                 t.SubTasks.OrderBy(s => s.Rank).Select(s => new SubTaskDto(
                     s.Id, s.TaskId, s.Name, s.LabelId, s.IsFinished, s.Rank, s.Version)).ToList(),
-                t.StartAt)).ToList());
+                t.StartAt)).ToList(),
+            epics.Select(e => new EpicDto(
+                e.Id, e.BoardId, e.Name, e.Description, e.Rank, e.Version,
+                e.Assignments.Select(a => a.UserId).ToList(), e.GroupId)).ToList(),
+            groups.Select(g => new EpicGroupDto(g.Id, g.BoardId, g.Name, g.Rank, g.Version)).ToList());
     }
 }

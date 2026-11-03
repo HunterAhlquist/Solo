@@ -93,8 +93,9 @@ public sealed class BoardNotifier(
 
     /// <summary>
     /// Whose dashboard a board-scoped change can show up on: a task's assignees
-    /// for the task and its sub-tasks, the project's members for the board and
-    /// its labels. Epics, groups and comments draw nothing there, so nobody.
+    /// for the task and its sub-tasks, the project's members for the board, its
+    /// labels, and the epics and groups named above a card. Comments draw
+    /// nothing there, so nobody.
     /// </summary>
     private async Task<IReadOnlyCollection<Guid>> DashboardsOfAsync(Guid boardId, string entityType, Guid entityId) =>
         entityType switch
@@ -104,7 +105,8 @@ public sealed class BoardNotifier(
             EntityTypes.SubTask => await db.SubTasks.AsNoTracking()
                 .Where(s => s.Id == entityId)
                 .SelectMany(s => s.Task!.Assignments).Select(a => a.UserId).ToListAsync(),
-            EntityTypes.Board or EntityTypes.Label => await db.ProjectMembers.AsNoTracking()
+            EntityTypes.Board or EntityTypes.Label or EntityTypes.Epic or EntityTypes.EpicGroup =>
+                await db.ProjectMembers.AsNoTracking()
                 .Where(m => m.UserId != null && m.Project!.Boards.Any(b => b.Id == boardId))
                 .Select(m => m.UserId!.Value).ToListAsync(),
             _ => [],

@@ -712,6 +712,18 @@ code {
     border-color: var(--mud-palette-primary);
 }
 
+/* The card's place on its own board, above the title where the board view
+   would have shown it as the lane. */
+.kanban-card__epic {
+    margin-bottom: 0.15rem;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--mud-palette-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .kanban-card__origin-name {
     overflow: hidden;
     text-overflow: ellipsis;

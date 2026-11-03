@@ -61,8 +61,12 @@ public class DashboardTests : ComponentTestBase
         Services.AddScoped<DragBridge>();
     }
 
+    private List<EpicDto> _epics = [];
+    private List<EpicGroupDto> _groups = [];
+
     private AssignedTasksDto Payload() => new(
-        [Solo, Archive], [Main, Shelf], [], [TestData.Member(TestData.MeId, "Hunter")], [_mine, _readOnly]);
+        [Solo, Archive], [Main, Shelf], [], [TestData.Member(TestData.MeId, "Hunter")], [_mine, _readOnly],
+        _epics, _groups);
 
     private void RouteServer()
     {
@@ -96,6 +100,43 @@ public class DashboardTests : ComponentTestBase
         Assert.DoesNotContain("Add", page.FindAll("button").Select(b => b.TextContent.Trim()));
         Assert.Empty(page.FindAll(".kanban-lane__gutter"));
         Assert.Equal(2, page.FindAll(".kanban-card").Count);
+        // Neither task is in an epic, so neither card has the line.
+        Assert.Empty(page.FindAll(".kanban-card__epic"));
+    }
+
+    [Fact]
+    public void A_card_names_its_group_and_epic_or_just_its_epic()
+    {
+        var group = new EpicGroupDto(Guid.NewGuid(), TestData.BoardId, "Act One", 1024m, 1);
+        var grouped = TestData.Epic(Guid.NewGuid()) with { Name = "Boss", GroupId = group.Id };
+        var loose = TestData.Epic(Guid.NewGuid()) with { Name = "Odd jobs", BoardId = OtherBoardId };
+        _epics = [grouped, loose];
+        _groups = [group];
+        _mine = _mine with { EpicId = grouped.Id };
+        _readOnly = _readOnly with { EpicId = loose.Id };
+        RouteServer();
+
+        var page = RenderPage();
+
+        Assert.Equal("Act One • Boss",
+            page.Find($".kanban-card-slot[data-drag-item='{_mine.Id}'] .kanban-card__epic").TextContent);
+        var readOnly = page.FindAll(".kanban-card-slot").Single(s => s.TextContent.Contains("Dust the shelf"));
+        Assert.Equal("Odd jobs", readOnly.QuerySelector(".kanban-card__epic")!.TextContent);
+    }
+
+    [Fact]
+    public async Task A_task_moved_to_an_epic_the_page_has_not_seen_reloads_the_payload()
+    {
+        RouteServer();
+        var page = RenderPage();
+        var before = _http.Paths.Count(p => p == "GET /api/users/me/tasks");
+
+        _mine = _mine with { EpicId = Guid.NewGuid(), Version = 2 };
+        await page.InvokeAsync(() => _hub.RaiseTopicMessage(new TopicMessage(
+            Guid.Empty, BoardHubConstants.AssignedTasksTopic, EntityTypes.Task, _mine.Id.ToString(), TestData.OtherId)));
+        await _store.PendingRefetch;
+
+        Assert.Equal(before + 1, _http.Paths.Count(p => p == "GET /api/users/me/tasks"));
     }
 
     [Fact]
