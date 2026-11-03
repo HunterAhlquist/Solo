@@ -83,3 +83,19 @@ test('inline markers hide when the cursor is elsewhere on the same line',()=>{
     assert.deepEqual(hidden(doc.indexOf('having')),['**','**','==','==']);
     assert.deepEqual(hidden(doc.indexOf('**and**')+7),['*','*','==','==']);
 });
+
+test('block quotes draw one bar per nesting level and hide their markers off the caret line',()=>{
+    const doc='> quote\nlazy\n\n> > nested\n\nbody',field=livePreview({},{});
+    const decorate=anchor=>{
+        const state=EditorState.create({doc,selection:{anchor},extensions:[markdown(),EditorView.editable.of(true),field]}),depths=[],hidden=[];
+        state.field(field).between(0,doc.length,(from,to,value)=>{
+            if(value.spec.class==='design-docs-quote')depths.push([state.doc.lineAt(from).number,value.spec.attributes.style]);
+            else if(value.isReplace&&!value.spec.widget)hidden.push(doc.slice(from,to));
+        });
+        return {depths,hidden};
+    };
+    const away=decorate(doc.length);
+    assert.deepEqual(away.depths,[[1,'--design-docs-quote-depth:1'],[2,'--design-docs-quote-depth:1'],[4,'--design-docs-quote-depth:2']]);
+    assert.deepEqual(away.hidden,['> ','> ','> ']);
+    assert.deepEqual(decorate(3).hidden,['> ','> '],'the caret line shows its marker');
+});

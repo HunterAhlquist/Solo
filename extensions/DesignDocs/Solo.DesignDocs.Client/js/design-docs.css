@@ -163,6 +163,9 @@
 .design-docs-note-body[data-format-hidden] .design-docs-note-format-palette { visibility:hidden; pointer-events:none; }
 .design-docs-note-format-styles { display:flex; }
 .design-docs-note-format-palette .is-selected { background:var(--mud-palette-action-default-hover); }
+/* One primary-colored bar per nesting level, like Obsidian. Padding (not text-indent)
+   so wrapped lines stay inside the bars; px so a heading's larger em doesn't shift them. */
+.design-docs-editor .cm-line.design-docs-quote { --design-docs-quote-step:18px; padding-left:calc(6px + var(--design-docs-quote-depth) * var(--design-docs-quote-step)); background:repeating-linear-gradient(to right,var(--mud-palette-primary) 0 2px,transparent 2px var(--design-docs-quote-step)) 8px 0/calc(var(--design-docs-quote-depth) * var(--design-docs-quote-step)) 100% no-repeat; }
 .design-docs-highlight { background:color-mix(in srgb,var(--mud-palette-warning) 35%,transparent); border-radius:2px; }
 
 .design-docs-heading > .mud-typography { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
