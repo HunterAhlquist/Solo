@@ -311,6 +311,18 @@ else
                                    tab's full width. Only a loaded extension has one to offer:
                                    a disabled one's routes answer 503, and a missing package
                                    has no assembly at all. *@
+                                @* Said rather than left blank, which reads as a panel that
+                                   failed to draw. Not said for a client half that was
+                                   skipped: the warning above already explains that one. *@
+                                @if (extension.State == "Loaded" && !SettingsPanels(extension.ExtensionId).Any()
+                                     && Catalog?.Skipped.Any(e => e.Id == extension.ExtensionId) != true)
+                                {
+                                    <div class="extension-settings mt-4">
+                                        <EmptyState Icon="@Icons.Material.Outlined.Tune"
+                                                    Message="@($"{extension.DisplayName ?? extension.ExtensionId} has nothing to configure.")" />
+                                    </div>
+                                }
+
                                 @if (extension.State == "Loaded")
                                 {
                                     @foreach (var panel in SettingsPanels(extension.ExtensionId))
