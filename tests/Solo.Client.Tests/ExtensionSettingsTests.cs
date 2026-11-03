@@ -92,6 +92,16 @@ public class ExtensionSettingsTests : ComponentTestBase
     }
 
     [Fact]
+    public void A_loaded_extension_without_settings_says_there_is_nothing_to_configure()
+    {
+        var page = Render(new ExtensionAdminDto([Registration("alpha"), Registration("beta")], []),
+            CatalogFor("alpha"));
+
+        page.WaitForAssertion(() => Assert.Contains("beta has nothing to configure.", page.Markup));
+        Assert.DoesNotContain("alpha has nothing to configure.", page.Markup);
+    }
+
+    [Fact]
     public void A_panel_that_throws_shows_an_error_line_and_the_page_keeps_working()
     {
         var page = Render(new ExtensionAdminDto([Registration(FaultySettingsPanel.Trigger), Registration("alpha")], []),
