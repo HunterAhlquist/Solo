@@ -26,6 +26,16 @@ public sealed class FixtureController(FixtureDbContext db, ISoloQuery query) : C
     public async Task<IReadOnlyList<string>> Milestones(CancellationToken ct) =>
         await db.Milestones.OrderBy(m => m.Name).Select(m => m.Name).ToListAsync(ct);
 
+    /// <summary>
+    /// An action route that opts out of the controller's with a leading slash,
+    /// which MVC honours. Reachable at <c>/api/ext/fixture/api/fixture-escape</c>
+    /// and nowhere else: the convention rewrites this template too, or a routed
+    /// controller could place an endpoint outside its namespace from an action.
+    /// </summary>
+    [HttpGet("/api/fixture-escape")]
+    [Authorize]
+    public string Escape() => "contained";
+
     [HttpPost("milestones")]
     [Authorize]
     public async Task<IActionResult> Add([FromQuery] string name, CancellationToken ct)
