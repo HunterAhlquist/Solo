@@ -89,7 +89,11 @@ namespace Solo.Shared.Extensibility;
 /// <c>AssignedTasksDto</c>: the epics the caller's tasks sit under and the
 /// groups those epics belong to, so a page can say where a card lives on its
 /// board. Both halves read the record, so a package using them needs 1.15 in
-/// whichever range covers the half that does.</para>
+/// whichever range covers the half that does. The admin batch-update DTOs
+/// (<c>UpdateExtensionsRequest</c>, <c>ExtensionBulkUpdateResultDto</c>,
+/// <c>ExtensionUpdateFailureDto</c>) are core's own but members of the shared
+/// assembly too; they arrived while the number sat at 1.14, unpublished, so
+/// 1.15 is the first package that carries them.</para>
 /// </remarks>
 public static class ContractVersion
 {
