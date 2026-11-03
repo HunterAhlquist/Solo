@@ -107,6 +107,29 @@ public class MarkdownSafetyTests : BunitContext
         Assert.Contains($"href=\"{expectedHref}\"", RenderMarkdown(markdown), StringComparison.Ordinal);
     }
 
+    // Markdig's generic attributes ({#id .class key=value}, on by default in
+    // UseAdvancedExtensions) let an author put any attribute on an element —
+    // an event handler, or an href that the URL allow-list never saw, since
+    // that checks the link's destination and not its attribute bag.
+    // MudMarkdown's renderer discards them; this pins that, because a
+    // renderer that started honouring them would open all of it at once.
+    [Theory]
+    [InlineData("[click](https://ok.example){onclick=alert(1)}")]
+    [InlineData("[click](https://ok.example){href=javascript:alert(1)}")]
+    [InlineData("![alt](https://ok.example/a.png){src=javascript:alert(1)}")]
+    [InlineData("![alt](https://ok.example/a.png){onerror=alert(1)}")]
+    [InlineData("text{style=position:fixed;inset:0}")]
+    [InlineData("# heading {#custom-id onfocus=alert(1)}")]
+    public void A_generic_attribute_is_not_honoured(string markdown)
+    {
+        var markup = RenderMarkdown(markdown);
+
+        Assert.DoesNotContain("alert(1)", markup, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("javascript:", markup, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("style=", markup, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("custom-id", markup, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Ordinary_markdown_still_renders_its_structure()
     {

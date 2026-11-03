@@ -36,17 +36,28 @@ public sealed class ExtensionRouteConvention(IReadOnlyDictionary<string, string>
                 selector.AttributeRouteModel!.Template = Combine(prefix, selector.AttributeRouteModel.Template);
             }
 
+            var controllerRouted = controller.Selectors.Any(c => c.AttributeRouteModel is not null);
             foreach (var action in controller.Actions)
             {
                 foreach (var selector in action.Selectors.Where(s => s.AttributeRouteModel is not null))
                 {
-                    // A controller-level route already carries the prefix; an
-                    // action-level absolute route ("/api/whatever") would escape
-                    // it, so it is rewritten too.
-                    if (controller.Selectors.All(c => c.AttributeRouteModel is null))
+                    // With no controller route, the action's template is the
+                    // whole route and takes the prefix itself. With one, MVC
+                    // combines the two — except for a template starting with
+                    // "/" or "~/", which it reads as "ignore the controller's
+                    // route" and uses verbatim. That is the one way out of the
+                    // prefix from inside a routed controller, so such a template
+                    // is prefixed here too. It keeps its leading slash: the
+                    // author asked to bypass the controller's route, and that
+                    // is still honoured, under the extension's namespace.
+                    var template = selector.AttributeRouteModel!.Template;
+                    if (!controllerRouted)
                     {
-                        selector.AttributeRouteModel!.Template =
-                            Combine(prefix, selector.AttributeRouteModel.Template);
+                        selector.AttributeRouteModel.Template = Combine(prefix, template);
+                    }
+                    else if (IsOverride(template))
+                    {
+                        selector.AttributeRouteModel.Template = "/" + Combine(prefix, template);
                     }
                 }
 
@@ -64,6 +75,14 @@ public sealed class ExtensionRouteConvention(IReadOnlyDictionary<string, string>
             }
         }
     }
+
+    /// <summary>
+    /// The templates MVC takes as absolute: see
+    /// <c>AttributeRouteModel.IsOverridePattern</c>, which this mirrors.
+    /// </summary>
+    private static bool IsOverride(string? template) =>
+        template is not null &&
+        (template.StartsWith('/') || template.StartsWith("~/", StringComparison.Ordinal));
 
     private static string Combine(string prefix, string? template)
     {

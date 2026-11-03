@@ -26,6 +26,14 @@ public class TrustedProxiesTests
     [InlineData("fe80::1")]
     [InlineData("::ffff:10.0.0.4")] // The same private address, tunnelled.
     [InlineData("0.0.0.0")]
+    [InlineData("100.64.0.1")] // RFC 6598 shared space: carrier NAT, Tailscale.
+    [InlineData("100.127.255.254")]
+    [InlineData("::ffff:100.100.1.1")]
+    [InlineData("192.0.0.8")]
+    [InlineData("198.18.0.1")]
+    [InlineData("224.0.0.1")]
+    [InlineData("255.255.255.255")]
+    [InlineData("ff02::1")]
     public void Internal_addresses_are_recognised(string address)
     {
         Assert.True(TrustedProxies.IsPrivate(IPAddress.Parse(address)));
@@ -38,9 +46,26 @@ public class TrustedProxiesTests
     [InlineData("172.15.255.255")]
     [InlineData("192.169.0.1")]
     [InlineData("11.0.0.1")]
+    [InlineData("100.63.255.255")] // Just outside the /10.
+    [InlineData("100.128.0.0")]
+    [InlineData("192.0.1.1")]
+    [InlineData("198.17.255.255")]
     [InlineData("2606:4700::1111")]
     public void Public_addresses_are_not(string address)
     {
         Assert.False(TrustedProxies.IsPrivate(IPAddress.Parse(address)));
+    }
+
+    // The fetch guard refuses more than the forwarded-header trust admits: a
+    // Tailscale peer at 100.x must not be fetched from, but is not a reverse
+    // proxy whose X-Forwarded-For should be believed either.
+    [Theory]
+    [InlineData("100.64.0.1")]
+    [InlineData("224.0.0.1")]
+    public void Shared_and_reserved_space_is_not_a_trusted_proxy(string address)
+    {
+        var ip = IPAddress.Parse(address);
+        Assert.True(TrustedProxies.IsPrivate(ip));
+        Assert.DoesNotContain(TrustedProxies.Networks, network => network.Contains(ip));
     }
 }

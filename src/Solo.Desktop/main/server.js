@@ -78,6 +78,15 @@ function shouldProxy(url) {
     return PROXY_PREFIXES.some(p => pathname.startsWith(p)) || PROXY_EXACT.includes(pathname);
 }
 
+// Only the app itself may talk to this server. A remote page can reach
+// 127.0.0.1 via DNS rebinding, but then the Host header carries the
+// attacker's domain. Checked on the request path and the upgrade path
+// alike: a WebSocket to the proxy is as much a way in as a fetch.
+function isLocalHost(headers) {
+    const host = (headers.host ?? '').toLowerCase();
+    return host.startsWith('localhost:') || host.startsWith('127.0.0.1:');
+}
+
 function createSoloServer({ clientDir, getTarget }) {
     const proxy = httpProxy.createProxyServer({
         changeOrigin: true, // host-based routing (reverse proxies) needs the real Host
@@ -97,11 +106,7 @@ function createSoloServer({ clientDir, getTarget }) {
     });
 
     const server = http.createServer((req, res) => {
-        // Only the app itself may talk to this server. A remote page can
-        // reach 127.0.0.1 via DNS rebinding, but then the Host header
-        // carries the attacker's domain.
-        const host = (req.headers.host ?? '').toLowerCase();
-        if (!host.startsWith('localhost:') && !host.startsWith('127.0.0.1:')) {
+        if (!isLocalHost(req.headers)) {
             res.writeHead(403).end();
             return;
         }
@@ -129,7 +134,7 @@ function createSoloServer({ clientDir, getTarget }) {
         socket.once('error', () => socket.destroy());
 
         const target = getTarget();
-        if (!target || !shouldProxy(req.url)) {
+        if (!target || !shouldProxy(req.url) || !isLocalHost(req.headers)) {
             socket.destroy();
             return;
         }

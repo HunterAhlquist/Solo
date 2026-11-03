@@ -175,7 +175,7 @@ A caller who isn't a member of a project gets an empty list, not an error — mi
 
 ## 6. Endpoints
 
-Ordinary controllers. The host rewrites every route to `/api/ext/{id}/…` regardless of what your `[Route]` says, so you cannot shadow a core endpoint.
+Ordinary controllers. The host rewrites every route to `/api/ext/{id}/…` regardless of what your `[Route]` says, so you cannot shadow a core endpoint. That includes an action route with a leading slash (`[HttpGet("/api/whatever")]`), which MVC would otherwise take as absolute: it lands under the prefix like any other.
 
 ```csharp
 [ApiController]

@@ -172,6 +172,22 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task AbsoluteActionRoute_IsRewrittenUnderTheExtensionPrefix()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        // The fixture's Escape action declares [HttpGet("/api/fixture-escape")]
+        // inside a routed controller — the one template shape a controller
+        // prefix does not reach, because MVC reads a leading slash as "ignore
+        // the controller's route". The convention has to rewrite it itself.
+        var contained = await _admin.GetAsync("/api/ext/fixture/api/fixture-escape");
+        Assert.Equal(HttpStatusCode.OK, contained.StatusCode);
+
+        var escaped = await _admin.GetAsync("/api/fixture-escape");
+        Assert.Equal(HttpStatusCode.NotFound, escaped.StatusCode);
+    }
+
+    [SkippableFact]
     public async Task UnknownExtensionRoute_Is404_NotTheSpaFallback()
     {
         postgres.SkipUnlessDockerAvailable();
