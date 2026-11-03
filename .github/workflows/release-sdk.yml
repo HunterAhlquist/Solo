@@ -11,7 +11,18 @@ on:
     # a series of its own because a template can be fixed without the contract
     # moving, and it lives in this file because the nuget.org trusted-publishing
     # policy names this workflow: a second file would need a second policy.
-    tags: ["sdk-v*", "templates-v*"]
+    #
+    # A stable `v*` tag runs here too, for the same reason, and publishes
+    # whichever of the two nuget.org is behind on. The contract an instance
+    # runs is the one in its checkout, so a release that carries a new
+    # contract version is the moment the SDK for it should exist: left to a
+    # separate tag, it was forgotten for four versions running. The `train`
+    # job below compares each package's version with nuget.org and the rest of
+    # the workflow runs only for what the train moved; the `sdk-v*` and
+    # `templates-v*` tags remain for publishing ahead of, or apart from, a
+    # release. Prerelease tags are not matched: the versions in this checkout
+    # carry no prerelease suffix, so a preview would publish a stable SDK.
+    tags: ["sdk-v*", "templates-v*", "v*"]
   # A manual run is a rehearsal: everything up to the push, with the packages
   # left as a workflow artifact to look at. It publishes nothing.
   workflow_dispatch:
@@ -31,12 +42,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # On a release tag, which of the two packages nuget.org is behind on. Read
+  # only here, so a release that moved neither costs nothing but this job and
+  # asks nobody for an approval.
+  train:
+    name: Compare with nuget.org
+    if: >-
+      github.event_name == 'push' &&
+      startsWith(github.ref_name, 'v') &&
+      !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    outputs:
+      contract: ${{ steps.contract.outputs.behind }}
+      templates: ${{ steps.templates.outputs.behind }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Both contract packages carry one version, so one of them answers for
+      # both; --skip-duplicate on the push covers a run that failed in between.
+      - name: Is nuget.org behind on the contract?
+        id: contract
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' build/contract-package.props | head -1)
+          bash build/nuget-behind.sh HunterAhlquist.Solo.Extensibility "${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Is nuget.org behind on the templates?
+        id: templates
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' templates/Solo.Templates.csproj | head -1)
+          bash build/nuget-behind.sh HunterAhlquist.Solo.Templates "${version}" >> "$GITHUB_OUTPUT"
+
   # Everything that can refuse a release happens here, in a job that holds no
   # credential. The publish job below only pushes what this one uploaded.
   pack:
     name: Verify and pack
+    needs: train
     # A templates tag publishes the templates and leaves the contract alone.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'sdk-v')
+    # `!cancelled()` because `train` is skipped on every tag but a release,
+    # which would otherwise skip this job with it.
+    if: >-
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        startsWith(github.ref_name, 'sdk-v') ||
+        needs.train.outputs.contract == 'true'
+      )
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -73,7 +124,8 @@ jobs:
 
       # The tag names a version, but the packages take theirs from
       # build/contract-package.props. They have to agree, or the tag would
-      # publish a version it doesn't name.
+      # publish a version it doesn't name. A release tag names the app's
+      # version instead, and `train` has already compared the contract's.
       - name: Read the contract version
         id: version
         run: |
@@ -85,7 +137,7 @@ jobs:
             exit 1
           fi
 
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          if [[ "${GITHUB_REF_NAME}" == "${TAG_PREFIX}"* ]]; then
             tagged="${GITHUB_REF_NAME#"${TAG_PREFIX}"}"
             if [ "${tagged}" != "${version}" ]; then
               echo "::error::Tag ${GITHUB_REF_NAME} names ${tagged}, but the contract is ${version}. Tag ${TAG_PREFIX}${version}, or bump the contract first."
@@ -142,7 +194,7 @@ jobs:
     name: Publish to nuget.org
     needs: pack
     # Only a tag publishes; a manual run stops at the artifact.
-    if: github.event_name == 'push'
+    if: ${{ !cancelled() && needs.pack.result == 'success' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     # The environment the nuget.org trusted-publishing policy is restricted to.
     # Give it a required reviewer (Settings -> Environments) and this job waits
@@ -215,7 +267,16 @@ jobs:
   # release happens in a job that holds no credential.
   pack-templates:
     name: Verify and pack the templates
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'templates-v')
+    # After the contract's publish, so that a release carrying both pushes the
+    # templates only once the contract they pin is on nuget.org. On every
+    # other tag `publish` is skipped, which `!cancelled()` lets through.
+    needs: [train, publish]
+    if: >-
+      !cancelled() && needs.publish.result != 'failure' && (
+        github.event_name == 'workflow_dispatch' ||
+        startsWith(github.ref_name, 'templates-v') ||
+        needs.train.outputs.templates == 'true'
+      )
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -248,7 +309,7 @@ jobs:
             exit 1
           fi
 
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          if [[ "${GITHUB_REF_NAME}" == "${TEMPLATES_TAG_PREFIX}"* ]]; then
             tagged="${GITHUB_REF_NAME#"${TEMPLATES_TAG_PREFIX}"}"
             if [ "${tagged}" != "${version}" ]; then
               echo "::error::Tag ${GITHUB_REF_NAME} names ${tagged}, but the templates are ${version}. Tag ${TEMPLATES_TAG_PREFIX}${version}, or bump the templates first."
@@ -262,9 +323,11 @@ jobs:
       # A generated project restores the contract from nuget.org, at the
       # version in build/contract-package.props. Templates published ahead of
       # that contract would scaffold projects that can't restore, so the
-      # contract's `sdk-v*` tag goes first.
+      # contract's `sdk-v*` tag goes first. A release that pushed the contract
+      # in `publish` moments ago satisfies that by construction, and nuget.org
+      # takes minutes to list a new version, so it is not asked again.
       - name: Verify the contract is on nuget.org
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && needs.publish.result != 'success'
         run: |
           set -euo pipefail
 
@@ -304,7 +367,7 @@ jobs:
     name: Publish the templates to nuget.org
     needs: pack-templates
     # Only a tag publishes; a manual run stops at the artifact.
-    if: github.event_name == 'push'
+    if: ${{ !cancelled() && needs.pack-templates.result == 'success' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     # The same environment, and so the same approval, as the contract's publish.
     environment: nuget

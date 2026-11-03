@@ -16,10 +16,15 @@ A stable tag has to be on `main`; both workflows refuse one that isn't.
 `preview-v<version>` is the same train published as a prerelease and may sit on
 an unmerged branch — see [prereleases.md](prereleases.md).
 
-The SDK is not part of this. The contract packages and the `dotnet new`
-templates go to nuget.org from their own `sdk-v*` and `templates-v*` tags
-([release-sdk.yml](../.github/workflows/release-sdk.yml)), because the contract
-moves independently of the app and a NuGet push is permanent.
+The SDK rides along only when the train moved it. A stable `v*` tag also runs
+[release-sdk.yml](../.github/workflows/release-sdk.yml), which compares the
+contract version in `build/contract-package.props` and the templates version in
+`templates/Solo.Templates.csproj` with what nuget.org lists and publishes
+whichever nuget.org is behind on, contract first; a release that carries a
+version nuget.org already has publishes nothing. The `sdk-v*` and
+`templates-v*` tags still publish on their own, for a contract released apart
+from the app. Either way the push waits on the `nuget` environment's approval,
+because a NuGet push is permanent.
 
 ## Only what changed gets built
 
