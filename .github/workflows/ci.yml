@@ -211,6 +211,7 @@ jobs:
           bash build/test-release-channel.sh
           bash build/test-release-baseline.sh
           bash build/test-release-gating.sh
+          bash build/test-nuget-behind.sh
 
       - name: Restore
         run: dotnet restore Solo.slnx
@@ -227,7 +228,8 @@ jobs:
       # The extension contract as NuGet packages, and proof that
       # samples/HelloExtension builds from them with nothing else from this
       # repository. Packed on every run and neither uploaded nor pushed: the
-      # packages go to nuget.org from release-sdk.yml on an `sdk-v*` tag
+      # packages go to nuget.org from release-sdk.yml, on an `sdk-v*` tag or
+      # on a release tag that carries a contract version nuget.org lacks,
       # rather than from here. artifacts/nuget, where this leaves them, is
       # also the only source the extensions below restore the contract from
       # (extensions/nuget.config), whatever nuget.org holds.
@@ -238,8 +240,8 @@ jobs:
       # throwaway template hive, and an extension generated from it for each
       # combination of its options — each one built and packaged against the
       # contract packages above, and its first migration checked against its
-      # model. Not pushed from here either: a `templates-v*` tag does that, in
-      # release-sdk.yml.
+      # model. Not pushed from here either: release-sdk.yml does that, on a
+      # `templates-v*` tag or a release tag the templates are new on.
       - name: Package the extension templates
         run: build/pack-templates.sh
 
