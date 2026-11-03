@@ -73,7 +73,7 @@ if (!gotLock) {
 function onReady() {
     settings = settingsStore.load();
     registerIpc();
-    registerUpdater({ getWindow: focusedWindow });
+    registerUpdater({ getWindow: focusedWindow, webPreferences: HARDENED_WEB_PREFERENCES });
     refreshInstanceViews();
 
     const instance = findInstance(settings.lastInstanceId) ?? settings.instances[0];

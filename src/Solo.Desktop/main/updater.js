@@ -25,11 +25,20 @@ const { app, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { identityForVersion } = require('./app-identity');
+const {
+    startUpdateProgress,
+    showUpdateProgress,
+    reportUpdateProgress,
+    closeUpdateProgress,
+    registerUpdateProgressIpc,
+} = require('./update-progress');
 
 let autoUpdater = null;
+let CancellationToken = null;
 let state = 'idle';
 let manual = false;
 let wired = false;
+let webPreferences = {};
 
 // Why this build cannot check, or null when it can.
 function unsupportedReason() {
@@ -72,7 +81,7 @@ function updater() {
     // Required late: electron-updater reads the packaged app's update config as
     // it loads, so requiring it in a development run logs a warning for a
     // feature that run cannot use.
-    ({ autoUpdater } = require('electron-updater'));
+    ({ autoUpdater, CancellationToken } = require('electron-updater'));
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.logger = null;
@@ -81,7 +90,8 @@ function updater() {
 
 // `getWindow` returns the window to parent dialogs on, or null. Dialogs are
 // parented so they are sheets on macOS rather than free-floating panels.
-function registerUpdater({ getWindow }) {
+// `webPreferences` is the shell's hardened set, for the progress window.
+function registerUpdater({ getWindow, webPreferences: preferences = {} }) {
     const parent = () => {
         const win = getWindow?.();
         return win && !win.isDestroyed() ? win : null;
@@ -100,6 +110,8 @@ function registerUpdater({ getWindow }) {
         return;
     }
     wired = true;
+    webPreferences = preferences;
+    registerUpdateProgressIpc();
     const api = updater();
 
     api.on('error', error => {
@@ -156,14 +168,28 @@ function registerUpdater({ getWindow }) {
         }
 
         state = 'downloading';
+        const cancellation = new CancellationToken();
+        startUpdateProgress({
+            version: info.version,
+            cancel: () => cancellation.cancel(),
+            webPreferences,
+        });
+
         try {
-            await api.downloadUpdate();
+            await api.downloadUpdate(cancellation);
         } catch (error) {
+            state = 'idle';
+            closeUpdateProgress();
+            setProgress(parent(), -1);
+            // Cancelling rejects too, and the user who pressed Cancel needs no
+            // dialog telling them so.
+            if (cancellation.cancelled) {
+                return;
+            }
+
             // Surfaced here as well as on the error event: a rejection from
             // downloadUpdate is the one failure the user explicitly asked for
             // and is waiting on.
-            state = 'idle';
-            setProgress(parent(), -1);
             show({
                 type: 'error',
                 message: 'The update couldn’t be downloaded',
@@ -174,13 +200,15 @@ function registerUpdater({ getWindow }) {
     });
 
     api.on('download-progress', progress => {
-        // The only progress affordance that needs no window of its own: the
-        // dock icon on macOS, the taskbar button on Windows.
+        // The dock icon on macOS and the taskbar button on Windows as well as
+        // the progress window, which the user may have closed.
         setProgress(parent(), (progress?.percent ?? 0) / 100);
+        reportUpdateProgress(progress);
     });
 
     api.on('update-downloaded', async info => {
         state = 'downloaded';
+        closeUpdateProgress();
         setProgress(parent(), -1);
 
         const { response } = await show({
@@ -222,8 +250,16 @@ async function checkForUpdates({ fromMenu = false, getWindow } = {}) {
     }
 
     // Already busy: a second check would stack a second set of dialogs on the
-    // first one's events.
-    if (state === 'downloading' || state === 'checking') {
+    // first one's events. A download the user asked about gets its progress
+    // window back, in case they closed it.
+    if (state === 'downloading') {
+        if (fromMenu) {
+            showUpdateProgress(webPreferences);
+        }
+        return;
+    }
+
+    if (state === 'checking') {
         return;
     }
 
