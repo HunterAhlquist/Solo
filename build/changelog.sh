@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
 # The release notes come from CHANGELOG.md. Changes are written under a
 # `## Latest` header as they land, because the version is not known until the
-# tag is pushed. `notes` prints that section's body, which the release jobs
-# use as the GitHub release's notes; `release <tag> [YYYY-MM-DD]` renames the
-# header to the tag and date once it has shipped, which the changelog job
-# commits back to main so the next change starts a fresh section.
+# tag is pushed.
 #
-# A `##` header ends the section; `###` and deeper belong to it.
+#   notes  prints the Latest section's body, which the release jobs use as the
+#          GitHub release's notes.
+#   sync   dates the section once it has shipped: when the newest stable `v*`
+#          tag is newer than the newest released section, Latest is renamed to
+#          that tag and its date and a fresh Latest goes on top. Run it before
+#          adding an entry. It is a step in the next change rather than a
+#          commit CI pushes at release time because main is protected, and the
+#          workflow token can't be put on a bypass list.
+#
+# A `##` header ends a section; `###` and deeper belong to it.
 set -euo pipefail
 
 file=${CHANGELOG:-CHANGELOG.md}
-usage='Usage: changelog.sh notes | release <tag> [YYYY-MM-DD]'
-command=${1:?$usage}
+usage='Usage: changelog.sh notes | sync'
 
-if ! grep -qx '## Latest' "$file"; then
-    echo "${file} has no '## Latest' section." >&2
-    exit 1
-fi
-
-case "$command" in
+case "${1:-}" in
     notes)
+        if ! grep -qx '## Latest' "$file"; then
+            echo "${file} has no '## Latest' section." >&2
+            exit 1
+        fi
         # The blank lines around the section are dropped (the substitution
         # strips the trailing ones); the body itself is printed as written.
         body=$(awk '/^## Latest$/ {inside = 1; next} /^## / {inside = 0} inside' "$file" | sed '/./,$!d')
@@ -29,19 +33,40 @@ case "$command" in
         fi
         printf '%s\n' "$body"
         ;;
-    release)
-        tag=${2:?$usage}
-        date=${3:-$(date -u +%Y-%m-%d)}
-        if grep -q "^## ${tag} (" "$file"; then
-            echo "${file} already has a section for ${tag}." >&2
-            exit 1
+    sync)
+        # Prereleases carry a `-` suffix and don't consume the section: the
+        # same changes ship again as stable.
+        tag=$(git tag --list 'v*' | grep -v -- '-' | sort -V | tail -1 || true)
+        released=$(sed -n 's/^## \(v[^ ]*\) (.*$/\1/p' "$file" | head -1)
+        updated=$(mktemp)
+
+        if [ -n "$tag" ] && [ "$tag" != "$released" ] &&
+           [ "$(printf '%s\n' "$tag" "$released" | sort -V | tail -1)" = "$tag" ]; then
+            date=$(TZ=UTC git for-each-ref --format='%(creatordate:format-local:%Y-%m-%d)' "refs/tags/${tag}")
+            if grep -qx '## Latest' "$file"; then
+                awk -v header="## ${tag} (${date})" '
+                    !done && /^## Latest$/ {print "## Latest\n\n" header; done = 1; next}
+                    {print}
+                ' "$file" > "$updated"
+                echo "Dated the Latest section as ${tag} (${date}) and started a new one."
+            else
+                # Nothing was tracked for that release. It still gets a header,
+                # or the next sync would date the new Latest as this tag.
+                awk -v header="## ${tag} (${date})" '
+                    !done && /^## / {print "## Latest\n\n" header "\n\nNo changelog was kept for this release.\n"; done = 1}
+                    {print}
+                ' "$file" > "$updated"
+                echo "${tag} shipped with no Latest section; started a new one."
+            fi
+        elif ! grep -qx '## Latest' "$file"; then
+            awk '!done && /^## / {print "## Latest\n"; done = 1} {print}' "$file" > "$updated"
+            echo "Added a Latest section."
+        else
+            echo "Latest is current: the newest tag, ${tag:-none}, already has its section."
+            rm "$updated"
+            exit 0
         fi
-        renamed=$(mktemp)
-        awk -v header="## ${tag} (${date})" '
-            !done && /^## Latest$/ {print header; done = 1; next}
-            {print}
-        ' "$file" > "$renamed"
-        mv "$renamed" "$file"
+        mv "$updated" "$file"
         ;;
     *) echo "$usage" >&2; exit 1 ;;
 esac

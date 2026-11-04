@@ -2,9 +2,9 @@
 
 Every change lands under **Latest** as it is made, because the version is not
 known until the tag is pushed. Pushing a `v*` tag publishes the Latest section
-as the GitHub release's notes, then CI renames the header to the tag and date
-and commits it back to `main`. If there is no `## Latest` header, add one at
-the top and start the next release's section there.
+as the GitHub release's notes. Before adding an entry, run
+`build/changelog.sh sync`: when a newer tag has shipped, it renames Latest to
+that tag and date and starts a new Latest on top.
 
 Sections, in this order and only when they have something in them: **Server**
 (the image, which includes the web client), **Desktop**, **SDK** (the contract
@@ -12,6 +12,8 @@ packages and templates), **Extensions** (one `####` per first-party extension,
 with its version in parentheses).
 
 ## Latest
+
+## v1.20.0 (2026-11-04)
 
 ### Desktop
 - The update dialog names the installed version as its heading and asks about the new one with Update Now / Not Now buttons. The download-size estimate it showed is gone; the progress window reports the real size as the download runs.

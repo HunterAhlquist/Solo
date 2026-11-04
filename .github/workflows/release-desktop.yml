@@ -530,8 +530,8 @@ jobs:
           node build/release-manifest.mjs "${args[@]}"
 
       # The release's notes are CHANGELOG.md's Latest section, read from the
-      # tagged checkout so both workflows write the same text; the changelog
-      # job in ci.yml renames the header afterwards. A tag with no section
+      # tagged checkout so both workflows write the same text; the next change
+      # dates it (build/changelog.sh sync). A tag with no section
       # gets GitHub's generated list rather than a blank release, generated
       # here rather than by the upload action because the action generates it
       # on every update too, which is what doubled the notes on past releases.
