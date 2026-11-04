@@ -26,6 +26,23 @@ version nuget.org already has publishes nothing. The `sdk-v*` and
 from the app. Either way the push waits on the `nuget` environment's approval,
 because a NuGet push is permanent.
 
+## Release notes
+
+The release's notes are the `## Latest` section of [CHANGELOG.md](../CHANGELOG.md).
+Changes are written there as they land, because the version is not known until
+the tag is pushed. Both workflows read the section from the tagged commit
+(`build/changelog.sh notes`) and set it as the release body — the same text
+from either, so whichever runs second changes nothing. Once the release
+exists, the `changelog` job in ci.yml renames the header to the tag and date
+and commits that to `main`, so the next change starts a fresh section; a
+missing `## Latest` header is the cue to add one at the top. A tag pushed
+with no section gets GitHub's generated pull-request list instead, with a
+warning in the run. Previews leave the section alone, since the same changes
+ship again as stable.
+
+The dated commit is pushed with `github.token`, which starts no workflows and
+needs `main`'s branch protection to let GitHub Actions push.
+
 ## Only what changed gets built
 
 Each component is diffed against the previous `v*` tag the commit descends
