@@ -51,8 +51,10 @@ public sealed class OfflineSyncComponentTests : ComponentTestBase
         var sync=Render<OfflineSync>();var button=Render<OfflineVaultButton>(p=>p.Add(x=>x.ProjectId,project).Add(x=>x.VaultId,vault));
         await sync.InvokeAsync(()=>sync.Instance.Changed(new(){Vaults=[new(){Id=vault.ToString(),ProjectId=project,Ready=true}]}));
         button.WaitForAssertion(()=>Assert.Equal(Icons.Material.Filled.OfflinePin,button.FindComponent<MudIconButton>().Instance.Icon));
+        Assert.True(button.FindComponent<MudIconButton>().Instance.Disabled);
         status.Ready=false;await sync.InvokeAsync(()=>sync.Instance.Changed(new()));
         button.WaitForAssertion(()=>Assert.Equal(Icons.Material.Filled.CloudDownload,button.FindComponent<MudIconButton>().Instance.Icon));
+        Assert.False(button.FindComponent<MudIconButton>().Instance.Disabled);
     }
 
 }

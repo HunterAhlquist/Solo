@@ -3,7 +3,7 @@
 @inject ISnackbar Snackbar
 @implements IDisposable
 <MudTooltip Text="@(_ready?"Vault downloaded to this device":"Download this vault for offline use")">
-    <MudIconButton Icon="@(_busy?Icons.Material.Filled.Downloading:_ready?Icons.Material.Filled.OfflinePin:Icons.Material.Filled.CloudDownload)" Disabled="_busy" OnClick="Download" aria-label="Keep this vault offline" />
+    <MudIconButton Icon="@(_busy?Icons.Material.Filled.Downloading:_ready?Icons.Material.Filled.OfflinePin:Icons.Material.Filled.CloudDownload)" Disabled="_busy||_ready" Class="design-docs-offline-button" OnClick="Download" aria-label="@(_ready?"Vault downloaded to this device":"Keep this vault offline")" />
 </MudTooltip>
 @code{
     [Parameter] public Guid ProjectId{get;set;}

@@ -28,16 +28,23 @@
 .design-docs-note-surface { display:flex; flex-direction:column; flex:1; min-height:0; }
 .design-docs-note-surface.is-pending { position:absolute; inset:16px 24px 0; visibility:hidden; pointer-events:none; }
 .design-docs-note-loading { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; background:#0007; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); cursor:progress; }
-.design-docs-tree-tools { justify-content:center; }
+.design-docs-tree-tools { justify-content:space-evenly; gap:0; }
 .design-docs-note-status { display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex-shrink:0; }
 .design-docs-presence:empty { display:none; }
 .design-docs-stored-markdown { white-space:pre-wrap; font:inherit; margin-top:16px; }
 .design-docs-tree-backdrop { display:none; }
 @media(max-width:1000px) {
- .design-docs-tree.is-open { position:absolute; top:0; bottom:0; left:0; z-index:3; background:var(--mud-palette-surface); box-shadow:3px 0 12px #0003; }
- .design-docs-tree-backdrop { display:block; position:absolute; inset:0; background:#0005; border:0; z-index:2; }
+ /* Above the note's floating palettes (z-index 4 and 5) and its remote cursors (6), which it covers. */
+ .design-docs-tree.is-open { position:absolute; top:0; bottom:0; left:0; z-index:8; background:var(--mud-palette-surface); box-shadow:3px 0 12px #0003; }
+ .design-docs-tree-backdrop { display:block; position:absolute; inset:0; background:#0005; border:0; z-index:7; }
  .design-docs-note { padding:12px 8px 0; }
  .design-docs-note-surface.is-pending { inset:12px 8px 0; }
+}
+@media(max-width:600px) {
+ .design-docs-tree.is-open { right:0; width:auto; max-width:none; border-right:0; box-shadow:none; }
+ .design-docs-heading { padding:2px 8px; gap:0 8px; }
+ .design-docs-heading .mud-icon-button { padding:8px; }
+ .design-docs-heading-actions { flex-basis:100%; justify-content:space-evenly; gap:0; }
 }
 .design-docs-editor { flex:1; min-height:0; display:flex; flex-direction:column; line-height:1.65; }
 .design-docs-editor-host { flex:1; min-height:0; }
@@ -142,14 +149,23 @@
 .design-docs-clear-explosion { position:absolute; top:0; left:0; z-index:2; transform-origin:0 0; pointer-events:none; object-fit:fill; }
 .design-docs-clear-explosion[hidden] { display:none; }
 @media(hover:none) { .design-docs-note-palette.mud-paper { opacity:1; visibility:visible; pointer-events:auto; } }
+/* iOS Safari zooms the page when it focuses text smaller than 16px, and the editor inherits MudBlazor's 14px body. */
+@media(pointer:coarse) { .design-docs-editor .cm-editor { font-size:max(16px,var(--design-docs-font-scale,100%)); } }
 @media(max-width:600px) {
- .design-docs-editor .cm-content { padding-inline:64px 16px; }
+ .design-docs-editor .cm-content { padding-inline:16px; }
+ /* Thinner, since on a phone it floats over the text rather than sitting in the margin. */
+ .design-docs-note-palette.mud-paper { padding:2px; transition:opacity .15s,transform .2s; background:color-mix(in srgb,var(--mud-palette-surface) 85%,transparent); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+ .design-docs-note-palette .mud-icon-button { padding:6px; }
+ /* Tucked behind the screen's left edge with a primary tab showing; editor/index.js pops it out on tap. */
+ .design-docs-note-palette.mud-paper[data-tucked] { transform:translateX(calc(-100% + 12px)); opacity:1; visibility:visible; pointer-events:auto; cursor:pointer; background:var(--mud-palette-surface); outline:2px solid var(--mud-palette-primary); outline-offset:-2px; }
+ .design-docs-note-palette.mud-paper[data-tucked] > * { pointer-events:none; opacity:0; }
+ .design-docs-note-palette.mud-paper > * { transition:opacity .2s; }
  .design-docs-editor .cm-scroller { padding-inline:var(--design-docs-margin,4px); }
  .design-docs-sketch-palette .mud-icon-button { width:32px; height:32px; }
  .design-docs-sketch-ink-palette { left:56px; }
  .design-docs-sketch-history-palette { top:auto; bottom:20px; left:12px; right:auto; }
 }
-@media(prefers-reduced-motion:reduce) { .design-docs-note-palette.mud-paper { transition:none; } }
+@media(prefers-reduced-motion:reduce) { .design-docs-note-palette.mud-paper,.design-docs-note-palette.mud-paper > * { transition:none; } }
 
 .design-docs-sketch-dialog { background-color:var(--mud-palette-surface); -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 .design-docs-sketch-dialog .mud-dialog-title { touch-action:none; }
@@ -169,6 +185,10 @@
 .design-docs-highlight { background:color-mix(in srgb,var(--mud-palette-warning) 35%,transparent); border-radius:2px; }
 
 .design-docs-heading > .mud-typography { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.design-docs-heading-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
+/* Disabled once downloaded, but it keeps the downloaded icon's normal color: grayed out it reads as unavailable.
+   MudBlazor marks its disabled color !important. */
+.design-docs-offline-button.mud-icon-button:disabled { color:var(--mud-palette-action-default) !important; }
 .design-docs-list-marker { display:inline-block; text-align:center; min-width:1ch; color:inherit; }
 .design-docs-list-marker.is-ordered { font-variant-numeric:tabular-nums; text-align:right; }
 /* Hanging indent for wrapped rows (editor/hanging-indent.js). The 6px is CodeMirror's own .cm-line
