@@ -529,6 +529,22 @@ jobs:
           if [ -f desktop.json ]; then args+=(--fragment desktop.json); fi
           node build/release-manifest.mjs "${args[@]}"
 
+      # The release's notes are CHANGELOG.md's Latest section, read from the
+      # tagged checkout so both workflows write the same text; the changelog
+      # job in ci.yml renames the header afterwards. A tag with no section
+      # gets GitHub's generated list rather than a blank release, generated
+      # here rather than by the upload action because the action generates it
+      # on every update too, which is what doubled the notes on past releases.
+      - name: Read the release notes
+        run: |
+          if bash build/changelog.sh notes > release-notes.md; then
+            exit 0
+          fi
+          echo "::warning::CHANGELOG.md has no Latest section; the release gets GitHub's generated notes."
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$TAG" ${PREVIOUS:+-f previous_tag_name="$PREVIOUS"} \
+            --jq .body > release-notes.md
+
       # Creates the release for the tag if it doesn't exist yet; otherwise adds
       # to the one ci.yml created.
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -539,7 +555,7 @@ jobs:
           # A build that failed with no earlier feed to carry forward leaves
           # artifacts/ empty; the manifest still has to reach the release.
           fail_on_unmatched_files: false
-          generate_release_notes: true
+          body_path: release-notes.md
           prerelease: ${{ needs.changes.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.changes.outputs.prerelease == 'true' && 'false' || 'legacy' }}
 
