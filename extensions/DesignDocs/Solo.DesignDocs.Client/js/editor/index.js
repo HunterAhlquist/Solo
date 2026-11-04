@@ -57,12 +57,13 @@ export function mountEditor(root, bridge, options) {
             const columnLeft=content.getBoundingClientRect().left+parseFloat(style.paddingLeft)+(line?parseFloat(getComputedStyle(line).paddingLeft):0);
             const body=noteBody.getBoundingClientRect();
             const position=caretPalettePosition(current.coordsAtPos(current.state.selection.main.head),body,current.scrollDOM.getBoundingClientRect(),{width:palette.offsetWidth,height:palette.offsetHeight},columnLeft);
-            return position&&{...position,screenLeft:-body.left};
+            return position&&{...position,fromScreenEdge:body.left+position.left};
         },
         write(position){
             if(!palette)return;const tucked=compactPalette.matches&&!palettePopped;
             palette.toggleAttribute('data-caret-hidden',!position);palette.toggleAttribute('data-tucked',tucked);
-            if(position){palette.style.left=(tucked?position.screenLeft:position.left)+'px';palette.style.top=position.top+'px';}
+            // Tucking only changes the transform, so the slide in and out is one transition; top stays instant so it keeps up with the caret.
+            if(position){palette.style.left=position.left+'px';palette.style.top=position.top+'px';palette.style.setProperty('--design-docs-palette-tuck',position.fromScreenEdge+'px');}
         },
     };
     const popPalette=()=>{if(!palette?.hasAttribute('data-tucked'))return;palettePopped=true;view?.contentDOM.blur();positionPalette();};

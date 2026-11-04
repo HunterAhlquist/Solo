@@ -157,7 +157,7 @@
  .design-docs-note-palette.mud-paper { padding:2px; transition:opacity .15s,transform .2s; background:color-mix(in srgb,var(--mud-palette-surface) 85%,transparent); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
  .design-docs-note-palette .mud-icon-button { padding:6px; }
  /* Tucked behind the screen's left edge with a primary tab showing; editor/index.js pops it out on tap. */
- .design-docs-note-palette.mud-paper[data-tucked] { transform:translateX(calc(-100% + 12px)); opacity:1; visibility:visible; pointer-events:auto; cursor:pointer; background:var(--mud-palette-surface); outline:2px solid var(--mud-palette-primary); outline-offset:-2px; }
+ .design-docs-note-palette.mud-paper[data-tucked] { transform:translateX(calc(-100% + 12px - var(--design-docs-palette-tuck,0px))); opacity:1; visibility:visible; pointer-events:auto; cursor:pointer; background:var(--mud-palette-surface); outline:2px solid var(--mud-palette-primary); outline-offset:-2px; }
  .design-docs-note-palette.mud-paper[data-tucked] > * { pointer-events:none; opacity:0; }
  .design-docs-note-palette.mud-paper > * { transition:opacity .2s; }
  .design-docs-editor .cm-scroller { padding-inline:var(--design-docs-margin,4px); }
