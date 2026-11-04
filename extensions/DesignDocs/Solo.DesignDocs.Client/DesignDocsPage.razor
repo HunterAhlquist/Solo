@@ -23,7 +23,7 @@ else if(_activeVaultId==Guid.Empty) {
         <MudIconButton Icon="@Icons.Material.Filled.Menu" OnClick="@(()=>_treeOpen=!_treeOpen)" aria-label="Toggle note tree" />
         <MudText Typo="Typo.h5">@_tree.Vault.Name</MudText>
         @if(_tree.Vault.IsClosed) { <MudChip T="string" Size="Size.Small">Closed · read-only</MudChip> }
-        <MudSpacer />
+        <div class="design-docs-heading-actions">
         <MudMenu Label="@($"{_fontScale}%")" StartIcon="@Icons.Material.Filled.FormatSize" aria-label="Editor font size">
             @foreach(var scale in new[]{75,90,100,110,125,150,175,200}) {
                 <MudMenuItem OnClick="@(()=>SetFontScale(scale))" Icon="@(scale==_fontScale?Icons.Material.Filled.Check:null)">@($"{scale}%")</MudMenuItem>
@@ -43,6 +43,7 @@ else if(_activeVaultId==Guid.Empty) {
                 @if(_tree.Vault.IsClosed) { <MudMenuItem OnClick="DeleteVault">Delete</MudMenuItem> }
             }
         </MudMenu>
+        </div>
     </div>
     <VaultTransfer @ref="_transfer" @key="_activeVaultId" ProjectId="_project.Id" Tree="_tree" />
     <div class="design-docs-workspace">
@@ -128,7 +129,8 @@ else if(_activeVaultId==Guid.Empty) {
                 // Theme/auth rerenders can arrive while JS is loading. They must never persist defaults.
                 _preferencesLoaded=true;
                 DesignDocsNavEvents.Activate(_project.Id,_activeVaultId);
-                if(NoteId.HasValue&&await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=false;
+                // Where the tree is an overlay it would cover the note, so it only opens when there is no note to show.
+                if(await module.InvokeAsync<bool>("isNarrowWorkspace"))_treeOpen=Selected is null;
                 await RememberNote();
                 if(generation!=_loadGeneration||_disposed)return;
                 var subscription=await Live.SubscribeAsync(project.Id,DocTopics.Vault(vaultId),m=>InvokeAsync(async()=>{

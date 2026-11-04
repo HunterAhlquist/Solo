@@ -21,6 +21,13 @@ with its version in parentheses).
 #### Design Docs (1.5.3)
 - Block quotes draw an Obsidian-style bar in the theme's primary color, one per nesting level, and hide the `>` marker unless the caret is on that line.
 - Wrapped rows of an indented line, a list item or a quoted line hang under the line's text instead of falling back to the left edge.
+- On a phone, opening a design doc shows the note instead of the note tree; the tree only opens by itself when there is no note to show.
+- On a phone, the note tree fills the screen's width, and on narrow screens it covers the insert palette instead of sitting under it.
+- On a phone, the insert palette is slimmer and tucks behind the screen's left edge with a primary-colored tab on the current line. Tapping the tab closes the keyboard and pops the palette out over the text; tapping back into the note tucks it away.
+- Note text on touch screens is at least 16px, so iOS no longer zooms in when the keyboard opens.
+- On a phone, the header's buttons share their own evenly spaced row under the vault name, with less padding around the header.
+- The note tree's Note and Folder buttons are spaced evenly.
+- The download button is disabled once a vault is downloaded, and keeps showing the downloaded icon in its normal color.
 
 ## v1.19.9 (2026-11-03)
 

@@ -47,15 +47,27 @@ export function mountEditor(root, bridge, options) {
     const noteBody=root.closest('.design-docs-note-body');
     let paletteTimer;
     const palette=noteBody?.querySelector('.design-docs-note-palette');
+    // On a phone the palette tucks behind the screen's left edge so the text keeps the width; its tab pops it out
+    // over the text, which also closes the keyboard, and tapping back into the note tucks it again.
+    const compactPalette=matchMedia('(max-width:600px)');let palettePopped=false;
     const paletteMeasure={
         read(current){
             if(!palette||!noteBody)return null;
             const content=current.contentDOM,style=getComputedStyle(content),line=content.querySelector('.cm-line:not(.design-docs-hanging)');
             const columnLeft=content.getBoundingClientRect().left+parseFloat(style.paddingLeft)+(line?parseFloat(getComputedStyle(line).paddingLeft):0);
-            return caretPalettePosition(current.coordsAtPos(current.state.selection.main.head),noteBody.getBoundingClientRect(),current.scrollDOM.getBoundingClientRect(),{width:palette.offsetWidth,height:palette.offsetHeight},columnLeft);
+            const body=noteBody.getBoundingClientRect();
+            const position=caretPalettePosition(current.coordsAtPos(current.state.selection.main.head),body,current.scrollDOM.getBoundingClientRect(),{width:palette.offsetWidth,height:palette.offsetHeight},columnLeft);
+            return position&&{...position,screenLeft:-body.left};
         },
-        write(position){if(!palette)return;palette.toggleAttribute('data-caret-hidden',!position);if(position){palette.style.left=position.left+'px';palette.style.top=position.top+'px';}},
+        write(position){
+            if(!palette)return;const tucked=compactPalette.matches&&!palettePopped;
+            palette.toggleAttribute('data-caret-hidden',!position);palette.toggleAttribute('data-tucked',tucked);
+            if(position){palette.style.left=(tucked?position.screenLeft:position.left)+'px';palette.style.top=position.top+'px';}
+        },
     };
+    const popPalette=()=>{if(!palette?.hasAttribute('data-tucked'))return;palettePopped=true;view?.contentDOM.blur();positionPalette();};
+    const tuckPalette=()=>{if(!palettePopped)return;palettePopped=false;positionPalette();};
+    palette?.addEventListener('click',popPalette);
     const positionPalette=()=>view?.requestMeasure(paletteMeasure);
     // The formatting panel is Blazor's markup, shown while the editor reports a
     // selection, so it is placed through custom properties on the note body.
@@ -129,7 +141,7 @@ export function mountEditor(root, bridge, options) {
     };
     root.addEventListener('solo-note-drop',linkDrop);
     view.scrollDOM.addEventListener('scroll',positionPalette);view.scrollDOM.addEventListener('scroll',positionFormat);
-    view.contentDOM.addEventListener('pointerdown',dragStart);window.addEventListener('pointerup',dragEnd);
+    view.contentDOM.addEventListener('pointerdown',dragStart);view.contentDOM.addEventListener('focus',tuckPalette);window.addEventListener('pointerup',dragEnd);
     const paletteResize=new ResizeObserver(()=>{positionPalette();positionFormat();});if(noteBody)paletteResize.observe(noteBody);positionPalette();
     const previewTheme=()=>{const style=getComputedStyle(root);return style.fontFamily+'|'+style.color+'|'+style.getPropertyValue('--mud-palette-surface');};
     let lastPreviewTheme=previewTheme();
@@ -175,6 +187,6 @@ export function mountEditor(root, bridge, options) {
             const wanted=new Set(targets),changes=embeds(text.toString()).filter(e=>wanted.has(e.raw)).map(e=>({from:e.from,to:e.to,insert:''}));
             if(changes.length)view.dispatch({changes,annotations:mediaEdit.of(true)});
         },
-        dispose(){removeSaveGuard?.();root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);view.scrollDOM.removeEventListener('scroll',positionFormat);window.removeEventListener('pointerup',dragEnd);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
+        dispose(){removeSaveGuard?.();root.removeEventListener('solo-note-drop',linkDrop);clearTimeout(paletteTimer);paletteResize.disconnect();view.scrollDOM.removeEventListener('scroll',positionPalette);view.scrollDOM.removeEventListener('scroll',positionFormat);window.removeEventListener('pointerup',dragEnd);noteBody?.removeEventListener('pointermove',showPalette);root.removeEventListener('keydown',typing);palette?.removeEventListener('click',popPalette);themeObserver.disconnect();images.dispose();view.destroy();provider.dispose();root.replaceChildren();},
     };
 }
