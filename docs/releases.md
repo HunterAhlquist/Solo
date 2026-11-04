@@ -32,16 +32,17 @@ The release's notes are the `## Latest` section of [CHANGELOG.md](../CHANGELOG.m
 Changes are written there as they land, because the version is not known until
 the tag is pushed. Both workflows read the section from the tagged commit
 (`build/changelog.sh notes`) and set it as the release body — the same text
-from either, so whichever runs second changes nothing. Once the release
-exists, the `changelog` job in ci.yml renames the header to the tag and date
-and commits that to `main`, so the next change starts a fresh section; a
-missing `## Latest` header is the cue to add one at the top. A tag pushed
-with no section gets GitHub's generated pull-request list instead, with a
-warning in the run. Previews leave the section alone, since the same changes
-ship again as stable.
+from either, so whichever runs second changes nothing. A tag pushed with an
+empty or missing section gets GitHub's generated pull-request list instead,
+with a warning in the run.
 
-The dated commit is pushed with `github.token`, which starts no workflows and
-needs `main`'s branch protection to let GitHub Actions push.
+Nothing commits back to `main` at release time: `main` is protected, and the
+workflow token can't be put on a bypass list. Instead the next change runs
+`build/changelog.sh sync` before adding its entry. When the newest stable `v*`
+tag is newer than the newest released section, it renames `## Latest` to that
+tag and the tag's date and opens a fresh `## Latest` above it; a missing
+header is restored the same way. Prerelease tags don't count, since the same
+changes ship again as stable.
 
 ## Only what changed gets built
 

@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
-# Exercises build/changelog.sh against small changelogs.
+# Exercises build/changelog.sh against small changelogs and a throwaway repo.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
-
+script="$(cd "$(dirname "$0")" && pwd)/changelog.sh"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+cd "$tmp"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
+run() { CHANGELOG="$tmp/CHANGELOG.md" bash "$script" "$@"; }
 
-cat > "$tmp/CHANGELOG.md" <<'MD'
+git init -q
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m one
+tag() { GIT_COMMITTER_DATE="$2T12:00:00Z" git -c user.name=t -c user.email=t@t tag -a "$1" -m "$1"; }
+tag v1.19.9 2026-11-03
+
+cat > CHANGELOG.md <<'MD'
 # Changelog
 
 ## Latest
@@ -28,28 +34,53 @@ cat > "$tmp/CHANGELOG.md" <<'MD'
 - Old.
 MD
 
-got=$(CHANGELOG="$tmp/CHANGELOG.md" bash build/changelog.sh notes)
+got=$(run notes)
 want=$'### Server\n- A change.\n\n### Extensions\n\n#### Design Docs (1.5.3)\n- Another.'
 [ "$got" = "$want" ] || fail "notes printed:
 $got"
 
-CHANGELOG="$tmp/CHANGELOG.md" bash build/changelog.sh release v1.20.0 2026-11-04
-grep -qx '## v1.20.0 (2026-11-04)' "$tmp/CHANGELOG.md" || fail "release did not rename the header"
-grep -qx '## v1.19.9 (2026-11-03)' "$tmp/CHANGELOG.md" || fail "release touched an older section"
-! grep -qx '## Latest' "$tmp/CHANGELOG.md" || fail "release left the Latest header in place"
+# The newest tag already has its section, so nothing moves.
+before=$(cat CHANGELOG.md)
+run sync > /dev/null
+[ "$(cat CHANGELOG.md)" = "$before" ] || fail "sync changed a current changelog"
 
-# Without a Latest section both commands refuse, so a release falls back to
-# generated notes and a re-run of the rename cannot rename the wrong section.
-! CHANGELOG="$tmp/CHANGELOG.md" bash build/changelog.sh notes 2>/dev/null || fail "notes accepted a changelog with no Latest section"
-! CHANGELOG="$tmp/CHANGELOG.md" bash build/changelog.sh release v1.20.1 2>/dev/null || fail "release accepted a changelog with no Latest section"
+# A prerelease doesn't consume the section.
+tag v1.20.0-rc.1 2026-11-04
+run sync > /dev/null
+[ "$(cat CHANGELOG.md)" = "$before" ] || fail "sync dated the section for a prerelease"
 
-# A Latest section with nothing in it is not release notes.
-printf '# Changelog\n\n## Latest\n\n## v1.0.0 (2026-01-01)\n- Old.\n' > "$tmp/CHANGELOG.md"
-! CHANGELOG="$tmp/CHANGELOG.md" bash build/changelog.sh notes 2>/dev/null || fail "notes accepted an empty Latest section"
+# A newer stable tag dates the section with the tag's own date and opens a new one.
+tag v1.20.0 2026-11-05
+run sync > /dev/null
+[ "$(grep '^## ' CHANGELOG.md)" = $'## Latest\n## v1.20.0 (2026-11-05)\n## v1.19.9 (2026-11-03)' ] ||
+    fail "sync produced:
+$(grep '^## ' CHANGELOG.md)"
+grep -A2 -x '## v1.20.0 (2026-11-05)' CHANGELOG.md | grep -qx '### Server' || fail "the dated section lost its body"
+! run notes 2>/dev/null || fail "notes accepted an empty Latest section"
 
-# A tag that already has a section is not renamed onto a second time.
-printf '# Changelog\n\n## Latest\n- New.\n\n## v1.0.0 (2026-01-01)\n- Old.\n' > "$tmp/CHANGELOG.md"
-! CHANGELOG="$tmp/CHANGELOG.md" bash build/changelog.sh release v1.0.0 2>/dev/null || fail "release renamed Latest onto a tag that already has a section"
-grep -qx '## Latest' "$tmp/CHANGELOG.md" || fail "a refused release still changed the file"
+# Run again, it is a no-op; numeric, not lexical, ordering of tags.
+run sync > /dev/null
+[ "$(grep -c '^## ' CHANGELOG.md)" = 3 ] || fail "a second sync changed the file"
+tag v1.9.0 2026-11-06
+run sync > /dev/null
+[ "$(grep -c '^## ' CHANGELOG.md)" = 3 ] || fail "sync took v1.9.0 for newer than v1.20.0"
+
+# A missing Latest header is the cue to start tracking again.
+sed -i '/^## Latest$/,+1d' CHANGELOG.md
+run sync > /dev/null
+[ "$(grep '^## ' CHANGELOG.md | head -1)" = '## Latest' ] || fail "sync did not restore a missing Latest header"
+! run notes 2>/dev/null || fail "notes accepted a changelog with an empty Latest section"
+
+# A release that shipped with no Latest section still gets its header, so the
+# next sync doesn't date the new section as that release.
+sed -i '/^## Latest$/,+1d' CHANGELOG.md
+tag v1.21.0 2026-11-07
+run sync > /dev/null
+[ "$(grep '^## ' CHANGELOG.md | head -2)" = $'## Latest\n## v1.21.0 (2026-11-07)' ] ||
+    fail "sync after an untracked release produced:
+$(grep '^## ' CHANGELOG.md)"
+sed -i 's/^## Latest$/## Latest\n\n- New./' CHANGELOG.md
+run sync > /dev/null
+[ "$(run notes)" = '- New.' ] || fail "a second sync after an untracked release moved the new entries"
 
 echo "changelog: ok"
