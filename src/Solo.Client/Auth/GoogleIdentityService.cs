@@ -13,9 +13,11 @@ namespace Solo.Client.Auth;
 /// Google fixes a GIS credential's life at about an hour and offers no silent-iframe
 /// renewal — so this service renews for itself. A timer re-prompts GIS a few minutes
 /// before <c>exp</c>, which FedCM answers silently while the user's Google session is
-/// alive; a token found expired (say, after the machine slept) gets one renewal
-/// attempt before it's retired. Only when renewal fails does the user hear about it:
-/// <see cref="SessionExpiry"/> raises the in-place re-sign-in dialog.
+/// alive; a held token found expired (say, after the machine slept) gets one renewal
+/// attempt before it's retired. One already expired when the app boots is retired
+/// at once, and the sign-in page makes the renewal attempt instead. Only when
+/// renewal fails does the user hear about it: <see cref="SessionExpiry"/> raises the
+/// in-place re-sign-in dialog.
 /// </remarks>
 public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, SessionExpiry sessionExpiry)
     : IAsyncDisposable
@@ -29,6 +31,13 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     private Task<bool>? _renewal;
     private Timer? _renewalTimer;
     private DateTimeOffset? _renewalScheduledFor;
+
+    /// <summary>
+    /// Set when the app booted with an expired stored credential: the sign-in page
+    /// should try a silent renewal, which brings the user straight back if their
+    /// Google session is alive.
+    /// </summary>
+    public bool RenewOnSignInPage { get; set; }
 
     /// <summary>Raised when a credential arrives or is cleared.</summary>
     public event Action? SignedInChanged;
@@ -132,6 +141,7 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
             return await js.InvokeAsync<string?>("solo.session.token");
         }
 
+        var fromStorage = _token is null;
         _token ??= await js.InvokeAsync<string?>("solo.google.token");
 
         if (!GoogleJwt.IsExpired(_token))
@@ -148,8 +158,21 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
 
         if(await IsOffline())return null;
 
-        // The credential died while we weren't looking (slept laptop, restarted
-        // browser with "stay signed in"). One silent re-issue usually saves it.
+        if (fromStorage)
+        {
+            // A credential that was already dead when the app booted (back after
+            // an hour, a server update reloaded the page). Renewing here would
+            // hold the whole app on a progress bar for as long as GIS takes to
+            // give up, up to the prompt's 15s timeout. Phones without FedCM never
+            // answer silently, so they always waited the full time. Retire it now
+            // and let the sign-in page attempt the renewal beside its button.
+            RenewOnSignInPage = true;
+            await RetireAsync();
+            return null;
+        }
+
+        // The credential died while this page held it (slept laptop). Work may
+        // be in progress, so one silent re-issue is worth waiting for.
         if (await TryRenewAsync() && !GoogleJwt.IsExpired(_token))
         {
             return _token;

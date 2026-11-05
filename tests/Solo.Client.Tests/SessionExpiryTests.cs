@@ -37,8 +37,10 @@ internal static class FakeCredential
 
 /// <summary>
 /// Google fixes its credential's life at ~1 hour, so the session outliving it
-/// depends entirely on silent renewal: an expired stored token gets one FedCM
-/// re-prompt before the user is treated as signed out.
+/// depends entirely on silent renewal. A credential that dies while the page
+/// holds it gets one FedCM re-prompt before the user is treated as signed out;
+/// one that was already dead when the app booted is retired straight away, so
+/// the sign-in page isn't held up behind a prompt that may never answer.
 /// </summary>
 public class GoogleSilentRenewalTests : SoloBunitContext
 {
@@ -47,10 +49,16 @@ public class GoogleSilentRenewalTests : SoloBunitContext
         Auth = new AuthConfigDto("https://accounts.google.com", "client-id", "google", true),
     };
 
-
-
     private GoogleIdentityService Service(SessionExpiry? expiry = null) =>
         new(JSInterop.JSRuntime, GoogleConfig(), expiry ?? new SessionExpiry());
+
+    /// <summary>A service holding a credential that has since expired, as after a slept laptop.</summary>
+    private async Task<GoogleIdentityService> HoldingExpiredCredential()
+    {
+        var google = Service();
+        await google.OnCredentialReceived(FakeCredential.Expired());
+        return google;
+    }
 
     [Fact]
     public async Task A_live_stored_credential_is_returned_without_prompting()
@@ -64,13 +72,27 @@ public class GoogleSilentRenewalTests : SoloBunitContext
     }
 
     [Fact]
-    public async Task An_expired_credential_is_renewed_silently_and_the_fresh_one_returned()
+    public async Task An_expired_credential_found_at_boot_is_retired_without_prompting()
     {
-        var fresh = FakeCredential.Live();
         JSInterop.Setup<string>("solo.google.token").SetResult(FakeCredential.Expired());
-        JSInterop.Setup<string>("solo.google.prompt").SetResult(fresh);
 
         await using var google = Service();
+
+        Assert.Null(await google.GetTokenAsync());
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
+        // Retired, not signed out: the sign-in page may still renew silently.
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.retire");
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.signOut");
+        Assert.True(google.RenewOnSignInPage);
+    }
+
+    [Fact]
+    public async Task A_credential_that_expires_while_held_is_renewed_silently_and_the_fresh_one_returned()
+    {
+        var fresh = FakeCredential.Live();
+        JSInterop.Setup<string>("solo.google.prompt").SetResult(fresh);
+
+        await using var google = await HoldingExpiredCredential();
 
         Assert.Equal(fresh, await google.GetTokenAsync());
     }
@@ -78,24 +100,22 @@ public class GoogleSilentRenewalTests : SoloBunitContext
     [Fact]
     public async Task A_failed_renewal_retires_the_credential_but_keeps_auto_select()
     {
-        JSInterop.Setup<string>("solo.google.token").SetResult(FakeCredential.Expired());
         JSInterop.Setup<string?>("solo.google.prompt").SetResult(null);
 
-        await using var google = Service();
+        await using var google = await HoldingExpiredCredential();
 
         Assert.Null(await google.GetTokenAsync());
-        // Retired, not signed out: the next sign-in may still happen silently.
         Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.retire");
         Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.signOut");
+        Assert.False(google.RenewOnSignInPage);
     }
 
     [Fact]
     public async Task A_renewal_that_hands_back_another_dead_token_still_signs_out()
     {
-        JSInterop.Setup<string>("solo.google.token").SetResult(FakeCredential.Expired());
         JSInterop.Setup<string>("solo.google.prompt").SetResult(FakeCredential.Expired());
 
-        await using var google = Service();
+        await using var google = await HoldingExpiredCredential();
 
         Assert.Null(await google.GetTokenAsync());
     }
@@ -110,6 +130,51 @@ public class GoogleSilentRenewalTests : SoloBunitContext
         Assert.Null(await google.GetTokenAsync());
         Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
         Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.retire");
+        Assert.False(google.RenewOnSignInPage);
+    }
+}
+
+/// <summary>
+/// The sign-in page is where a credential that expired before boot gets its
+/// silent renewal, beside a button the user can already press.
+/// </summary>
+public class SignInPageRenewalTests : ComponentTestBase
+{
+    private GoogleIdentityService Google(bool renewOnSignInPage)
+    {
+        var config = new AppConfig
+        {
+            Auth = new AuthConfigDto("https://accounts.google.com", "client-id", "google", true),
+        };
+        var google = new GoogleIdentityService(JSInterop.JSRuntime, config, new SessionExpiry())
+        {
+            RenewOnSignInPage = renewOnSignInPage,
+        };
+        Services.AddSingleton(google);
+        return google;
+    }
+
+    [Fact]
+    public void The_button_attempts_a_silent_renewal_after_a_credential_expired_at_boot()
+    {
+        var google = Google(renewOnSignInPage: true);
+
+        Render<GoogleSignInButton>();
+
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.renderButton");
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
+        Assert.False(google.RenewOnSignInPage);
+    }
+
+    [Fact]
+    public void The_button_does_not_prompt_a_visitor_who_signed_out()
+    {
+        Google(renewOnSignInPage: false);
+
+        Render<GoogleSignInButton>();
+
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.renderButton");
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
     }
 }
 

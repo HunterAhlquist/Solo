@@ -13,6 +13,9 @@ with its version in parentheses).
 
 ## Latest
 
+### Server
+- Coming back after your sign-in has expired (or after a server update reloads the page) shows the sign-in screen right away instead of an empty page for up to 15 seconds, most noticeably on phones. If your Google session is still alive, the sign-in screen signs you back in by itself.
+
 ## v1.20.0 (2026-11-04)
 
 ### Desktop
