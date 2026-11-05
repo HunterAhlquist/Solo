@@ -276,23 +276,26 @@ window.solo = {
     },
 
     // -----------------------------------------------------------------------
-    // Solo API sessions (desktop only). The browser sign-in buys a long-lived
-    // `solo_` token from the instance; that token is what goes on the wire,
-    // and the server slides its expiry on use. The profile delivered with it
-    // is kept for display — desktop has no provider credential to read
-    // claims from.
+    // Solo API sessions. A sign-in buys a long-lived `solo_` session from the
+    // instance, and the server slides its expiry on use. The desktop app holds
+    // it as a bearer token. The web app gets it as an HttpOnly cookie no script
+    // can read, sent only beside the X-Solo-Client header (Solo.Api's
+    // SessionCookie), so only the profile delivered with it is kept here, for
+    // display and as the sign that a session exists.
     // -----------------------------------------------------------------------
     session: {
         tokenKey: 'solo.session.token',
         userKey: 'solo.session.user',
 
-        // Same "stay signed in" routing as the web credential: localStorage
-        // survives restarts, sessionStorage scopes to the window.
+        // "Stay signed in" routing: localStorage survives restarts,
+        // sessionStorage scopes to the window. The web passes no token.
         store(token, user) {
             const [into, outOf] = window.solo.google.remember()
                 ? [localStorage, sessionStorage]
                 : [sessionStorage, localStorage];
-            into.setItem(this.tokenKey, token);
+            if (token) {
+                into.setItem(this.tokenKey, token);
+            }
             outOf.removeItem(this.tokenKey);
             if (user) {
                 into.setItem(this.userKey, JSON.stringify(user));
@@ -313,18 +316,70 @@ window.solo = {
             }
         },
 
-        // Sign-out: revoke server-side, then forget locally regardless.
+        // Web: trades a Google credential for the session cookie. Resolves the
+        // profile as JSON, or null when the instance wouldn't mint a session
+        // (an identity nobody invited) or couldn't be reached.
+        async begin(credential) {
+            try {
+                const response = await fetch(
+                    `api/auth/sessions/cookie?persistent=${window.solo.google.remember()}`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ description: this._browserName() }),
+                    });
+                return response.ok ? this._keep(await response.json()) : null;
+            } catch {
+                return null;
+            }
+        },
+
+        // Web: whether the instance still honours a session cookie this page
+        // has no profile for. Same result shape as begin().
+        async probe() {
+            try {
+                const response = await fetch('api/users/me', {
+                    headers: { 'X-Solo-Client': '1' },
+                    cache: 'no-store',
+                });
+                return response.ok ? this._keep(await response.json()) : null;
+            } catch {
+                return null;
+            }
+        },
+
+        _keep(user) {
+            this.store(null, user);
+            return JSON.stringify(user);
+        },
+
+        // The signed-in devices list's label for this session.
+        _browserName() {
+            const agent = navigator.userAgent;
+            const browser = /Edg\//.test(agent) ? 'Edge'
+                : /Firefox\/|FxiOS/.test(agent) ? 'Firefox'
+                : /Chrome\/|CriOS/.test(agent) ? 'Chrome'
+                : /Safari\//.test(agent) ? 'Safari'
+                : 'Browser';
+            const os = /iPhone|iPad/.test(agent) ? 'iOS'
+                : /Android/.test(agent) ? 'Android'
+                : /Mac OS X/.test(agent) ? 'macOS'
+                : /Windows/.test(agent) ? 'Windows'
+                : /Linux/.test(agent) ? 'Linux'
+                : null;
+            return os ? `${browser} on ${os}` : browser;
+        },
+
+        // Sign-out: revoke server-side, then forget locally regardless. With
+        // no token this is the web's cookie, which the response also clears.
         async revoke() {
             const token = this.token();
-            if (token) {
-                try {
-                    await fetch('api/auth/sessions/current', {
-                        method: 'DELETE',
-                        headers: { Authorization: `Bearer ${token}` },
-                    });
-                } catch {
-                    // Instance unreachable — the server sweep will expire it.
-                }
+            try {
+                await fetch('api/auth/sessions/current', {
+                    method: 'DELETE',
+                    headers: token ? { Authorization: `Bearer ${token}` } : { 'X-Solo-Client': '1' },
+                });
+            } catch {
+                // Instance unreachable — the server sweep will expire it.
             }
 
             this.clear();
@@ -335,15 +390,14 @@ window.solo = {
     // Google Identity Services. Google's "Web application" OAuth clients require
     // a client_secret at the token endpoint even with PKCE, which a browser
     // cannot hold — so we never touch the token endpoint. GIS returns the ID
-    // token (the `credential`) straight from the authorization step, which is
-    // the only thing the API ever wanted.
+    // token (the `credential`) straight from the authorization step, and the
+    // instance trades it for a session (see `session`); it is never stored.
     // -----------------------------------------------------------------------
     google: {
         tokenKey: 'solo.google.idtoken',
         rememberKey: 'solo.google.remember',
         _dotnet: null,
         _loading: null,
-        _renewResolve: null,
 
         // Loaded on demand: an instance signed in with Microsoft should never
         // fetch a script from Google.
@@ -377,31 +431,16 @@ window.solo = {
         },
 
         _onCredential(credential) {
-            window.solo.google._writeToken(credential);
             window.solo.google._dotnet?.invokeMethodAsync('OnCredentialReceived', credential);
-            window.solo.google._renewResolve?.(credential);
         },
 
-        // "Stay signed in" routes the credential to localStorage so it survives
-        // a browser restart; otherwise sessionStorage scopes it to the tab.
-        // Defaults to on: this is a small-team tool, and silent renewal already
-        // keeps the session alive while the tab is open anyway.
+        // "Stay signed in": the session cookie and the profile survive a
+        // browser restart, or go with the browser session. Defaults to on: this
+        // is a small-team tool. Applies from the next sign-in.
         remember: () => localStorage.getItem(window.solo.google.rememberKey) !== '0',
 
         setRemember(value) {
             localStorage.setItem(this.rememberKey, value ? '1' : '0');
-            const token = this.token();
-            if (token) {
-                this._writeToken(token);
-            }
-        },
-
-        _writeToken(credential) {
-            const [into, outOf] = this.remember()
-                ? [localStorage, sessionStorage]
-                : [sessionStorage, localStorage];
-            into.setItem(this.tokenKey, credential);
-            outOf.removeItem(this.tokenKey);
         },
 
         async renderButton(element, theme) {
@@ -420,49 +459,10 @@ window.solo = {
             });
         },
 
-        // Reading the stored token must not drag in the GIS script: the auth
-        // state is queried on every page load, sign-in happens once.
+        // Where sign-ins from before sessions kept the credential. Read once,
+        // to trade a live one for a session, then retired.
         token: () => sessionStorage.getItem(window.solo.google.tokenKey)
             ?? localStorage.getItem(window.solo.google.tokenKey),
-
-        // Silent renewal: ask GIS to re-issue a credential. With a live Google
-        // session and auto_select, FedCM re-authenticates without a click.
-        // Resolves the fresh credential, or null when the prompt is skipped or
-        // nothing arrives in time (Google session gone, prompt suppressed).
-        prompt() {
-            return new Promise(resolve => {
-                let settled = false;
-                let timer = null;
-                const settle = credential => {
-                    if (settled) {
-                        return;
-                    }
-
-                    settled = true;
-                    clearTimeout(timer);
-                    if (window.solo.google._renewResolve === settle) {
-                        window.solo.google._renewResolve = null;
-                    }
-
-                    resolve(credential);
-                };
-
-                window.solo.google._renewResolve = settle;
-                timer = setTimeout(() => settle(null), 15000);
-
-                try {
-                    window.google.accounts.id.prompt(notification => {
-                        // Under FedCM most moment details are deprecated, but
-                        // "skipped" still means no credential is coming.
-                        if (notification?.isSkippedMoment?.()) {
-                            settle(null);
-                        }
-                    });
-                } catch {
-                    settle(null);
-                }
-            });
-        },
 
         // Dropping a dead credential is not signing out: leave auto-select
         // alone so the next sign-in can still be silent.

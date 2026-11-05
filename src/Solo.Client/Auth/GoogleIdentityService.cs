@@ -6,38 +6,26 @@ namespace Solo.Client.Auth;
 
 /// <summary>
 /// Sign-in via Google Identity Services. The "credential" GIS hands back <em>is</em>
-/// the ID token the API validates, so there is no token endpoint, no client secret,
+/// an ID token the API validates, so there is no token endpoint, no client secret,
 /// and no redirect round trip.
 /// </summary>
 /// <remarks>
-/// Google fixes a GIS credential's life at about an hour and offers no silent-iframe
-/// renewal — so this service renews for itself. A timer re-prompts GIS a few minutes
-/// before <c>exp</c>, which FedCM answers silently while the user's Google session is
-/// alive; a held token found expired (say, after the machine slept) gets one renewal
-/// attempt before it's retired. One already expired when the app boots is retired
-/// at once, and the sign-in page makes the renewal attempt instead. Only when
-/// renewal fails does the user hear about it: <see cref="SessionExpiry"/> raises the
-/// in-place re-sign-in dialog.
+/// The credential proves who signed in, once. Google fixes its life at about an
+/// hour and issues nothing to refresh it with, so it is traded straight away for a
+/// Solo session that slides on use: an HttpOnly cookie on the web, a bearer token
+/// in the desktop shell. Nothing on the web stores the credential afterwards. When
+/// the session dies (revoked, idle past its lifetime) the API answers 401 and
+/// <see cref="SessionExpiry"/> raises the in-place re-sign-in dialog.
 /// </remarks>
-public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, SessionExpiry sessionExpiry)
-    : IAsyncDisposable
+public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config) : IAsyncDisposable
 {
-    /// <summary>Renew this long before <c>exp</c>, so a request never carries a dying token.</summary>
-    private static readonly TimeSpan RenewalLead = TimeSpan.FromMinutes(5);
-
     private DotNetObjectReference<GoogleIdentityService>? _self;
-    private string? _token;
     private bool? _desktop;
-    private Task<bool>? _renewal;
-    private Timer? _renewalTimer;
-    private DateTimeOffset? _renewalScheduledFor;
 
-    /// <summary>
-    /// Set when the app booted with an expired stored credential: the sign-in page
-    /// should try a silent renewal, which brings the user straight back if their
-    /// Google session is alive.
-    /// </summary>
-    public bool RenewOnSignInPage { get; set; }
+    // A credential that couldn't buy a session, held for this page only. It
+    // happens for an identity nobody invited: the API then answers with the
+    // access-denied notice rather than a bare 401.
+    private string? _token;
 
     /// <summary>Raised when a credential arrives or is cleared.</summary>
     public event Action? SignedInChanged;
@@ -57,8 +45,8 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
 
     /// <summary>
     /// Wires the credential callback. On the web this loads the GIS script; in
-    /// the desktop shell it only registers the .NET receiver — called by the
-    /// sign-in UI, and lazily by silent renewal.
+    /// the desktop shell it only registers the .NET receiver. Called by the
+    /// sign-in UI.
     /// </summary>
     public async Task InitializeAsync()
     {
@@ -91,7 +79,7 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     public ValueTask RenderButtonAsync(ElementReference element, bool darkMode) =>
         js.InvokeVoidAsync("solo.google.renderButton", element, darkMode ? "filled_black" : "outline");
 
-    /// <summary>Whether the credential persists across browser restarts (localStorage).</summary>
+    /// <summary>Whether the session outlives a browser restart.</summary>
     public ValueTask<bool> GetRememberAsync() => js.InvokeAsync<bool>("solo.google.remember");
 
     public ValueTask SetRememberAsync(bool value) => js.InvokeVoidAsync("solo.google.setRemember", value);
@@ -101,14 +89,14 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     public async Task OnCredentialReceived(string credential)
     {
         try{await js.InvokeVoidAsync("solo.offline.credential",GoogleJwt.ToPrincipal(credential)?.FindFirst("email")?.Value);}catch(JSException){}
-        _token = credential;
-        ScheduleRenewal(credential);
+        var user = await js.InvokeAsync<string?>("solo.session.begin", credential);
+        _token = user is null ? credential : null;
         SignedInChanged?.Invoke();
     }
 
     /// <summary>
     /// Called from JS when the shell has stored a browser-won Solo session
-    /// (desktop only). The session is already live; there is nothing to renew.
+    /// (desktop only).
     /// </summary>
     [JSInvokable]
     public async Task OnDesktopSignedIn()
@@ -126,13 +114,9 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     }
 
     /// <summary>
-    /// The bearer credential for API calls: on desktop the long-lived Solo
-    /// session token (no client-side expiry — the server slides it); on the
-    /// web the stored Google credential, renewed silently if it can be, or
-    /// null once it is truly gone. Reads storage directly — deliberately
-    /// without loading the GIS script, since this runs on every
-    /// authentication-state query; the script is only fetched when a renewal
-    /// is actually attempted.
+    /// The bearer credential for API calls: on desktop the Solo session token;
+    /// on the web none, because the session cookie travels by itself, unless a
+    /// credential is being held that couldn't buy one.
     /// </summary>
     public async ValueTask<string?> GetTokenAsync()
     {
@@ -141,194 +125,79 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
             return await js.InvokeAsync<string?>("solo.session.token");
         }
 
-        var fromStorage = _token is null;
-        _token ??= await js.InvokeAsync<string?>("solo.google.token");
-
-        if (!GoogleJwt.IsExpired(_token))
-        {
-            ScheduleRenewal(_token!);
-            return _token;
-        }
-
-        if (_token is null)
-        {
-            // Never signed in here: nothing to renew, nothing to retire.
-            return null;
-        }
-
-        if(await IsOffline())return null;
-
-        if (fromStorage)
-        {
-            // A credential that was already dead when the app booted (back after
-            // an hour, a server update reloaded the page). Renewing here would
-            // hold the whole app on a progress bar for as long as GIS takes to
-            // give up, up to the prompt's 15s timeout. Phones without FedCM never
-            // answer silently, so they always waited the full time. Retire it now
-            // and let the sign-in page attempt the renewal beside its button.
-            RenewOnSignInPage = true;
-            await RetireAsync();
-            return null;
-        }
-
-        // The credential died while this page held it (slept laptop). Work may
-        // be in progress, so one silent re-issue is worth waiting for.
-        if (await TryRenewAsync() && !GoogleJwt.IsExpired(_token))
-        {
-            return _token;
-        }
-
-        await RetireAsync();
-        return null;
+        return GoogleJwt.IsExpired(_token) ? null : _token;
     }
 
     /// <summary>
-    /// Asks GIS for a fresh credential without user interaction. Single-flight:
-    /// concurrent callers (every in-flight request checks the token) share one
-    /// prompt rather than stampeding Google.
+    /// Whether the web app believes it holds a session cookie. The page can't
+    /// read the cookie, so the profile stored beside it stands in.
     /// </summary>
-    public async Task<bool> TryRenewAsync()
-    {
-        if (!config.IsGoogle)
-        {
-            return false;
-        }
+    public async ValueTask<bool> HoldsSessionCookieAsync() =>
+        !await IsDesktopAsync() && await js.InvokeAsync<string?>("solo.session.user") is not null;
 
-        if (_renewal is { } pending)
-        {
-            return await pending;
-        }
-
-        var attempt = RenewCoreAsync();
-        _renewal = attempt;
-        try
-        {
-            return await attempt;
-        }
-        finally
-        {
-            _renewal = null;
-        }
-    }
-
-    private async Task<bool> RenewCoreAsync()
-    {
-        try
-        {
-            if (await IsDesktopAsync())
-            {
-                // No silent channel in the shell: GIS (and its FedCM prompt)
-                // can't run there. Fail fast so the re-sign-in dialog appears
-                // immediately; one click sends the user through the browser.
-                return false;
-            }
-
-            await InitializeAsync();
-            var credential = await js.InvokeAsync<string?>("solo.google.prompt");
-            if (GoogleJwt.IsExpired(credential))
-            {
-                return false;
-            }
-
-            // OnCredentialReceived also lands the token, but interop ordering
-            // between the JS callback and this resolution isn't guaranteed —
-            // take the credential from the prompt itself.
-            _token = credential;
-            ScheduleRenewal(credential!);
-            return true;
-        }
-        catch (JSException)
-        {
-            // GIS script blocked or unreachable: treat as a failed renewal.
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Arms a one-shot renewal a little before this token's <c>exp</c>. Idempotent
-    /// per token, so the per-request token reads don't re-arm it constantly.
-    /// </summary>
-    private void ScheduleRenewal(string token)
-    {
-        if (!config.IsGoogle || GoogleJwt.Expiry(token) is not { } expiry || _renewalScheduledFor == expiry)
-        {
-            return;
-        }
-
-        var due = expiry - RenewalLead - DateTimeOffset.UtcNow;
-        if (due < TimeSpan.FromSeconds(1))
-        {
-            due = TimeSpan.FromSeconds(1);
-        }
-
-        _renewalScheduledFor = expiry;
-        _renewalTimer?.Dispose();
-        _renewalTimer = new Timer(_ => _ = OnRenewalDueAsync(), null, due, Timeout.InfiniteTimeSpan);
-    }
-
-    private async Task OnRenewalDueAsync()
-    {
-        try
-        {
-            if(await IsOffline())return;
-            if (!await TryRenewAsync())
-            {
-                sessionExpiry.NotifyExpired();
-            }
-        }
-        catch
-        {
-            // A timer callback must never throw; the dialog is the fallback.
-            sessionExpiry.NotifyExpired();
-        }
-    }
-
-    /// <summary>
-    /// Drops a dead credential without touching GIS auto-select — expiring is not
-    /// signing out, and the next sign-in should still be able to happen silently.
-    /// </summary>
-    private async Task RetireAsync()
-    {
-        _token = null;
-        CancelScheduledRenewal();
-        await js.InvokeVoidAsync("solo.google.retire");
-        SignedInChanged?.Invoke();
-    }
+    /// <summary>Signed in as far as this page knows, without asking the server.</summary>
+    public async ValueTask<bool> IsSignedInAsync() =>
+        await GetTokenAsync() is not null || await HoldsSessionCookieAsync();
 
     /// <summary>
     /// Whether the user counts as signed in, and the display-only claims that
-    /// say who they are. On the web both come from the Google credential; on
-    /// desktop the session token authenticates while the profile the instance
-    /// delivered alongside it names the user.
+    /// say who they are, from the profile the instance delivered with the
+    /// session.
     /// </summary>
     public async ValueTask<(bool SignedIn, ClaimsPrincipal? Display)> GetAuthStateAsync()
     {
-        if (!await IsDesktopAsync())
+        if (await IsDesktopAsync())
         {
-            var token = await GetTokenAsync();
-            if(token is not null)return (true,GoogleJwt.ToPrincipal(token));
-            if(await IsOffline()){var profile=await js.InvokeAsync<string?>("solo.offline.profile");return (profile is not null,DesktopUser.ToPrincipal(profile));}
-            return (false,null);
+            if (await GetTokenAsync() is null)
+            {
+                return (false, null);
+            }
+
+            return (true, DesktopUser.ToPrincipal(await js.InvokeAsync<string?>("solo.session.user")));
         }
 
-        if (await GetTokenAsync() is null)
+        if (await js.InvokeAsync<string?>("solo.session.user") is { } profile)
         {
-            return (false, null);
+            return (true, DesktopUser.ToPrincipal(profile));
         }
 
-        return (true, DesktopUser.ToPrincipal(await js.InvokeAsync<string?>("solo.session.user")));
+        if (await GetTokenAsync() is { } token)
+        {
+            return (true, GoogleJwt.ToPrincipal(token));
+        }
+
+        if(await IsOffline()){var offline=await js.InvokeAsync<string?>("solo.offline.profile");return (offline is not null,DesktopUser.ToPrincipal(offline));}
+
+        return await ResumeAsync() is { } resumed ? (true, DesktopUser.ToPrincipal(resumed)) : (false, null);
+    }
+
+    /// <summary>
+    /// A session this page doesn't know it has, as the profile JSON, or null.
+    /// </summary>
+    private async Task<string?> ResumeAsync()
+    {
+        // Sign-ins from before sessions left the Google credential in storage.
+        // One still alive buys a session; any other is just dropped.
+        if (await js.InvokeAsync<string?>("solo.google.token") is { } stored)
+        {
+            await js.InvokeVoidAsync("solo.google.retire");
+            if (!GoogleJwt.IsExpired(stored) && await js.InvokeAsync<string?>("solo.session.begin", stored) is { } user)
+            {
+                return user;
+            }
+        }
+
+        // The cookie can outlive the stored profile: Safari clears storage that
+        // scripts can write after seven days without a visit, but leaves an
+        // HttpOnly cookie the server set. Ask the server whether it still counts.
+        return await js.InvokeAsync<string?>("solo.session.probe");
     }
 
     public async Task SignOutAsync()
     {
         await OfflineLock();
         _token = null;
-        CancelScheduledRenewal();
-        if (await IsDesktopAsync())
-        {
-            await js.InvokeVoidAsync("solo.session.revoke");
-        }
-
+        await js.InvokeVoidAsync("solo.session.revoke");
         await js.InvokeVoidAsync("solo.google.signOut");
         SignedInChanged?.Invoke();
     }
@@ -336,16 +205,8 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config, Sessi
     private async Task<bool> IsOffline(){try{return await js.InvokeAsync<bool>("solo.offline.isOffline");}catch(JSException){return false;}}
     private async Task OfflineLock(){try{await js.InvokeVoidAsync("solo.offline.lock");}catch(JSException){}}
 
-    private void CancelScheduledRenewal()
-    {
-        _renewalTimer?.Dispose();
-        _renewalTimer = null;
-        _renewalScheduledFor = null;
-    }
-
     public ValueTask DisposeAsync()
     {
-        CancelScheduledRenewal();
         _self?.Dispose();
         return ValueTask.CompletedTask;
     }

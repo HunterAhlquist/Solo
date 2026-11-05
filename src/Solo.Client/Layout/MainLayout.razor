@@ -160,8 +160,8 @@
     }
 
     /// <summary>
-    /// Silent renewal failed or the API rejected our token: offer re-sign-in in
-    /// place, so an open edit isn't lost to a redirect. Google signs back in via
+    /// The API rejected our session: offer re-sign-in in place, so an open edit
+    /// isn't lost to a redirect. Google signs back in via
     /// its callback with no navigation; the dialog just closes and work resumes.
     /// </summary>
     private void OnSessionExpired() => _ = InvokeAsync(async () =>

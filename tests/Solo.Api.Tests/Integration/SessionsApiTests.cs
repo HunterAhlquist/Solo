@@ -12,8 +12,9 @@ using Xunit;
 namespace Solo.Api.Tests.Integration;
 
 /// <summary>
-/// Long-lived API sessions (the desktop app's credential): exchange, use,
-/// revocation, expiry, and the rule that a session can never mint another.
+/// Long-lived API sessions (the desktop app's bearer token, the web app's
+/// cookie): exchange, use, revocation, expiry, and the rule that a session can
+/// never mint another.
 /// </summary>
 [Collection("postgres")]
 public sealed class SessionsApiTests(PostgresFixture postgres) : IAsyncLifetime
@@ -208,5 +209,152 @@ public sealed class SessionsApiTests(PostgresFixture postgres) : IAsyncLifetime
 
         await connection.StartAsync();
         await connection.InvokeAsync(nameof(IBoardHubServer.JoinBoard), board.Id);
+    }
+    // -- The web app's cookie --------------------------------------------------
+
+    private async Task<(HttpResponseMessage Response, string Cookie)> CreateCookieSessionAsync(bool persistent = true)
+    {
+        var response = await _admin.PostAsJsonAsync(
+            $"/api/auth/sessions/cookie?persistent={persistent}", new { description = "Safari on iOS" }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var setCookie = Assert.Single(response.Headers.GetValues("Set-Cookie"), c => c.Contains("=solo_"));
+        return (response, setCookie);
+    }
+
+    /// <summary>A browser as it sends the cookie: name=value only, with or without the client header.</summary>
+    private HttpClient WithCookie(string setCookie, bool clientHeader = true)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("Cookie", setCookie.Split(';')[0]);
+        if (clientHeader)
+        {
+            client.DefaultRequestHeaders.Add("X-Solo-Client", "1");
+        }
+
+        return client;
+    }
+
+    [SkippableFact]
+    public async Task CookieExchange_SetsAnHttpOnlyCookie_AndReturnsNoToken()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (response, setCookie) = await CreateCookieSessionAsync();
+
+        Assert.StartsWith("__Host-solo-session=solo_", setCookie);
+        var attributes = setCookie.ToLowerInvariant();
+        Assert.Contains("httponly", attributes);
+        Assert.Contains("secure", attributes);
+        Assert.Contains("samesite=strict", attributes);
+        Assert.Contains("path=/", attributes);
+        Assert.Contains("expires=", attributes);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("solo_", body, StringComparison.Ordinal);
+        Assert.Equal("admin@example.com", (await response.Content.ReadFromJsonAsync<UserDto>(TestClients.Json))!.Email);
+
+        using var browser = WithCookie(setCookie);
+        Assert.Equal("Safari on iOS", Assert.Single(
+            await browser.GetJson<List<AuthSessionDto>>("/api/auth/sessions"), s => s.IsCurrent).Description);
+    }
+
+    [SkippableFact]
+    public async Task CookieExchange_WithoutStaySignedIn_SetsABrowserSessionCookie()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, setCookie) = await CreateCookieSessionAsync(persistent: false);
+
+        Assert.StartsWith("__Host-solo-tab-session=solo_", setCookie);
+        Assert.DoesNotContain("expires=", setCookie.ToLowerInvariant());
+        using var browser = WithCookie(setCookie);
+        Assert.Equal(HttpStatusCode.OK, (await browser.GetAsync("/api/users/me")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task Cookie_CountsOnlyBesideTheClientHeader()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, setCookie) = await CreateCookieSessionAsync();
+
+        // What another page on the same site could send: the browser attaches
+        // the cookie, but it can't add a custom header without CORS.
+        using var forged = WithCookie(setCookie, clientHeader: false);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await forged.GetAsync("/api/users/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await forged.PostAsJsonAsync(
+            "/api/projects", new { name = "Forged", alias = "FORGED" }, TestClients.Json)).StatusCode);
+
+        using var browser = WithCookie(setCookie);
+        Assert.Equal(HttpStatusCode.OK, (await browser.GetAsync("/api/users/me")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task CookieSession_CannotMintAnotherSession()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, setCookie) = await CreateCookieSessionAsync();
+        using var browser = WithCookie(setCookie);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await browser.PostAsJsonAsync(
+            "/api/auth/sessions/cookie?persistent=true", new { }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await browser.PostAsJsonAsync(
+            "/api/auth/sessions", new { }, TestClients.Json)).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task SigningOut_RevokesTheCookieSession_AndClearsTheCookie()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, setCookie) = await CreateCookieSessionAsync();
+        using var browser = WithCookie(setCookie);
+
+        var signOut = await browser.DeleteAsync("/api/auth/sessions/current");
+        Assert.Equal(HttpStatusCode.NoContent, signOut.StatusCode);
+        var cleared = signOut.Headers.GetValues("Set-Cookie").ToList();
+        Assert.Contains(cleared, c => c.StartsWith("__Host-solo-session=;", StringComparison.Ordinal));
+        Assert.Contains(cleared, c => c.StartsWith("__Host-solo-tab-session=;", StringComparison.Ordinal));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.GetAsync("/api/users/me")).StatusCode);
+
+        // The session is already gone, and signing out still answers, so the
+        // browser can drop a dead cookie.
+        Assert.Equal(HttpStatusCode.NoContent, (await browser.DeleteAsync("/api/auth/sessions/current")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task CookieSession_SlidingExpiry_ReissuesThePersistentCookie()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, setCookie) = await CreateCookieSessionAsync();
+        var options = new DbContextOptionsBuilder<SoloDbContext>().UseNpgsql(_connectionString).Options;
+        await using (var db = new SoloDbContext(options))
+        {
+            await db.AuthSessions.ExecuteUpdateAsync(u => u.SetProperty(
+                s => s.LastUsedAt, DateTimeOffset.UtcNow.AddHours(-2)));
+        }
+
+        using var browser = WithCookie(setCookie);
+        var response = await browser.GetAsync("/api/users/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var reissued = Assert.Single(response.Headers.GetValues("Set-Cookie"), c => c.Contains("=solo_"));
+        Assert.Equal(setCookie.Split(';')[0], reissued.Split(';')[0]);
+        Assert.Contains("expires=", reissued.ToLowerInvariant());
+    }
+
+    [SkippableFact]
+    public async Task CookieSession_MintsHubTickets()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var (_, setCookie) = await CreateCookieSessionAsync();
+        using var browser = WithCookie(setCookie);
+
+        var response = await browser.PostAsync("/api/auth/hub-ticket", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

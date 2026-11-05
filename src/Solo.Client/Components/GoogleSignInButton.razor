@@ -82,14 +82,6 @@
         {
             await Google.InitializeAsync();
             await RenderButtonAsync();
-
-            // Not awaited: the button stays usable while GIS decides. A credential
-            // it hands back lands through OnSignedInChanged like a click would.
-            if (Google.RenewOnSignInPage)
-            {
-                Google.RenewOnSignInPage = false;
-                _ = Google.TryRenewAsync();
-            }
         }
         catch (JSException)
         {
@@ -132,7 +124,7 @@
 
     private void OnSignedInChanged() => _ = InvokeAsync(async () =>
     {
-        if (await Google.GetTokenAsync() is not null)
+        if (await Google.IsSignedInAsync())
         {
             _error = null;
             await OnSignedIn.InvokeAsync();

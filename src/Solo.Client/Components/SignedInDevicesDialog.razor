@@ -1,8 +1,8 @@
 @*
-    The signed-in user's sessions, each one revocable. Only the desktop app
-    holds a session — a browser signs in with the provider each time — so on
-    the web this lists desktop apps, and in the desktop app the current one is
-    marked and left to the ordinary Sign out.
+    The signed-in user's sessions, browsers and desktop apps, each one
+    revocable. The current one is marked and left to the ordinary Sign out.
+    A browser signed in through a redirect provider (not Google) holds no
+    session, so it isn't listed.
 *@
 @inject ApiClient Api
 @inject ISnackbar Snackbar
@@ -21,21 +21,20 @@
         else if (_sessions.Count == 0)
         {
             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                No desktop apps are signed in to your account. Browsers sign in
-                through your provider and aren't listed here.
+                No other devices are signed in to your account.
             </MudText>
         }
         else
         {
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
-                Desktop apps signed in to your account. A device you sign out has
-                to sign in again before it can reach @(Config.SiteName).
+                Browsers and desktop apps signed in to your account. A device you
+                sign out has to sign in again before it can reach @(Config.SiteName).
             </MudText>
 
             @foreach (var session in _sessions)
             {
                 <div class="d-flex align-center py-2" style="gap:.75rem">
-                    <MudIcon Icon="@Icons.Material.Filled.Computer" Color="Color.Secondary" />
+                    <MudIcon Icon="@Icons.Material.Filled.Devices" Color="Color.Secondary" />
                     <div class="flex-grow-1" style="min-width:0">
                         <MudText Typo="Typo.body1">
                             @(session.Description ?? "Unnamed device")

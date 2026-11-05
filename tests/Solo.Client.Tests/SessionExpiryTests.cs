@@ -36,151 +36,115 @@ internal static class FakeCredential
 }
 
 /// <summary>
-/// Google fixes its credential's life at ~1 hour, so the session outliving it
-/// depends entirely on silent renewal. A credential that dies while the page
-/// holds it gets one FedCM re-prompt before the user is treated as signed out;
-/// one that was already dead when the app booted is retired straight away, so
-/// the sign-in page isn't held up behind a prompt that may never answer.
+/// A Google credential lasts about an hour and can't be refreshed, so the web app
+/// trades it for a session cookie at sign-in and never stores it. Whether the
+/// page is signed in then rests on the profile delivered with the session.
 /// </summary>
-public class GoogleSilentRenewalTests : SoloBunitContext
+public class GoogleWebSessionTests : SoloBunitContext
 {
     private static AppConfig GoogleConfig() => new()
     {
         Auth = new AuthConfigDto("https://accounts.google.com", "client-id", "google", true),
     };
 
-    private GoogleIdentityService Service(SessionExpiry? expiry = null) =>
-        new(JSInterop.JSRuntime, GoogleConfig(), expiry ?? new SessionExpiry());
+    private const string Profile = """{"id":"6c1c3d1e-5a43-4f3e-9b1e-0e0f3a2c9d11","email":"hunter@example.com","displayName":"Hunter Ahlquist","avatarUrl":null,"isSuperAdmin":false}""";
 
-    /// <summary>A service holding a credential that has since expired, as after a slept laptop.</summary>
-    private async Task<GoogleIdentityService> HoldingExpiredCredential()
-    {
-        var google = Service();
-        await google.OnCredentialReceived(FakeCredential.Expired());
-        return google;
-    }
+    private GoogleIdentityService Service() => new(JSInterop.JSRuntime, GoogleConfig());
 
     [Fact]
-    public async Task A_live_stored_credential_is_returned_without_prompting()
+    public async Task A_credential_that_buys_a_session_is_not_kept()
     {
-        JSInterop.Setup<string>("solo.google.token").SetResult(FakeCredential.Live());
-
+        JSInterop.Setup<string?>("solo.session.begin", _ => true).SetResult(Profile);
         await using var google = Service();
 
-        Assert.NotNull(await google.GetTokenAsync());
-        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
+        await google.OnCredentialReceived(FakeCredential.Live());
+
+        // The cookie travels by itself: no bearer credential on API calls.
+        Assert.Null(await google.GetTokenAsync());
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.token");
     }
 
     [Fact]
-    public async Task An_expired_credential_found_at_boot_is_retired_without_prompting()
+    public async Task A_stored_profile_signs_in_without_asking_google_or_the_server()
     {
-        JSInterop.Setup<string>("solo.google.token").SetResult(FakeCredential.Expired());
-
+        JSInterop.Setup<string?>("solo.session.user").SetResult(Profile);
         await using var google = Service();
 
-        Assert.Null(await google.GetTokenAsync());
-        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
-        // Retired, not signed out: the sign-in page may still renew silently.
+        var (signedIn, display) = await google.GetAuthStateAsync();
+
+        Assert.True(signedIn);
+        Assert.Equal("Hunter Ahlquist", display!.Identity!.Name);
+        Assert.True(await google.HoldsSessionCookieAsync());
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier is "solo.google.init" or "solo.session.probe");
+    }
+
+    [Fact]
+    public async Task A_credential_that_cannot_buy_a_session_is_held_in_memory_only()
+    {
+        JSInterop.Setup<string?>("solo.session.begin", _ => true).SetResult(null);
+        await using var google = Service();
+        var credential = FakeCredential.Live();
+
+        await google.OnCredentialReceived(credential);
+
+        // Sent as the bearer, so the API can answer with the access-denied
+        // notice an identity nobody invited should see.
+        Assert.Equal(credential, await google.GetTokenAsync());
+    }
+
+    [Fact]
+    public async Task A_live_credential_left_by_an_older_version_is_traded_for_a_session()
+    {
+        var stored = FakeCredential.Live();
+        JSInterop.Setup<string?>("solo.google.token").SetResult(stored);
+        JSInterop.Setup<string?>("solo.session.begin", i => (string?)i.Arguments[0] == stored).SetResult(Profile);
+        await using var google = Service();
+
+        Assert.True((await google.GetAuthStateAsync()).SignedIn);
         Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.retire");
-        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.signOut");
-        Assert.True(google.RenewOnSignInPage);
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.session.probe");
     }
 
     [Fact]
-    public async Task A_credential_that_expires_while_held_is_renewed_silently_and_the_fresh_one_returned()
+    public async Task An_expired_credential_left_by_an_older_version_is_dropped_without_prompting()
     {
-        var fresh = FakeCredential.Live();
-        JSInterop.Setup<string>("solo.google.prompt").SetResult(fresh);
+        JSInterop.Setup<string?>("solo.google.token").SetResult(FakeCredential.Expired());
+        JSInterop.Setup<string?>("solo.session.probe").SetResult(null);
+        await using var google = Service();
 
-        await using var google = await HoldingExpiredCredential();
-
-        Assert.Equal(fresh, await google.GetTokenAsync());
-    }
-
-    [Fact]
-    public async Task A_failed_renewal_retires_the_credential_but_keeps_auto_select()
-    {
-        JSInterop.Setup<string?>("solo.google.prompt").SetResult(null);
-
-        await using var google = await HoldingExpiredCredential();
-
-        Assert.Null(await google.GetTokenAsync());
+        Assert.False((await google.GetAuthStateAsync()).SignedIn);
         Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.retire");
-        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.signOut");
-        Assert.False(google.RenewOnSignInPage);
+        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier is "solo.session.begin" or "solo.google.init");
     }
 
     [Fact]
-    public async Task A_renewal_that_hands_back_another_dead_token_still_signs_out()
-    {
-        JSInterop.Setup<string>("solo.google.prompt").SetResult(FakeCredential.Expired());
-
-        await using var google = await HoldingExpiredCredential();
-
-        Assert.Null(await google.GetTokenAsync());
-    }
-
-    [Fact]
-    public async Task A_visitor_who_never_signed_in_is_not_prompted()
+    public async Task A_session_cookie_whose_profile_was_cleared_is_found_by_asking_the_server()
     {
         JSInterop.Setup<string?>("solo.google.token").SetResult(null);
-
+        JSInterop.Setup<string?>("solo.session.probe").SetResult(Profile);
         await using var google = Service();
 
-        Assert.Null(await google.GetTokenAsync());
-        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
-        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.retire");
-        Assert.False(google.RenewOnSignInPage);
+        var (signedIn, display) = await google.GetAuthStateAsync();
+
+        Assert.True(signedIn);
+        Assert.Equal("Hunter Ahlquist", display!.Identity!.Name);
+    }
+
+    [Fact]
+    public async Task Signing_out_revokes_the_session_and_disables_auto_select()
+    {
+        await using var google = Service();
+
+        await google.SignOutAsync();
+
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.session.revoke");
+        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.signOut");
     }
 }
 
 /// <summary>
-/// The sign-in page is where a credential that expired before boot gets its
-/// silent renewal, beside a button the user can already press.
-/// </summary>
-public class SignInPageRenewalTests : ComponentTestBase
-{
-    private GoogleIdentityService Google(bool renewOnSignInPage)
-    {
-        var config = new AppConfig
-        {
-            Auth = new AuthConfigDto("https://accounts.google.com", "client-id", "google", true),
-        };
-        var google = new GoogleIdentityService(JSInterop.JSRuntime, config, new SessionExpiry())
-        {
-            RenewOnSignInPage = renewOnSignInPage,
-        };
-        Services.AddSingleton(google);
-        return google;
-    }
-
-    [Fact]
-    public void The_button_attempts_a_silent_renewal_after_a_credential_expired_at_boot()
-    {
-        var google = Google(renewOnSignInPage: true);
-
-        Render<GoogleSignInButton>();
-
-        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.renderButton");
-        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
-        Assert.False(google.RenewOnSignInPage);
-    }
-
-    [Fact]
-    public void The_button_does_not_prompt_a_visitor_who_signed_out()
-    {
-        Google(renewOnSignInPage: false);
-
-        Render<GoogleSignInButton>();
-
-        Assert.Contains(JSInterop.Invocations, i => i.Identifier == "solo.google.renderButton");
-        Assert.DoesNotContain(JSInterop.Invocations, i => i.Identifier == "solo.google.prompt");
-    }
-}
-
-/// <summary>
-/// The API answering 401 on a request that carried a token is the "session died
-/// mid-flight" signal — it raises the re-sign-in dialog. Anonymous requests
+/// The API answering 401 on a request that carried a credential (here, the web
+/// app's session cookie) is the "session died mid-flight" signal — it raises the re-sign-in dialog. Anonymous requests
 /// bouncing off protected endpoints must not.
 /// </summary>
 public class IdTokenMessageHandler401Tests : SoloBunitContext
@@ -192,7 +156,7 @@ public class IdTokenMessageHandler401Tests : SoloBunitContext
             Auth = new AuthConfigDto("https://accounts.google.com", "client-id", "google", true),
         };
         var expiry = new SessionExpiry();
-        var google = new GoogleIdentityService(JSInterop.JSRuntime, config, expiry);
+        var google = new GoogleIdentityService(JSInterop.JSRuntime, config);
         var tokens = new IdTokenProvider(
             new ServiceCollection().BuildServiceProvider(), JSInterop.JSRuntime, config, google);
         var handler = new IdTokenMessageHandler(tokens, new ConnectionIdAccessor(), expiry)
@@ -206,7 +170,7 @@ public class IdTokenMessageHandler401Tests : SoloBunitContext
     [Fact]
     public async Task A_401_on_an_authenticated_request_raises_the_expiry_signal()
     {
-        JSInterop.Setup<string>("solo.google.token").SetResult(FakeCredential.Live());
+        JSInterop.Setup<string?>("solo.session.user").SetResult("{}");
         var (client, expiry) = Client(HttpStatusCode.Unauthorized);
         var raised = false;
         expiry.Expired += () => raised = true;
@@ -219,7 +183,7 @@ public class IdTokenMessageHandler401Tests : SoloBunitContext
     [Fact]
     public async Task A_401_on_an_anonymous_request_stays_quiet()
     {
-        JSInterop.Setup<string?>("solo.google.token").SetResult(null);
+        JSInterop.Setup<string?>("solo.session.user").SetResult(null);
         var (client, expiry) = Client(HttpStatusCode.Unauthorized);
         var raised = false;
         expiry.Expired += () => raised = true;
@@ -232,7 +196,7 @@ public class IdTokenMessageHandler401Tests : SoloBunitContext
     [Fact]
     public async Task A_successful_authenticated_request_stays_quiet()
     {
-        JSInterop.Setup<string>("solo.google.token").SetResult(FakeCredential.Live());
+        JSInterop.Setup<string?>("solo.session.user").SetResult("{}");
         var (client, expiry) = Client(HttpStatusCode.OK);
         var raised = false;
         expiry.Expired += () => raised = true;
