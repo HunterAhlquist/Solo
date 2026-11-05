@@ -259,7 +259,7 @@
     /// </remarks>
     private async Task OnGoogleSignedInAsync()
     {
-        var principal = GoogleJwt.ToPrincipal(await Google.GetTokenAsync());
+        var (_, principal) = await Google.GetAuthStateAsync();
         _signedInName = principal?.Identity?.Name ?? "this account";
         _signedIn = true;
         StateHasChanged();

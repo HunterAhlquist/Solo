@@ -22,7 +22,9 @@ Solo has no sign-up page. If nobody invited your email address, the instance ref
 
 Solo then shows the **Projects** page.
 
-An instance that uses Google shows the option **Stay signed in on this device**. When you select it, the browser keeps your sign-in after you close it. When you clear it, the sign-in ends with the browser tab.
+An instance that uses Google shows the option **Stay signed in on this device**. When you select it, the browser keeps your sign-in after you close it. When you clear it, the sign-in ends when you close the browser.
+
+A sign-in stays active until you sign out, or until 30 days pass in which you do not use Solo. The administrator can change the number of days. See [Configuration](../admin/configuration.md).
 
 ### If Solo refuses the sign-in
 

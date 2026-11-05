@@ -2,7 +2,7 @@
 @inject NavigationManager Navigation
 
 @*
-    Raised by SessionExpiry when silent renewal fails or the API rejects a token.
+    Raised by SessionExpiry when the API rejects the session.
     Google re-auths in place — GIS calls back with a fresh credential and nothing
     navigates, so whatever the user had open (an edit drawer, say) survives.
 *@

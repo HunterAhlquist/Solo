@@ -17,5 +17,6 @@ public static class BearerForwarding
         : Solo.Extensions.BackgroundTokens.IsBackgroundToken(SessionTokens.FromRequest(context.Request))
             ? AuthConstants.BackgroundScheme
         : SessionTokens.IsSessionToken(SessionTokens.FromRequest(context.Request)) ? AuthConstants.SessionScheme
+        : SessionCookie.FromRequest(context.Request) is not null ? AuthConstants.SessionScheme
         : null;
 }

@@ -84,13 +84,13 @@ public class AccountSecurityTests : ComponentTestBase
     }
 
     [Fact]
-    public async Task With_no_desktop_sessions_the_dialog_says_where_browsers_went()
+    public async Task With_no_sessions_the_dialog_says_so()
     {
         _http.RouteJson("api/auth/sessions", new List<AuthSessionDto>());
 
         var host = await ShowDevicesAsync();
 
-        host.WaitForAssertion(() => Assert.Contains("No desktop apps are signed in", host.Markup));
+        host.WaitForAssertion(() => Assert.Contains("No other devices are signed in", host.Markup));
         Assert.DoesNotContain(host.FindAll("button"), b => b.TextContent.Contains("Sign out all other devices"));
     }
 

@@ -14,7 +14,8 @@ with its version in parentheses).
 ## Latest
 
 ### Server
-- Coming back after your sign-in has expired (or after a server update reloads the page) shows the sign-in screen right away instead of an empty page for up to 15 seconds, most noticeably on phones. If your Google session is still alive, the sign-in screen signs you back in by itself.
+- Signing in with Google in a browser now lasts like the desktop app's sign-in: until you sign out, or until 30 days pass without using Solo (`Auth__SessionDays`). Before, it ran out after an hour, and coming back meant an empty page for up to 15 seconds before the sign-in screen, longest on phones. A browser whose last sign-in is more than an hour old signs in once more after this update.
+- The browser's sign-in is kept in a cookie that scripts on the page can't read, and the Google sign-in token is no longer stored in the browser. Browsers now appear in **Signed-in devices** next to desktop apps, and can be signed out from there.
 
 ## v1.20.0 (2026-11-04)
 

@@ -11,10 +11,11 @@ using Solo.Shared.Dtos;
 namespace Solo.Api.Controllers;
 
 /// <summary>
-/// Long-lived API sessions for clients that cannot renew provider tokens
-/// silently — the desktop app. A fresh OIDC ID token buys a <c>solo_</c>
-/// session token whose expiry slides on use (see SessionAuthenticationHandler);
-/// signing out revokes it.
+/// Long-lived API sessions, so a sign-in outlives the provider token that
+/// proved it (a Google ID token lasts an hour and can't be refreshed). A fresh
+/// OIDC ID token buys a <c>solo_</c> session whose expiry slides on use (see
+/// SessionAuthenticationHandler): the desktop app holds it as a bearer token,
+/// the web app as an HttpOnly cookie. Signing out revokes it.
 /// </summary>
 [Route("api/auth/sessions")]
 [Authorize]
@@ -51,9 +52,37 @@ public sealed class SessionsController : ApiControllerBase
     }
 
     /// <summary>
+    /// The web app's exchange: the same session, set as a cookie the page's
+    /// scripts can't read (see <see cref="SessionCookie"/>), and only the
+    /// profile in the body. <paramref name="persistent"/> is "stay signed in":
+    /// without it the cookie goes when the browser closes.
+    /// </summary>
+    [HttpPost("cookie")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<ActionResult<UserDto>> CreateCookie(
+        [FromBody] CreateSessionRequest? request,
+        [FromQuery] bool persistent,
+        [FromServices] CurrentUserAccessor currentUser,
+        [FromServices] SoloDbContext db,
+        [FromServices] IConfiguration config,
+        CancellationToken ct)
+    {
+        if (!User.IsProviderSignIn() || currentUser.User is not { } user)
+        {
+            return Forbid();
+        }
+
+        var (session, token) = AuthSessionMinter.Mint(user.Id, request?.Description, config);
+        db.AuthSessions.Add(session);
+        await db.SaveChangesAsync(ct);
+
+        SessionCookie.Append(Response, token, persistent, session.ExpiresAt);
+        return user.ToDto();
+    }
+
+    /// <summary>
     /// The caller's live sessions, most recently used first: the signed-in
-    /// devices list. A browser signed in with the provider holds no session,
-    /// so there it lists the desktop apps and nothing marked current.
+    /// devices list, browsers and desktop apps alike.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<AuthSessionDto>>> List(
@@ -135,8 +164,18 @@ public sealed class SessionsController : ApiControllerBase
         return NoContent();
     }
 
-    /// <summary>Sign-out: revokes the session that authenticated this request.</summary>
+    /// <summary>
+    /// Sign-out: revokes the session that authenticated this request and clears
+    /// the web app's cookie.
+    /// </summary>
+    /// <remarks>
+    /// Anonymous, so a browser whose session already died (revoked from another
+    /// device, idle past its lifetime) can still drop the dead cookie. An
+    /// anonymous caller revokes nothing: the session to revoke is the one that
+    /// authenticated the request.
+    /// </remarks>
     [HttpDelete("current")]
+    [AllowAnonymous]
     public async Task<IActionResult> RevokeCurrent(
         [FromServices] SoloDbContext db,
         CancellationToken ct)
@@ -147,6 +186,7 @@ public sealed class SessionsController : ApiControllerBase
             await db.AuthSessions.Where(s => s.Id == sessionId).ExecuteDeleteAsync(ct);
         }
 
+        SessionCookie.Delete(Response);
         return NoContent();
     }
 

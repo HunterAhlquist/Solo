@@ -8,7 +8,9 @@ using Solo.Data;
 namespace Solo.Api.Auth;
 
 /// <summary>
-/// Authenticates <c>solo_</c> session tokens (see <see cref="SessionTokens"/>).
+/// Authenticates <c>solo_</c> session tokens (see <see cref="SessionTokens"/>),
+/// from the Authorization header (desktop) or the web app's cookie
+/// (<see cref="SessionCookie"/>).
 /// The principal carries the same raw claim names an OIDC token would, so user
 /// resolution downstream (<see cref="UserProvisioningService"/>) is oblivious
 /// to which credential arrived. Expiry slides on use: any request more than an
@@ -27,9 +29,15 @@ public sealed class SessionAuthenticationHandler(
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var token = SessionTokens.FromRequest(Request);
+        var cookie = SessionCookie.FromRequest(Request);
         if (!SessionTokens.IsSessionToken(token))
         {
-            return AuthenticateResult.NoResult();
+            if (cookie is null)
+            {
+                return AuthenticateResult.NoResult();
+            }
+
+            token = cookie.Value.Token;
         }
 
         var db = Context.RequestServices.GetRequiredService<SoloDbContext>();
@@ -50,6 +58,14 @@ public sealed class SessionAuthenticationHandler(
             session.LastUsedAt = now;
             session.ExpiresAt = now + SessionLifetime(config);
             await db.SaveChangesAsync(Context.RequestAborted);
+
+            // The cookie's own expiry doesn't slide with the session's, so a
+            // persistent one would lapse 30 days after sign-in however often
+            // it was used. Re-issued on the same throttle.
+            if (cookie is { } used && token == used.Token)
+            {
+                SessionCookie.Append(Response, used.Token, used.Persistent, session.ExpiresAt);
+            }
         }
 
         var user = session.User;

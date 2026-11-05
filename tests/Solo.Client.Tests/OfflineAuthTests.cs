@@ -16,8 +16,8 @@ public sealed class OfflineAuthTests:ComponentTestBase
         JSInterop.Setup<string?>("solo.google.token").SetResult("e30."+payload+".fixture");
         JSInterop.Setup<bool>("solo.offline.isOffline").SetResult(true);
         JSInterop.Setup<string?>("solo.offline.profile").SetResult(JsonSerializer.Serialize(new UserDto(Guid.NewGuid(),"offline@example.test","Offline writer",null,false),new JsonSerializerOptions(JsonSerializerDefaults.Web)));
-        await using var google=new GoogleIdentityService(JSInterop.JSRuntime,new AppConfig{Auth=new("https://accounts.google.com","fixture","google",true)},new SessionExpiry());
+        await using var google=new GoogleIdentityService(JSInterop.JSRuntime,new AppConfig{Auth=new("https://accounts.google.com","fixture","google",true)});
         var state=await google.GetAuthStateAsync();Assert.True(state.SignedIn);Assert.Equal("Offline writer",state.Display!.Identity!.Name);
-        Assert.DoesNotContain(JSInterop.Invocations,i=>i.Identifier is "solo.google.init" or "solo.google.prompt" or "solo.google.retire");
+        Assert.DoesNotContain(JSInterop.Invocations,i=>i.Identifier is "solo.google.init" or "solo.session.begin" or "solo.google.retire");
     }
 }
