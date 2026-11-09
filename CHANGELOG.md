@@ -15,9 +15,9 @@ with its version in parentheses).
 
 ### Server
 - Extensions can respond to an Apple Pencil double-tap once the iPad app sends one. A browser never sends it, so nothing changes there.
-- The iPad app can sign in with Google: it opens the instance's sign-in page in the system's sign-in sheet, like the desktop app does in the browser, and returns with a Solo session.
-- In the desktop and iPad apps, the profile menu has an Instances item, and the sign-in page a "Use another instance" link, which open the app's list of instances.
-- The page's theme color now follows the app bar in the scheme in force. The iPad app paints its status bar with it, so the status bar is opaque instead of showing tasks scrolling under it, and Safari tints its own bars to match.
+- The iPad and iPhone app can sign in with Google: it opens the instance's sign-in page in the system's sign-in sheet, like the desktop app does in the browser, and returns with a Solo session.
+- In the desktop, iPad and iPhone apps, the profile menu has an Instances item, and the sign-in page a "Use another instance" link, which open the app's list of instances.
+- The page's theme color now follows the app bar in the scheme in force. The iPad and iPhone app paints its status bar with it, so the status bar is opaque instead of showing tasks scrolling under it, and Safari tints its own bars to match.
 
 ### Desktop
 - Instances in the profile menu and on the sign-in page opens the Settings window, where the instances are listed.
