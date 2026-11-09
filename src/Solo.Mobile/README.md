@@ -83,6 +83,17 @@ xcrun devicectl device install app --device <device id> \
 
 `xcrun devicectl list devices` shows the device id.
 
+## App icon
+
+The project points at the same Icon Composer files as the desktop app,
+`Icons/Solo.icon` and `Icons/Solo Preview.icon` at the repository root, rather
+than keeping copies. They carry the light, dark and tinted appearances, and
+iPadOS picks one from the person's Home Screen icon setting. Debug builds use
+the Preview icon and Release builds the production one
+(`ASSETCATALOG_COMPILER_APPICON_NAME` in each configuration), so a development
+build is easy to tell apart on the Home Screen. Compiling `.icon` files needs
+Xcode 26 or later; older iPadOS versions get flat images generated from them.
+
 ## Testing against a local instance
 
 Google won't sign in on a plain-HTTP address. Debug builds can start signed
