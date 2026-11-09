@@ -2,7 +2,7 @@
 
 The iPad and iPhone app, built with [Capacitor](https://capacitorjs.com/docs) 8.
 It opens one Solo instance in its web view and adds what a web page can't get:
-the Apple Pencil double-tap.
+the Apple Pencil double-tap, and Google sign-in.
 
 The app loads the instance itself (`server.url` in `capacitor.config.js`)
 rather than a bundled copy of the client, because the client and its
@@ -33,6 +33,25 @@ code through it. That keeps extensions, which load at runtime, away from App
 Review guideline 4.7.2 ("may not extend or expose native platform APIs or
 technologies to the software"), and the same name can come from another
 platform's control later.
+
+## Sign-in
+
+Google won't run its sign-in inside an app's web view, so the app signs in the
+way the desktop app does. The page defines nothing native but one fixed
+message: the sign-in button posts `request_sign-in` to `window.soloApp`, and
+`App/App/AppSignIn.swift` takes it from there:
+
+1. `POST api/auth/desktop/start-app` with a PKCE challenge opens a flow.
+2. The instance's `/desktop-auth` page runs Google's sign-in in the system
+   sign-in sheet (`ASWebAuthenticationSession`) and returns to
+   `io.github.hunterahlquist.solo:/auth/callback` with a one-time code.
+3. `POST api/auth/desktop/redeem` trades the code and the verifier for a
+   `solo_` session, which the page stores like the desktop app's.
+
+Google only runs on origins registered for the instance's client id, so this
+needs the instance's real HTTPS address. A plain-HTTP address on the local
+network can't sign in this way; see [Testing against a local
+instance](#testing-against-a-local-instance).
 
 ## Building on macOS
 
@@ -66,10 +85,9 @@ xcrun devicectl device install app --device <device id> \
 
 ## Testing against a local instance
 
-Google sign-in doesn't run inside an app's web view, and in-app sign-in isn't
-built yet. Debug builds can start signed in instead, with the client's login
-shim (`js/dev-desktop.js`) and a `solo_` session minted on the instance, the
-same recipe as the `verify` skill:
+Google won't sign in on a plain-HTTP address. Debug builds can start signed
+in instead, with a `solo_` session minted on the instance, the same recipe as
+the `verify` skill:
 
 1. Insert an `AuthSessions` row for your user with the SHA-256 of a new
    `solo_…` token, as the `verify` skill describes.

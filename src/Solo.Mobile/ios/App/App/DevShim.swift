@@ -7,9 +7,9 @@ import WebKit
 ///
 /// - `crypto.randomUUID()` exists only on secure pages, and Design Docs needs
 ///   it for every stroke and sync packet. `getRandomValues` works anywhere.
-/// - The client's login shim (`js/dev-desktop.js`): with a `solo_` session
-///   minted on the instance, the page starts signed in. The token and the
-///   user come from the git-ignored `ios/dev.xcconfig` (see the README).
+/// - A `solo_` session minted on the instance, so the page starts signed in
+///   where Google's sign-in can't run (a plain-HTTP origin). The token and
+///   the user come from the git-ignored `ios/dev.xcconfig` (see the README).
 enum DevShim {
     static func install(in controller: WKUserContentController) {
         controller.addUserScript(WKUserScript(
@@ -35,7 +35,7 @@ enum DevShim {
         guard let token = info["SoloDevSessionToken"] as? String, token.hasPrefix("solo_"),
               let user = (info["SoloDevSessionUser"] as? String).flatMap(base64URLDecoded),
               let values = try? JSONSerialization.data(withJSONObject: [
-                  "solo.dev.desktop": "1", "solo.session.token": token, "solo.session.user": user,
+                  "solo.session.token": token, "solo.session.user": user,
               ]),
               let json = String(data: values, encoding: .utf8)
         else { return "" }
@@ -45,7 +45,6 @@ enum DevShim {
             if (!localStorage.getItem('solo.session.token')) {
                 for (const [key, value] of Object.entries(\(json))) localStorage.setItem(key, value);
             }
-            localStorage.setItem('solo.dev.desktop', '1');
 
             """
     }
