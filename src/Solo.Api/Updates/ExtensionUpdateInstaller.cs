@@ -185,7 +185,7 @@ public sealed class ExtensionUpdateInstaller(
     /// <summary>The feed entry to install, host manifest first — see <see cref="UpdateChecker"/>.</summary>
     private async Task<ReleaseFeedExtension?> ResolveAsync(ExtensionPackage package, CancellationToken ct)
     {
-        var host = await feeds.GetAsync(_options.ManifestUrl, force: false, ct);
+        var host = await feeds.GetAsync(_options.ManifestUrlFor(SoloVersion.Server), force: false, ct);
         var entry = host.Feed?.Extensions.FirstOrDefault(e =>
             string.Equals(e.Id, package.Id, StringComparison.OrdinalIgnoreCase));
 

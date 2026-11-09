@@ -21,23 +21,56 @@ public sealed class UpdateOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// The release manifest to read. A fork or an air-gapped mirror points this
-    /// at its own copy.
+    /// The release manifest to read, when set. A fork or an air-gapped mirror
+    /// points this at its own copy. Unset, <see cref="ManifestUrlFor"/> picks
+    /// one by the server's own version.
+    /// </summary>
+    public string? ManifestUrl { get; set; }
+
+    /// <summary>
+    /// The manifest a server of this version reads: <see cref="ManifestUrl"/>
+    /// when set; for a preview build, the manifest of its own preview release;
+    /// otherwise the newest stable release's.
     /// </summary>
     /// <remarks>
-    /// The <c>releases/latest/download/</c> redirect resolves to the newest
-    /// non-prerelease release, so this URL follows the release train without
-    /// naming a version. Previews are skipped by that redirect deliberately —
-    /// an instance must not be told to update to a prerelease.
+    /// <para>The <c>releases/latest/download/</c> redirect resolves to the
+    /// newest non-prerelease release, so a stable instance follows the release
+    /// train without naming a version, and is never told to update to a
+    /// preview.</para>
+    ///
+    /// <para>A preview reads its own release instead, because that is where
+    /// the extension packages built with it are: on the stable feed it would
+    /// be offered only the older stable ones, and an operator had to pin
+    /// <see cref="ManifestUrl"/> to each preview tag by hand. Not "the newest
+    /// prerelease": other branches' previews share this repository, so that
+    /// could hand one branch's instance another's packages. The cost is that a
+    /// preview hears about neither newer previews nor a later stable release;
+    /// moving it to one is a new image either way. A prerelease cut from a
+    /// <c>v</c> tag (<c>v1.2.0-rc</c>) has no <c>preview-v</c> release, so it
+    /// needs <see cref="ManifestUrl"/> set.</para>
     /// </remarks>
-    public string ManifestUrl { get; set; } =
-        "https://github.com/HunterAhlquist/Solo/releases/latest/download/release-manifest.json";
+    public string ManifestUrlFor(string serverVersion)
+    {
+        if (!string.IsNullOrWhiteSpace(ManifestUrl))
+        {
+            return ManifestUrl;
+        }
+
+        // The informational version carries the commit as build metadata
+        // ("1.21.0-mobile.3+abc123"), which the tag doesn't.
+        var version = serverVersion.Split('+')[0];
+        return version.Contains('-')
+            ? $"{RepositoryReleases}/download/preview-v{Uri.EscapeDataString(version)}/release-manifest.json"
+            : $"{RepositoryReleases}/latest/download/release-manifest.json";
+    }
+
+    private const string RepositoryReleases = "https://github.com/HunterAhlquist/Solo/releases";
 
     /// <summary>
     /// Where a found update sends the operator. The release the feed names is
     /// appended when it names one.
     /// </summary>
-    public string ReleasesUrl { get; set; } = "https://github.com/HunterAhlquist/Solo/releases";
+    public string ReleasesUrl { get; set; } = RepositoryReleases;
 
     /// <summary>
     /// How long a fetched manifest is reused. An update is not urgent and the
