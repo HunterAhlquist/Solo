@@ -11,7 +11,8 @@ import { reportDropped, stageIcon } from './stage-icon.mjs';
 import identity from '../main/app-identity.js';
 
 export default async function beforePack(context) {
-    if (context.electronPlatformName !== 'darwin') {
+    // `mas` is the Mac App Store build, the same app bundle under another name.
+    if (!['darwin', 'mas'].includes(context.electronPlatformName)) {
         return;
     }
     const source = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../Icons',

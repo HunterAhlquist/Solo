@@ -345,6 +345,49 @@ submission after a timeout or a cancelled run. To check one:
 xcrun notarytool info <submission-id> --keychain-profile <profile>
 ```
 
+### Mac App Store build
+
+The same app also builds for the Mac App Store, for now only as a private
+TestFlight preview. Apple treats it as a different app from the download:
+
+- Its bundle id is the iOS app's, `com.hunterahlquist.solo` (and
+  `com.hunterahlquist.solo.preview`), so the iPad and Mac apps are one App
+  Store Connect app. The download keeps `com.solo.desktop`; changing that would
+  strand its settings and its update feed.
+- It runs in the App Sandbox instead of the hardened runtime
+  (`build/entitlements.mas.plist` lists what it opens up and why). Settings
+  live in the sandbox container,
+  `~/Library/Containers/com.hunterahlquist.solo/Data/Library/Application Support/`,
+  so the two apps never share a profile.
+- electron-builder packs it with Electron's own Mac App Store build, which has
+  no auto-updater. `process.mas` is true there, so the app drops
+  *Check for Updates…* and leaves updates to TestFlight.
+
+A `preview-v*` tag runs [release-mac-store.yml](../../.github/workflows/release-mac-store.yml),
+which builds the signed `.pkg` and uploads it to TestFlight next to the iOS
+build, where only internal testers can install it. It skips itself until the
+`testflight` environment has:
+
+| Name | Kind | What it is |
+|---|---|---|
+| `APP_STORE_CONNECT_KEY`, `_KEY_ID`, `_ISSUER_ID` | secrets | The App Store Connect API key the iOS upload already uses |
+| `MAS_CERTIFICATES` | secret | One base64 `.p12` holding both the **Apple Distribution** and the **Mac Installer Distribution** certificate with their keys |
+| `MAS_CERTIFICATES_PASSWORD` | secret | That `.p12`'s password |
+| `MAS_PREVIEW_PROVISIONING_PROFILE` | secret | A base64 Mac App Store distribution profile for `com.hunterahlquist.solo.preview` |
+| `SOLO_PREVIEW_ASC_APP_ID` | variable | The preview app's **Apple ID** from App Store Connect → App Information |
+
+To build one locally, with those certificates in the login keychain:
+
+```sh
+npm run build:client && npm run build:native
+SOLO_MAS_PROVISIONING_PROFILE=~/Downloads/Solo_Preview_MAS.provisionprofile \
+  npx electron-builder --config electron-builder.config.cjs --mac mas --arm64 --publish never
+```
+
+A distribution-signed app only opens once it is installed from TestFlight or
+the store. To try one straight from `dist/`, build `--mac mas-dev` with an
+Apple Development certificate and a development profile that lists your Mac.
+
 ### Native canvas rotation
 
 On macOS the shell forwards Electron's [native rotation event](https://www.electronjs.org/docs/latest/api/browser-window#event-rotate-gesture-macos)

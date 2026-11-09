@@ -9,9 +9,10 @@
 // is left on, so an update that *was* downloaded applies at the next quit
 // whether or not the user took the "Restart now" offer.
 //
-// Three situations silently skip the check, each because electron-updater
+// These situations silently skip the check, each because electron-updater
 // cannot work there and would only produce an error dialog nobody can act on:
 //
+//   * the Mac App Store build, which the store updates;
 //   * an unpackaged development run, which has no app-update.yml;
 //   * a preview build, whose publish config is null on purpose — the
 //     releases/latest redirect the feed points at skips prereleases, so a
@@ -42,6 +43,12 @@ let webPreferences = {};
 
 // Why this build cannot check, or null when it can.
 function unsupportedReason() {
+    // Electron's Mac App Store build leaves out the autoUpdater electron-updater
+    // drives, and a sandboxed app can't replace itself anyway.
+    if (process.mas) {
+        return 'This copy of Solo came from the App Store or TestFlight, which keeps it up to date.';
+    }
+
     if (!app.isPackaged) {
         return 'Updates are only available in an installed build.';
     }

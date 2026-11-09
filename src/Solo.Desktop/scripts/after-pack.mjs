@@ -7,7 +7,8 @@ import { execFileSync } from 'node:child_process';
 // Assign unique UUIDs before signing. Preserve framework UUIDs and their debug symbols.
 export default async function afterPack(context) {
     writeUpdateConfig(context);
-    if (context.electronPlatformName !== 'darwin') return;
+    // `mas` is the Mac App Store build, which asks for Local Network access the same way.
+    if (!['darwin', 'mas'].includes(context.electronPlatformName)) return;
     const app = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app');
     const frameworks = path.join(app, 'Contents', 'Frameworks');
     const helpers = fs.existsSync(frameworks) ? fs.readdirSync(frameworks)
@@ -64,6 +65,11 @@ export default async function afterPack(context) {
 // on purpose, and main/updater.js reports the absence rather than failing on it.
 export function writeUpdateConfig(context) {
     const { packager, appOutDir } = context;
+
+    // The Mac App Store build is updated by the store; main/updater.js never reads this there.
+    if (context.electronPlatformName === 'mas') {
+        return;
+    }
 
     // Read through, rather than off a known shape. electron-builder's own
     // context always carries this, but afterPack is also driven directly by the
