@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('soloSettings', {
     previewBackgroundAlpha: alpha => ipcRenderer.send('settings:preview-background-alpha', alpha),
     setBackgroundAlpha: alpha => ipcRenderer.invoke('settings:background-alpha', alpha),
     close: () => ipcRenderer.invoke('settings:close'),
+    // The install guide, in the browser, for someone with no instance yet.
+    openInstallGuide: () => ipcRenderer.invoke('settings:install-guide'),
 
     // Tests the address and saves the instance. Answers { ok, error } or
     // { ok, id, name, signIn }: with signIn the browser is now open and main
