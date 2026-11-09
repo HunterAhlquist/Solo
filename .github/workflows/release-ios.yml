@@ -1,0 +1,133 @@
+name: iOS TestFlight
+
+on:
+  push:
+    # Previews only, for now: a `preview-v*` tag uploads the iPad and iPhone
+    # app to TestFlight for internal testers. Stable `v*` tags don't, until the
+    # app is ready for App Review.
+    tags: ["preview-v*"]
+  # Builds and uploads from a branch, under a preview version, without a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    name: Upload to TestFlight
+    # macOS 26 / Xcode 26.6: a GA Xcode, which App Store Connect requires.
+    # stage-icons.mjs drops the icon features its actool doesn't know.
+    runs-on: macos-latest
+    timeout-minutes: 45
+    # The App Store Connect key can publish builds, so it lives in an
+    # environment whose deployment rules limit it to preview tags.
+    environment: testflight
+    # Lifted to the job because a step's `if:` can read `env` but not
+    # `secrets`: without a key the run stops at a notice instead of failing.
+    env:
+      ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    defaults:
+      run:
+        working-directory: src/Solo.Mobile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Classify the release
+        id: channel
+        working-directory: .
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            printf 'version=0.0.0-preview.%s\npackage_label=\n' "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
+      # an extension zip, not the app.
+      - name: Check what this run uploads
+        id: gate
+        env:
+          PACKAGE_LABEL: ${{ steps.channel.outputs.package_label }}
+        run: |
+          if [ -n "$PACKAGE_LABEL" ]; then
+            echo "::notice::A Design Docs package preview; no app upload."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::notice::No App Store Connect key in the testflight environment; skipping the upload."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.gate.outputs.upload == 'true'
+        with:
+          node-version: 24
+
+      # SOLO_IOS_INSTANCE_URL (a repository variable) is optional: the instance
+      # the build opens first. Without it, the app opens on its instance list.
+      - name: Prepare the Xcode project
+        if: steps.gate.outputs.upload == 'true'
+        env:
+          SOLO_INSTANCE_URL: ${{ vars.SOLO_IOS_INSTANCE_URL }}
+        run: |
+          npm ci
+          npm run sync
+
+      - name: Write the App Store Connect key
+        if: steps.gate.outputs.upload == 'true'
+        run: |
+          umask 077
+          printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/asc.p8"
+
+      # Release, so no debug shim, under the preview name, icon and bundle id.
+      # The bundle id makes it its own App Store Connect app, as the desktop
+      # preview is its own app, so a preview and a store install can sit side
+      # by side; it goes through SOLO_BUNDLE_ID, which only the app target
+      # reads, so the Capacitor packages keep theirs. The build number only has
+      # to grow, which the run number does. The marketing version drops the
+      # prerelease suffix: iOS takes three numbers only.
+      - name: Archive
+        if: steps.gate.outputs.upload == 'true'
+        env:
+          VERSION: ${{ steps.channel.outputs.version }}
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Solo.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="${VERSION%%-*}" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            SOLO_BUNDLE_ID=io.github.hunterahlquist.solo.preview \
+            SOLO_DISPLAY_NAME="Solo (Preview)" \
+            ASSETCATALOG_COMPILER_APPICON_NAME="Solo Preview"
+
+      # ExportOptions-testflight.plist uploads straight to App Store Connect
+      # and marks the build internal-only, so it can't reach external testers
+      # or a review by accident.
+      - name: Upload
+        if: steps.gate.outputs.upload == 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Solo.xcarchive" \
+            -exportOptionsPlist ios/ExportOptions-testflight.plist \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asc.p8"
