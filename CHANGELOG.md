@@ -15,6 +15,7 @@ with its version in parentheses).
 
 ### Server
 - Extensions can respond to an Apple Pencil double-tap once the iPad app sends one. A browser never sends it, so nothing changes there.
+- The iPad app can sign in with Google: it opens the instance's sign-in page in the system's sign-in sheet, like the desktop app does in the browser, and returns with a Solo session.
 
 ### SDK
 - Contract 1.16.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.
