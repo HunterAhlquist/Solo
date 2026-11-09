@@ -155,8 +155,10 @@ struct InstancesView: View {
             .navigationTitle("Instances")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if let onDone {
-                    ToolbarItem(placement: .confirmationAction) {
+                // The condition sits inside the item: an `if` directly in the
+                // toolbar builder needs iOS 16.
+                ToolbarItem(placement: .confirmationAction) {
+                    if let onDone {
                         Button("Done", action: onDone)
                     }
                 }
