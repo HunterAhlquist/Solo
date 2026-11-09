@@ -128,6 +128,38 @@ can't compile, because an Xcode that predates one (Xcode 26 and
 builds without that effect, and a newer Xcode brings it back.
 `scripts/stage-icons.mjs` reuses the desktop app's `stage-icon.mjs` for this.
 
+## TestFlight previews
+
+A `preview-v*` tag runs `.github/workflows/release-ios.yml`, which archives a
+Release build under the preview name, icon and bundle id
+(`io.github.hunterahlquist.solo.preview`, its own App Store Connect app) and
+uploads it for internal testers only (`ios/ExportOptions-testflight.plist`). It
+can also be run by hand on a branch. Signing is Xcode's automatic signing with
+an App Store Connect API key, so there's no certificate to export.
+
+One-time setup:
+
+1. In App Store Connect, create the app for
+   `io.github.hunterahlquist.solo.preview`, named "Solo (Preview)", and accept
+   any pending agreements.
+2. Create a team API key (Users and Access → Integrations → App Store Connect
+   API) with the Admin role, which cloud-managed signing needs. The `.p8` can
+   only be downloaded once.
+3. Create a GitHub environment named `testflight` with a deployment tag rule
+   for `preview-v*`, holding the secrets `APP_STORE_CONNECT_KEY` (the `.p8`
+   file's contents), `APP_STORE_CONNECT_KEY_ID` and
+   `APP_STORE_CONNECT_ISSUER_ID`. `APPLE_TEAM_ID` is the repository secret the
+   desktop release already uses.
+4. In TestFlight, add an internal group with automatic distribution, so each
+   processed build reaches its testers without a manual step.
+
+Optionally, the repository variable `SOLO_IOS_INSTANCE_URL` gives the build an
+instance to open first. Without one it opens on the instance list. Either way
+the instance has to run a server with the app's sign-in (`start-app`).
+
+Without the secrets, the run stops at a notice. A Design Docs package preview
+tag (`…-design-docs-<label>.N`) doesn't upload the app.
+
 ## Testing against a local instance
 
 Google won't sign in on a plain-HTTP address. Debug builds can start signed
