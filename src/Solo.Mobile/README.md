@@ -25,7 +25,9 @@ the web view's storage for its origin, so switching back finds it signed in.
 
 `SOLO_INSTANCE_URL` at build time is optional. When set, that instance joins
 the list the first time a build carries it, and opens. Without it, and with
-nothing saved yet, the app opens on the list.
+nothing saved yet, the app opens on the list as its setup page: "Add your first
+instance", with a link to the install guide, and it can't be dismissed until an
+instance is open. The desktop app's Settings window does the same on first run.
 
 ## Apple Pencil double-tap
 
