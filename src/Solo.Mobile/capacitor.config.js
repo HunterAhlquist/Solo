@@ -9,7 +9,7 @@ const instance = instanceUrl ? new URL(instanceUrl) : null;
 
 /** @type {import('@capacitor/cli').CapacitorConfig} */
 module.exports = {
-    appId: 'io.github.hunterahlquist.solo',
+    appId: 'com.hunterahlquist.solo',
     appName: 'Solo',
     webDir: 'www',
     ...(instance && {

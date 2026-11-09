@@ -108,7 +108,7 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             MARKETING_VERSION="${VERSION%%-*}" \
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
-            SOLO_BUNDLE_ID=io.github.hunterahlquist.solo.preview \
+            SOLO_BUNDLE_ID=com.hunterahlquist.solo.preview \
             SOLO_DISPLAY_NAME="Solo (Preview)" \
             ASSETCATALOG_COMPILER_APPICON_NAME="Solo Preview"
 

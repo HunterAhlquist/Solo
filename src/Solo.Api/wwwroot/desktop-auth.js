@@ -142,7 +142,7 @@ async function complete(credential) {
       const loopback = callback.protocol === 'http:' && callback.hostname === '127.0.0.1' &&
           callback.pathname === '/desktop-auth/callback';
       // The iPad app's sign-in sheet closes when the page reaches its scheme.
-      const app = callback.protocol === 'io.github.hunterahlquist.solo:' &&
+      const app = callback.protocol === 'com.hunterahlquist.solo:' &&
           callback.pathname === '/auth/callback';
       if (!loopback && !app) {
         throw new Error('Invalid app callback.');

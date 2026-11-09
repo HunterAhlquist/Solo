@@ -59,7 +59,7 @@ message: the sign-in button posts `request_sign-in` to `window.soloApp`, and
 1. `POST api/auth/desktop/start-app` with a PKCE challenge opens a flow.
 2. The instance's `/desktop-auth` page runs Google's sign-in in the system
    sign-in sheet (`ASWebAuthenticationSession`) and returns to
-   `io.github.hunterahlquist.solo:/auth/callback` with a one-time code.
+   `com.hunterahlquist.solo:/auth/callback` with a one-time code.
 3. `POST api/auth/desktop/redeem` trades the code and the verifier for a
    `solo_` session, which the page stores like the desktop app's.
 
@@ -132,7 +132,7 @@ builds without that effect, and a newer Xcode brings it back.
 
 A `preview-v*` tag runs `.github/workflows/release-ios.yml`, which archives a
 Release build under the preview name, icon and bundle id
-(`io.github.hunterahlquist.solo.preview`, its own App Store Connect app) and
+(`com.hunterahlquist.solo.preview`, its own App Store Connect app) and
 uploads it for internal testers only (`ios/ExportOptions-testflight.plist`). It
 can also be run by hand on a branch. Signing is Xcode's automatic signing with
 an App Store Connect API key, so there's no certificate to export.
@@ -140,7 +140,7 @@ an App Store Connect API key, so there's no certificate to export.
 One-time setup:
 
 1. In App Store Connect, create the app for
-   `io.github.hunterahlquist.solo.preview`, named "Solo (Preview)", and accept
+   `com.hunterahlquist.solo.preview`, named "Solo (Preview)", and accept
    any pending agreements.
 2. Create a team API key (Users and Access → Integrations → App Store Connect
    API) with the Admin role, which cloud-managed signing needs. The `.p8` can
