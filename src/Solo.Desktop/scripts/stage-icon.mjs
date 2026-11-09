@@ -114,11 +114,7 @@ export const reportDropped = (dropped) => {
     // A tag push is a release build. Everyone who installs it gets the degraded
     // icon and nothing says so, which is worse than the run failing — the fix
     // is a runner image with a newer Xcode, not a rebuild.
-    // SOLO_ICON_ALLOW_DROPPED is for the TestFlight uploads, which have to
-    // build on a GA Xcode (App Store Connect turns away beta toolchains) even
-    // when only a beta knows every feature; their builds reach internal
-    // testers only.
-    if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.SOLO_ICON_ALLOW_DROPPED !== 'true') {
+    if (process.env.GITHUB_REF_TYPE === 'tag') {
         throw new Error(
             `${summary}.\nRefusing to package a release with a degraded icon: ` +
             `build this on a runner image whose Xcode supports them.`);

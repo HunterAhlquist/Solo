@@ -14,11 +14,10 @@ permissions:
 jobs:
   testflight:
     name: Upload to TestFlight
-    # A GA Xcode, which App Store Connect requires.
-    # stage-icon.mjs drops the icon features its actool doesn't know, and
-    # SOLO_ICON_ALLOW_DROPPED lets it do so on a tag: these builds reach
-    # internal testers only, and the icon comes back once a GA Xcode knows them.
-    runs-on: macos-latest
+    # The Xcode 27 image, as for the iOS upload: macos-latest's Xcode 26.6
+    # can't compile the icon's `refractivity`, and a release Xcode is picked
+    # below because App Store Connect turns away beta toolchains.
+    runs-on: xcode-27
     timeout-minutes: 45
     # The same environment as the iOS upload: the App Store Connect key can
     # publish builds, so its deployment rules limit it to preview tags.
@@ -26,7 +25,6 @@ jobs:
     # Lifted to the job because a step's `if:` can read `env` but not
     # `secrets`: without them the run stops at a notice instead of failing.
     env:
-      SOLO_ICON_ALLOW_DROPPED: 'true'
       ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -90,11 +88,13 @@ jobs:
         if: steps.gate.outputs.upload == 'true'
         run: npm ci
 
-      # actool compiles the Icon Composer icon and only ships with Xcode 26+.
-      - name: Select Xcode 26+
+      # The newest release (non-beta) Xcode 27 on the image. Fails rather
+      # than fall back to a beta, which App Store Connect would reject.
+      - name: Select Xcode 27
         if: steps.gate.outputs.upload == 'true'
         run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode_2[6-9]*.app | grep -v -i beta | sort -V | tail -1)"
+          set -euo pipefail
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | grep -v -i beta | sort -V | tail -1)"
           xcrun actool --version | grep short-bundle-version
 
       # The preview name and icon come from the prerelease version, as they do
@@ -185,10 +185,8 @@ jobs:
 
       - name: Write the App Store Connect key
         if: steps.gate.outputs.upload == 'true'
-        run: |
-          umask 077
-          mkdir -p "$RUNNER_TEMP/private_keys"
-          printf '%s' "$ASC_KEY" > "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+        working-directory: .
+        run: build/write-asc-key.sh "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 
       # Lands in TestFlight, where only internal testers see it: nothing reaches
       # external testers or App Review until someone adds it there by hand. The
