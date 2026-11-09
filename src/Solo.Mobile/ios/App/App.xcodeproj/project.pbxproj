@@ -38,8 +38,8 @@
 		A1C0DE012FF0000100000001 /* SoloViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoloViewController.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000003 /* DevShim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevShim.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000009 /* AppSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSignIn.swift; sourceTree = "<group>"; };
-		A1C0DE012FF0000100000005 /* Solo.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Solo.icon; path = ../../../../Icons/Solo.icon; sourceTree = SOURCE_ROOT; };
-		A1C0DE012FF0000100000007 /* Solo Preview.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = "Solo Preview.icon"; path = "../../../../Icons/Solo Preview.icon"; sourceTree = SOURCE_ROOT; };
+		A1C0DE012FF0000100000005 /* Solo.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Solo.icon; path = Icons/Solo.icon; sourceTree = SOURCE_ROOT; };
+		A1C0DE012FF0000100000007 /* Solo Preview.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = "Solo Preview.icon"; path = "Icons/Solo Preview.icon"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
