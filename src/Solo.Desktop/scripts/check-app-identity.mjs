@@ -52,13 +52,20 @@ try {
 
 const pkg = require('../package.json');
 for (const [version, preview] of [['1.17.0', false], ['1.17.0-design-docs-codex.9', true]]) {
-    const scope = { module: { exports: {} }, require: id => id === './package.json'
+    const scope = { module: { exports: {} }, process: { env: {} }, require: id => id === './package.json'
         ? { ...pkg, version } : require('../main/app-identity') };
     vm.runInNewContext(fs.readFileSync(require.resolve('../electron-builder.config.cjs'), 'utf8'), scope);
     const config = scope.module.exports;
     assert.equal(config.productName, preview ? 'Solo (Preview)' : 'Solo');
     assert.equal(config.extraMetadata.productName, config.productName);
     assert.equal(config.appId, preview ? 'com.solo.desktop.preview' : 'com.solo.desktop');
+    // The Mac App Store build shares the iOS app's bundle id (one App Store
+    // Connect app for both), and a sandbox in place of the hardened runtime
+    // that `mas` would otherwise inherit from `mac`.
+    assert.equal(config.mas.appId, preview ? 'com.hunterahlquist.solo.preview' : 'com.hunterahlquist.solo');
+    assert.equal(config.mas.hardenedRuntime, false);
+    assert.equal(config.mas.bundleShortVersion, '1.17.0');
+    assert.equal(config.mas.entitlements, 'build/entitlements.mas.plist');
     if (preview) {
         assert.equal(config.linux.executableName, 'solo-preview');
         assert.equal(config.win.icon, 'build/icon-preview.png');
