@@ -11,7 +11,7 @@ import { panelPosition } from './text-panel.js';
 import { pagePoint,anchoredView,wheelView,touchView } from './viewport.js';
 import { contains,selectPolygon,selectionBounds,shiftRegion } from './selection.js';
 import { SketchScene } from './scene.js';
-import { SketchInput } from './input.js';
+import { SketchInput,TouchTap } from './input.js';
 import { applyTrackpadPressure } from './pressure.js';
 import { strokePresence,StrokeFeed } from './stroke-presence.js';
 const local=Symbol('local sketch');
@@ -24,7 +24,8 @@ export async function mountSketch(root,bridge,options){
     const feed=new StrokeFeed();
     let tool='pen',ink='theme',level=0,constrain=false,clearing=false,closing=false;
     const commands=new Set();
-    const touches=new Map(),downloads=[],timers=new Set();
+    const touches=new Map(),downloads=[],timers=new Set(),tap=new TouchTap();
+    let tapView=null;
     const viewport=document.createElement('div');viewport.className='design-docs-sketch-viewport';viewport.tabIndex=0;
     viewport.setAttribute('aria-label','Drawing view. Scroll to pan; Ctrl or Command and scroll to zoom; Space and drag to pan.');
     const canvas=document.createElement('canvas');canvas.setAttribute('aria-label','Collaborative sketch');canvas.style.transformOrigin='0 0';const context=canvas.getContext('2d'),scene=new SketchScene(()=>document.createElement('canvas')),inputMode=new SketchInput();
@@ -269,6 +270,7 @@ export async function mountSketch(root,bridge,options){
         if(e.target.closest('textarea')||e.button>1||clearing||closing)return;
         if(e.pointerType==='mouse')mousePressure=0;
         const mode=inputMode.start(e);if(mode==='ignore'){e.preventDefault();return;}
+        if(tap.down(e))tapView={...currentView(),fitPending};
         if(e.pointerType==='pen'){touches.clear();gesture=null;dragPan=null;if(active?.pointerType==='touch'){active=null;provider.awareness.setLocalStateField('stroke',null);}}
         e.preventDefault();viewport.focus();viewport.setPointerCapture(e.pointerId);
         if(mode==='pan'||e.button===1||space||e.target!==canvas||!provider.canWrite)dragPan={pointer:e.pointerId,point:localPoint(e),pan:[...pan]};
@@ -289,6 +291,7 @@ export async function mountSketch(root,bridge,options){
         active={id:crypto.randomUUID(),pointerId:e.pointerId,pointerType:e.pointerType,tool,ink,level,seed:Math.floor(Math.random()*2147483647),points:[p],shift:e.shiftKey};undo.stopCapturing();updateAwareness(p,e.pointerType);draw();
     }
     function move(e){
+        tap.move(e);
         if(inputMode.ignores(e)){e.preventDefault();return;}
         if(touches.has(e.pointerId))touches.set(e.pointerId,localPoint(e));
         if(gesture&&touches.size>=2){const [a,b]=[...touches.values()];setView(touchView(gesture,a,b));return;}
@@ -339,6 +342,14 @@ export async function mountSketch(root,bridge,options){
         const pointerType=active.pointerType;inputMode.finish(active);active=null;
         provider.awareness.setLocalStateField('stroke',null);if(pointerType!=='mouse'){lastPointer=null;provider.awareness.setLocalStateField('pointer',null);}draw();
     }
+    // Runs after up(), which has already dropped the pinch and any stroke the
+    // first finger began. The tap's own jitter still nudged the view, so put it back.
+    function endTap(e){
+        const action=tap.up(e);if(!action)return;
+        setView(tapView);fitPending=tapView.fitPending;trackedCommand(action);
+    }
+    // Tracked so a save waits for it, the way it waits for toolbar commands.
+    function trackedCommand(...args){const task=command(...args);commands.add(task);task.finally(()=>commands.delete(task)).catch(()=>{});return task;}
     async function waitForSave(timeout=10000){
         const deadline=Date.now()+timeout;
         finishStroke();
@@ -439,7 +450,7 @@ export async function mountSketch(root,bridge,options){
     for(const type of ['touchstart','touchmove','touchend'])viewport.addEventListener(type,preventNativeTouch,nativeTouchOptions);
     for(const type of ['mousedown','dblclick'])viewport.addEventListener(type,preventSelection,true);
     dialog?.addEventListener('pointerdown',preventPalm,true);
-    viewport.addEventListener('pointerdown',down);viewport.addEventListener('pointermove',move);viewport.addEventListener('pointerup',up);viewport.addEventListener('pointercancel',up);
+    viewport.addEventListener('pointerdown',down);viewport.addEventListener('pointermove',move);viewport.addEventListener('pointerup',up);viewport.addEventListener('pointercancel',up);viewport.addEventListener('pointerup',endTap);viewport.addEventListener('pointercancel',endTap);
     canvas.addEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.addEventListener('webkitmouseforcechanged',forceChanged);
     viewport.addEventListener('wheel',wheel,{passive:false});viewport.addEventListener('keydown',keydown);viewport.addEventListener('keyup',keyup);viewport.addEventListener('blur',blur);viewport.addEventListener('pointerleave',leavePointer);
     viewport.addEventListener('gesturestart',gestureStart,{passive:false});viewport.addEventListener('gesturechange',gestureChange,{passive:false});viewport.addEventListener('gestureend',gestureEnd,{passive:false});
@@ -451,6 +462,6 @@ export async function mountSketch(root,bridge,options){
     const removeSaveGuard=globalThis.solo?.offline?.guard(waitForSave);
     // Closing saves, then tells the note's viewers once that their preview is stale.
     async function close(timeout){const saved=await waitForSave(timeout);if(saved&&!disposed)await provider.closed();return saved;}
-    draw();return {waitForSave,close,command:(...args)=>{const task=command(...args);commands.add(task);task.finally(()=>commands.delete(task)).catch(()=>{});return task;},connected:value=>provider.connected(value),deleted:()=>provider.markDeleted(),unsaved:()=>provider.hasPending||!!provider.options.hasDraft?.(),discard:()=>provider.discard(),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
-        dispose(){disposed=true;stopCaret();textDragCleanup?.();shellObserver.disconnect();removeSaveGuard?.();dialog?.removeEventListener('keydown',closeKey,true);peerCursors.dispose();stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('pointerleave',leavePointer);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
+    draw();return {waitForSave,close,command:trackedCommand,connected:value=>provider.connected(value),deleted:()=>provider.markDeleted(),unsaved:()=>provider.hasPending||!!provider.options.hasDraft?.(),discard:()=>provider.discard(),receive:(kind,data)=>provider.receive(kind,data),presence:users=>provider.presence(users),
+        dispose(){disposed=true;stopCaret();textDragCleanup?.();shellObserver.disconnect();removeSaveGuard?.();dialog?.removeEventListener('keydown',closeKey,true);peerCursors.dispose();stopDesktopRotation();scene.dispose();themeObserver.disconnect();dialog?.removeEventListener('selectstart',preventSelection,true);dialog?.removeEventListener('contextmenu',preventSelection,true);document.removeEventListener('selectionchange',clearNativeSelection);for(const type of ['touchstart','touchmove','touchend'])viewport.removeEventListener(type,preventNativeTouch,true);for(const type of ['mousedown','dblclick'])viewport.removeEventListener(type,preventSelection,true);dialog?.removeEventListener('pointerdown',preventPalm,true);resize.disconnect();for(const timer of timers)clearTimeout(timer);sound.pause();sound.removeAttribute('src');if(frameRequest!==null)cancelAnimationFrame(frameRequest);clearInterval(boil);observer.disconnect();undo.destroy();provider.dispose();downloads.forEach(url=>URL.revokeObjectURL(url));viewport.removeEventListener('pointerdown',down);viewport.removeEventListener('pointermove',move);viewport.removeEventListener('pointerup',up);viewport.removeEventListener('pointercancel',up);viewport.removeEventListener('pointerup',endTap);viewport.removeEventListener('pointercancel',endTap);viewport.removeEventListener('wheel',wheel);viewport.removeEventListener('keydown',keydown);viewport.removeEventListener('keyup',keyup);viewport.removeEventListener('blur',blur);viewport.removeEventListener('pointerleave',leavePointer);viewport.removeEventListener('gesturestart',gestureStart);viewport.removeEventListener('gesturechange',gestureChange);viewport.removeEventListener('gestureend',gestureEnd);canvas.removeEventListener('webkitmouseforcewillbegin',forceWillBegin);canvas.removeEventListener('webkitmouseforcechanged',forceChanged);root.replaceChildren();}};
 }
