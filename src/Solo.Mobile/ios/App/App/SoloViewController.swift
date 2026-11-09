@@ -83,7 +83,8 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
 
     // The same hand-off the desktop app makes: deliverSession stores the
     // session and tells the client; signInFailed shows the message on the
-    // sign-in page. Closing the sheet says nothing.
+    // sign-in page. Closing the sheet says nothing. The async call throws when
+    // the script's result is undefined, which these are, though they've run.
     private func beginSignIn(on instance: URL) {
         guard signIn == nil, let window = view.window else { return }
         let flow = AppSignIn(instance: instance, window: window)
@@ -92,12 +93,12 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             defer { signIn = nil }
             do {
                 if let session = try await flow.run() {
-                    webView?.evaluateJavaScript("window.solo.desktop.deliverSession(\(session.token), \(session.user))")
+                    _ = try? await webView?.evaluateJavaScript("window.solo.desktop.deliverSession(\(session.token), \(session.user))")
                 }
             } catch {
                 let message = (try? JSONSerialization.data(withJSONObject: error.localizedDescription, options: .fragmentsAllowed))
                     .map { String(decoding: $0, as: UTF8.self) } ?? "null"
-                webView?.evaluateJavaScript("window.solo.desktop.signInFailed(\(message))")
+                _ = try? await webView?.evaluateJavaScript("window.solo.desktop.signInFailed(\(message))")
             }
         }
     }
