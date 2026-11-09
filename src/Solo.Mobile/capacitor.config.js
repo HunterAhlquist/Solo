@@ -19,6 +19,10 @@ module.exports = {
         },
     }),
     ios: {
-        contentInset: 'always',
+        // The page reaches every edge and keeps its own content clear of the
+        // status bar, the island and the home indicator (viewport-fit=cover and
+        // env(safe-area-inset-*) in the client), so the app bar's colour runs
+        // up behind the status bar the same way it does in Safari.
+        contentInset: 'never',
     },
 };
