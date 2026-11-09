@@ -121,6 +121,21 @@ public sealed class UpdateCheckerTests
         Assert.Null(await CheckAsync("1.0.0", entry));
     }
 
+    [Theory]
+    [InlineData("1.21.0", "https://github.com/HunterAhlquist/Solo/releases/latest/download/release-manifest.json")]
+    [InlineData("1.21.0+3c1f9e2", "https://github.com/HunterAhlquist/Solo/releases/latest/download/release-manifest.json")]
+    [InlineData("1.21.0-mobile.3+3c1f9e2", "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.21.0-mobile.3/release-manifest.json")]
+    [InlineData("1.18.0-design-docs.1", "https://github.com/HunterAhlquist/Solo/releases/download/preview-v1.18.0-design-docs.1/release-manifest.json")]
+    public void AStableServerReadsTheLatestReleaseAndAPreviewItsOwn(string serverVersion, string expected) =>
+        Assert.Equal(expected, new UpdateOptions().ManifestUrlFor(serverVersion));
+
+    [Fact]
+    public void AConfiguredManifestWinsForAPreviewToo() =>
+        Assert.Equal(
+            "https://mirror.invalid/release-manifest.json",
+            new UpdateOptions { ManifestUrl = "https://mirror.invalid/release-manifest.json" }
+                .ManifestUrlFor("1.21.0-mobile.3"));
+
     /// <summary>Serves one feed for any URL; the point here is the comparison, not resolution.</summary>
     private sealed class StubFactory(ReleaseFeed feed) : IHttpClientFactory
     {

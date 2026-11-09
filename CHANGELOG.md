@@ -18,6 +18,7 @@ with its version in parentheses).
 - The iPad and iPhone app can sign in with Google: it opens the instance's sign-in page in the system's sign-in sheet, like the desktop app does in the browser, and returns with a Solo session.
 - In the desktop, iPad and iPhone apps, the profile menu has an Instances item, and the sign-in page a "Use another instance" link, which open the app's list of instances.
 - On iPhone and iPad, in Safari and in the app, the page now reaches under the status bar and the home indicator and keeps its own content clear of them: the app bar's colour runs up behind the status bar, a drawer's scrim covers it too, and the nav drawer's last row sits above the home indicator instead of under it. The page's theme color follows the app bar, which Safari tints its bars with and the app picks its status bar text by.
+- A preview server checks its own preview release for updates instead of the newest stable one, so Admin settings offers the extension versions built with that preview. Stable instances are unchanged, and `Updates__ManifestUrl` still overrides both.
 
 ### Desktop
 - Instances in the profile menu and on the sign-in page opens the Settings window, where the instances are listed.

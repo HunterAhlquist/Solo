@@ -39,7 +39,7 @@ public sealed class UpdateChecker(
             return new UpdateStatusDto(Enabled: false, null, null, null, []);
         }
 
-        var host = await feeds.GetAsync(_options.ManifestUrl, force, ct);
+        var host = await feeds.GetAsync(_options.ManifestUrlFor(SoloVersion.Server), force, ct);
         var server = host.Feed is null ? null : ServerUpdate(host.Feed);
         var extensionUpdates = await ExtensionUpdatesAsync(host, force, ct);
 

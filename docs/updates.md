@@ -37,6 +37,16 @@ Nothing about the instance is sent: it is an unauthenticated GET of a public
 file. `Updates__Enabled=false` switches it off; `Updates__ManifestUrl` points it
 at a fork or an internal mirror.
 
+**A preview reads its own release.** A server whose version has a prerelease
+suffix (`1.21.0-mobile.3`) reads `releases/download/preview-v<version>/release-manifest.json`
+instead of `releases/latest`, which skips prereleases. That is where the
+extension packages built with it are, so the extension updater offers them
+without anyone pinning `Updates__ManifestUrl` to each preview tag. It isn't the
+newest prerelease, because other branches' previews share the repository. A
+preview therefore hears about neither newer previews nor a later stable
+release; moving it is a new image either way. A prerelease cut from a `v` tag
+(`v1.2.0-rc`) has no `preview-v` release and needs `Updates__ManifestUrl`.
+
 ## The desktop app
 
 The installers carry a `generic` electron-updater feed baked in at packaging
@@ -219,7 +229,7 @@ could not load.
 | Setting | Default | Notes |
 |---|---|---|
 | `Updates__Enabled` | `true` | `false` disables every check; the UI says so rather than implying the instance is current |
-| `Updates__ManifestUrl` | this repository's latest release | A fork or internal mirror |
+| `Updates__ManifestUrl` | this repository's latest release, or a preview's own release | A fork or internal mirror; overrides both |
 | `Updates__ReleasesUrl` | this repository's releases page | Where the indicator links |
 | `Updates__CacheFor` | `06:00:00` | How long a fetched manifest is reused |
 | `Updates__Timeout` | `00:00:10` | Per feed read; short, because the answer is advisory |
