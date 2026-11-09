@@ -45,10 +45,21 @@ window.solo = {
 
         // data-color-scheme also controls the cached overscroll/boot colors.
         // Keep it current after startup, including Match system changes.
-        setResolvedScheme: isDark => {
+        // theme-color is the app bar's colour: the iPad app paints its status
+        // bar with it (WKWebView.themeColor), and Safari its own bars.
+        setResolvedScheme: (isDark, appBarColor) => {
             const scheme = isDark ? 'dark' : 'light';
             document.documentElement.dataset.colorScheme = scheme;
             document.documentElement.style.colorScheme = scheme;
+            if (appBarColor) {
+                let meta = document.querySelector('meta[name="theme-color"]');
+                if (!meta) {
+                    meta = document.createElement('meta');
+                    meta.name = 'theme-color';
+                    document.head.append(meta);
+                }
+                meta.content = appBarColor;
+            }
         },
 
         // MudBlazor's helper does not consistently deliver Electron-driven
