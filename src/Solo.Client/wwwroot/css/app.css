@@ -348,21 +348,78 @@ code {
    .mud-main-content down by whatever is left — so these are the same three
    cases it uses, and the value tracks a theme that sets its own bar height.
    Solo's app bar is never Dense (see MainLayout), which is the one case left
-   out. */
+   out. The status bar's height is added on top: see "Safe areas" below. */
 :root {
-    --solo-appbar-bottom: calc(var(--mud-appbar-height, 5em) - var(--mud-appbar-height, 5em) / 8);
+    --solo-appbar-bottom: calc(var(--mud-appbar-height, 5em) - var(--mud-appbar-height, 5em) / 8 + env(safe-area-inset-top, 0px));
 }
 
 @media (min-width: 0px) and (orientation: landscape) {
     :root {
-        --solo-appbar-bottom: calc(var(--mud-appbar-height, 5em) - var(--mud-appbar-height, 5em) / 4);
+        --solo-appbar-bottom: calc(var(--mud-appbar-height, 5em) - var(--mud-appbar-height, 5em) / 4 + env(safe-area-inset-top, 0px));
     }
 }
 
 @media (min-width: 600px) {
     :root {
-        --solo-appbar-bottom: var(--mud-appbar-height, 5em);
+        --solo-appbar-bottom: calc(var(--mud-appbar-height, 5em) + env(safe-area-inset-top, 0px));
     }
+}
+
+/* ---------------------------------------------------------------------------
+   Safe areas — the status bar, the Dynamic Island and the home indicator.
+
+   viewport-fit=cover (index.html) lets the page draw edge to edge on iPhone and
+   iPad, in Safari and in the iOS app, so the app bar's own colour runs up behind
+   the status bar and a drawer's scrim covers it too, rather than the browser or
+   the app painting a band there that can't match either. In exchange the page
+   keeps its own content out of the way. Wherever there are no insets, which is
+   everything but those devices, env() is 0 and none of this moves anything.
+
+   The main content and the clipped nav drawer take their offset from
+   --solo-appbar-bottom, which already tracks MudBlazor's three bar heights,
+   instead of MudBlazor's own rules, which only know --mud-appbar-height.
+   --------------------------------------------------------------------------- */
+.mud-appbar {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+}
+
+.mud-main-content {
+    padding-top: var(--solo-appbar-bottom, 5em);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Same selector as MudBlazor's, so this wins by coming later. The drawer is
+   border-box, so the bottom padding lifts its last row clear of the home
+   indicator. */
+.mud-drawer-fixed.mud-drawer-responsive.mud-drawer-clipped-always {
+    top: var(--solo-appbar-bottom, 5em);
+    height: calc(100% - var(--solo-appbar-bottom, 5em));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+}
+
+/* The editor covers the app bar, so it clears the status bar itself, and the
+   island or the rounded corner on whichever side it is in landscape. The band
+   behind the status bar is the app bar's colour, not the editor's: the status
+   bar's text is picked to read against the app bar (theme-color), and on a
+   light editor it would vanish. */
+.detail-drawer {
+    border-top: env(safe-area-inset-top, 0px) solid var(--mud-palette-appbar-background);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+}
+
+.detail-drawer__body {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mud-snackbar-provider {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+    margin-right: env(safe-area-inset-right, 0px);
 }
 
 /* ---------------------------------------------------------------------------
