@@ -103,10 +103,11 @@ xcrun devicectl device install app --device <device id> \
 The app uses the same Icon Composer files as the desktop app,
 `Icons/Solo.icon` and `Icons/Solo Preview.icon` at the repository root. They
 carry the light, dark and tinted appearances, and iPadOS picks one from the
-person's Home Screen icon setting. Debug builds use the Preview icon and
-Release builds the production one (`ASSETCATALOG_COMPILER_APPICON_NAME` in each
-configuration), so a development build is easy to tell apart on the Home
-Screen.
+person's Home Screen icon setting. Debug builds use the Preview icon and the
+name "Solo (Preview)", as the desktop app's preview does, and Release builds
+the production ones (`ASSETCATALOG_COMPILER_APPICON_NAME` and
+`SOLO_DISPLAY_NAME` in each configuration), so a development build is easy to
+tell apart on the Home Screen.
 
 `npm run sync` stages them into `ios/App/Icons` (git-ignored), which is what
 the Xcode project compiles. Staging drops any icon feature the installed Xcode
