@@ -85,14 +85,20 @@ xcrun devicectl device install app --device <device id> \
 
 ## App icon
 
-The project points at the same Icon Composer files as the desktop app,
-`Icons/Solo.icon` and `Icons/Solo Preview.icon` at the repository root, rather
-than keeping copies. They carry the light, dark and tinted appearances, and
-iPadOS picks one from the person's Home Screen icon setting. Debug builds use
-the Preview icon and Release builds the production one
-(`ASSETCATALOG_COMPILER_APPICON_NAME` in each configuration), so a development
-build is easy to tell apart on the Home Screen. Compiling `.icon` files needs
-Xcode 26 or later; older iPadOS versions get flat images generated from them.
+The app uses the same Icon Composer files as the desktop app,
+`Icons/Solo.icon` and `Icons/Solo Preview.icon` at the repository root. They
+carry the light, dark and tinted appearances, and iPadOS picks one from the
+person's Home Screen icon setting. Debug builds use the Preview icon and
+Release builds the production one (`ASSETCATALOG_COMPILER_APPICON_NAME` in each
+configuration), so a development build is easy to tell apart on the Home
+Screen.
+
+`npm run sync` stages them into `ios/App/Icons` (git-ignored), which is what
+the Xcode project compiles. Staging drops any icon feature the installed Xcode
+can't compile, because an Xcode that predates one (Xcode 26 and
+`refractivity`) crashes instead of drawing the icon without it. The icon then
+builds without that effect, and a newer Xcode brings it back.
+`scripts/stage-icons.mjs` reuses the desktop app's `stage-icon.mjs` for this.
 
 ## Testing against a local instance
 
