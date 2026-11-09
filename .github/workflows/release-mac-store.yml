@@ -2,12 +2,11 @@ name: Mac TestFlight
 
 on:
   push:
-    # Previews only, like the iOS app: a `preview-v*` tag uploads the Mac App
-    # Store build to TestFlight for internal testers. The direct-download app
-    # (release-desktop.yml) is unaffected either way.
+    # Previews only: a `preview-v*` tag uploads the Mac App Store build to
+    # TestFlight for internal testers. Stable `v*` tags don't, and there is no
+    # manual run, until the app is ready for more than that. The
+    # direct-download app (release-desktop.yml) is unaffected either way.
     tags: ["preview-v*"]
-  # Builds and uploads from a branch, under a preview version, without a tag.
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -46,13 +45,7 @@ jobs:
       - name: Classify the release
         id: channel
         working-directory: .
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
-            bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          else
-            printf 'version=0.0.0-preview.%s\npackage_label=\n' "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
       # an extension zip, not the app.
@@ -60,8 +53,14 @@ jobs:
         id: gate
         env:
           PACKAGE_LABEL: ${{ steps.channel.outputs.package_label }}
+          PRERELEASE: ${{ steps.channel.outputs.prerelease }}
         run: |
-          if [ -n "$PACKAGE_LABEL" ]; then
+          # The trigger already limits this to preview tags; this keeps a
+          # stable version from uploading if that ever changes.
+          if [ "$PRERELEASE" != true ]; then
+            echo "::notice::Not a preview version; only previews go to TestFlight for now."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$PACKAGE_LABEL" ]; then
             echo "::notice::A Design Docs package preview; no app upload."
             echo "upload=false" >> "$GITHUB_OUTPUT"
           elif [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_APP_ID" ] ||
