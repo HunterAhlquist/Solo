@@ -119,7 +119,9 @@ person's Home Screen icon setting. Debug builds use the Preview icon and the
 name "Solo (Preview)", as the desktop app's preview does, and Release builds
 the production ones (`ASSETCATALOG_COMPILER_APPICON_NAME` and
 `SOLO_DISPLAY_NAME` in each configuration), so a development build is easy to
-tell apart on the Home Screen.
+tell apart on the Home Screen. Debug builds also take the preview's bundle id,
+`com.hunterahlquist.solo.preview`, so a development build and a TestFlight
+preview are the same app, apart from a store install.
 
 `npm run sync` stages them into `ios/App/Icons` (git-ignored), which is what
 the Xcode project compiles. Staging drops any icon feature the installed Xcode
