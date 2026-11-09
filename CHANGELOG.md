@@ -30,6 +30,7 @@ with its version in parentheses).
 #### Design Docs (1.6.0)
 - In the iPad app, double-tapping Apple Pencil while sketching switches to the eraser and back to the tool you had before. It follows the Pencil setting in iPadOS: it works when that setting is to switch to the eraser or the previous tool. Needs Solo with contract 1.16.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
+- The full-screen sketch and image viewer keep their controls clear of the status bar and home indicator on iPhone and iPad.
 
 #### MCP Server (1.6.5)
 - Rebuilt on contract 1.16.0.
