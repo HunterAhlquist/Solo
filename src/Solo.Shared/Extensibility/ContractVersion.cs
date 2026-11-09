@@ -94,10 +94,14 @@ namespace Solo.Shared.Extensibility;
 /// <c>ExtensionUpdateFailureDto</c>) are core's own but members of the shared
 /// assembly too; they arrived while the number sat at 1.14, unpublished, so
 /// 1.15 is the first package that carries them.</para>
+/// <para>1.16.0 adds <see cref="ISoloDeviceActions"/> and <see cref="DeviceActions"/>:
+/// actions the device itself asks for, starting with the iPad app's Apple
+/// Pencil double-tap as <see cref="DeviceActions.StylusToolSwap"/>. It is
+/// client-only, so a package needs 1.16 only in <c>soloClientVersion</c>.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.15.0";
+    public const string Current = "1.16.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

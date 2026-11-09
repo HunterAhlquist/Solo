@@ -10,6 +10,7 @@ using Solo.Client.State;
 using Solo.Client.Theming;
 using Solo.Shared;
 using Solo.Shared.Dtos;
+using Solo.Shared.Extensibility;
 using Solo.Shared.Hubs;
 
 namespace Solo.Client.Testing;
@@ -68,6 +69,10 @@ public abstract class ComponentTestBase : SoloBunitContext
         // MainLayout hosts the context menu, closed unless something opens it,
         // so every test that renders the layout needs it.
         Services.AddScoped<ContextMenuService>();
+
+        // Sketches and other pages register for device controls when they open.
+        // Nothing sends one in a test unless the test dispatches it.
+        Services.AddScoped<ISoloDeviceActions, DeviceActionsService>();
 
         // It also hosts the restart overlay, hidden unless an update restarts the
         // instance. A test about restarts registers its own after this, which wins.

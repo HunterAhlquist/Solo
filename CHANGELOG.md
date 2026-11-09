@@ -13,10 +13,23 @@ with its version in parentheses).
 
 ## Latest
 
+### Server
+- Extensions can respond to an Apple Pencil double-tap once the iPad app sends one. A browser never sends it, so nothing changes there.
+
+### SDK
+- Contract 1.16.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.
+
 ### Extensions
 
-#### Design Docs (1.5.4)
+#### Design Docs (1.6.0)
+- In the iPad app, double-tapping Apple Pencil while sketching switches to the eraser and back to the tool you had before. It follows the Pencil setting in iPadOS: it works when that setting is to switch to the eraser or the previous tool. Needs Solo with contract 1.16.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
+
+#### MCP Server (1.6.5)
+- Rebuilt on contract 1.16.0.
+
+#### Roadmaps (1.10.2)
+- Rebuilt on contract 1.16.0.
 
 ## v1.20.1 (2026-11-05)
 
