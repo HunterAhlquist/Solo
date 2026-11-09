@@ -180,16 +180,20 @@ window.solo = {
     // the instance's own origin; the instance verifies the sign-in, mints a
     // long-lived Solo session (see `session`), and the shell delivers it to
     // `deliverSession` below — no provider credential ever reaches the app.
+    // The iPad app (Solo.Mobile) defines window.soloApp and signs in the same
+    // way, in the system's sign-in sheet.
     // -----------------------------------------------------------------------
     desktop: {
         _dotnet: null,
 
-        available: () => !!window.soloDesktop,
+        available: () => !!(window.soloDesktop || window.soloApp),
 
         // Registers the .NET receiver the shell's delivery notifies.
         init: dotnetRef => { window.solo.desktop._dotnet = dotnetRef; },
 
-        beginSignIn: () => window.soloDesktop.beginSignIn(),
+        // soloApp first: the login shim (dev-desktop.js) can leave a no-op
+        // soloDesktop behind on a device that used it.
+        beginSignIn: () => (window.soloApp ?? window.soloDesktop).beginSignIn(),
 
         // The instance this shell is pointed at, or null on the web build where
         // the page origin already is the instance. Defensive about the bridge
