@@ -98,6 +98,18 @@ xcrun devicectl device install app --device <device id> \
 
 `xcrun devicectl list devices` shows the device id.
 
+## Status bar and safe areas
+
+The web view reaches every edge of the screen (`contentInset: 'never'` in
+`capacitor.config.js`), and the page keeps its own content clear of the status
+bar, the Dynamic Island and the home indicator, with `viewport-fit=cover` and
+`env(safe-area-inset-*)` in the client's `app.css`. That is how it already
+behaves in Safari, and it means the app bar's own colour sits behind the status
+bar and a drawer's scrim covers it too, with nothing native painted there to
+fall out of step. The one thing the app still does is pick light or dark status
+bar text against the app bar, whose colour the client publishes as the page's
+`theme-color` (`WKWebView.themeColor`).
+
 ## App icon
 
 The app uses the same Icon Composer files as the desktop app,

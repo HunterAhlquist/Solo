@@ -14,10 +14,10 @@ import Capacitor
 /// - Its list of instances (`InstancesView`), opened by the fixed message
 ///   `request_instance-settings`. Opening another instance builds a new view
 ///   controller on it, since Capacitor reads the address once, at load.
-/// - An opaque status bar in the app bar's colour, which the client publishes
-///   as the page's `theme-color`. The page scrolls under the status bar, so
-///   without it the tasks show through.
-/// - The margins beside the page in the page's own background colour.
+/// - Status bar text that reads against the app bar, whose colour the client
+///   publishes as the page's `theme-color`. The page itself draws behind the
+///   status bar and the home indicator (`contentInset: 'never'`), so the app
+///   paints nothing there.
 ///
 /// Nothing native is handed to the page or the extensions it loads.
 class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, WKScriptMessageHandler {
@@ -30,7 +30,6 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     /// session belongs to.
     private var builtIn: URL?
 
-    private let statusBarBackground = UIView()
     private var themeColorObservation: NSKeyValueObservation?
 
     override func instanceDescriptor() -> InstanceDescriptor {
@@ -71,16 +70,9 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         pencil.delegate = self
         webView?.addInteraction(pencil)
 
-        view.addSubview(statusBarBackground)
         themeColorObservation = webView?.observe(\.themeColor, options: [.initial, .new]) { [weak self] webView, _ in
-            MainActor.assumeIsolated { self?.paintStatusBar(webView.themeColor) }
+            MainActor.assumeIsolated { self?.styleStatusBar(webView.themeColor) }
         }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        statusBarBackground.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: view.safeAreaInsets.top)
-        view.bringSubviewToFront(statusBarBackground)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -152,53 +144,18 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         }
     }
 
-    // Until the client sets a theme-color (before it boots, and on the bundled
-    // placeholder) the system background stands in. Text goes light or dark
-    // against the colour; the client sends it without alpha.
-    private func paintStatusBar(_ themeColor: UIColor?) {
+    // Light or dark text against the app bar. Until the client sets a
+    // theme-color (before it boots, and on the bundled placeholder) the system
+    // default stands. The client sends the colour without alpha.
+    private func styleStatusBar(_ themeColor: UIColor?) {
         guard let themeColor else {
-            statusBarBackground.backgroundColor = .systemBackground
             setStatusBarStyle(.default)
             return
         }
 
-        statusBarBackground.backgroundColor = themeColor
         var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0
         themeColor.getRed(&red, green: &green, blue: &blue, alpha: nil)
         setStatusBarStyle(0.299 * red + 0.587 * green + 0.114 * blue < 0.5 ? .lightContent : .darkContent)
-        paintMargins()
-    }
-
-    // An iPhone in landscape insets the page clear of the Dynamic Island, and
-    // the margins that leaves show the web view's own background, white unless
-    // set. The theme-color changes whenever the theme or scheme does, so the
-    // page's background is read back then, a frame later, once the client has
-    // applied it. Read from an isolated world: the page never calls in.
-    private func paintMargins() {
-        webView?.callAsyncJavaScript("""
-            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-            if (!getComputedStyle(document.documentElement).getPropertyValue('--mud-palette-background').trim()) return null;
-            const probe = document.createElement('div');
-            probe.style.color = 'var(--mud-palette-background)';
-            document.body.appendChild(probe);
-            const color = getComputedStyle(probe).color;
-            probe.remove();
-            return color;
-            """, arguments: [:], in: nil, in: .defaultClient) { [weak self] result in
-            guard case .success(let value) = result,
-                  let color = (value as? String).flatMap(Self.color(fromCSS:))
-            else { return }
-            self?.webView?.underPageBackgroundColor = color
-            self?.webView?.scrollView.backgroundColor = color
-        }
-    }
-
-    /// `rgb(r, g, b)` or `rgba(r, g, b, a)`, as getComputedStyle reports colours.
-    private static func color(fromCSS css: String) -> UIColor? {
-        let parts = css.drop(while: { $0 != "(" }).dropFirst().prefix(while: { $0 != ")" })
-            .split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
-        guard parts.count >= 3 else { return nil }
-        return UIColor(red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255, alpha: 1)
     }
 
     // Without an instance there's nothing behind the sheet, so it can't close.
