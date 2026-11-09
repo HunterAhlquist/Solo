@@ -3,7 +3,7 @@
   "private": true,
   "description": "Solo's iPad and iPhone app: a Capacitor shell around one Solo instance",
   "scripts": {
-    "sync": "cap sync ios",
+    "sync": "node scripts/stage-icons.mjs && cap sync ios",
     "open": "cap open ios"
   },
   "dependencies": {
