@@ -195,6 +195,12 @@ window.solo = {
         // soloDesktop behind on a device that used it.
         beginSignIn: () => (window.soloApp ?? window.soloDesktop).beginSignIn(),
 
+        // The shell's own list of instances: the desktop app's settings window,
+        // or the iPad app's native sheet. Checked per member, so a shell built
+        // before it existed just doesn't offer it.
+        canOpenInstances: () => !!(window.soloApp?.openInstances || window.soloDesktop?.openInstances),
+        openInstances: () => (window.soloApp?.openInstances ? window.soloApp : window.soloDesktop).openInstances(),
+
         // The instance this shell is pointed at, or null on the web build where
         // the page origin already is the instance. Defensive about the bridge
         // being absent: this is called unconditionally at startup.

@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 import WebKit
 import Capacitor
 
@@ -10,12 +11,31 @@ import Capacitor
 /// - Sign-in, which Google refuses inside a web view. The page can post one
 ///   fixed message, `request_sign-in`, and the sign-in sheet takes it from
 ///   there (`AppSignIn`).
+/// - Its list of instances (`InstancesView`), opened by the fixed message
+///   `request_instance-settings`. Opening another instance builds a new view
+///   controller on it, since Capacitor reads the address once, at load.
 ///
 /// Nothing native is handed to the page or the extensions it loads.
 class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, WKScriptMessageHandler {
     private static let messageHandler = "soloApp"
 
     private var signIn: AppSignIn?
+    /// The instance this controller opened; nil until one is added.
+    private var instance: URL?
+    /// The one built in with `SOLO_INSTANCE_URL`, which the debug shim's
+    /// session belongs to.
+    private var builtIn: URL?
+
+    override func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        builtIn = descriptor.serverURL.flatMap(SavedInstances.normalize)
+        instance = SavedInstances.resolve(builtIn: builtIn)
+        // With none, Capacitor shows the bundled placeholder under the sheet.
+        // The trailing slash keeps an instance hosted under a path resolving
+        // its relative URLs there.
+        descriptor.serverURL = instance.map { $0.absoluteString + "/" }
+        return descriptor
+    }
 
     // Not webViewConfiguration(for:): Capacitor swaps in its own content
     // controller after that returns, which drops any script added there.
@@ -28,12 +48,13 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             source: """
                 window.soloApp = Object.freeze({
                     beginSignIn: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_sign-in'),
+                    openInstances: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_instance-settings'),
                 });
                 """,
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true))
         #if DEBUG
-        DevShim.install(in: controller)
+        DevShim.install(in: controller, sessionFor: builtIn)
         #endif
         return super.webView(with: frame, configuration: configuration)
     }
@@ -44,15 +65,25 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         webView?.addInteraction(pencil)
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if instance == nil {
+            showInstances()
+        }
+    }
+
     // Only from the instance's own page, never a frame inside it.
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
-              let instance = bridge?.config.serverURL,
-              Self.isOrigin(message.frameInfo.securityOrigin, of: instance),
-              message.body as? String == "request_sign-in"
+              let instance,
+              Self.isOrigin(message.frameInfo.securityOrigin, of: instance)
         else { return }
 
-        beginSignIn(on: instance)
+        switch message.body as? String {
+        case "request_sign-in": beginSignIn(on: instance)
+        case "request_instance-settings": showInstances()
+        default: break
+        }
     }
 
     // iPadOS 17.5 and later call this one and skip pencilInteractionDidTap.
@@ -100,6 +131,24 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                     .map { String(decoding: $0, as: UTF8.self) } ?? "null"
                 _ = try? await webView?.evaluateJavaScript("window.solo.desktop.signInFailed(\(message))")
             }
+        }
+    }
+
+    // Without an instance there's nothing behind the sheet, so it can't close.
+    private func showInstances() {
+        guard presentedViewController == nil else { return }
+        let sheet = UIHostingController(rootView: InstancesView(
+            current: instance,
+            onOpen: { [weak self] chosen in self?.reopen(on: chosen) },
+            onDone: instance == nil ? nil : { [weak self] in self?.dismiss(animated: true) }))
+        sheet.isModalInPresentation = instance == nil
+        present(sheet, animated: true)
+    }
+
+    private func reopen(on chosen: SavedInstance) {
+        SavedInstances.current = chosen.url
+        dismiss(animated: true) { [weak self] in
+            self?.view.window?.rootViewController = SoloViewController()
         }
     }
 

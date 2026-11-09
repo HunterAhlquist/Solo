@@ -1220,4 +1220,10 @@ function registerIpc() {
     // Only an instance window's: the settings page has no menus of its own.
     ipcMain.handle('context-menu:show', (event, items) =>
         instanceWindowOf(event) ? popupClientMenu(event.sender, items) : null);
+
+    ipcMain.handle('settings:open', event => {
+        if (instanceWindowOf(event)) {
+            openSettingsWindow();
+        }
+    });
 }

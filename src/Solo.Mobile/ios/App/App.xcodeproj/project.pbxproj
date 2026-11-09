@@ -19,6 +19,7 @@
 		A1C0DE012FF0000100000002 /* SoloViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000001 /* SoloViewController.swift */; };
 		A1C0DE012FF0000100000004 /* DevShim.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000003 /* DevShim.swift */; };
 		A1C0DE012FF000010000000A /* AppSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000009 /* AppSignIn.swift */; };
+		A1C0DE012FF000010000000C /* Instances.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF000010000000B /* Instances.swift */; };
 		A1C0DE012FF0000100000006 /* Solo.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000005 /* Solo.icon */; };
 		A1C0DE012FF0000100000008 /* Solo Preview.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000007 /* Solo Preview.icon */; };
 /* End PBXBuildFile section */
@@ -38,6 +39,7 @@
 		A1C0DE012FF0000100000001 /* SoloViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoloViewController.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000003 /* DevShim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevShim.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000009 /* AppSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSignIn.swift; sourceTree = "<group>"; };
+		A1C0DE012FF000010000000B /* Instances.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Instances.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000005 /* Solo.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Solo.icon; path = Icons/Solo.icon; sourceTree = SOURCE_ROOT; };
 		A1C0DE012FF0000100000007 /* Solo Preview.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = "Solo Preview.icon"; path = "Icons/Solo Preview.icon"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -79,6 +81,7 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				A1C0DE012FF0000100000009 /* AppSignIn.swift */,
 				A1C0DE012FF0000100000003 /* DevShim.swift */,
+				A1C0DE012FF000010000000B /* Instances.swift */,
 				A1C0DE012FF0000100000001 /* SoloViewController.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -179,6 +182,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				A1C0DE012FF000010000000A /* AppSignIn.swift in Sources */,
 				A1C0DE012FF0000100000004 /* DevShim.swift in Sources */,
+				A1C0DE012FF000010000000C /* Instances.swift in Sources */,
 				A1C0DE012FF0000100000002 /* SoloViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -132,7 +132,13 @@ try {
         return !(await response.json()).some(target => target.url.endsWith('/settings/settings.html'));
     }, 3000, 'The settings window stayed open after the added instance opened.');
 
-    console.log('PASS: settings uses native effects by default, persists the opt-out, and adds an instance into its own window.');
+    // The client's "Instances" item brings it back from the instance window.
+    await inspectMatching(browserOrigin,
+        target => target.type === 'page' && target.url.startsWith(`http://localhost:${instance.port}/`),
+        'window.soloDesktop.openInstances().then(() => true)');
+    await targetMatching(browserOrigin, target => target.url.endsWith('/settings/settings.html'));
+
+    console.log('PASS: settings uses native effects by default, persists the opt-out, adds an instance into its own window, and reopens from it.');
 } catch (error) {
     if (output.trim()) console.error(output.trim());
     console.error(`FAIL: ${error.message}`);

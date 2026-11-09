@@ -2,22 +2,22 @@
 // client: the client and the extensions it loads from the server use
 // same-origin relative URLs throughout (REST, SignalR, images, extension
 // assets), which only resolve against the instance's own origin.
+// Optional: the instance the build opens first, also added to the app's list
+// of instances. Without one, the app opens on that list.
 const instanceUrl = process.env.SOLO_INSTANCE_URL;
-if (!instanceUrl) {
-    throw new Error('Set SOLO_INSTANCE_URL to the Solo instance this build opens, e.g. https://solo.example.com');
-}
-
-const instance = new URL(instanceUrl);
+const instance = instanceUrl ? new URL(instanceUrl) : null;
 
 /** @type {import('@capacitor/cli').CapacitorConfig} */
 module.exports = {
     appId: 'io.github.hunterahlquist.solo',
     appName: 'Solo',
     webDir: 'www',
-    server: {
-        url: instance.origin + instance.pathname.replace(/\/?$/, '/'),
-        cleartext: instance.protocol === 'http:',
-    },
+    ...(instance && {
+        server: {
+            url: instance.origin + instance.pathname.replace(/\/?$/, '/'),
+            cleartext: instance.protocol === 'http:',
+        },
+    }),
     ios: {
         contentInset: 'always',
     },

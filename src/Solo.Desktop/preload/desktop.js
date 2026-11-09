@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('soloDesktop', {
     // menu instead: items are { id, label, enabled, separatorBefore }, and the
     // promise settles with the chosen id, or null once it closes without one.
     showContextMenu: items => ipcRenderer.invoke('context-menu:show', items),
+
+    // The settings window, where the instances are listed, for the client's
+    // "Instances" item in its profile menu and on its sign-in page.
+    openInstances: () => ipcRenderer.invoke('settings:open'),
 });
 
 // ---------------------------------------------------------------------------

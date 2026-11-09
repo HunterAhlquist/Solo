@@ -9,11 +9,13 @@ import WebKit
 ///   it for every stroke and sync packet. `getRandomValues` works anywhere.
 /// - A `solo_` session minted on the instance, so the page starts signed in
 ///   where Google's sign-in can't run (a plain-HTTP origin). The token and
-///   the user come from the git-ignored `ios/dev.xcconfig` (see the README).
+///   the user come from the git-ignored `ios/dev.xcconfig` (see the README),
+///   and belong to the instance built in with `SOLO_INSTANCE_URL`, so only
+///   that origin gets them.
 enum DevShim {
-    static func install(in controller: WKUserContentController) {
+    static func install(in controller: WKUserContentController, sessionFor instance: URL?) {
         controller.addUserScript(WKUserScript(
-            source: randomUUID + session(),
+            source: randomUUID + (instance.flatMap(session(for:)) ?? ""),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true))
     }
@@ -30,19 +32,21 @@ enum DevShim {
 
         """
 
-    private static func session() -> String {
+    private static func session(for instance: URL) -> String? {
         let info = Bundle.main.infoDictionary ?? [:]
         guard let token = info["SoloDevSessionToken"] as? String, token.hasPrefix("solo_"),
               let user = (info["SoloDevSessionUser"] as? String).flatMap(base64URLDecoded),
               let values = try? JSONSerialization.data(withJSONObject: [
                   "solo.session.token": token, "solo.session.user": user,
               ]),
-              let json = String(data: values, encoding: .utf8)
-        else { return "" }
+              let json = String(data: values, encoding: .utf8),
+              let scheme = instance.scheme, let host = instance.host
+        else { return nil }
+        let origin = "\(scheme)://\(host)" + (instance.port.map { ":\($0)" } ?? "")
 
         // Kept once set, so signing out and back in on the device sticks.
         return """
-            if (!localStorage.getItem('solo.session.token')) {
+            if (location.origin === '\(origin)' && !localStorage.getItem('solo.session.token')) {
                 for (const [key, value] of Object.entries(\(json))) localStorage.setItem(key, value);
             }
 
