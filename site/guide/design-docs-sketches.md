@@ -82,6 +82,7 @@ Enlarging the page reveals that drawing again.
 **Undo**, **Redo**, and **Clear sketch** sit at the top right.
 **Cmd+Z** on Mac, or **Ctrl+Z** elsewhere, undoes your last edit.
 Add **Shift** to redo it.
+On a touch screen, tap with two fingers to undo and with three to redo.
 
 **Clear sketch** asks for confirmation before clearing the page.
 Undo can restore the cleared content.
