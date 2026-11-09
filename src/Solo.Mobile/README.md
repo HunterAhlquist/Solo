@@ -1,16 +1,31 @@
 # Solo Mobile
 
 The iPad and iPhone app, built with [Capacitor](https://capacitorjs.com/docs) 8.
-It opens one Solo instance in its web view and adds what a web page can't get:
-the Apple Pencil double-tap, and Google sign-in.
+It opens a Solo instance in its web view and adds what a web page can't get:
+the Apple Pencil double-tap, Google sign-in, and a list of instances to switch
+between.
 
-The app loads the instance itself (`server.url` in `capacitor.config.js`)
-rather than a bundled copy of the client, because the client and its
-extensions use same-origin relative URLs everywhere: REST, SignalR, images and
-extension assets. The instance is chosen at build time with `SOLO_INSTANCE_URL`.
-Capacitor's docs call `server.url` "not intended for use in production"
-([config reference](https://capacitorjs.com/docs/config)), so treat it as the
-part of this setup most likely to change.
+The app loads the instance itself (Capacitor's `server.url`) rather than a
+bundled copy of the client, because the client and its extensions use
+same-origin relative URLs everywhere: REST, SignalR, images and extension
+assets. Capacitor's docs call `server.url` "not intended for use in
+production" ([config reference](https://capacitorjs.com/docs/config)), so
+treat it as the part of this setup most likely to change.
+
+## Instances
+
+The app keeps its own list of instances, like the desktop app. "Instances" in
+the profile menu, or "Use another instance" on the sign-in page, posts the
+fixed message `request_instance-settings`, and a native sheet
+(`App/App/Instances.swift`) lists them. Adding one checks
+`api/config/auth` first. Opening one rebuilds the view controller on it,
+because Capacitor reads the address once, at load
+(`SoloViewController.instanceDescriptor()`). Each instance's session stays in
+the web view's storage for its origin, so switching back finds it signed in.
+
+`SOLO_INSTANCE_URL` at build time is optional. When set, that instance joins
+the list the first time a build carries it, and opens. Without it, and with
+nothing saved yet, the app opens on the list.
 
 ## Apple Pencil double-tap
 
@@ -61,7 +76,7 @@ tools. The project uses Swift Package Manager, so CocoaPods isn't needed.
 ```sh
 cd src/Solo.Mobile
 npm install
-export SOLO_INSTANCE_URL=https://solo.example.com
+export SOLO_INSTANCE_URL=https://solo.example.com   # optional
 npm run sync    # writes the instance into the Xcode project
 npm run open    # Xcode: pick your team under Signing & Capabilities, then Run
 ```
