@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.JSInterop;
 using MudBlazor;
+using MudBlazor.Utilities;
 using Solo.Shared.Dtos;
 
 namespace Solo.Client.Theming;
@@ -46,6 +47,15 @@ public sealed class ThemeState(IJSRuntime js)
         ColorSchemePreference.Dark => true,
         _ => SystemPrefersDark,
     };
+
+    /// <summary>
+    /// The app bar's colour in the scheme in force, without any alpha: the iPad
+    /// app paints its status bar with it, and that has to be opaque or content
+    /// shows through.
+    /// </summary>
+    private string AppBarColor =>
+        (IsDarkMode ? MudTheme.PaletteDark : MudTheme.PaletteLight).AppbarBackground
+            .ToString(MudColorOutputFormats.Hex);
 
     /// <summary>Raised when the theme or the effective scheme changes; layouts re-render on it.</summary>
     public event Action? Changed;
@@ -173,7 +183,7 @@ public sealed class ThemeState(IJSRuntime js)
         try
         {
             inProcess.InvokeVoid("solo.theme.setSource", ThemeSource(Preference));
-            inProcess.InvokeVoid("solo.theme.setResolvedScheme", IsDarkMode);
+            inProcess.InvokeVoid("solo.theme.setResolvedScheme", IsDarkMode, AppBarColor);
         }
         catch (JSException)
         {
@@ -193,7 +203,7 @@ public sealed class ThemeState(IJSRuntime js)
         try
         {
             await js.InvokeVoidAsync("solo.theme.setSource", ThemeSource(preference));
-            await js.InvokeVoidAsync("solo.theme.setResolvedScheme", IsDarkMode);
+            await js.InvokeVoidAsync("solo.theme.setResolvedScheme", IsDarkMode, AppBarColor);
         }
         catch (JSException)
         {
@@ -227,7 +237,7 @@ public sealed class ThemeState(IJSRuntime js)
         {
             try
             {
-                await js.InvokeVoidAsync("solo.theme.setResolvedScheme", IsDarkMode);
+                await js.InvokeVoidAsync("solo.theme.setResolvedScheme", IsDarkMode, AppBarColor);
             }
             catch (JSException)
             {
