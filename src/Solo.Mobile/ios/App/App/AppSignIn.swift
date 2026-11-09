@@ -19,7 +19,7 @@ final class AppSignIn: NSObject, ASWebAuthenticationPresentationContextProviding
         let errorDescription: String?
     }
 
-    nonisolated private static let callbackScheme = "io.github.hunterahlquist.solo"
+    nonisolated private static let callbackScheme = "com.hunterahlquist.solo"
 
     private let instance: URL
     private let window: UIWindow

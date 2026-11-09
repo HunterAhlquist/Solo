@@ -22,7 +22,7 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
     /// front (RFC 8252 §7.1). Any app can claim the same scheme; PKCE keeps a
     /// code it intercepts useless (§8.1).
     /// </summary>
-    public const string AppCallbackUri = "io.github.hunterahlquist.solo:/auth/callback";
+    public const string AppCallbackUri = "com.hunterahlquist.solo:/auth/callback";
 
     /// <summary>Anonymous callers can open flows; cap them so they can't grow memory.</summary>
     private const int MaxPending = 100;
