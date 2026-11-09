@@ -1,5 +1,6 @@
 using Bunit;
 using Solo.Client.Theming;
+using Solo.Shared.Dtos;
 
 namespace Solo.Client.Tests;
 
@@ -31,5 +32,18 @@ public sealed class ThemeStateTests : SoloBunitContext
         var invocation = Assert.Single(JSInterop.Invocations,
             candidate => candidate.Identifier == "solo.theme.setResolvedScheme");
         Assert.Equal(false, invocation.Arguments[0]);
+    }
+
+    [Fact]
+    public async Task The_scheme_carries_the_app_bar_colour_without_alpha()
+    {
+        var theme = new ThemeState(JSInterop.JSRuntime);
+        theme.SetTheme(new ThemeDto { Light = new ThemePaletteDto { AppbarBackground = "#12345680" } });
+
+        await theme.SetPreferenceAsync(ColorSchemePreference.Light);
+
+        var invocation = Assert.Single(JSInterop.Invocations,
+            candidate => candidate.Identifier == "solo.theme.setResolvedScheme");
+        Assert.Equal("#123456", invocation.Arguments[1]);
     }
 }

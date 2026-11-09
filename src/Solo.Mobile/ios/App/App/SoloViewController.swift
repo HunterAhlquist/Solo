@@ -14,6 +14,9 @@ import Capacitor
 /// - Its list of instances (`InstancesView`), opened by the fixed message
 ///   `request_instance-settings`. Opening another instance builds a new view
 ///   controller on it, since Capacitor reads the address once, at load.
+/// - An opaque status bar in the app bar's colour, which the client publishes
+///   as the page's `theme-color`. The page scrolls under the status bar, so
+///   without it the tasks show through.
 ///
 /// Nothing native is handed to the page or the extensions it loads.
 class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, WKScriptMessageHandler {
@@ -25,6 +28,9 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     /// The one built in with `SOLO_INSTANCE_URL`, which the debug shim's
     /// session belongs to.
     private var builtIn: URL?
+
+    private let statusBarBackground = UIView()
+    private var themeColorObservation: NSKeyValueObservation?
 
     override func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = super.instanceDescriptor()
@@ -63,6 +69,17 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         let pencil = UIPencilInteraction()
         pencil.delegate = self
         webView?.addInteraction(pencil)
+
+        view.addSubview(statusBarBackground)
+        themeColorObservation = webView?.observe(\.themeColor, options: [.initial, .new]) { [weak self] webView, _ in
+            MainActor.assumeIsolated { self?.paintStatusBar(webView.themeColor) }
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        statusBarBackground.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: view.safeAreaInsets.top)
+        view.bringSubviewToFront(statusBarBackground)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -132,6 +149,22 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                 _ = try? await webView?.evaluateJavaScript("window.solo.desktop.signInFailed(\(message))")
             }
         }
+    }
+
+    // Until the client sets a theme-color (before it boots, and on the bundled
+    // placeholder) the system background stands in. Text goes light or dark
+    // against the colour; the client sends it without alpha.
+    private func paintStatusBar(_ themeColor: UIColor?) {
+        guard let themeColor else {
+            statusBarBackground.backgroundColor = .systemBackground
+            setStatusBarStyle(.default)
+            return
+        }
+
+        statusBarBackground.backgroundColor = themeColor
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0
+        themeColor.getRed(&red, green: &green, blue: &blue, alpha: nil)
+        setStatusBarStyle(0.299 * red + 0.587 * green + 0.114 * blue < 0.5 ? .lightContent : .darkContent)
     }
 
     // Without an instance there's nothing behind the sheet, so it can't close.
