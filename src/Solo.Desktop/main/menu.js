@@ -22,13 +22,17 @@ function buildMenu({
     const isMac = process.platform === 'darwin';
 
     // Where each platform's users look for it: under the app menu next to About
-    // on macOS, under Help on Windows and Linux. The item always exists — a
-    // build that cannot update says so when clicked, which is more use than an
-    // item that is missing for reasons the user cannot see.
-    const updatesItem = {
-        label: 'Check for Updates…',
-        click: () => checkForUpdates?.(),
-    };
+    // on macOS, under Help on Windows and Linux. The item exists in every build
+    // that updates itself — one that cannot says so when clicked, which is more
+    // use than an item that is missing for reasons the user cannot see. The Mac
+    // App Store build is the exception: the store updates it, and an app there
+    // isn't meant to offer its own updates (App Review Guideline 2.4.5).
+    const updatesItems = process.mas
+        ? []
+        : [{
+            label: 'Check for Updates…',
+            click: () => checkForUpdates?.(),
+        }];
 
     const settingsItem = {
         label: 'Settings…',
@@ -57,7 +61,7 @@ function buildMenu({
                     // Not the `about` role: that is the native panel, and
                     // Solo's has a page in it (main/about.js).
                     { label: `About ${appName}`, click: () => openAboutWindow() },
-                    updatesItem,
+                    ...updatesItems,
                     { type: 'separator' },
                     settingsItem,
                     openInstanceItem,
@@ -99,7 +103,7 @@ function buildMenu({
             : [{
                 role: 'help',
                 submenu: [
-                    updatesItem,
+                    ...updatesItems,
                     { type: 'separator' },
                     { label: `About ${appName}`, click: () => openAboutWindow() },
                 ],
