@@ -276,6 +276,30 @@ window.solo = {
     },
 
     // -----------------------------------------------------------------------
+    // Device actions (ISoloDeviceActions). The iPad app turns an Apple Pencil
+    // double-tap into `solo:device-action` with a generic name such as
+    // `action_stylus-tool-swap` and dispatches it on the window from native
+    // code. Nothing here calls back into the app, so the page offers the shell
+    // a way in without being handed any native API of its own.
+    // -----------------------------------------------------------------------
+    deviceActions: {
+        _dotnet: null,
+
+        init(dotnetRef) {
+            const actions = window.solo.deviceActions;
+            if (!actions._dotnet) {
+                window.addEventListener('solo:device-action', e => {
+                    const id = e.detail?.id;
+                    if (typeof id === 'string') {
+                        actions._dotnet?.invokeMethodAsync('Dispatch', id);
+                    }
+                });
+            }
+            actions._dotnet = dotnetRef;
+        },
+    },
+
+    // -----------------------------------------------------------------------
     // Solo API sessions. A sign-in buys a long-lived `solo_` session from the
     // instance, and the server slides its expiry on use. The desktop app holds
     // it as a bearer token. The web app gets it as an HttpOnly cookie no script

@@ -1,0 +1,5 @@
+CAPACITOR_DEBUG = true
+
+// The debug-only login shim's session (App/DevShim.swift), kept out of git.
+// See the README's "Testing against a local instance".
+#include? "dev.xcconfig"

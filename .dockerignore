@@ -8,6 +8,7 @@
 docs/
 tests/
 deploy/
+src/Solo.Mobile/
 README.md
 LICENSE
 Dockerfile
