@@ -217,6 +217,7 @@ Inject these services into a page or a component. They are in `Solo.Shared.Exten
 | `ISoloLiveTopics` | Get [live updates](hooks-and-events.md#live-updates). | 1.4 |
 | `ISoloTaskPicker` | Let a person select a task. | 1.5 |
 | `ISoloContextMenu` | Show a menu at the pointer. | 1.6 |
+| `ISoloDeviceActions` | Respond to a device control, such as an Apple Pencil double-tap. | 1.16 |
 
 ### Open the task drawer
 
@@ -293,6 +294,28 @@ private async Task OnRowMenuAsync(MouseEventArgs e, Milestone milestone)
 - A native menu shows only the label. `Icon` and `Danger` have no effect there. Make the label of a destructive command clear.
 - Do not show a command that the person cannot use.
 - A touchscreen has no right-click. Give the same menu a button, or open it after a long press.
+
+### Respond to a device control
+
+`ISoloDeviceActions.Handle` runs your handler when the device asks for an action by name. Today the only name is `DeviceActions.StylusToolSwap`: an Apple Pencil double-tap in the iPad app, when the person's Pencil setting is to switch to the eraser or to the previous tool.
+
+```csharp
+@inject ISoloDeviceActions Device
+@implements IDisposable
+
+@code {
+    private IDisposable? _toolSwap;
+
+    protected override void OnInitialized() =>
+        _toolSwap = Device.Handle(DeviceActions.StylusToolSwap, SwapToolAsync);
+
+    public void Dispose() => _toolSwap?.Dispose();
+}
+```
+
+- Only the newest handler for a name runs. A dialog that handles it takes the action from the page under it until the dialog is disposed.
+- A browser has no such controls, so the handler never runs there. Keep a button for everything a device action does.
+- Dispose the handle when the component goes away.
 
 ### Add commands to the task menu
 

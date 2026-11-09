@@ -1107,3 +1107,21 @@ board's order. Closed boards are never in it, as they are never on the
 dashboard, so `IncludeClosedBoards` is ignored and the dialog has no switch for
 it. Everything else in `TaskPickerOptions` means what it does for `PickAsync`.
 Client-only: a package that calls it needs 1.14 in `soloClientVersion`.
+
+## Contract 1.16: device controls
+
+```csharp
+_toolSwap = Device.Handle(DeviceActions.StylusToolSwap, SwapToolAsync);
+// …and in Dispose:
+_toolSwap?.Dispose();
+```
+
+`ISoloDeviceActions` delivers controls on the device itself as named actions.
+The iPad app sends `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`)
+for an Apple Pencil double-tap when the person's Pencil setting is to switch to
+the eraser or to the previous tool; other settings send nothing. The names are
+generic on purpose: the app shell decides which gesture means what on its
+platform, and an extension never touches native code. Only the newest live
+handler for a name runs, so a dialog takes the action while it is open. A
+browser never sends one, so whatever the action does needs a button too.
+Client-only: a package that injects it needs 1.16 in `soloClientVersion`.

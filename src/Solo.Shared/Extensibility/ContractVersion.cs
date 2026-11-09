@@ -102,7 +102,11 @@ namespace Solo.Shared.Extensibility;
 /// <c>SmtpSecurity</c> enums, and <c>AuthConfigDto.EmailEnabled</c>. Core's own client and API use
 /// them; no seam for extensions to raise notifications yet. They are members
 /// of the shared assembly, so a package reading one needs 1.16 in the range
-/// covering the half that does.</para>
+/// covering the half that does. 1.16.0 also adds <see cref="ISoloDeviceActions"/>
+/// and <see cref="DeviceActions"/>: actions the device itself asks for,
+/// starting with the iPad app's Apple Pencil double-tap as
+/// <see cref="DeviceActions.StylusToolSwap"/>. That part is client-only, so a
+/// package using it needs 1.16 only in <c>soloClientVersion</c>.</para>
 /// </remarks>
 public static class ContractVersion
 {
