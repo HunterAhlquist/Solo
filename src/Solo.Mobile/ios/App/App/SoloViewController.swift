@@ -8,12 +8,13 @@ import Capacitor
 /// (`ISoloDeviceActions` in Solo.Shared, `solo.deviceActions` in the client).
 /// So nothing native is handed to the page or the extensions it loads.
 class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate {
-    override func webViewConfiguration(for instanceConfiguration: InstanceConfiguration) -> WKWebViewConfiguration {
-        let configuration = super.webViewConfiguration(for: instanceConfiguration)
+    // Not webViewConfiguration(for:): Capacitor swaps in its own content
+    // controller after that returns, which drops any script added there.
+    override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
         #if DEBUG
         DevShim.install(in: configuration.userContentController)
         #endif
-        return configuration
+        return super.webView(with: frame, configuration: configuration)
     }
 
     override func capacitorDidLoad() {
