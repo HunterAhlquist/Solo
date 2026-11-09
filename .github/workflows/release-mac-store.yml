@@ -14,8 +14,10 @@ permissions:
 jobs:
   testflight:
     name: Upload to TestFlight
-    # A GA Xcode, which App Store Connect requires; stage-icon.mjs drops the
-    # icon features its actool doesn't know, as it does for the iOS upload.
+    # A GA Xcode, which App Store Connect requires.
+    # stage-icon.mjs drops the icon features its actool doesn't know, and
+    # SOLO_ICON_ALLOW_DROPPED lets it do so on a tag: these builds reach
+    # internal testers only, and the icon comes back once a GA Xcode knows them.
     runs-on: macos-latest
     timeout-minutes: 45
     # The same environment as the iOS upload: the App Store Connect key can
@@ -24,6 +26,7 @@ jobs:
     # Lifted to the job because a step's `if:` can read `env` but not
     # `secrets`: without them the run stops at a notice instead of failing.
     env:
+      SOLO_ICON_ALLOW_DROPPED: 'true'
       ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
