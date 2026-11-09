@@ -5,6 +5,9 @@
 // window. Sign-in happens in the system browser on the instance's own origin
 // (main/desktop-auth.js).
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, net, screen, session, shell } = require('electron');
+
+// Where the first-run setup sends someone who doesn't have an instance yet.
+const INSTALL_GUIDE_URL = 'https://hunterahlquist.github.io/Solo/admin/install/';
 const path = require('path');
 const { configureAppIdentity } = require('./main/app-identity');
 configureAppIdentity(app, process.env);
@@ -1103,6 +1106,10 @@ function registerIpc() {
         platform: process.platform,
         firstRun: settings.instances.length === 0,
     }));
+
+    // The setup page's link for someone with no instance yet. A fixed
+    // address, not one the page passes in.
+    handleSettings('settings:install-guide', () => shell.openExternal(INSTALL_GUIDE_URL));
 
     handleSettings('settings:native-effects', enabled => {
         settings.nativeEffects = enabled !== false;

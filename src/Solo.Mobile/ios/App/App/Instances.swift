@@ -91,8 +91,12 @@ enum SavedInstances {
 }
 
 /// The native sheet for choosing an instance, adding one or removing one.
-/// Opening one reloads the app on it.
+/// Opening one reloads the app on it. With none open it is the app's first
+/// screen, and it can't be dismissed until one is (see showInstances).
 struct InstancesView: View {
+    /// Where someone without an instance finds out how to run one.
+    static let installGuide = URL(string: "https://hunterahlquist.github.io/Solo/admin/install/")!
+
     let current: URL?
     let onOpen: (SavedInstance) -> Void
     let onDone: (() -> Void)?
@@ -105,6 +109,18 @@ struct InstancesView: View {
     var body: some View {
         NavigationView {
             Form {
+                if current == nil {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Add your first instance").font(.title2.bold())
+                            Text("Solo works with a Solo instance: the server you or your team run. Enter its address below to get started.")
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                        Link("Don't have one? Set up an instance", destination: Self.installGuide)
+                    }
+                }
+
                 if !instances.isEmpty {
                     Section {
                         ForEach(instances) { instance in
@@ -152,7 +168,7 @@ struct InstancesView: View {
                     }
                 }
             }
-            .navigationTitle("Instances")
+            .navigationTitle(current == nil ? "Welcome to Solo" : "Instances")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // The condition sits inside the item: an `if` directly in the

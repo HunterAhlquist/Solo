@@ -21,6 +21,7 @@ with its version in parentheses).
 
 ### Desktop
 - Instances in the profile menu and on the sign-in page opens the Settings window, where the instances are listed.
+- With no instance yet, the app opens on an "Add your first instance" page, with a link to the guide for setting one up, and nothing else until one is connected. The iPad and iPhone app opens on the same setup.
 
 ### SDK
 - Contract 1.16.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.

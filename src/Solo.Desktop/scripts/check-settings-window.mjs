@@ -52,7 +52,10 @@ try {
     const appearance = await evaluate(settingsTarget.webSocketDebuggerUrl, `({
         hasBridge: typeof window.soloSettings?.add === 'function',
         firstRun: document.getElementById('instances').children.length === 0 &&
-            document.getElementById('close').textContent === 'Quit',
+            document.getElementById('close').textContent === 'Quit' &&
+            document.body.classList.contains('setup') &&
+            typeof window.soloSettings?.openInstallGuide === 'function' &&
+            getComputedStyle(document.getElementById('install-guide')).display !== 'none',
         glass: document.documentElement.classList.contains('solo-settings--glass'),
         controlHidden: document.getElementById('native-effects-setting').hidden,
         controlChecked: document.getElementById('native-effects').checked,
