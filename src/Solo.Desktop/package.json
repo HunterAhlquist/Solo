@@ -18,6 +18,7 @@
     "test:network-recovery": "node scripts/check-network-recovery.mjs",
     "test:network-reset": "node scripts/check-server-network-reset.mjs",
     "test:proxy-paths": "node scripts/check-server-proxy-paths.mjs",
+    "test:instance-ports": "node scripts/check-instance-ports.mjs",
     "test:host-guard": "node scripts/check-server-host-guard.mjs",
     "test:desktop-auth": "node scripts/check-desktop-auth.mjs",
     "test:settings": "node scripts/check-settings-window.mjs",
