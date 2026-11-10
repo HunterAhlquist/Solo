@@ -5,12 +5,49 @@ It opens a Solo instance in its web view and adds what a web page can't get:
 the Apple Pencil double-tap, Google sign-in, and a list of instances to switch
 between.
 
-The app loads the instance itself (Capacitor's `server.url`) rather than a
-bundled copy of the client, because the client and its extensions use
-same-origin relative URLs everywhere: REST, SignalR, images and extension
-assets. Capacitor's docs call `server.url` "not intended for use in
-production" ([config reference](https://capacitorjs.com/docs/config)), so
+The app runs the client the instance serves rather than a bundled copy,
+because the client and its extensions use same-origin relative URLs
+everywhere: REST, SignalR, images and extension assets. It loads it through a
+local origin, as the desktop app does (see below), and points Capacitor's
+`server.url` at that. Capacitor's docs call `server.url` "not intended for use
+in production" ([config reference](https://capacitorjs.com/docs/config)), so
 treat it as the part of this setup most likely to change.
+
+## The local origin
+
+The page lives on `http://localhost:<port>`, not on the instance's address.
+`App/App/LocalProxy.swift` is a loopback server that forwards every path, the
+client's own files included, to the instance, like the desktop app's
+`main/server.js`:
+
+- **Why:** a WKWebView only gets service workers on an App-Bound Domain, and
+  the client's offline mode (a vault kept on this device) needs them. An app
+  lists its App-Bound Domains in Info.plist (`WKAppBoundDomains`, at most ten)
+  when it's built, and every instance is somewhere else, so the one entry is
+  `localhost`. `limitsNavigationsToAppBoundDomains` is on, which WebKit
+  requires for an app-bound web view to keep its message handlers and user
+  scripts; links to anywhere else open in Safari as before. `http://localhost`
+  is also a secure context, so a plain-HTTP instance on the LAN gets
+  `crypto.randomUUID()` and the rest.
+- **One port per instance**, from 41321 up (`InstancePorts`, saved in user
+  defaults), so each instance keeps its own origin, and with it its storage
+  and session, across launches. A port that's taken moves the instance to the
+  next free one, which signs it out once.
+- **Loopback only.** The listener binds to 127.0.0.1 and refuses any other
+  peer, and a request whose `Host` isn't `localhost:<port>` or
+  `127.0.0.1:<port>` gets a 403, the desktop app's DNS-rebinding guard.
+- **HTTP** goes upstream through URLSession and streams back chunked, with
+  `Origin`, `Referer` and redirects rewritten between the two origins.
+  **WebSockets** (SignalR's hub) are a raw TCP or TLS tunnel once the upgrade's
+  head is rewritten.
+- **When the instance can't be reached**, a page load gets a small "Can't
+  reach the instance" page (Try again, Instances) and a fetch gets a JSON 502
+  the client already handles. Once a vault is kept offline, the client's
+  service worker answers page loads before they reach the proxy.
+- **Network changes:** a change of network path (airplane mode, Wi-Fi coming
+  back) or the app returning to the foreground drops the upstream connections
+  and restarts the listener if iOS closed it, so nothing waits on a connection
+  that went away with the old network.
 
 ## Instances
 
@@ -20,8 +57,9 @@ fixed message `request_instance-settings`, and a native sheet
 (`App/App/Instances.swift`) lists them. Adding one checks
 `api/config/auth` first. Opening one rebuilds the view controller on it,
 because Capacitor reads the address once, at load
-(`SoloViewController.instanceDescriptor()`). Each instance's session stays in
-the web view's storage for its origin, so switching back finds it signed in.
+(`SoloViewController.instanceDescriptor()`), which also starts the instance's
+proxy. Each instance's session stays in the web view's storage for its local
+origin, so switching back finds it signed in.
 
 `SOLO_INSTANCE_URL` at build time is optional. When set, that instance joins
 the list the first time a build carries it, and opens. Without it, and with
@@ -195,8 +233,9 @@ the `verify` skill:
 3. Build the Debug configuration. `App/App/DevShim.swift` writes the session
    into local storage before the page loads.
 
-A plain `http://` address on the local network works for this. iPadOS only
-gives `crypto.randomUUID()` to secure pages, and Design Docs needs it, so the
-same debug-only script fills it in. Neither part exists in a Release build.
+A plain `http://` address on the local network works for this: the page is on
+the local origin either way, which is a secure context. The session goes only
+to the built-in instance's local origin, and the script doesn't exist in a
+Release build.
 
 Delete the `AuthSessions` row when you're done testing.
