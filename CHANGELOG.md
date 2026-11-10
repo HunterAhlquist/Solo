@@ -54,7 +54,7 @@ with its version in parentheses).
 
 #### Design Docs (1.6.4)
 - Rebuilt on contract 1.17.0.
-- A design doc's heading and its tree of notes are translucent in every theme, in the browser and the iPad and iPhone app as on the desktop, so a theme's background shows through them; the note itself stays solid for reading. On a narrow screen the tree opens as a frosted panel over the note, thin enough that the note shows through it blurred. The page used to be opaque everywhere but the desktop's glass mode.
+- A design doc's heading and its tree of notes are translucent in every theme, in the browser and the iPad and iPhone app as on the desktop, so a theme's background shows through them; the note itself stays solid for reading. On a narrow screen the tree opens as a frosted panel over the note, thin enough that the note shows through it blurred. Under a floating app bar the heading fades in over a short ramp at its top instead of starting on a hard edge. The page used to be opaque everywhere but the desktop's glass mode.
 - The offline sync menu counts the notes, sketches and other items waiting to sync instead of every edit: a sketch counts once however many strokes it has, as a note does however much was typed, so a few offline paragraphs and a drawing read "2 items waiting to sync" rather than hundreds of changes.
 - A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
 - In the iPad app, double-tapping Apple Pencil while sketching switches to the eraser and back to the tool you had before. It follows the Pencil setting in iPadOS: it works when that setting is to switch to the eraser or the previous tool. Needs Solo with contract 1.17.
