@@ -36,6 +36,7 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
 
     private var themeColorObservation: NSKeyValueObservation?
     private var foregroundObserver: NSObjectProtocol?
+    private var backgroundObserver: NSObjectProtocol?
 
     /// The running proxy, kept across the view controllers that opening
     /// another instance builds, and replaced when the instance changes.
@@ -87,14 +88,19 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
 
     deinit {
         if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
     }
 
     override func capacitorDidLoad() {
-        // Suspension can take the listener's socket and the upstream
-        // connections with it.
+        // iOS defuncts a suspended app's listener without telling it, so the
+        // proxy closes it on the way into the background and opens a new one
+        // on the way back (LocalProxy.suspend, resume).
         foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
-        ) { _ in Self.proxy?.recover() }
+        ) { _ in Self.proxy?.resume() }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { _ in Self.proxy?.suspend() }
 
         let pencil = UIPencilInteraction()
         pencil.delegate = self

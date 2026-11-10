@@ -313,9 +313,16 @@ public sealed class BoardHubClient(
         try { await StartCoreAsync(); }
         catch
         {
-            _retry ??= new Timer(async _ => await RetryAsync(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            ScheduleRetry();
             throw;
         }
+    }
+
+    // Every five seconds until a start succeeds.
+    private void ScheduleRetry()
+    {
+        if (_disposed) return;
+        _retry ??= new Timer(async _ => await RetryAsync(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
     private async Task RetryAsync()
@@ -377,7 +384,15 @@ public sealed class BoardHubClient(
             snapshot => TopicPresenceChanged?.Invoke(snapshot) ?? Task.CompletedTask);
 
         connection.Reconnecting += _ => Notify();
-        connection.Closed += _ => Notify();
+        // Automatic reconnect gives up after four tries (0, 2, 10 and 30
+        // seconds), which can all fail while the device is locked or the
+        // network is still coming back. Closed is where it gives up, so keep
+        // trying from there rather than stay disconnected until a reload.
+        connection.Closed += _ =>
+        {
+            ScheduleRetry();
+            return Notify();
+        };
         connection.Reconnected += _ => RestoreConnectionAsync(connection);
 
         _connection = connection;
