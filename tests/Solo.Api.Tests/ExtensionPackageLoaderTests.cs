@@ -116,8 +116,44 @@ public sealed class ExtensionPackageLoaderTests : IDisposable
         Assert.Equal("ext_my_thing", ExtensionPackageLoader.ExpectedSchema("my-thing"));
     }
 
+    [Fact]
+    public void LoadsDeclaredUpdateFeeds()
+    {
+        var path = Zip(
+            ("extension.json", Manifest(feeds: Feed("beta", "Beta", "https://example.test/beta.json"))),
+            ("server/Thing.dll", "MZ"u8.ToArray()));
+
+        var feed = Assert.Single(ExtensionPackageLoader.LoadZip(path).Manifest.UpdateFeeds);
+        Assert.Equal(("beta", "Beta"), (feed.Id, feed.Label));
+    }
+
+    /// <summary>
+    /// Refused at load rather than when the feed is read, so an administrator
+    /// is never offered a choice that can't work, and the id Admin settings
+    /// stores means one feed.
+    /// </summary>
+    [Theory]
+    [InlineData("""{ "id": "Beta", "label": "Beta", "url": "https://example.test/f.json" }""", "unique")]
+    [InlineData("""{ "id": "beta", "label": "", "url": "https://example.test/f.json" }""", "label")]
+    [InlineData("""{ "id": "beta", "label": "Beta", "url": "http://example.test/f.json" }""", "https")]
+    [InlineData("""{ "id": "beta", "label": "Beta", "url": "/f.json" }""", "https")]
+    [InlineData("""
+        { "id": "beta", "label": "Beta", "url": "https://example.test/a.json" },
+        { "id": "beta", "label": "Beta again", "url": "https://example.test/b.json" }
+        """, "unique")]
+    public void RejectsAnUpdateFeedThatCannotWork(string feeds, string expected)
+    {
+        var path = Zip(("extension.json", Manifest(feeds: feeds)), ("server/Thing.dll", "MZ"u8.ToArray()));
+
+        var error = Assert.Throws<ExtensionPackageException>(() => ExtensionPackageLoader.LoadZip(path));
+        Assert.Contains(expected, error.Message);
+    }
+
+    private static string Feed(string id, string label, string url) =>
+        $$"""{ "id": "{{id}}", "label": "{{label}}", "url": "{{url}}" }""";
+
     private static byte[] Manifest(
-        string id = "roadmap", string? schema = "ext_roadmap", string hooks = "") =>
+        string id = "roadmap", string? schema = "ext_roadmap", string hooks = "", string feeds = "") =>
         Encoding.UTF8.GetBytes($$"""
         {
           "id": "{{id}}",
@@ -126,7 +162,8 @@ public sealed class ExtensionPackageLoaderTests : IDisposable
           "soloApiVersion": ">=1.0 <2.0",
           "server": "server/Thing.dll",
           "schema": "{{schema}}",
-          "hooks": [{{hooks}}]
+          "hooks": [{{hooks}}],
+          "updateFeeds": [{{feeds}}]
         }
         """);
 

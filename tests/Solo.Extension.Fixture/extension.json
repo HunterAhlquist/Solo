@@ -8,5 +8,8 @@
   "client": "client/Solo.Extension.Fixture.Client.dll",
   "schema": "ext_fixture",
   "hooks": ["task.update", "task.setStatus", "task.setSchedule", "task.setBoard", "task.setAssignees", "epic.setAssignees"],
-  "failOpen": false
+  "failOpen": false,
+  "updateFeeds": [
+    { "id": "beta", "label": "Beta", "url": "https://updates.invalid/fixture/beta/release-manifest.json" }
+  ]
 }

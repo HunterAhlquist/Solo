@@ -73,6 +73,35 @@ public sealed class ExtensionManifest
     /// <c>http</c> URLs are refused.</para>
     /// </remarks>
     public string? Updates { get; set; }
+
+    /// <summary>
+    /// Other feeds an administrator may switch this extension to — a beta
+    /// channel, say — in Admin settings → Extensions. <see cref="Updates"/>
+    /// stays the default, and is what a host older than contract 1.16 reads.
+    /// </summary>
+    /// <remarks>
+    /// <para>A switch changes where the next update comes from and nothing
+    /// else. Going back to the default does not downgrade: the extension stays
+    /// on the version it has until the default feed offers a newer one.</para>
+    ///
+    /// <para>A host that describes this package in its own release manifest
+    /// still prefers that entry while the default is selected; picking one of
+    /// these feeds is the operator saying otherwise.</para>
+    /// </remarks>
+    public List<ExtensionUpdateFeed> UpdateFeeds { get; set; } = [];
+}
+
+/// <summary>An alternative update feed, offered next to the default in Admin settings.</summary>
+public sealed class ExtensionUpdateFeed
+{
+    /// <summary>Lower-case identifier, stored as the administrator's choice. Keep it stable across versions.</summary>
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>What the picker shows, such as "Beta".</summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>Absolute <c>https</c> URL of a <c>release-manifest.json</c>, as for <see cref="ExtensionManifest.Updates"/>.</summary>
+    public string Url { get; set; } = string.Empty;
 }
 
 /// <summary>A sidebar entry, rendered from the manifest without loading the client assembly.</summary>

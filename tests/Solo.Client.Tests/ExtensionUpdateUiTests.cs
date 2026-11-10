@@ -45,7 +45,7 @@ public class ExtensionUpdateUiTests : ComponentTestBase
 
     private static ExtensionRegistrationDto Registration(string id = "roadmap", string name = "Roadmap") =>
         new(id, name, "1.0.0", $"ext_{id}", "Loaded", null,
-            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], false);
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], false, [], null);
 
     private static ExtensionUpdateDto Available(string id, string name, string version = "1.1.0") =>
         new(id, name, "1.0.0", version, 1024, Compatible: true, null);
@@ -267,5 +267,57 @@ public class ExtensionUpdateUiTests : ComponentTestBase
 
         page.WaitForAssertion(() => Assert.True(Restart.InProgress));
         Assert.Empty(JSInterop.Invocations["sessionStorage.setItem"]);
+    }
+
+    private static ExtensionRegistrationDto WithFeeds(string? picked = null) =>
+        Registration() with { UpdateFeeds = [new ExtensionUpdateFeedDto("beta", "Beta")], UpdateFeed = picked };
+
+    private static IRenderedComponent<MudSelect<string>> FeedPicker(IRenderedComponent<InstanceSettings> page) =>
+        page.FindComponents<MudSelect<string>>().Single(s => s.Instance.Label == "Updates from");
+
+    [Fact]
+    public void A_package_with_one_feed_offers_no_choice()
+    {
+        var page = Render(Status());
+
+        page.WaitForAssertion(() => Assert.Contains("ext_roadmap", page.Markup));
+        Assert.DoesNotContain("Updates from", page.Markup);
+    }
+
+    [Fact]
+    public void A_package_with_other_feeds_follows_the_default_until_one_is_picked()
+    {
+        var page = Render(Status(), WithFeeds());
+
+        page.WaitForAssertion(() => Assert.Equal("", FeedPicker(page).Instance.Value));
+        Assert.DoesNotContain("isn't offered by this version", page.Markup);
+    }
+
+    /// <summary>
+    /// A newer package can drop a feed someone picked. The checker then reads
+    /// the default, and the page has to say so rather than show a stale pick.
+    /// </summary>
+    [Fact]
+    public void A_pick_the_package_no_longer_declares_is_shown_as_the_default()
+    {
+        var page = Render(Status(), WithFeeds(picked: "nightly"));
+
+        page.WaitForAssertion(() => Assert.Contains("isn't offered by this version", page.Markup));
+        Assert.Equal("", FeedPicker(page).Instance.Value);
+    }
+
+    [Fact]
+    public async Task Picking_a_feed_saves_it_and_checks_again()
+    {
+        _http.Route("api/extensions/roadmap/update-feed", HttpStatusCode.NoContent, method: HttpMethod.Put);
+        var page = Render(Status(), WithFeeds());
+        page.WaitForAssertion(() => Assert.Single(_http.Paths, p => p.StartsWith("GET /api/updates")));
+
+        await page.InvokeAsync(() => FeedPicker(page).Instance.ValueChanged.InvokeAsync("beta"));
+
+        page.WaitForAssertion(() => Assert.Equal(2, _http.Paths.Count(p => p.StartsWith("GET /api/updates"))));
+        Assert.Contains("PUT /api/extensions/roadmap/update-feed", _http.Paths);
+        Assert.Contains(_http.Bodies, b => b.Contains("\"beta\""));
+        Assert.Equal("beta", FeedPicker(page).Instance.Value);
     }
 }

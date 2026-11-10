@@ -39,6 +39,8 @@ lede: The manifest is the file extension.json at the root of a package. It tells
 | `nav` | No | Entries for the sidebar. See [Navigation entries](#navigation-entries). |
 | `hooks` | With hooks | The operations that your hooks run on. See [Hooks](#hooks). |
 | `failOpen` | No | `true` lets a request continue when a hook fails. The default is `false`. |
+| `updates` | No | The `https` URL of the `release-manifest.json` that publishes your updates. See [Update feeds](#update-feeds). |
+| `updateFeeds` | No | Other feeds, such as a beta channel, that an administrator can select. See [Update feeds](#update-feeds). |
 
 A package must have a `server` assembly, a `client` assembly, or the two.
 
@@ -126,6 +128,30 @@ The Admin settings show the list as **Intercepts**, so an administrator can see 
 
 By default, a request fails when one of your hooks throws an exception or takes too long. Set `"failOpen": true` only if your hooks give advice and a request can safely continue without them.
 
+## Update feeds
+
+`updates` is the default feed. Admin settings uses it to show an update for your extension and to install it. Without it, a person can only update your package by hand.
+
+`updateFeeds` adds other feeds. When it has entries, the Admin settings page shows an **Updates from** list for your extension, with **Default** and one item for each feed. Contract 1.16.0 or later shows the list. An older instance ignores `updateFeeds` and uses `updates`.
+
+```jsonc
+"updates": "https://github.com/me/roadmap/releases/latest/download/release-manifest.json",
+"updateFeeds": [
+  { "id": "beta", "label": "Beta",
+    "url": "https://github.com/me/roadmap/releases/download/beta/release-manifest.json" }
+]
+```
+
+| Field | Required | Content |
+|---|---|---|
+| `id` | Yes | The ID that Solo stores for the selection. Use the same characters as the extension ID. Do not change it between versions. |
+| `label` | Yes | The text in the list. |
+| `url` | Yes | The `https` URL of a `release-manifest.json`. |
+
+When an administrator selects a feed, Solo reads only that feed. If a newer version of your package removes the selected feed, Solo uses the default feed again.
+
+A change back to **Default** does not install an older version. The extension keeps its version until the default feed has a newer one.
+
 ## What Solo checks at load
 
 Solo refuses a package, and gives the reason in the Admin settings, when:
@@ -136,6 +162,7 @@ Solo refuses a package, and gives the reason in the Admin settings, when:
 - `schema` is not the value that the ID requires.
 - `hooks` names an unknown operation.
 - A `nav` entry has no `label`, or its `route` does not start with `/`.
+- An `updateFeeds` entry has an ID that is not valid or not unique, has no `label`, or has a `url` that is not an absolute `https` URL.
 - A version range is missing for a half that the package has, or is not valid.
 - The contract version of the instance is outside `soloApiVersion`.
 - The package is too large. See [Limits](reference.md#limits).

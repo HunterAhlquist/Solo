@@ -35,7 +35,7 @@ public class ExtensionSettingsTests : ComponentTestBase
     }
 
     private static ExtensionRegistrationDto Registration(string id, string state = "Loaded") =>
-        new(id, id, "1.0.0", $"ext_{id}", state, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], false);
+        new(id, id, "1.0.0", $"ext_{id}", state, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], false, [], null);
 
     /// <summary>Each id's client half is this test assembly, which carries the panels below.</summary>
     private static ExtensionCatalog CatalogFor(params string[] ids) => new()
