@@ -132,6 +132,33 @@ Solo's manifest wins for a package it describes: those two versions were
 released together, so that entry is the one tested against this server. A
 first-party extension therefore costs no extra request.
 
+### More than one feed
+
+A package can also list `updateFeeds` — a beta channel, say — and Admin
+settings then shows an **Updates from** picker beside it: Default, plus one
+entry per feed. Added in contract 1.16.0; an older host ignores the field and
+keeps reading `updates`.
+
+- **Default** is everything above: Solo's manifest for a package it describes,
+  otherwise `updates`.
+- **A picked feed is read alone**, even for a package Solo's manifest
+  describes. The operator choosing a channel is the point.
+- The pick is stored as the feed's **id**, on the extension's registration row,
+  so it survives the restart an update ends in, and a newer package can move a
+  feed's URL without losing it. A newer package that drops the id reverts to
+  Default, and the picker says so.
+- Only an id the loaded package declares can be picked. The URL always comes
+  from the package, never from the request, so the endpoint can't aim the
+  instance's outbound fetches anywhere the package didn't already name.
+- **Switching back doesn't downgrade.** `1.7.0-beta.2` stays installed until
+  Default offers something newer — which `1.7.0` is, since a prerelease sorts
+  below its release. Downgrading would mean running an older model against a
+  schema a beta may already have migrated.
+
+There is no beta choice for the first-party extensions yet. The obvious URL,
+"the newest prerelease", would pick up whichever branch's preview was tagged
+last, because every branch's previews share this repository's releases.
+
 ### What it refuses, and why
 
 Installing an extension is deploying code that runs in-process with the database
@@ -223,6 +250,18 @@ Serve it from a stable URL — `releases/latest/download/release-manifest.json`
 does this on GitHub, resolving to the newest non-prerelease release. Get
 `soloApiVersion` right: it is what stops an instance being offered a package it
 could not load.
+
+For a beta channel, publish a second manifest at a URL of its own and list it
+in `updateFeeds`. On GitHub, a release with a fixed tag (`beta`) whose assets
+are replaced on each beta works, since `releases/latest` skips prereleases:
+
+```json
+"updates": "https://github.com/me/my-extension/releases/latest/download/release-manifest.json",
+"updateFeeds": [
+  { "id": "beta", "label": "Beta",
+    "url": "https://github.com/me/my-extension/releases/download/beta/release-manifest.json" }
+]
+```
 
 ## Settings
 

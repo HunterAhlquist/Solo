@@ -109,6 +109,11 @@ public sealed partial class ApiClient(HttpClient http, InstanceConnection instan
         SendAsync(HttpMethod.Delete, $"api/extensions/{extensionId}/data",
             new PurgeExtensionRequest { ConfirmExtensionId = extensionId }, ct);
 
+    /// <summary>Picks which of its declared feeds an extension updates from; null for the default.</summary>
+    public Task SetExtensionUpdateFeedAsync(string extensionId, string? feedId, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Put, $"api/extensions/{extensionId}/update-feed",
+            new SetExtensionUpdateFeedRequest { FeedId = feedId }, ct);
+
     // -- Updates ------------------------------------------------------------
 
     /// <summary>

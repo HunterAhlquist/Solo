@@ -288,6 +288,32 @@ else
                                                 Intercepts: @string.Join(", ", extension.Hooks)
                                             </MudText>
                                         }
+
+                                        @* Only when the package offers a choice: a picker with one
+                                           option is a question nobody needs to answer. *@
+                                        @if (extension.UpdateFeeds.Count > 0)
+                                        {
+                                            <MudSelect T="string" Value="@ActiveFeed(extension)"
+                                                       ValueChanged="@(id => SetUpdateFeedAsync(extension, id))"
+                                                       Label="Updates from" Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense" Dense="true"
+                                                       Disabled="@(_savingFeed is not null)"
+                                                       Class="extension-feed mt-3">
+                                                <MudSelectItem T="string" Value="@DefaultFeed">Default</MudSelectItem>
+                                                @foreach (var feed in extension.UpdateFeeds)
+                                                {
+                                                    <MudSelectItem T="string" Value="@feed.Id">@feed.Label</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                                                @if (extension.UpdateFeed is not null && ActiveFeed(extension) == DefaultFeed)
+                                                {
+                                                    @("The feed this was switched to isn't offered by this version, so it follows the default. ")
+                                                }
+                                                Switching back to Default doesn't downgrade: the extension keeps
+                                                its version until the default feed offers a newer one.
+                                            </MudText>
+                                        }
                                     </div>
 
                                     @if (UpdateFor(extension.ExtensionId) is { Compatible: true } available)
@@ -383,6 +409,16 @@ else
     private const string AllExtensions = "*";
 
     private string? _selectedExtension;
+
+    /// <summary>The extension whose update feed is being saved, or null.</summary>
+    private string? _savingFeed;
+
+    /// <summary>The picker's value for "no feed picked". Not a feed id: those are never empty.</summary>
+    private const string DefaultFeed = "";
+
+    /// <summary>The picked feed when this version still declares it, otherwise the default.</summary>
+    private static string ActiveFeed(ExtensionRegistrationDto extension) =>
+        extension.UpdateFeeds.Any(f => f.Id == extension.UpdateFeed) ? extension.UpdateFeed! : DefaultFeed;
 
     /// <summary>The one picked, or the first until one is — or if the picked one has gone.</summary>
     private string? SelectedExtension =>
@@ -586,6 +622,47 @@ else
             Snackbar.Add(e.Detail ?? "That didn't save.", Severity.Error);
             await ReloadAsync();
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Saves the pick, then re-reads the update status so the line above the
+    /// picker describes the feed now chosen.
+    /// </summary>
+    private async Task SetUpdateFeedAsync(ExtensionRegistrationDto extension, string feedId)
+    {
+        var picked = feedId == DefaultFeed ? null : feedId;
+        _savingFeed = extension.ExtensionId;
+        try
+        {
+            await Api.SetExtensionUpdateFeedAsync(extension.ExtensionId, picked);
+            _extensions = _extensions! with
+            {
+                Extensions = _extensions.Extensions
+                    .Select(e => e.ExtensionId == extension.ExtensionId ? e with { UpdateFeed = picked } : e)
+                    .ToList(),
+            };
+        }
+        catch (ApiException e)
+        {
+            Snackbar.Add(e.Detail ?? "Couldn't change where that extension updates from.", Severity.Error);
+            return;
+        }
+        finally
+        {
+            _savingFeed = null;
+        }
+
+        try
+        {
+            // Not forced: a newly picked feed isn't cached yet, so it is read
+            // regardless, and every other feed's cached answer still stands.
+            _updates = await Api.GetUpdatesAsync(false);
+        }
+        catch (Exception)
+        {
+            // The pick is saved either way. Like the panel's own check, a feed
+            // that can't be read must not take the settings page with it.
         }
     }
 

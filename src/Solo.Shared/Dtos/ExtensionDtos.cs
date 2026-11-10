@@ -25,6 +25,8 @@ public sealed record ClientExtensionNavDto(
 /// <summary>Admin view of one registered extension, including ones whose package is gone.</summary>
 /// <param name="Hooks">Operations this extension declares hooks on, for the "who is on this write path" view.</param>
 /// <param name="CanPurge">True when the extension is not loaded this boot, which is what purge requires.</param>
+/// <param name="UpdateFeeds">The alternatives to the default feed the loaded package declares; empty for none.</param>
+/// <param name="UpdateFeed">The feed an administrator picked, or null for the default. It can name a feed the loaded package no longer declares, in which case the default is in use.</param>
 public sealed record ExtensionRegistrationDto(
     string ExtensionId,
     string? DisplayName,
@@ -35,7 +37,18 @@ public sealed record ExtensionRegistrationDto(
     DateTimeOffset InstalledAt,
     DateTimeOffset? LastLoadedAt,
     IReadOnlyList<string> Hooks,
-    bool CanPurge);
+    bool CanPurge,
+    IReadOnlyList<ExtensionUpdateFeedDto> UpdateFeeds,
+    string? UpdateFeed);
+
+public sealed record ExtensionUpdateFeedDto(string Id, string Label);
+
+/// <summary>Switches the feed an extension's updates come from; a null <see cref="FeedId"/> means the default.</summary>
+public sealed class SetExtensionUpdateFeedRequest
+{
+    [MaxLength(64)]
+    public string? FeedId { get; init; }
+}
 
 /// <summary>Package-level load failures, surfaced next to the registrations.</summary>
 public sealed record ExtensionFailureDto(string Source, string Reason);

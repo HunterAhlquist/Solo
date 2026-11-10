@@ -84,6 +84,8 @@ If you need something the contract doesn't offer, that's a finding about the con
 
 **`updates` is how your extension gets an update path** (contract 1.12.0, and optional). Point it at an `https` `release-manifest.json` carrying one `extensions` entry for your id, and Admin settings offers the update beside your extension exactly as it does for a first-party one. Omit it and your package can only be updated by hand. The host checks the download against the `sha512` in your feed and refuses an entry whose `soloApiVersion` *or* `soloClientVersion` the instance doesn't satisfy, so get both ranges right — they are what stops someone being offered a build whose server half their instance could not load, or whose pages would silently fail to render. [updates.md](updates.md#publishing-updates-for-a-third-party-extension) has the file to publish.
 
+**`updateFeeds` adds a choice of feeds** (contract 1.16.0, optional): `[{ "id": "beta", "label": "Beta", "url": "https://…" }]`. Admin settings then shows an "Updates from" picker for your extension, offering Default (`updates`) and each entry. Keep `updates` as the default, because it is what an older host reads, and keep each `id` stable across versions, because it is what the instance stores. [updates.md](updates.md#more-than-one-feed) explains what a switch does and doesn't do.
+
 ## 3. The entry point
 
 Exactly one `ISoloExtension` per server assembly. The host finds it by reflection and calls it once, before the container is built.

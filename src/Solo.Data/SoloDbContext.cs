@@ -64,6 +64,7 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
             e.Property(x => x.LastSeenVersion).HasMaxLength(32);
             e.Property(x => x.State).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.FailureReason).HasMaxLength(2000);
+            e.Property(x => x.UpdateFeed).HasMaxLength(64);
         });
 
         modelBuilder.Entity<ExtensionGrant>(e =>
