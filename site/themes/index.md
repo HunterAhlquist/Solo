@@ -23,7 +23,7 @@ Two settings decide what a person sees:
 | The theme | A super admin, for the full instance | In the database |
 | Light or dark | Each person | In the browser of that person |
 
-Solo has three built-in themes: **Ahlquist Interactive**, **Arcade** and **Blueprint**. Ahlquist Interactive is the default.
+Solo has four built-in themes: **Ahlquist Interactive**, **Arcade**, **Blueprint** and **Glass**. Ahlquist Interactive is the default.
 
 <div class="shot-row">
 {% include shot.html src="theme-arcade.png" alt="A board in the Arcade theme, dark scheme: magenta and cyan on dark purple." caption="Arcade" %}
