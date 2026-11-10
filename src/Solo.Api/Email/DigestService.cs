@@ -205,7 +205,10 @@ public sealed class DigestService(
             {
                 Row = n,
                 TaskNumber = db.Tasks.Where(t => t.Id == n.TaskId).Select(t => (int?)t.Number).FirstOrDefault(),
-                BoardAlias = db.Boards.Where(b => b.Id == n.BoardId).Select(b => b.Alias).FirstOrDefault(),
+                // A move changes a task's board and number together, so both come from where it is now.
+                BoardAlias = n.TaskId != null
+                    ? db.Tasks.Where(t => t.Id == n.TaskId).Select(t => t.Board!.Alias).FirstOrDefault()
+                    : db.Boards.Where(b => b.Id == n.BoardId).Select(b => b.Alias).FirstOrDefault(),
                 ProjectAlias = db.Projects.Where(p => p.Id == n.ProjectId).Select(p => p.Alias).FirstOrDefault(),
             })
             .ToListAsync(ct);

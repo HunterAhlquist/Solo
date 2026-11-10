@@ -108,13 +108,14 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
     private Task SweepAsync(DateTimeOffset now) =>
         _factory.Services.GetRequiredService<DigestService>().SweepAsync(now, default);
 
-    private async Task<NotificationPreferencesDto> SetBobsDigestAsync(DigestFrequency frequency, string? zone = null, int hour = 8, DayOfWeek weekday = DayOfWeek.Monday)
+    private async Task<NotificationPreferencesDto> SetBobsDigestAsync(
+        DigestFrequency frequency, string? zone = null, int hour = 8, DayOfWeek weekday = DayOfWeek.Monday, bool notifyOnAssigned = true)
     {
         var current = await _bob.GetJson<NotificationPreferencesDto>("/api/notifications/preferences");
         return await _bob.PutJson<NotificationPreferencesDto>("/api/notifications/preferences", new
         {
             timeZone = zone,
-            notifyOnAssigned = true,
+            notifyOnAssigned,
             notifyOnDeadline = true,
             emailOnAssigned = true,
             emailOnDeadline = true,
@@ -314,6 +315,63 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(1, Db(db => db.EmailMessages.Count()));
         await SweepAsync(now.AddMinutes(16));
         Assert.Equal("As it happens: 2 new on Solo", Db(db => db.EmailMessages.OrderBy(m => m.CreatedAt).Last()).Subject);
+    }
+
+    [SkippableFact]
+    public async Task EmailOnlyAssignments_SkipTheInbox_ButReachTheDigest_AgainWhenReassigned()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await EnableEmailAsync();
+        await SetBobsDigestAsync(DigestFrequency.AsItHappens, notifyOnAssigned: false);
+        var now = DateTimeOffset.UtcNow.AddSeconds(1);
+
+        var task = await AssignedToBobAsync("Quiet");
+        var inbox = await _bob.GetJson<NotificationInboxDto>("/api/notifications");
+        Assert.Equal((0, 0), (inbox.Items.Count, inbox.UnreadCount));
+        await SweepAsync(now);
+        Assert.Contains("Admin assigned you to GAME-SP-1 Quiet", Db(db => db.EmailMessages.Single()).TextBody);
+
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = Array.Empty<Guid>() });
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { _bobId } });
+        await SweepAsync(now.AddMinutes(16));
+        Assert.Equal(2, Db(db => db.EmailMessages.Count()));
+    }
+
+    [SkippableFact]
+    public async Task AReadAssignment_GivenAgain_IsEmailedAgain()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await EnableEmailAsync();
+        await SetBobsDigestAsync(DigestFrequency.AsItHappens);
+        var now = DateTimeOffset.UtcNow.AddSeconds(1);
+
+        var task = await AssignedToBobAsync("Again");
+        await SweepAsync(now);
+        var note = Assert.Single((await _bob.GetJson<NotificationInboxDto>("/api/notifications")).Items);
+        await _bob.PostAsync($"/api/notifications/{note.Id}/read", null);
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = Array.Empty<Guid>() });
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { _bobId } });
+
+        await SweepAsync(now.AddMinutes(16));
+        Assert.Equal(2, Db(db => db.EmailMessages.Count()));
+    }
+
+    [SkippableFact]
+    public async Task DigestLinks_FollowATaskToTheBoardItMovedTo()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await EnableEmailAsync();
+        await SetBobsDigestAsync(DigestFrequency.AsItHappens);
+        var next = await _admin.PostJson<BoardDto>($"/api/projects/{_project.Id}/boards", new { name = "Next", alias = "NEXT" });
+        await _admin.PostJson<TaskDto>($"/api/boards/{next.Id}/tasks", new { name = "Already there" });
+
+        var task = await AssignedToBobAsync("Moving");
+        await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/board", new { boardId = next.Id });
+        await SweepAsync(DateTimeOffset.UtcNow.AddSeconds(1));
+
+        var text = Db(db => db.EmailMessages.Single()).TextBody;
+        Assert.Contains("https://solo.example.com/projects/GAME/boards/NEXT?task=2", text);
+        Assert.DoesNotContain("/boards/SP", text);
     }
 
     [SkippableFact]
