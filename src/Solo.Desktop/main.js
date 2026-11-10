@@ -384,7 +384,7 @@ async function startServer(instance) {
         console.error(`Solo: no local server for ${instance.name}: ${err.message}`);
         dialog.showErrorBox(
             `Solo couldn't open ${instance.name}`,
-            'Something else on this computer is in the way. Quit other apps, then open Solo again.');
+            'Solo could not open its window due to a networking port allocation error. Close other apps and try again.');
         if (windows.size === 0 && !settingsWindow) {
             app.quit();
         }
