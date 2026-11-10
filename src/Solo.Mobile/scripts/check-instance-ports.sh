@@ -37,23 +37,23 @@ func launch(_ instance: URL, busy: Set<UInt16> = []) -> UInt16? {
     return launch(instance, busy: busy, tried: &tried)
 }
 
-check("the first instance gets 41321", launch(a) == 41321)
-check("and keeps it", launch(a) == 41321)
+check("the first instance gets 43321", launch(a) == 43321)
+check("and keeps it", launch(a) == 43321)
 
-check("a held main port falls back to a new port", launch(a, busy: [41321]) == 41322)
+check("a held main port falls back to a new port", launch(a, busy: [43321]) == 43322)
 // Edits left waiting on the fallback's origin stay reachable: the instance
 // doesn't move back just because the main port came free.
-check("the next launch stays on the fallback it last opened on", launch(a) == 41322)
-check("and the one after", launch(a) == 41322)
-check("only a held fallback moves it, back to the main port", launch(a, busy: [41322]) == 41321)
-check("where it then stays", launch(a) == 41321)
+check("the next launch stays on the fallback it last opened on", launch(a) == 43322)
+check("and the one after", launch(a) == 43322)
+check("only a held fallback moves it, back to the main port", launch(a, busy: [43322]) == 43321)
+check("where it then stays", launch(a) == 43321)
 
-check("another instance never gets a port the first was given", launch(b) == 41323)
-check("not even when all of its own are held", launch(b, busy: [41323]) == 41324)
-check("the first instance's ports are unchanged", InstancePorts.ports(for: a, defaults: defaults) == [41321, 41322])
+check("another instance never gets a port the first was given", launch(b) == 43323)
+check("not even when all of its own are held", launch(b, busy: [43323]) == 43324)
+check("the first instance's ports are unchanged", InstancePorts.ports(for: a, defaults: defaults) == [43321, 43322])
 
 // Ten saved ports, every one held: the launch still reaches a free port.
-for _ in 0..<5 { _ = launch(a, busy: Set(InstancePorts.ports(for: a, defaults: defaults)).union([41325, 41326, 41327, 41328, 41329, 41330, 41331, 41332])) }
+for _ in 0..<5 { _ = launch(a, busy: Set(InstancePorts.ports(for: a, defaults: defaults)).union([43325, 43326, 43327, 43328, 43329, 43330, 43331, 43332])) }
 let saved = InstancePorts.ports(for: a, defaults: defaults)
 check("ten saved ports (\(saved.count))", saved.count >= 10)
 var tried: [UInt16] = []
@@ -67,7 +67,7 @@ check("the port it last opened on first", tried.first == launchedOn)
 // next launch still tries new ones.
 let before = InstancePorts.ports(for: b, defaults: defaults).count
 tried = []
-check("a launch where nothing starts gives nil", launch(b, busy: Set(UInt16(41321)...UInt16(42000)), tried: &tried) == nil)
+check("a launch where nothing starts gives nil", launch(b, busy: Set(UInt16(43321)...UInt16(44000)), tried: &tried) == nil)
 let after = InstancePorts.ports(for: b, defaults: defaults).count
 check("and adds only \(InstancePorts.newPortsPerLaunch) ports", after - before == InstancePorts.newPortsPerLaunch)
 check("a later launch reaches a port once one is free", launch(b) != nil)
