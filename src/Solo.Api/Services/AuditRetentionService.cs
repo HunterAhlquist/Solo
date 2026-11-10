@@ -77,7 +77,8 @@ public sealed class AuditRetentionService(
                     .ExecuteDeleteAsync(stoppingToken);
                 if (staleEmail > 0)
                 {
-                    logger.LogInformation("Removed {Count} emails older than {Days} days.", staleEmail, NotificationRetentionDays);
+                    // No count: CodeQL treats anything derived from EmailMessage as an address.
+                    logger.LogInformation("Removed sent and failed emails older than {Days} days.", NotificationRetentionDays);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
