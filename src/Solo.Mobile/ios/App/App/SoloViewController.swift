@@ -213,21 +213,18 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     private static func startProxy(for instance: URL) -> LocalProxy? {
         if let proxy, proxy.target == instance { return proxy }
         proxy?.stop()
-        proxy = nil
-        let ports = InstancePorts.ports(for: instance)
-        for attempt in 0..<10 {
-            let port = attempt < ports.count ? ports[attempt] : InstancePorts.addFallback(for: instance)
+        proxy = InstancePorts.start(for: instance) { port in
             let candidate = LocalProxy(port: port, target: instance)
             do {
                 try candidate.start()
-                proxy = candidate
                 return candidate
             } catch {
                 NSLog("Solo: local port \(port) unavailable (\(error)) for \(instance.host ?? "").")
                 candidate.stop()
+                throw error
             }
         }
-        return nil
+        return proxy
     }
 
     private static func isOrigin(_ origin: WKSecurityOrigin, of url: URL) -> Bool {
