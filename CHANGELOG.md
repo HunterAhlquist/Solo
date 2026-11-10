@@ -28,6 +28,7 @@ with its version in parentheses).
 - The iPad and iPhone app reconnects after the device is locked and unlocked, instead of staying disconnected until it is closed and reopened.
 - Live updates keep trying to reconnect after a long outage instead of stopping after a few attempts, so a page left open recovers on its own when the instance comes back.
 - On iPhone and iPad, in Safari and in the app, the page now reaches under the status bar and the home indicator and keeps its own content clear of them: the app bar's colour runs up behind the status bar, a drawer's scrim covers it too, and the nav drawer's last row sits above the home indicator instead of under it. The page's theme color follows the app bar, which Safari tints its bars with and the app picks its status bar text by.
+- On iPhone and iPad, a full-height page such as a design doc now runs down to the bottom of the screen, under the home indicator, instead of stopping short of it with a strip of background below.
 - A preview server checks its own preview release for updates instead of the newest stable one, so Admin settings offers the extension versions built with that preview. Stable instances are unchanged, and `Updates__ManifestUrl` still overrides both.
 - A project's owners can create, close, reopen and delete its boards, not only a super admin. Add board appears in the sidebar for each project you own.
 - Admin settings → Extensions can switch an extension to another update feed its package offers, such as a beta channel, from an "Updates from" picker. It appears only for a package that lists more than one feed, and switching back to Default keeps the installed version until Default has a newer one.
@@ -51,9 +52,9 @@ with its version in parentheses).
 
 ### Extensions
 
-#### Design Docs (1.6.3)
+#### Design Docs (1.6.4)
 - Rebuilt on contract 1.17.0.
-- A design doc's heading and its tree of notes are translucent in every theme, in the browser and the iPad and iPhone app as on the desktop, so a theme's background shows through them; the note itself stays solid for reading. On a narrow screen the tree opens as a frosted panel over the note. The page used to be opaque everywhere but the desktop's glass mode.
+- A design doc's heading and its tree of notes are translucent in every theme, in the browser and the iPad and iPhone app as on the desktop, so a theme's background shows through them; the note itself stays solid for reading. On a narrow screen the tree opens as a frosted panel over the note, thin enough that the note shows through it blurred. The page used to be opaque everywhere but the desktop's glass mode.
 - The offline sync menu counts the notes, sketches and other items waiting to sync instead of every edit: a sketch counts once however many strokes it has, as a note does however much was typed, so a few offline paragraphs and a drawing read "2 items waiting to sync" rather than hundreds of changes.
 - A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
 - In the iPad app, double-tapping Apple Pencil while sketching switches to the eraser and back to the tool you had before. It follows the Pencil setting in iPadOS: it works when that setting is to switch to the eraser or the previous tool. Needs Solo with contract 1.17.
