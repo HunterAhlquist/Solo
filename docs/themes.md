@@ -11,8 +11,8 @@ Two settings, deliberately kept apart:
   that browser's `localStorage`. "Match system" follows `prefers-color-scheme`
   and keeps following it.
 
-Three themes ship in the image: **Ahlquist Interactive** (the black-and-yellow
-terminal, and the default), **Blueprint**, and **Arcade**.
+Four themes ship in the image: **Ahlquist Interactive** (the black-and-yellow
+terminal, and the default), **Blueprint**, **Arcade**, and **Glass**.
 
 ## Installing a theme
 
@@ -230,7 +230,7 @@ are fine to redistribute inside a package; many commercial licences are not.
 
 `stylesheet` is loaded last, after `app.css` and MudBlazor's own, so it wins.
 It's for what the palette can't express — see `content/theme.css` in Blueprint
-(the drafting grid) and Arcade (the neon).
+(the drafting grid), Arcade (the neon) and Glass (translucent, floating panes).
 
 Reach for the MudBlazor variables rather than literals, so one rule works in
 both schemes:
@@ -240,6 +240,13 @@ both schemes:
 ```
 
 Solo adds `--solo-code-color` for inline `<code>`.
+
+For a value the palette doesn't carry, such as a highlight that is white at a
+different strength in each scheme, key on the scheme Solo puts on `<html>`:
+`html[data-color-scheme="dark"]` (or `"light"`). It follows the profile menu's
+choice, including Match system. The desktop shell's classes (`solo-desktop`,
+`solo-desktop--glass` and the rest, listed in `app.css`) are on `<html>` too,
+for a stylesheet that has to step aside where the shell draws its own chrome.
 
 Two things worth knowing:
 

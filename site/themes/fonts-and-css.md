@@ -112,7 +112,7 @@ This is the full stylesheet of Ahlquist Interactive:
 }
 ```
 
-The stylesheets of [Blueprint](https://github.com/HunterAhlquist/Solo/blob/main/src/Solo.Api/Themes/blueprint/content/theme.css) and [Arcade](https://github.com/HunterAhlquist/Solo/blob/main/src/Solo.Api/Themes/arcade/content/theme.css) do more: a drawing grid and neon effects.
+The stylesheets of [Blueprint](https://github.com/HunterAhlquist/Solo/blob/main/src/Solo.Api/Themes/blueprint/content/theme.css), [Arcade](https://github.com/HunterAhlquist/Solo/blob/main/src/Solo.Api/Themes/arcade/content/theme.css) and [Glass](https://github.com/HunterAhlquist/Solo/blob/main/src/Solo.Api/Themes/glass/content/theme.css) do more. They add a drawing grid, neon effects, and translucent panes that float over the page.
 
 ### Refer to files in the package
 

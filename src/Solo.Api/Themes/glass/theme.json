@@ -1,0 +1,89 @@
+{
+  "formatVersion": 1,
+  "id": "glass",
+  "name": "Glass",
+  "description": "Frosted, floating navigation over a soft colour wash. System font, capsule controls.",
+  "author": "Solo",
+
+  "stylesheet": "content/theme.css",
+
+  "typography": {
+    "fontFamily": ["-apple-system", "BlinkMacSystemFont", "system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "sans-serif"],
+    "fontSize": "0.875rem",
+    "headingWeight": "700",
+    "buttonWeight": "600",
+    "letterSpacing": "-0.005em"
+  },
+
+  "layout": {
+    "borderRadius": "14px",
+    "appbarHeight": "4.5em",
+    "drawerWidth": "20em"
+  },
+
+  "login": {
+    "background": {
+      "image": "content/login-dark.svg",
+      "imageLight": "content/login-light.svg",
+      "fit": "cover",
+      "position": "center",
+      "scrim": 0
+    }
+  },
+
+  "dark": {
+    "primary": "#0a72e0",
+    "secondary": "#5e5ce6",
+    "tertiary": "#bf5af2",
+    "background": "#0b0b0e",
+    "backgroundGray": "#151518",
+    "surface": "#1c1c1e",
+    "appbarBackground": "#1c1c1e",
+    "appbarText": "#f5f5f7",
+    "drawerBackground": "#151518",
+    "drawerText": "#f5f5f7",
+    "drawerIcon": "#4a9df8",
+    "textPrimary": "#f5f5f7",
+    "textSecondary": "#a1a1a8",
+    "textDisabled": "#636369",
+    "actionDefault": "#a1a1a8",
+    "divider": "#38383a",
+    "dividerLight": "#2c2c2e",
+    "linesDefault": "#38383a",
+    "linesInputs": "#545458",
+    "tableLines": "#2c2c2e",
+    "tableHover": "#ffffff0d",
+    "success": "#30d158",
+    "warning": "#ff9f0a",
+    "error": "#ff453a",
+    "info": "#64d2ff"
+  },
+
+  "light": {
+    "primary": "#0066cc",
+    "secondary": "#5856d6",
+    "tertiary": "#8e44ad",
+    "background": "#f2f2f7",
+    "backgroundGray": "#e8e8ed",
+    "surface": "#ffffff",
+    "appbarBackground": "#f9f9fb",
+    "appbarText": "#1c1c1e",
+    "drawerBackground": "#f6f6f9",
+    "drawerText": "#1c1c1e",
+    "drawerIcon": "#0066cc",
+    "textPrimary": "#1c1c1e",
+    "textSecondary": "#5e5e66",
+    "textDisabled": "#a1a1a8",
+    "actionDefault": "#5e5e66",
+    "divider": "#d1d1d6",
+    "dividerLight": "#e5e5ea",
+    "linesDefault": "#d1d1d6",
+    "linesInputs": "#aeaeb2",
+    "tableLines": "#e5e5ea",
+    "tableHover": "#0000000a",
+    "success": "#1f7a35",
+    "warning": "#a14a00",
+    "error": "#d70015",
+    "info": "#0066cc"
+  }
+}
