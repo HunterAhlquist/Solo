@@ -98,12 +98,16 @@ When another program holds an instance's port, the instance moves to another
 port of its own instead of failing to start (`main/ports.js`): one it already
 owns, or else the next one nobody owns, in the desktop's range of 100 ports
 from `41321` (the iPhone and iPad app uses `43321` up, since a simulator or the
-iPad app on a Mac shares this machine's loopback). It stays on that port from
-then on, because moving back when the old port came free would strand what was
-stored on the new one, and its first window explains why it opens signed out.
-What was stored under the old port, unsynced offline edits included, is kept
-there: setting `port` back to it reaches it again. No two instances ever own the
-same port; `scripts/check-instance-ports.mjs` checks these rules.
+iPad app on a Mac shares this machine's loopback). This is silent: the window
+just opens there, on the instance's sign-in page, and the move is logged. It
+stays on that port from then on, because moving back when the old port came
+free would strand what was stored on the new one. What was stored under the old
+port, unsynced offline edits included, is kept there: setting `port` back to it
+reaches it again. No two instances ever own the same port, and the port is
+chosen once per instance even when two windows open it at once
+(`main/local-servers.js`); `scripts/check-instance-ports.mjs` checks these
+rules. Only when none of the 100 ports can be had does the app say it couldn't
+open the instance.
 
 `settings.json` holds `instances` (`id`, `name`, `url`, `port`, `ports`):
 `port` is the port the instance opens on and `ports` every port it owns.

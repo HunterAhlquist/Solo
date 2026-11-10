@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { openOnPort, ownedPorts, RANGE } = require('../main/ports');
+const { createLocalServers } = require('../main/local-servers');
 
 // Which port an instance opens on decides which origin, and so which sign-in
 // and which offline edits, its window sees. Driven here with a fake `start`:
@@ -111,6 +113,56 @@ await assert.rejects(openOnPort({ id: 'e', port: 41340, ports: [41340] }, instan
     assert.equal(f.port, listening, `saved ${f.port}, listening on ${listening}`);
     assert.equal([one, two].filter(r => r.moved).length, 1, 'one move reported');
     assert.ok(!instances.flatMap(ownedPorts).includes(listening), 'not a port another instance owns');
+}
+
+// The same through main/local-servers.js, which main.js's startServer calls,
+// with a stand-in server that takes a while to listen. Opens arrive while the
+// instance's last port is failing, while the fallback is starting, and after
+// it listens: each window must load the port the server listens on.
+{
+    held = new Set([41360]);
+    let listened = null;
+    class StandIn extends EventEmitter {
+        listen(port, host, ready) {
+            setTimeout(() => {
+                if (held.has(port)) {
+                    this.emit('error', Object.assign(new Error(`listen EADDRINUSE: ${host}:${port}`), { code: 'EADDRINUSE' }));
+                } else {
+                    listened = port;
+                    ready();
+                }
+            }, 15);
+        }
+        close() {}
+    }
+    const g = { id: 'g', port: 41360, ports: [41360] };
+    const everyone = [...instances, g];
+    let clears = 0;
+    const local = createLocalServers({
+        createServer: () => new StandIn(),
+        instances: () => everyone,
+        firstPort: () => first,
+        prepare: () => new Promise(resolve => setTimeout(resolve, clears++ % 2 ? 0 : 10)),
+    });
+    // What main.js does: start, then load localUrl(instance).
+    const open = async () => { const result = await local.start(g); return { ...result, loads: g.port }; };
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    // Timeline: the last port fails at 15ms, the new port's storage is
+    // cleared by 25ms, and its server listens at 40ms.
+    const early = open();
+    await wait(5);
+    const whileFailing = open();
+    await wait(27);
+    const whileStarting = open();
+    const results = await Promise.all([early, whileFailing, whileStarting]);
+    const after = await open();
+    for (const result of [...results, after]) {
+        assert.equal(result.loads, listened, `a window loads ${result.loads}, the server listens on ${listened}`);
+        assert.equal(result.port, listened);
+    }
+    assert.equal([...results, after].filter(r => r.moved).length, 1, 'one move');
+    assert.equal(after.changed, false, 'an open after the move writes nothing');
+    assert.ok(!instances.flatMap(ownedPorts).includes(listened), 'not a port another instance owns');
 }
 
 console.log('PASS: a held port moves the instance to a fallback of its own, relaunches stay there, ' +
