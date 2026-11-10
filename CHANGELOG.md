@@ -13,6 +13,9 @@ with its version in parentheses).
 
 ## Latest
 
+### Server
+- The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
+
 ### Extensions
 
 #### Design Docs (1.5.4)
