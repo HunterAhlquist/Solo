@@ -41,7 +41,7 @@ public sealed partial class RoadmapPage
 
     private ProjectSummaryDto? _project;
 
-    /// <summary>Deleting the roadmap is the super admin's, whatever their role here.</summary>
+    /// <summary>Deleting the roadmap is the project owners', and the super admin's.</summary>
     private bool _canDelete;
     private RoadmapTimelineDto? _timeline;
     private List<RoadmapEntryDto> _entries = [];
@@ -172,7 +172,7 @@ public sealed partial class RoadmapPage
         {
             _project = (await Api.ProjectsAsync()).FirstOrDefault(p =>
                 string.Equals(p.Alias, ProjectAlias, StringComparison.OrdinalIgnoreCase));
-            _canDelete = await canDelete;
+            _canDelete = await canDelete || _project?.IsOwner == true;
             if (_project is null)
             {
                 _error = "That project doesn't exist, or you aren't a member of it.";
