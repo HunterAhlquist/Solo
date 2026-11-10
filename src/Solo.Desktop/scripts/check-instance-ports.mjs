@@ -75,5 +75,43 @@ assert.ok(first + RANGE <= 43321, 'clear of the iOS range');
 const failing = { ...options, start: async () => { throw Object.assign(new Error('permission denied'), { code: 'EACCES' }); } };
 await assert.rejects(openOnPort({ id: 'e', port: 41340, ports: [41340] }, instances, failing), /permission denied/);
 
+// Two windows open one instance at once, its last port held. Like main.js's
+// ensureServer, the server is shared: a second start while one is starting
+// gets the running server, whichever port it asked for. Both must end on the
+// port the server really bound, and only one reports the move.
+{
+    held = new Set([41350]);
+    const servers = new Map();
+    // Clearing a new port's storage takes uneven time, which is what let two
+    // opens pick different ports.
+    let clears = 0;
+    const shared = {
+        first,
+        prepare: () => new Promise(resolve => setTimeout(resolve, clears++ % 2 ? 0 : 30)),
+        start: port => {
+            let entry = servers.get('f');
+            if (!entry) {
+                const listening = new Promise((resolve, reject) => setTimeout(() =>
+                    held.has(port)
+                        ? reject(Object.assign(new Error('in use'), { code: 'EADDRINUSE' }))
+                        : resolve(), 20));
+                entry = { port, listening: listening.catch(err => { servers.delete('f'); throw err; }) };
+                servers.set('f', entry);
+            }
+            const bound = entry.port;
+            return entry.listening.then(() => bound);
+        },
+    };
+    const f = { id: 'f', port: 41350, ports: [41350] };
+    const others = [...instances, f];
+    const [one, two] = await Promise.all([openOnPort(f, others, shared), openOnPort(f, others, shared)]);
+    const listening = servers.get('f').port;
+    assert.equal(one.port, listening);
+    assert.equal(two.port, listening);
+    assert.equal(f.port, listening, `saved ${f.port}, listening on ${listening}`);
+    assert.equal([one, two].filter(r => r.moved).length, 1, 'one move reported');
+    assert.ok(!instances.flatMap(ownedPorts).includes(listening), 'not a port another instance owns');
+}
+
 console.log('PASS: a held port moves the instance to a fallback of its own, relaunches stay there, ' +
-    'no port is shared between instances, and the range stays clear of the iOS app.');
+    'no port is shared between instances, concurrent opens agree on the bound port, and the range stays clear of the iOS app.');
