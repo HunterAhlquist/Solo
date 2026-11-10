@@ -73,6 +73,25 @@ public sealed class ContentSecurityPolicyTests
     }
 
     [Fact]
+    public void The_callback_page_may_be_framed_by_its_own_origin_alone()
+    {
+        var policy = SecurityHeaders.AllowFramingBySelf(
+            SecurityHeaders.ContentSecurityPolicyFor("generic", "https://id.example.com"));
+
+        Assert.Single(policy.Split("; "), d => d == "frame-ancestors 'self'");
+        Assert.DoesNotContain("frame-ancestors 'none'", policy);
+    }
+
+    [Theory]
+    [InlineData("google", "https://accounts.google.com", false)]
+    [InlineData("microsoft", "https://login.microsoftonline.com/t/v2.0", true)]
+    [InlineData("generic", "https://id.example.com", true)]
+    [InlineData("generic", "", false)]
+    public void Only_a_code_flow_provider_renews_in_a_frame(string provider, string authority, bool renews) =>
+        Assert.Equal(renews, new ContentSecurityPolicies(provider, authority, discover: null,
+            TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<ContentSecurityPolicies>.Instance).RenewsInAFrame);
+
+    [Fact]
     public void Google_frames_only_Google()
     {
         var policy = SecurityHeaders.ContentSecurityPolicyFor("google", "https://accounts.google.com");
@@ -125,7 +144,7 @@ public sealed class ContentSecurityPoliciesTests
             "connect-src 'self' https://accounts.google.com https://login.microsoftonline.com https://graph.microsoft.com",
             ConnectSrc(policy));
         // Silent renewal frames the authorization endpoint; userinfo isn't framed.
-        Assert.Equal("frame-src https://accounts.google.com https://login.microsoftonline.com", FrameSrc(policy));
+        Assert.Equal("frame-src https://accounts.google.com 'self' https://login.microsoftonline.com", FrameSrc(policy));
     }
 
     [Fact]
@@ -137,7 +156,7 @@ public sealed class ContentSecurityPoliciesTests
             CheckSessionIframe = "https://session.example.com/check",
         }));
 
-        Assert.Equal("frame-src https://accounts.google.com https://login.microsoftonline.com https://session.example.com",
+        Assert.Equal("frame-src https://accounts.google.com 'self' https://login.microsoftonline.com https://session.example.com",
             FrameSrc(await policies.GetAsync()));
     }
 
