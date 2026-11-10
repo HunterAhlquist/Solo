@@ -47,7 +47,7 @@ public sealed class NotificationsController(
 
         var now = time.GetUtcNow();
         var updated = await db.Notifications
-            .Where(n => n.Id == id && n.UserId == me)
+            .Where(n => n.Id == id && n.UserId == me && n.InApp)
             .ExecuteUpdateAsync(u => u.SetProperty(n => n.ReadAt, n => n.ReadAt ?? now), ct);
         if (updated == 0)
         {
@@ -68,7 +68,7 @@ public sealed class NotificationsController(
 
         var now = time.GetUtcNow();
         var updated = await db.Notifications
-            .Where(n => n.UserId == me && n.ReadAt == null)
+            .Where(n => n.UserId == me && n.InApp && n.ReadAt == null)
             .ExecuteUpdateAsync(u => u.SetProperty(n => n.ReadAt, now), ct);
         if (updated > 0)
         {
@@ -129,7 +129,7 @@ public sealed class NotificationsController(
 
     private IQueryable<Notification> Visible(Guid me) =>
         db.Notifications.AsNoTracking().Where(n =>
-            n.UserId == me &&
+            n.UserId == me && n.InApp &&
             (n.ProjectId == null || db.ProjectMembers.Any(m => m.ProjectId == n.ProjectId && m.UserId == me)));
 
     /// <summary>The caller's row, made with the defaults on first read so there is always a version to send back.</summary>

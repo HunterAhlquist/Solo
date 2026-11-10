@@ -20,6 +20,13 @@ namespace Solo.Data.Migrations
                 type: "timestamp with time zone",
                 nullable: true);
 
+            migrationBuilder.AddColumn<bool>(
+                name: "InApp",
+                table: "Notifications",
+                type: "boolean",
+                nullable: false,
+                defaultValue: true);
+
             migrationBuilder.AddColumn<string>(
                 name: "DigestFrequency",
                 table: "NotificationPreferences",
@@ -148,6 +155,10 @@ namespace Solo.Data.Migrations
 
             migrationBuilder.DropColumn(
                 name: "EmailedAt",
+                table: "Notifications");
+
+            migrationBuilder.DropColumn(
+                name: "InApp",
                 table: "Notifications");
 
             migrationBuilder.DropColumn(

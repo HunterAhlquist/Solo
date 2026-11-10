@@ -72,7 +72,7 @@ public sealed class NotificationService(
         try
         {
             var raised = await SaveAsync(drafts, ct);
-            await Task.WhenAll(raised.Select(n => NudgeAsync(n.UserId, n.Kind.ToString(), n.Id.ToString(), n.ActorUserId ?? Guid.Empty)));
+            await Task.WhenAll(raised.Where(n => n.InApp).Select(n => NudgeAsync(n.UserId, n.Kind.ToString(), n.Id.ToString(), n.ActorUserId ?? Guid.Empty)));
         }
         catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -110,7 +110,7 @@ public sealed class NotificationService(
             .Where(p => userIds.Contains(p.UserId))
             .ToDictionaryAsync(p => p.UserId, ct);
         var wanted = drafts
-            .Where(d => !preferences.TryGetValue(d.UserId, out var p) || Wants(p, d.Kind))
+            .Where(d => !preferences.TryGetValue(d.UserId, out var p) || WantsInApp(p, d.Kind) || WantsEmail(p, d.Kind))
             .DistinctBy(d => (d.UserId, d.DedupeKey))
             .ToList();
         if (wanted.Count == 0)
@@ -132,7 +132,7 @@ public sealed class NotificationService(
                 row = new Notification { Title = "", DedupeKey = draft.DedupeKey, UserId = draft.UserId };
                 db.Notifications.Add(row);
             }
-            else if (draft.Kind != NotificationKind.Assigned || row.ReadAt is null)
+            else if (draft.Kind != NotificationKind.Assigned || !Seen(row))
             {
                 continue;
             }
@@ -147,6 +147,8 @@ public sealed class NotificationService(
             row.ActorUserId = draft.ActorUserId;
             row.CreatedAt = now;
             row.ReadAt = null;
+            row.EmailedAt = null;
+            row.InApp = !preferences.TryGetValue(draft.UserId, out var p) || WantsInApp(p, draft.Kind);
             raised.Add(row);
         }
 
@@ -165,12 +167,24 @@ public sealed class NotificationService(
         return raised;
     }
 
-    private static bool Wants(NotificationPreferences preferences, NotificationKind kind) => kind switch
+    private static bool WantsInApp(NotificationPreferences preferences, NotificationKind kind) => kind switch
     {
         NotificationKind.Assigned => preferences.NotifyOnAssigned,
         NotificationKind.DueInTwoWeeks or NotificationKind.DueThisWeek => preferences.NotifyOnDeadline,
         _ => true,
     };
+
+    /// <summary>Kept for the digest even when the app shouldn't show it.</summary>
+    private static bool WantsEmail(NotificationPreferences preferences, NotificationKind kind) =>
+        preferences.DigestFrequency != DigestFrequency.Off && kind switch
+        {
+            NotificationKind.Assigned => preferences.EmailOnAssigned,
+            NotificationKind.DueInTwoWeeks or NotificationKind.DueThisWeek => preferences.EmailOnDeadline,
+            _ => false,
+        };
+
+    /// <summary>An email-only entry is never read in the app, so being emailed is its "read".</summary>
+    private static bool Seen(Notification row) => row.ReadAt is not null || (!row.InApp && row.EmailedAt is not null);
 
     private static string Truncate(string value, int length) =>
         value.Length <= length ? value : value[..(length - 1)] + "…";

@@ -646,6 +646,9 @@ namespace Solo.Data.Migrations
                     b.Property<Guid?>("EpicId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("InApp")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
