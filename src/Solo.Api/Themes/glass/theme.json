@@ -33,8 +33,8 @@
 
   "dark": {
     "primary": "#fff600",
-    "secondary": "#5e5ce6",
-    "tertiary": "#bf5af2",
+    "secondary": "#c9c400",
+    "tertiary": "#8a8600",
     "background": "#0b0b0e",
     "backgroundGray": "#151518",
     "surface": "#1c1c1e",
@@ -61,8 +61,8 @@
 
   "light": {
     "primary": "#df6610",
-    "secondary": "#5856d6",
-    "tertiary": "#8e44ad",
+    "secondary": "#a8480a",
+    "tertiary": "#7a3206",
     "background": "#f2f2f7",
     "backgroundGray": "#efeff3",
     "surface": "#ffffff",
