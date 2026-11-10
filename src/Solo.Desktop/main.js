@@ -448,6 +448,7 @@ function ensureServer(instance, port = instance.port) {
         // over instead of awaiting the same rejection forever.
         entry = {
             server,
+            port,
             listening: listening.catch(err => {
                 servers.delete(instance.id);
                 throw err;
@@ -455,7 +456,10 @@ function ensureServer(instance, port = instance.port) {
         };
         servers.set(instance.id, entry);
     }
-    return entry.listening;
+    // The port it really listens on, which is the instance's whatever the
+    // caller asked for (main/ports.js).
+    const bound = entry.port;
+    return entry.listening.then(() => bound);
 }
 
 function stopServer(instance) {

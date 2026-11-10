@@ -27,18 +27,36 @@ function ownedPorts(instance) {
     return [...new Set(instance.port ? [...owned, instance.port] : owned)];
 }
 
+// One port choice at a time per instance: two windows opening it at once
+// would otherwise each pick a port while sharing one server, and save one it
+// never bound.
+const inFlight = new WeakMap();
+
 /**
  * Starts the instance on one of its ports, or a new one.
  *
- *   start(port)   resolves once listening there; rejects with code
- *                 EADDRINUSE when the port is held, or anything else to stop.
+ *   start(port)   resolves once listening there — with the port it is really
+ *                 listening on, when a server was already running — and
+ *                 rejects with code EADDRINUSE when the port is held, or
+ *                 anything else to stop.
  *   prepare(port) runs before a port new to this instance is first tried.
  *
  * Updates instance.port and instance.ports, and resolves with
  * { port, moved }: moved when it opened anywhere but the port it last used
  * (never for a new instance). Rejects when no port in range can be had.
  */
-async function openOnPort(instance, instances, { first, start, prepare = async () => {} }) {
+function openOnPort(instance, instances, options) {
+    const running = inFlight.get(instance);
+    if (running) {
+        // Same server, same port; only the first caller reports a move.
+        return running.then(({ port }) => ({ port, moved: false }));
+    }
+    const choosing = choosePort(instance, instances, options).finally(() => inFlight.delete(instance));
+    inFlight.set(instance, choosing);
+    return choosing;
+}
+
+async function choosePort(instance, instances, { first, start, prepare = async () => {} }) {
     const owned = ownedPorts(instance);
     const previous = instance.port ?? null;
     const candidates = previous ? [previous, ...owned.filter(port => port !== previous)] : owned;
@@ -50,8 +68,9 @@ async function openOnPort(instance, instances, { first, start, prepare = async (
     };
 
     for (const port of candidates) {
-        if (await tryStart(start, port)) {
-            return opened(port);
+        const bound = await tryStart(start, port);
+        if (bound) {
+            return opened(bound);
         }
     }
 
@@ -61,20 +80,22 @@ async function openOnPort(instance, instances, { first, start, prepare = async (
             continue;
         }
         await prepare(port);
-        if (await tryStart(start, port)) {
-            return opened(port);
+        const bound = await tryStart(start, port);
+        if (bound) {
+            return opened(bound);
         }
     }
     throw new Error(`no free local port from ${first} to ${Math.min(first + RANGE, 65536) - 1}`);
 }
 
+// The port it is listening on, or null when that one is held.
 async function tryStart(start, port) {
     try {
-        await start(port);
-        return true;
+        const bound = await start(port);
+        return Number.isInteger(bound) ? bound : port;
     } catch (err) {
         if (err?.code === 'EADDRINUSE') {
-            return false;
+            return null;
         }
         throw err;
     }
