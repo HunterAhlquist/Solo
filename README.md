@@ -187,8 +187,8 @@ and who renamed it back.
 
 ### Themes
 
-Three themes ship in the image: Ahlquist Interactive (the default, above),
-Arcade and Blueprint. The super admin picks one for the whole instance, and
+Four themes ship in the image: Ahlquist Interactive (the default, above),
+Arcade, Blueprint and Glass. The super admin picks one for the whole instance, and
 each person picks light or dark for themselves. To add your own, see
 [docs/themes.md](docs/themes.md).
 

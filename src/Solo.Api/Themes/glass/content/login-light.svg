@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Soft colour fields for the frosted sign-in card to sit on. Glass needs
+       something behind it to read as glass; flat grey would make it a plain card. -->
+  <defs>
+    <radialGradient id="a" cx="18%" cy="22%" r="55%">
+      <stop offset="0%" stop-color="#5ac8fa" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#5ac8fa" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="b" cx="82%" cy="30%" r="50%">
+      <stop offset="0%" stop-color="#7d7aff" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#7d7aff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="c" cx="62%" cy="88%" r="55%">
+      <stop offset="0%" stop-color="#ff8fb1" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#ff8fb1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="d" cx="12%" cy="92%" r="45%">
+      <stop offset="0%" stop-color="#63e6be" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#63e6be" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#eef1f8"/>
+  <rect width="1600" height="1000" fill="url(#a)"/>
+  <rect width="1600" height="1000" fill="url(#b)"/>
+  <rect width="1600" height="1000" fill="url(#c)"/>
+  <rect width="1600" height="1000" fill="url(#d)"/>
+</svg>
