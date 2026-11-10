@@ -77,10 +77,11 @@ realistic tasks, a design doc with a sketch, and a roadmap, so the native
 features have something to act on. Snapshot the dataset before review and
 roll back afterwards.
 
-**Pointing the app at it.** Set the repository variable
-`SOLO_IOS_INSTANCE_URL` to the demo address for the submission build, so the
-reviewer lands on its sign-in page rather than on "Add your first instance".
-Put the address in the review notes too, in case they reinstall.
+**Pointing the app at it.** Put the demo address in the review notes; the
+reviewer types it on "Add your first instance". Don't set the repository
+variable `SOLO_IOS_INSTANCE_URL` for the submission build: the build App Review
+approves is the one customers get, so every install would list the demo
+instance.
 
 ## Review notes
 
