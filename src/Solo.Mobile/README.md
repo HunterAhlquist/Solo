@@ -164,6 +164,14 @@ the instance has to run a server with the app's sign-in (`start-app`).
 Without the secrets, the run stops at a notice. A Design Docs package preview
 tag (`…-design-docs-<label>.N`) doesn't upload the app.
 
+Nor does a tag that leaves the app as testers already have it, which is most
+preview tags: the app loads its instance, so a server or client change doesn't
+reach it. `build/testflight-gate.sh` diffs the app's inputs against the commit
+of the last run whose Upload step succeeded and, when nothing changed, ends the
+run with a notice in its summary. The Mac TestFlight upload uses the same gate,
+with the client among its inputs, since the desktop app bundles it. A manual
+run always uploads, and so does any run where the gate can't tell.
+
 ## Testing against a local instance
 
 Google won't sign in on a plain-HTTP address. Debug builds can start signed

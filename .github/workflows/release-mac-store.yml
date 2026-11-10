@@ -10,6 +10,9 @@ on:
 
 permissions:
   contents: read
+  # build/testflight-gate.sh reads this workflow's earlier runs to find the
+  # last build that reached TestFlight.
+  actions: read
 
 jobs:
   testflight:
@@ -42,6 +45,9 @@ jobs:
         working-directory: src/Solo.Desktop
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history, so the gate can diff against the last uploaded build.
+          fetch-depth: 0
 
       - name: Classify the release
         id: channel
@@ -49,13 +55,18 @@ jobs:
         run: bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
-      # an extension zip, not the app.
+      # an extension zip, not the app. Otherwise build/testflight-gate.sh skips
+      # a tag that leaves the app as testers already have it: a server-only
+      # change, say. A client change does reach this app, which bundles it.
       - name: Check what this run uploads
         id: gate
+        working-directory: .
         env:
           PACKAGE_LABEL: ${{ steps.channel.outputs.package_label }}
           PRERELEASE: ${{ steps.channel.outputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           # The trigger already limits this to preview tags; this keeps a
           # stable version from uploading if that ever changes.
           if [ "$PRERELEASE" != true ]; then
@@ -69,7 +80,7 @@ jobs:
             echo "::notice::The testflight environment is missing the Mac App Store secrets or SOLO_PREVIEW_ASC_APP_ID; skipping the upload."
             echo "upload=false" >> "$GITHUB_OUTPUT"
           else
-            echo "upload=true" >> "$GITHUB_OUTPUT"
+            bash build/testflight-gate.sh mac >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -191,7 +202,8 @@ jobs:
       # Lands in TestFlight, where only internal testers see it: nothing reaches
       # external testers or App Review until someone adds it there by hand. The
       # verdict is read from altool's output, because altool has exited 0 on a
-      # failed upload.
+      # failed upload. The step's name is how build/testflight-gate.sh
+      # recognises a run that uploaded; rename both together.
       - name: Upload
         if: steps.gate.outputs.upload == 'true'
         env:
