@@ -44,7 +44,10 @@ public static class SecurityHeaders
         "img-src 'self' data: https: blob:; " +
         "font-src 'self' data:; " +
         $"connect-src 'self' https://accounts.google.com{string.Concat(providerConnect.Select(o => " " + o))}; " +
-        $"frame-src https://accounts.google.com{string.Concat(providerFrames.Select(o => " " + o))}; " +
+        // 'self' with a provider's origins: its renewal iframe comes back to
+        // our own callback page, and the embedder's frame-src governs that
+        // redirect as well as the frame's first load.
+        $"frame-src https://accounts.google.com{(providerFrames.Count > 0 ? " 'self'" : "")}{string.Concat(providerFrames.Select(o => " " + o))}; " +
         "worker-src 'self' blob:; " +
         // Nothing here is meant to be framed, submit off-site, or rebase its
         // relative URLs — an injected <base> would repoint every asset.
@@ -136,11 +139,33 @@ public static class SecurityHeaders
             ProviderConnectSources(provider, authority, metadata),
             ProviderFrameSources(provider, authority, metadata));
 
+    /// <summary>
+    /// Where the web client's OIDC library lands after a sign-in, and where its
+    /// silent renewal lands too: Blazor sets no separate silent redirect, so
+    /// the hidden iframe the library renews in comes back to this page.
+    /// </summary>
+    public const string OidcCallbackPath = "/authentication/login-callback";
+
+    /// <summary>
+    /// The policy for the OIDC callback page, which has to load inside the
+    /// app's own renewal iframe: <c>frame-ancestors 'self'</c> instead of
+    /// <c>'none'</c>. Only that page, and only same-origin — nothing else of
+    /// ours is ever framed, and nobody else may frame it.
+    /// </summary>
+    public static string AllowFramingBySelf(string policy) =>
+        policy.Replace("frame-ancestors 'none'", "frame-ancestors 'self'", StringComparison.Ordinal);
+
     public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app)
     {
         var policies = app.ApplicationServices.GetRequiredService<ContentSecurityPolicies>();
         return app.Use((context, next) =>
         {
+            // The renewal iframe's landing page, on an instance whose web
+            // client renews that way. Read on the way in: the SPA fallback
+            // rewrites the path to index.html before the response starts.
+            var framedBySelf = policies.RenewsInAFrame &&
+                context.Request.Path.Equals(OidcCallbackPath, StringComparison.OrdinalIgnoreCase);
+
             context.Response.OnStarting(async state =>
             {
                 var headers = ((HttpContext)state).Response.Headers;
@@ -149,7 +174,8 @@ public static class SecurityHeaders
                 // stricter policy (IsolationPolicy); don't overwrite it.
                 if (!headers.ContainsKey("Content-Security-Policy"))
                 {
-                    headers.ContentSecurityPolicy = await policies.GetAsync();
+                    var policy = await policies.GetAsync();
+                    headers.ContentSecurityPolicy = framedBySelf ? AllowFramingBySelf(policy) : policy;
                 }
 
                 headers.XContentTypeOptions = "nosniff";
@@ -163,7 +189,7 @@ public static class SecurityHeaders
                 headers["X-Robots-Tag"] = "noindex, nofollow";
                 // frame-ancestors covers this for current browsers; the legacy
                 // header is free and still honoured by some proxies.
-                headers.XFrameOptions = "DENY";
+                headers.XFrameOptions = framedBySelf ? "SAMEORIGIN" : "DENY";
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
                 // Google Identity Services signs in through a popup, which a
                 // plain same-origin COOP would sever.
