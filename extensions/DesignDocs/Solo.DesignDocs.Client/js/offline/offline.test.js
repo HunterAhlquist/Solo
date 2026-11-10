@@ -334,6 +334,27 @@ test('download removal and a new write cannot leave an orphaned upload queue',as
     }finally{await store.close();}
 });
 
+test('a sketch counts once however many strokes it has, as a note does',async()=>{
+    const scope=id(),store=new VaultStore(scope),vaultId=id(),noteId=id(),sketchId=id(),oldSketch=id();
+    await store.put('vaults',{id:vaultId,ready:true,base:snapshot(vaultId,noteId)});
+    try{
+        // A sketch made offline, then drawn on: every stroke is its own queued update.
+        await store.enqueue({id:id(),vaultId,created:1,command:{entity:'sketch',action:'create',targetId:sketchId,noteId,name:'Map'}});
+        const sketch=new Y.Doc(),strokes=sketch.getArray('ops');
+        for(let i=0;i<6;i++){const before=Y.encodeStateVector(sketch);strokes.push([{id:id(),points:[i,i,i+1,i+1]}]);
+            await store.updateDocument(sketchId,'project',vaultId,[Y.encodeStateAsUpdate(sketch,before)],null,true);}
+        const note=new Y.Doc();note.getText('markdown').insert(0,'Edited');
+        await store.updateDocument(noteId,'project',vaultId,[Y.encodeStateAsUpdate(note)],null,true);
+        const queue=await store.all('queue');
+        assert.equal(queue.length,8);
+        assert.equal(unsyncedItems(queue),2);
+        // Deleting another sketch is one more item.
+        await store.enqueue({id:id(),vaultId,created:2,command:{entity:'sketch',action:'delete',targetId:oldSketch,version:1}});
+        assert.equal(unsyncedItems(await store.all('queue')),3);
+        sketch.destroy();note.destroy();
+    }finally{await store.close();}
+});
+
 test('the pending count is items with unsynced changes, not queued edits',()=>{
     const vault='v1',note='n1',other='n2',folder='f1';
     const edits=Array.from({length:250},(_,i)=>({id:`u${i}`,vaultId:vault,documentId:note,data:new Uint8Array([i%255])}));
