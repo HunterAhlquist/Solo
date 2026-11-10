@@ -10,6 +10,13 @@ let markStarted,started;function resetStarted(){started=new Promise(resolve=>mar
 async function current(){if(session)return session;return Promise.race([started,new Promise(resolve=>setTimeout(()=>resolve(null),5000))]);}
 const remote=Symbol('offline remote');
 const empty=()=>({tree:{vault:{},folders:[],notes:[]},sketches:[],images:[],documents:{},canWrite:true,canManage:false,projectWrite:true});
+// How many things are waiting to sync, as a person would count them: every
+// Yjs update is a queue row of its own, so typing a paragraph offline queues
+// hundreds, and a note created offline is a create command plus its edits.
+// Rows are grouped by the document or item they change instead — a document's
+// id, or a command's target — so that note counts once however much was typed.
+export function unsyncedItems(rows){return new Set(rows.map(r=>`${r.vaultId}:${r.documentId??r.command?.targetId??r.id}`)).size;}
+
 export class OfflineSession {
     constructor(transport,options){
         this.transport=transport;this.options=options;this.store=options.store??new VaultStore(options.instance+'|'+options.userId);
@@ -43,7 +50,7 @@ export class OfflineSession {
         held.catch(reject);return ready;
     }
     async view(vaultId){const v=await this.store.get('vaults',vaultId);return v?projectVault(v,await this.store.all('queue')):null;}
-    async notify(){if(!this.active)return;const queue=await this.store.all('queue');const vaults=await this.store.all('vaults');const status={pending:queue.length,conflicts:queue.filter(r=>r.error).length,online:this.network,message:this.message,vaults:vaults.map(v=>({id:v.id,projectId:v.projectId,projectAlias:v.projectAlias,name:v.base.tree.vault.name,ready:v.ready,pending:queue.filter(q=>q.vaultId===v.id).length,conflicts:queue.filter(q=>q.vaultId===v.id&&q.error).length,unavailable:v.unavailable}))};if(!this.active)return;try{await this.options.changed?.(status);}catch(error){if(this.active)throw error;}}
+    async notify(){if(!this.active)return;const queue=await this.store.all('queue');const vaults=await this.store.all('vaults');const status={pending:unsyncedItems(queue),conflicts:unsyncedItems(queue.filter(r=>r.error)),online:this.network,message:this.message,vaults:vaults.map(v=>({id:v.id,projectId:v.projectId,projectAlias:v.projectAlias,name:v.base.tree.vault.name,ready:v.ready,pending:unsyncedItems(queue.filter(q=>q.vaultId===v.id)),conflicts:unsyncedItems(queue.filter(q=>q.vaultId===v.id&&q.error)),unavailable:v.unavailable}))};if(!this.active)return;try{await this.options.changed?.(status);}catch(error){if(this.active)throw error;}}
     async pin(projectId,vaultId){
         return this.lock(vaultId,'shared',()=>this.download(projectId,vaultId));
     }
