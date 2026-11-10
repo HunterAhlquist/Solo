@@ -123,6 +123,20 @@ html[data-color-scheme="dark"] body::after {
         var(--glass-wash);
 }
 
+/* Over the shell's glass the layer carries the art alone. A fill or a veil
+   here would cover the window's material whatever Background opacity says,
+   because <body>'s tint (the one layer app.css lets carry the palette colour)
+   is painted underneath this one. Fading the art stands in for the veil. */
+html.solo-desktop--glass body::after {
+    background-color: transparent;
+    background-image: url("background-light.webp");
+    opacity: 0.55;
+}
+
+html.solo-desktop--glass[data-color-scheme="dark"] body::after {
+    background-image: url("background-dark.webp");
+}
+
 /* Content surfaces let the background through faintly; cards stay solid on top. */
 html:not(.solo-desktop--glass) .kanban-lane:not(.kanban-lane--adhoc),
 html:not(.solo-desktop--glass) .epic-group {
