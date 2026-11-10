@@ -86,17 +86,21 @@ html:not(.solo-desktop) {
 }
 
 /* ---------------------------------------------------------------------------
-   The page: a field of pixel icons over a soft wash of the accents, fixed
-   under everything. The art is transparent, so the palette's background and
-   the wash show between the icons. A layer of its own rather than <body>'s
+   The page: a field of pixel icons, fixed under everything, over the
+   palette's background and a soft wash of the accents that stand in while
+   the art loads. A layer of its own rather than <body>'s
    background, because <body> is one viewport tall and a long board would
    scroll past the end of it.
+
+   The desktop shell's glass mode keeps it too: the art is what this theme is,
+   so it covers the window's material, and the shell's translucent panes and
+   board surfaces frost the art instead of the desktop.
    --------------------------------------------------------------------------- */
 html:not(.solo-desktop--glass) body {
     background: transparent;
 }
 
-html:not(.solo-desktop--glass) body::after {
+body::after {
     content: "";
     position: fixed;
     inset: 0;
@@ -112,7 +116,7 @@ html:not(.solo-desktop--glass) body::after {
     background-repeat: no-repeat;
 }
 
-html[data-color-scheme="dark"]:not(.solo-desktop--glass) body::after {
+html[data-color-scheme="dark"] body::after {
     background-image:
         linear-gradient(var(--glass-art-veil), var(--glass-art-veil)),
         url("background-dark.webp"),
@@ -284,6 +288,11 @@ html:not(.solo-desktop) body:has(.mud-appbar)::before {
 /* ---------------------------------------------------------------------------
    Sidebar rows: a rounded selection inset from the pane, concentric with it.
    --------------------------------------------------------------------------- */
+/* The rows' 8px side inset, matched above the first row and below the last. */
+.mud-drawer:not(.detail-drawer) .mud-drawer-content {
+    padding-block: 7px;
+}
+
 .mud-drawer:not(.detail-drawer) .mud-nav-link {
     margin: 1px 8px;
     width: calc(100% - 16px);
