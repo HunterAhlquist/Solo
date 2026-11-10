@@ -16,7 +16,8 @@ namespace Solo.Api.Controllers;
 /// </summary>
 [Route("api/notifications")]
 [Authorize]
-public sealed class NotificationsController(SoloDbContext db, CurrentUserAccessor currentUser, TimeProvider time)
+public sealed class NotificationsController(
+    SoloDbContext db, CurrentUserAccessor currentUser, NotificationService notifications, TimeProvider time)
     : ApiControllerBase
 {
     [HttpGet]
@@ -48,7 +49,13 @@ public sealed class NotificationsController(SoloDbContext db, CurrentUserAccesso
         var updated = await db.Notifications
             .Where(n => n.Id == id && n.UserId == me)
             .ExecuteUpdateAsync(u => u.SetProperty(n => n.ReadAt, n => n.ReadAt ?? now), ct);
-        return updated == 0 ? NotFound() : NoContent();
+        if (updated == 0)
+        {
+            return NotFound();
+        }
+
+        await notifications.ReadChangedAsync(me, id.ToString());
+        return NoContent();
     }
 
     [HttpPost("read")]
@@ -60,9 +67,14 @@ public sealed class NotificationsController(SoloDbContext db, CurrentUserAccesso
         }
 
         var now = time.GetUtcNow();
-        await db.Notifications
+        var updated = await db.Notifications
             .Where(n => n.UserId == me && n.ReadAt == null)
             .ExecuteUpdateAsync(u => u.SetProperty(n => n.ReadAt, now), ct);
+        if (updated > 0)
+        {
+            await notifications.ReadChangedAsync(me, null);
+        }
+
         return NoContent();
     }
 

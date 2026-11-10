@@ -72,16 +72,33 @@ public sealed class NotificationService(
         try
         {
             var raised = await SaveAsync(drafts, ct);
-            await Task.WhenAll(raised.Select(n =>
-                hub.Clients.Group(BoardHubConstants.UserTopicGroup(n.UserId, BoardHubConstants.NotificationsTopic))
-                    .TopicMessage(new TopicMessage(Guid.Empty, BoardHubConstants.NotificationsTopic,
-                        n.Kind.ToString(), n.Id.ToString(), n.ActorUserId ?? Guid.Empty))));
+            await Task.WhenAll(raised.Select(n => NudgeAsync(n.UserId, n.Kind.ToString(), n.Id.ToString(), n.ActorUserId ?? Guid.Empty)));
         }
         catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogError(e, "Raising {Count} notifications failed; ignored.", drafts.Count);
         }
     }
+
+    /// <summary>
+    /// Read state lives on the server, so the person's other open clients
+    /// refetch too; the nudge names nothing new, so it alerts nobody.
+    /// </summary>
+    public async Task ReadChangedAsync(Guid userId, string? id)
+    {
+        try
+        {
+            await NudgeAsync(userId, "Read", id, userId);
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning(e, "Couldn't tell {UserId}'s other clients about a read change.", userId);
+        }
+    }
+
+    private Task NudgeAsync(Guid userId, string kind, string? id, Guid actorUserId) =>
+        hub.Clients.Group(BoardHubConstants.UserTopicGroup(userId, BoardHubConstants.NotificationsTopic))
+            .TopicMessage(new TopicMessage(Guid.Empty, BoardHubConstants.NotificationsTopic, kind, id, actorUserId));
 
     private async Task<IReadOnlyList<Notification>> SaveAsync(IReadOnlyCollection<NotificationDraft> drafts, CancellationToken ct)
     {
