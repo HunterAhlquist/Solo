@@ -193,8 +193,9 @@ what they are. In order, before anything is written:
   skipped in the browser — so the extension keeps working except that its pages
   are gone, reported on the same page as "Client pages unavailable". The client
   range is compared against this build's contract, which is what the hosted
-  client ships with; a desktop shell older than the instance bundles its own
-  client and may still skip the pages, which the shell already warns about.
+  client ships with, and the desktop and mobile apps run that same client. Only
+  a client cached for offline use, or a desktop app from before 1.21 (which
+  bundled its own), can be older and still skip the pages.
 
 Only then are two renames done in one directory: the old package to
 `solo-<id>.rollback.zip.bak`, the verified download to its installed name. The

@@ -356,10 +356,6 @@ async function requestOpenInstance(id) {
 // Local servers
 // ---------------------------------------------------------------------------
 
-function clientDir() {
-    return process.env.SOLO_CLIENT_DIR ?? path.join(__dirname, 'wwwroot');
-}
-
 // Starts the instance's server if it isn't running, and says so when it can't.
 async function startServer(instance) {
     try {
@@ -380,10 +376,7 @@ async function startServer(instance) {
 function ensureServer(instance) {
     let entry = servers.get(instance.id);
     if (!entry) {
-        const server = createSoloServer({
-            clientDir: clientDir(),
-            getTarget: () => instance.url,
-        });
+        const server = createSoloServer({ getTarget: () => instance.url });
         const listening = new Promise((resolve, reject) => {
             server.once('error', reject);
             server.listen(instance.port, '127.0.0.1', () => {

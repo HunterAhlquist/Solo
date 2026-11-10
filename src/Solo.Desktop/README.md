@@ -1,19 +1,29 @@
 # Solo Desktop
 
-An Electron shell around the unmodified Solo web client. The shell serves the
-published Blazor WASM build from a local origin (`http://localhost:41321`) and
-reverse-proxies `/api/*` and `/hubs/*` (REST, images, SignalR WebSockets) to
-a Solo instance added in **Settings** — so the client runs byte-for-byte
-identical to the hosted build, same-origin, with no CORS anywhere and no
-changes to the API. It can hold several instances, each in a window of its
-own.
+An Electron shell around the Solo web client each instance serves. The shell
+gives an instance a local origin (`http://localhost:41321`) and reverse-proxies
+every path on it to that instance — the client's own files, REST, images and
+SignalR WebSockets — so the window runs the very client the instance hosts,
+same-origin, with no CORS anywhere and no changes to the API. It bundles no
+client of its own, so it never falls behind the server. It can hold several
+instances, each in a window and origin of its own.
+
+Why a local origin rather than the instance's own address: each instance keeps
+its own storage and session, and `http://localhost` is a secure context even
+for an instance on plain http, which `crypto.subtle`, `crypto.randomUUID` and
+the client's offline mode (a service worker) all require. The instance's own
+headers come through untouched, its Content Security Policy among them.
+
+When the instance can't be reached and the client's offline mode hasn't cached
+it, a window shows the shell's own "Can't reach the instance" page with **Try
+again** and **Instances**. A fetch from a client that is running gets JSON,
+which the client already handles.
 
 ## Running
 
 ```sh
 cd src/Solo.Desktop
 npm install
-npm run build:client   # dotnet publish Solo.Client → ./wwwroot
 npm run build:native   # macOS only: the sign-in window add-on (see Sign-in)
 npm start
 ```
@@ -41,11 +51,10 @@ other Electron apps ([Apple TN3178](https://developer.apple.com/documentation/te
 The Electron framework remains untouched; only the small launchers lose their
 match to Electron's stock debug-symbol UUID.
 
-The desktop client is bundled with the installer. A server can load an extension
-whose client contract is newer than an installed desktop's. Admin settings shows
-that server state separately from the client compatibility warning; install a
-matching desktop preview to use its client pages. Every instance opens a separate
-origin and Blazor runtime, with its own extension catalog and browser storage.
+Every instance opens a separate origin and Blazor runtime, with its own
+extension catalog and browser storage. Releases before 1.21 bundled their own
+client, which could fall behind the instance; from 1.21 a server update reaches
+the desktop app's client at once.
 
 ## Instances
 
@@ -91,8 +100,9 @@ instance gave. A file from before the
 shell knew more than one instance, with a lone `instanceUrl`, is read as that
 one instance on its old port, so it stays signed in.
 
-During development, `SOLO_CLIENT_DIR=/path/to/publish/wwwroot npm start`
-serves client assets from anywhere without re-copying.
+During development, point an instance at a local server
+(`dotnet run --project src/Solo.Api`) to try a client change: the window loads
+whatever that server serves.
 
 ### Glass backdrop (macOS)
 
@@ -102,7 +112,7 @@ uses the native Liquid Glass module. If that module is unavailable, unsupported,
 or cannot attach to the window, Solo falls back to Electron's AppKit vibrancy:
 
 ```sh
-npm run build:client && npm start
+npm start
 ```
 
 To disable both treatments for troubleshooting, launch with
@@ -266,10 +276,7 @@ notarization rejects the build. It fails loudly, not silently.
 
 Two things keep the `.dmg` small:
 
-- `build:client` publishes without the precompressed `.br`/`.gz` siblings.
-  The local server only ever streams the plain file. Compressed bytes don't
-  recompress, so the siblings took more of the image than the client they
-  duplicate.
+- It carries no client: the shell proxies the one each instance serves.
 - `scripts/after-all-artifact-build.mjs` re-encodes the image as ULMO (lzma),
   which electron-builder's `dmg.format` doesn't offer. It is about a fifth
   smaller than the default zlib. `dmg.writeUpdateInfo` is off because there is
@@ -382,7 +389,7 @@ build, where only internal testers can install it. It skips itself until the
 To build one locally, with those certificates in the login keychain:
 
 ```sh
-npm run build:client && npm run build:native
+npm run build:native
 SOLO_MAS_PROVISIONING_PROFILE=~/Downloads/Solo_Preview_MAS.provisionprofile \
   npx electron-builder --config electron-builder.config.cjs --mac mas --arm64 --publish never
 ```

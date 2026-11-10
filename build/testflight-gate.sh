@@ -9,8 +9,8 @@
 # skip notice included, goes to stderr.
 #
 # Most preview tags change the server or an extension and leave both apps
-# alone: the iOS app loads its instance over the network and bundles none of
-# the client, and the Mac app bundles the client but not the server. A build
+# alone: both apps load the client their instance serves, so neither carries
+# any of the client or the server. A build
 # that changes nothing still costs a macOS runner, a processing slot at Apple
 # and a TestFlight notification to every tester.
 #
@@ -46,26 +46,16 @@ case "$app" in
             .github/workflows/release-ios.yml
         )
         ;;
-    # The Mac App Store build: the Electron shell, the Blazor client it
-    # serves and the shared contracts that client compiles against, and the
-    # icon sources — the same inputs release-desktop.yml packages. The
-    # repository-wide .NET build settings change what the client publishes;
-    # none exist today, and a path that matches nothing costs the diff nothing.
+    # The Mac App Store build: the Electron shell and the icon sources, the
+    # same inputs release-desktop.yml packages. The client isn't among them:
+    # the shell proxies the one each instance serves.
     mac)
         name="Mac app"
         workflow=release-mac-store.yml
         paths=(
             src/Solo.Desktop
             ":(exclude)src/Solo.Desktop/README.md"
-            src/Solo.Client
-            src/Solo.Shared
             Icons
-            global.json
-            Directory.Build.props
-            Directory.Build.targets
-            Directory.Packages.props
-            NuGet.config
-            nuget.config
             build/release-channel.sh
             .github/workflows/release-mac-store.yml
         )

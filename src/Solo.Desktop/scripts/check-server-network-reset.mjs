@@ -23,7 +23,6 @@ const upstream = net.createServer(socket => {
 await listen(upstream);
 
 const desktop = createSoloServer({
-    clientDir: process.cwd(),
     getTarget: () => `http://127.0.0.1:${upstream.address().port}`,
 });
 await listen(desktop);
