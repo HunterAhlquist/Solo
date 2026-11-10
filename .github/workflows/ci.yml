@@ -212,6 +212,7 @@ jobs:
           bash build/test-release-baseline.sh
           bash build/test-release-gating.sh
           bash build/test-testflight-gate.sh
+          bash src/Solo.Mobile/scripts/check-instance-ports.sh
           bash build/test-nuget-behind.sh
           bash build/test-changelog.sh
 
