@@ -275,6 +275,10 @@ public class ExtensionUpdateUiTests : ComponentTestBase
     private static IRenderedComponent<MudSelect<string>> FeedPicker(IRenderedComponent<InstanceSettings> page) =>
         page.FindComponents<MudSelect<string>>().Single(s => s.Instance.Label == "Updates from");
 
+    /// <summary>What the picker holds, read from its markup: MudBlazor bars reading a parameter's state from outside (MUD0012).</summary>
+    private static string? PickedFeed(IRenderedComponent<InstanceSettings> page) =>
+        page.Find(".extension-feed input").GetAttribute("value");
+
     [Fact]
     public void A_package_with_one_feed_offers_no_choice()
     {
@@ -289,7 +293,7 @@ public class ExtensionUpdateUiTests : ComponentTestBase
     {
         var page = Render(Status(), WithFeeds());
 
-        page.WaitForAssertion(() => Assert.Equal("", FeedPicker(page).Instance.Value));
+        page.WaitForAssertion(() => Assert.Equal("", PickedFeed(page)));
         Assert.DoesNotContain("isn't offered by this version", page.Markup);
     }
 
@@ -303,7 +307,7 @@ public class ExtensionUpdateUiTests : ComponentTestBase
         var page = Render(Status(), WithFeeds(picked: "nightly"));
 
         page.WaitForAssertion(() => Assert.Contains("isn't offered by this version", page.Markup));
-        Assert.Equal("", FeedPicker(page).Instance.Value);
+        Assert.Equal("", PickedFeed(page));
     }
 
     [Fact]
@@ -318,6 +322,6 @@ public class ExtensionUpdateUiTests : ComponentTestBase
         page.WaitForAssertion(() => Assert.Equal(2, _http.Paths.Count(p => p.StartsWith("GET /api/updates"))));
         Assert.Contains("PUT /api/extensions/roadmap/update-feed", _http.Paths);
         Assert.Contains(_http.Bodies, b => b.Contains("\"beta\""));
-        Assert.Equal("beta", FeedPicker(page).Instance.Value);
+        Assert.Equal("beta", PickedFeed(page));
     }
 }
