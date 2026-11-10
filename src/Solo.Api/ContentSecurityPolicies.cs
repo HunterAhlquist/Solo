@@ -53,6 +53,7 @@ public sealed class ContentSecurityPolicies
         _time = time;
         _logger = logger;
         _partial = SecurityHeaders.ContentSecurityPolicyFor(provider, authority);
+        RenewsInAFrame = SecurityHeaders.ProviderConnectSources(provider, authority).Count > 0;
 
         // Google, an unconfigured instance, or nothing to read the document
         // with: the policy is already as complete as it gets.
@@ -61,6 +62,13 @@ public sealed class ContentSecurityPolicies
             _complete = _partial;
         }
     }
+
+    /// <summary>
+    /// The web client signs in with the code flow, whose library renews the
+    /// sign-in in a hidden iframe that lands on
+    /// <see cref="SecurityHeaders.OidcCallbackPath"/>: any provider but Google.
+    /// </summary>
+    public bool RenewsInAFrame { get; }
 
     public async ValueTask<string> GetAsync()
     {
