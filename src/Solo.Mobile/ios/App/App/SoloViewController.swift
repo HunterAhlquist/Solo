@@ -206,10 +206,10 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         }
     }
 
-    /// The instance's proxy, started if it isn't running. Its main port is the
-    /// instance's for good (`InstancePorts`); only when another app holds it
-    /// does this launch use one of the instance's fallback ports, which has a
-    /// sign-in of its own. The next launch tries the main port again.
+    /// The instance's proxy, started if it isn't running, on the port the
+    /// instance last opened on (`InstancePorts`). Only when another app holds
+    /// that port does it move to another of the instance's own, which has a
+    /// sign-in and offline storage of its own.
     private static func startProxy(for instance: URL) -> LocalProxy? {
         if let proxy, proxy.target == instance { return proxy }
         proxy?.stop()

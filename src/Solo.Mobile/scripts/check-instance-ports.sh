@@ -41,8 +41,12 @@ check("the first instance gets 41321", launch(a) == 41321)
 check("and keeps it", launch(a) == 41321)
 
 check("a held main port falls back to a new port", launch(a, busy: [41321]) == 41322)
-check("the next launch goes back to the main port", launch(a) == 41321)
-check("the fallback is the instance's again when the main port is held", launch(a, busy: [41321]) == 41322)
+// Edits left waiting on the fallback's origin stay reachable: the instance
+// doesn't move back just because the main port came free.
+check("the next launch stays on the fallback it last opened on", launch(a) == 41322)
+check("and the one after", launch(a) == 41322)
+check("only a held fallback moves it, back to the main port", launch(a, busy: [41322]) == 41321)
+check("where it then stays", launch(a) == 41321)
 
 check("another instance never gets a port the first was given", launch(b) == 41323)
 check("not even when all of its own are held", launch(b, busy: [41323]) == 41324)
@@ -53,9 +57,11 @@ for _ in 0..<5 { _ = launch(a, busy: Set(InstancePorts.ports(for: a, defaults: d
 let saved = InstancePorts.ports(for: a, defaults: defaults)
 check("ten saved ports (\(saved.count))", saved.count >= 10)
 var tried: [UInt16] = []
+let launchedOn = launch(a)!
 let started = launch(a, busy: Set(saved), tried: &tried)
 check("all ten held, the next new port starts", started != nil && !saved.contains(started!))
-check("every saved port was tried first", Array(tried.prefix(saved.count)) == saved)
+check("every saved port was tried first", Set(tried.prefix(saved.count)) == Set(saved))
+check("the port it last opened on first", tried.first == launchedOn)
 
 // Nothing can listen: each launch adds a bounded number of ports, and the
 // next launch still tries new ones.

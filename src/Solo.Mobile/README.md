@@ -33,9 +33,11 @@ client's own files included, to the instance, like the desktop app's
   defaults), so each instance keeps its own origin, and with it its storage
   and session, across launches. A port is never handed to a second instance,
   which would open signed in as the first, with its offline edits. When
-  another app holds an instance's port, that launch uses a fallback port of
-  the instance's own (signed in separately), and the next launch tries the
-  main port again. `scripts/check-instance-ports.sh` checks these rules (CI
+  another app holds an instance's port, it moves to a fallback port of its own
+  (signed in separately), and stays there until that port is held in turn:
+  each move leaves the old origin's session and unsynced edits behind until
+  the instance opens there again, so it doesn't move back just because the
+  main port came free. `scripts/check-instance-ports.sh` checks these rules (CI
   runs it).
 - **Loopback only.** The listener binds to 127.0.0.1 and refuses any other
   peer, and a request whose `Host` isn't `localhost:<port>` or
