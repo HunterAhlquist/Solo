@@ -30,7 +30,7 @@ public abstract class RoadmapListComponent : ComponentBase, IAsyncDisposable
     [Parameter]
     public bool CanWrite { get; set; }
 
-    /// <summary>Creating a roadmap: the super admin's, whatever their role in the project.</summary>
+    /// <summary>Creating a roadmap: the project's owners', and the super admin's.</summary>
     protected bool CanCreate { get; private set; }
 
     /// <summary>Whether this list has a create action, and so needs to know who's asking.</summary>
@@ -48,9 +48,11 @@ public abstract class RoadmapListComponent : ComponentBase, IAsyncDisposable
     {
         RoadmapNavEvents.Changed += OnRoadmapsChanged;
         _ = RoadmapAssets.EnsureStylesAsync(JS, Api);
-        var canCreate = OffersCreate ? Api.IsSuperAdminAsync() : Task.FromResult(false);
+        // The owner flag rides in with the project; only a non-owner needs to
+        // ask whether they are the super admin.
+        var canCreate = OffersCreate && !Project.IsOwner ? Api.IsSuperAdminAsync() : Task.FromResult(Project.IsOwner);
         await LoadAsync();
-        CanCreate = await canCreate;
+        CanCreate = OffersCreate && await canCreate;
         _live = await Live.SubscribeAsync(Project.Id, RoadmapTopics.List, _ => ReloadAsync());
     }
 

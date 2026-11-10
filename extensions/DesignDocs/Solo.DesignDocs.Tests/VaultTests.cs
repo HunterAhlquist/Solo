@@ -67,6 +67,24 @@ public sealed partial class VaultTests(PostgresFixture postgres) : IAsyncLifetim
         Assert.Equal(HttpStatusCode.NotFound,(await stranger.GetAsync($"/api/ext/design-docs/notes/{note.Id}/locate")).StatusCode);
         Assert.Empty(await stranger.PostJson<Dictionary<string,string>>("/api/ext/design-docs/links/labels",new LabelsRequest([$"/docs/note/{note.Id:N}"])));
     }
+    // A project owner who isn't a super admin runs a design doc's whole lifecycle, as they do a board's.
+    [SkippableFact]
+    public async Task Project_owner_creates_closes_reopens_and_deletes_without_super_admin()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var members=await _admin.GetJson<ProjectDto>($"/api/projects/{_project.Id}");
+        var writer=members.Members.Single(m=>m.Email=="writer@example.com");
+        await _admin.PutJson<ProjectMemberDto>($"/api/projects/{_project.Id}/members/{writer.Id}",new {role="ReadWrite",isOwner=true});
+        Assert.False((await _writer.GetJson<UserDto>("/api/users/me")).IsSuperAdmin);
+        Assert.True((await _writer.GetJson<VaultListDto>(Root)).CanManage);
+        var v=await _writer.PostJson<VaultDto>(Root,new NameRequest("Owned"));var url=$"{Root}/{v.Id}";
+        var closed=await _writer.PutJson<VaultDto>(url,new VaultChange(v.Name,true,v.Version));
+        var reopened=await _writer.PutJson<VaultDto>(url,new VaultChange(v.Name,false,closed.Version));
+        closed=await _writer.PutJson<VaultDto>(url,new VaultChange(v.Name,true,reopened.Version));
+        Assert.Equal(HttpStatusCode.NoContent,(await _writer.DeleteAsync(url+"?version="+closed.Version)).StatusCode);
+        var other=await _admin.PostJson<ProjectDto>("/api/projects",new {name="Other",alias="OTHER"});
+        Assert.Equal(HttpStatusCode.Forbidden,(await _writer.PostAsJsonAsync($"/api/ext/design-docs/projects/{other.Id}/vaults",new NameRequest("No"))).StatusCode);
+    }
     [SkippableFact]
     public async Task Nonmember_super_admin_can_manage_but_cannot_read_contents()
     {

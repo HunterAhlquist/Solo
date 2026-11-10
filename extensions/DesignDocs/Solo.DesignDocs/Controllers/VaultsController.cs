@@ -13,15 +13,18 @@ public sealed class VaultsController(DesignDocsDbContext db, ISoloQuery query, I
     internal static VaultDto Dto(Vault v) => new(v.Id,v.Name,v.IsClosed,v.ClosedAt,v.Version);
     internal static NoteDto Dto(Note n) => new(n.Id,n.VaultId,n.FolderId,n.Name,n.Markdown,n.MarkdownSeq.ToString(),
         JsonSerializer.Deserialize<HeadingDto[]>(n.Headings) ?? [],n.LastEditedBy,n.LastEditedAt,n.Version);
+    // A design doc's lifecycle (create, rename, close, reopen, delete) is the project owners', and the super
+    // admin's, as a board's is. The ProjectOwner policy admits both; this is the same rule for the checks made in code.
+    internal static bool CanManage(ExtensionCaller caller) => caller.IsSuperAdmin || caller.IsProjectOwner;
     internal static bool ValidName(string? name) => !string.IsNullOrWhiteSpace(name) && name.Length <= 200 &&
         name.Trim() is not "." and not ".." && !name.Any(c => char.IsControl(c) || "/\\:#[]|".Contains(c));
 
     [HttpGet, Authorize(Policy=SoloPolicies.ProjectRead)]
     public async Task<VaultListDto> List(Guid projectId, CancellationToken ct) =>
-        new((await query.CallerAsync(ct)).IsSuperAdmin,
+        new(CanManage(await query.CallerAsync(ct)),
             (await db.Vaults.AsNoTracking().Where(v=>v.ProjectId==projectId).OrderBy(v=>v.Name).ToListAsync(ct)).Select(Dto).ToList());
 
-    [HttpPost, Authorize(Policy=SoloPolicies.SuperAdmin), Authorize(Policy=SoloPolicies.ProjectOwner)]
+    [HttpPost, Authorize(Policy=SoloPolicies.ProjectOwner)]
     public async Task<ActionResult<VaultDto>> Create(Guid projectId, NameRequest request, CancellationToken ct)
     {
         if (!ValidName(request.Name)) return BadRequest();
@@ -45,7 +48,7 @@ public sealed class VaultsController(DesignDocsDbContext db, ISoloQuery query, I
     }
     private ObjectResult Closed() => Problem(statusCode:409,title:"Design doc is closed",detail:"Reopen it before editing.");
 
-    [HttpPut("{vaultId:guid}"), Authorize(Policy=SoloPolicies.SuperAdmin), Authorize(Policy=SoloPolicies.ProjectOwner)]
+    [HttpPut("{vaultId:guid}"), Authorize(Policy=SoloPolicies.ProjectOwner)]
     public async Task<ActionResult<VaultDto>> Change(Guid projectId, Guid vaultId, VaultChange r, CancellationToken ct)
     {
         if(!ValidName(r.Name)) return BadRequest();
@@ -56,7 +59,7 @@ public sealed class VaultsController(DesignDocsDbContext db, ISoloQuery query, I
         await Changed(projectId,vaultId,kind,ct); await live.PublishAsync(projectId,DocTopics.Vaults,"changed",ct:ct);
         return Dto(v);
     }
-    [HttpDelete("{vaultId:guid}"), Authorize(Policy=SoloPolicies.SuperAdmin), Authorize(Policy=SoloPolicies.ProjectOwner)]
+    [HttpDelete("{vaultId:guid}"), Authorize(Policy=SoloPolicies.ProjectOwner)]
     public async Task<IActionResult> Delete(Guid projectId, Guid vaultId, [FromQuery] uint version, CancellationToken ct)
     {
         var v=await Lock(projectId,vaultId,ct); if(v is null) return NotFound();

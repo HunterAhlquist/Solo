@@ -210,11 +210,12 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
     }
 
     /// <summary>
-    /// Creating and deleting a roadmap is the super admin's alone, as a board's
-    /// lifecycle is, even against the project's owner; renaming stays with writers.
+    /// Creating and deleting a roadmap is the project owners', as a board's
+    /// lifecycle is, and needs no super admin; a writer can't, but renaming
+    /// stays with writers.
     /// </summary>
     [SkippableFact]
-    public async Task Only_a_super_admin_creates_or_deletes_a_roadmap()
+    public async Task A_project_owner_creates_and_deletes_a_roadmap_and_a_writer_cannot()
     {
         postgres.SkipUnlessDockerAvailable();
         var (project, _) = await ProjectAsync("Lifecycle", "LIFE");
@@ -223,24 +224,34 @@ public sealed class RoadmapExtensionTests(PostgresFixture postgres) : IAsyncLife
             new { email = "roadmap-owner@example.com", role = "ReadWrite" });
         await _admin.PutJson<ProjectMemberDto>($"/api/projects/{project.Id}/members/{invite.Id}",
             new { role = "ReadWrite", isOwner = true });
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members",
+            new { email = "roadmap-writer@example.com", role = "ReadWrite" });
         var owner = _factory.As("roadmap-owner", "roadmap-owner@example.com");
+        var writer = _factory.As("roadmap-writer", "roadmap-writer@example.com");
         Assert.False((await owner.GetJson<UserDto>("/api/users/me")).IsSuperAdmin);
+        await writer.GetJson<UserDto>("/api/users/me");
 
         var url = $"{Base}/projects/{project.Id}/roadmaps";
         Assert.Equal(HttpStatusCode.Forbidden,
-            (await owner.PostAsJsonAsync(url, new { title = "No" }, TestClients.Json)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await owner.DeleteAsync($"{url}/{roadmap}")).StatusCode);
+            (await writer.PostAsJsonAsync(url, new { title = "No" }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await writer.DeleteAsync($"{url}/{roadmap}")).StatusCode);
 
-        var current = (await owner.GetJson<List<JsonObject>>(url)).Single();
-        var renamed = await owner.PutJson<JsonObject>($"{url}/{roadmap}",
+        var current = (await writer.GetJson<List<JsonObject>>(url)).Single();
+        var renamed = await writer.PutJson<JsonObject>($"{url}/{roadmap}",
             new { title = "Plan, revised", version = current["version"]!.GetValue<uint>() });
         Assert.Equal("Plan, revised", renamed["title"]!.GetValue<string>());
 
-        Assert.Equal(HttpStatusCode.NoContent, (await _admin.DeleteAsync($"{url}/{roadmap}")).StatusCode);
-        Assert.Empty(await owner.GetJson<List<JsonObject>>(url));
+        var created = await owner.PostAsJsonAsync(url, new { title = "Owned" }, TestClients.Json);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"{url}/{roadmap}")).StatusCode);
+        Assert.Equal("Owned", Assert.Single(await owner.GetJson<List<JsonObject>>(url))["title"]!.GetValue<string>());
 
-        // The owner policy alongside resolves the project, so a super admin can't
-        // file a roadmap under one that isn't there.
+        // An owner here is nobody in another project, and the policy resolves
+        // the project, so even a super admin can't file a roadmap under one
+        // that isn't there.
+        var (other, _) = await ProjectAsync("Elsewhere", "ELSE");
+        Assert.Equal(HttpStatusCode.Forbidden, (await owner.PostAsJsonAsync(
+            $"{Base}/projects/{other.Id}/roadmaps", new { title = "Elsewhere" }, TestClients.Json)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await _admin.PostAsJsonAsync(
             $"{Base}/projects/{Guid.NewGuid()}/roadmaps", new { title = "Nowhere" }, TestClients.Json)).StatusCode);
     }
