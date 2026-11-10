@@ -69,7 +69,7 @@
                             Sign in with @Config.ProviderName. This account becomes the instance's super admin.
                         </MudText>
 
-                        @if (Config.IsGoogle)
+                        @if (Config.UsesSessionSignIn)
                         {
                             @* No redirect, so the wizard keeps its place. *@
                             <GoogleSignInButton OnSignedIn="@OnGoogleSignedInAsync" />

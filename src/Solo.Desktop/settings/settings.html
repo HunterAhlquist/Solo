@@ -435,8 +435,7 @@
       if (instance.origin) {
         const details = document.createElement('details');
         details.append(element('summary', 'Details'), element('small', 'Local origin'),
-          element('code', instance.origin), element('small', 'OIDC redirect URI'),
-          element('code', `${instance.origin}/authentication/login-callback`));
+          element('code', instance.origin));
         about.append(details);
       }
 

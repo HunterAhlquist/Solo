@@ -160,5 +160,41 @@ public class AppConfigProviderTests
         Assert.False(config.ProviderConfigured);
         Assert.False(config.IsGoogle);
         Assert.False(config.UsesOidcRedirect);
+        Assert.False(config.UsesSessionSignIn);
+    }
+
+    // An app hosting the page signs in on the instance's /desktop-auth page
+    // and gets a Solo session, whatever the provider: its web view can't run
+    // a provider's pages, and the desktop shell's CSP allows only Google.
+    [Theory]
+    [InlineData("google")]
+    [InlineData("microsoft")]
+    [InlineData("generic")]
+    public void In_an_app_every_provider_signs_in_through_a_session(string provider)
+    {
+        var config = new AppConfig { Auth = For(provider).Auth, InApp = true };
+
+        Assert.True(config.UsesSessionSignIn);
+        Assert.False(config.UsesOidcRedirect);
+    }
+
+    [Theory]
+    [InlineData("microsoft")]
+    [InlineData("generic")]
+    public void On_the_web_other_providers_keep_code_plus_PKCE(string provider)
+    {
+        var config = For(provider);
+
+        Assert.False(config.UsesSessionSignIn);
+        Assert.True(config.UsesOidcRedirect);
+    }
+
+    [Fact]
+    public void An_unconfigured_instance_in_an_app_still_uses_neither_flow()
+    {
+        var config = new AppConfig { Auth = For("microsoft", authority: "", clientId: "").Auth, InApp = true };
+
+        Assert.False(config.UsesSessionSignIn);
+        Assert.False(config.UsesOidcRedirect);
     }
 }

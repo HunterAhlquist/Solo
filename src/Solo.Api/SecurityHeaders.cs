@@ -25,20 +25,22 @@ public static class SecurityHeaders
     /// credential and display an object URL; only script already running on
     /// the page can mint that URL.</para>
     ///
-    /// <para><c>connect-src</c> is <c>'self'</c> only. The SignalR hub's
-    /// WebSocket is same-origin, and CSP Level 3 resolves that through
-    /// <c>'self'</c> — it matches the ws/wss form of the page's own origin.
-    /// Bare <c>ws:</c>/<c>wss:</c> scheme sources are deliberately avoided:
-    /// they permit a socket to <em>any</em> host, which would hand a script
-    /// that slipped past the other controls a ready exfiltration channel.</para>
+    /// <para><c>connect-src</c> is <c>'self'</c> and Google, plus the
+    /// instance's own identity provider when that isn't Google (see
+    /// <see cref="ProviderOrigin"/>). The SignalR hub's WebSocket is
+    /// same-origin, and CSP Level 3 resolves that through <c>'self'</c> — it
+    /// matches the ws/wss form of the page's own origin. Bare
+    /// <c>ws:</c>/<c>wss:</c> scheme sources are deliberately avoided: they
+    /// permit a socket to <em>any</em> host, which would hand a script that
+    /// slipped past the other controls a ready exfiltration channel.</para>
     /// </summary>
-    private const string ContentSecurityPolicy =
+    private static string ContentSecurityPolicy(string? providerOrigin) =>
         "default-src 'self'; " +
         "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com; " +
         "style-src 'self' 'unsafe-inline' https://accounts.google.com; " +
         "img-src 'self' data: https: blob:; " +
         "font-src 'self' data:; " +
-        "connect-src 'self' https://accounts.google.com; " +
+        $"connect-src 'self' https://accounts.google.com{(providerOrigin is null ? "" : " " + providerOrigin)}; " +
         "frame-src https://accounts.google.com; " +
         "worker-src 'self' blob:; " +
         // Nothing here is meant to be framed, submit off-site, or rebase its
@@ -62,10 +64,46 @@ public static class SecurityHeaders
     /// </summary>
     public const string IsolationPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
-    public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app) =>
-        app.Use((context, next) =>
+    /// <summary>
+    /// The origin a code + PKCE sign-in calls from the browser: the provider's
+    /// discovery document and token endpoint, fetched by the web client's OIDC
+    /// library and by the apps' <c>/desktop-auth</c> page. Without it in
+    /// <c>connect-src</c> the first of those fetches is blocked, and every
+    /// Microsoft or generic sign-in ends in a network error.
+    /// </summary>
+    /// <remarks>
+    /// Null for Google, whose sign-in never calls a token endpoint, and for
+    /// anything that isn't a plain https origin: the value goes into a header,
+    /// so it is rebuilt from a parsed URI rather than passed through. Plain
+    /// http is allowed for a loopback host only, for a provider run locally.
+    /// A provider whose token endpoint sits on another origin than its issuer
+    /// isn't covered; none of the documented ones does that.
+    /// </remarks>
+    public static string? ProviderOrigin(string? provider, string? authority)
+    {
+        if (string.Equals(provider, "google", StringComparison.OrdinalIgnoreCase) ||
+            !Uri.TryCreate(authority, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("https" or "http") ||
+            (uri.Scheme == "http" && !uri.IsLoopback) ||
+            uri.UserInfo.Length > 0)
         {
-            context.Response.OnStarting(static state =>
+            return null;
+        }
+
+        return uri.GetLeftPart(UriPartial.Authority);
+    }
+
+    /// <summary>The app's policy for an instance signing in with this provider.</summary>
+    public static string ContentSecurityPolicyFor(string? provider, string? authority) =>
+        ContentSecurityPolicy(ProviderOrigin(provider, authority));
+
+    public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app, IConfiguration config)
+    {
+        // Read once: the provider is fixed for the life of the process.
+        var policy = ContentSecurityPolicyFor(config["Auth:Provider"], config["Auth:Authority"]);
+        return app.Use((context, next) =>
+        {
+            context.Response.OnStarting(state =>
             {
                 var headers = ((HttpContext)state).Response.Headers;
 
@@ -73,7 +111,7 @@ public static class SecurityHeaders
                 // stricter policy (IsolationPolicy); don't overwrite it.
                 if (!headers.ContainsKey("Content-Security-Policy"))
                 {
-                    headers.ContentSecurityPolicy = ContentSecurityPolicy;
+                    headers.ContentSecurityPolicy = policy;
                 }
 
                 headers.XContentTypeOptions = "nosniff";
@@ -112,4 +150,5 @@ public static class SecurityHeaders
 
             return next();
         });
+    }
 }

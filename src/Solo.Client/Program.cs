@@ -45,13 +45,15 @@ builder.Services.AddSoloClient(instance, config);
 
 // ---------------------------------------------------------------------------
 // Authentication. Every path ends in the same place — an ID token on the wire —
-// but Google can't reach it the same way as everyone else.
+// but Google can't reach it the same way as everyone else, and an app hosting
+// the page signs in for it whatever the provider.
 // ---------------------------------------------------------------------------
-if (config.IsGoogle)
+if (config.UsesSessionSignIn)
 {
     // Google's "Web application" clients require a client_secret at the token
     // endpoint even with PKCE, and a browser cannot hold a secret. Google Identity
     // Services skips the token endpoint entirely and returns the ID token itself.
+    // In an app, the app's own sign-in (/desktop-auth) delivers a Solo session.
     builder.Services.AddAuthorizationCore();
     builder.Services.AddScoped<AuthenticationStateProvider, GoogleAuthenticationStateProvider>();
 }
@@ -132,13 +134,36 @@ static async Task<AppConfig> LoadConfigAsync(InstanceConnection instance,IJSRunt
         var themeTask = LoadThemeAsync(api);
 
         var auth = await authTask;
-        return new AppConfig { Auth = auth, Theme = await themeTask, SetupCompleted = auth.SetupCompleted };
+        return new AppConfig
+        {
+            Auth = auth,
+            Theme = await themeTask,
+            SetupCompleted = auth.SetupCompleted,
+            InApp = await IsInAppAsync(js),
+        };
     }
     catch (Exception e) when (e is HttpRequestException or TaskCanceledException or ApiException)
     {
         // The instance is unreachable or still starting. App.razor renders a
         // dead-end error screen rather than a half-configured router.
         return new AppConfig { LoadError = e.Message };
+    }
+}
+
+/// <summary>
+/// Whether a desktop or mobile app hosts this page. Its bridge object is
+/// defined before the page's scripts run (the shell's preload, the app's
+/// document-start script), so it is already there at boot.
+/// </summary>
+static async Task<bool> IsInAppAsync(IJSRuntime js)
+{
+    try
+    {
+        return await js.InvokeAsync<bool>("solo.desktop.available");
+    }
+    catch (JSException)
+    {
+        return false;
     }
 }
 
