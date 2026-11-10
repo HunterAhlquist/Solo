@@ -224,6 +224,41 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         Assert.False(adminHeard, "the assigner heard a notification meant for Bob");
     }
 
+    [SkippableFact]
+    public async Task MarkingRead_NudgesThePersonsOtherClients()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks", new { name = "Elsewhere" });
+        await AssignAsync(task.Id, _bobId);
+        var note = Assert.Single((await InboxAsync(_bob)).Items);
+
+        await using var otherDevice = Connect("bob", "bob@example.com", "Bob");
+        var heard = new System.Collections.Concurrent.ConcurrentQueue<TopicMessage>();
+        otherDevice.On<TopicMessage>(nameof(IBoardClient.TopicMessage), heard.Enqueue);
+        await otherDevice.StartAsync();
+        await otherDevice.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), BoardHubConstants.NotificationsTopic);
+
+        (await _bob.PostAsync($"/api/notifications/{note.Id}/read", null)).EnsureSuccessStatusCode();
+        await WaitUntilAsync(() => heard.Any(m => m.Data == note.Id.ToString()));
+
+        var second = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks", new { name = "Another" });
+        await AssignAsync(second.Id, _bobId);
+        heard.Clear();
+        (await _bob.PostAsync("/api/notifications/read", null)).EnsureSuccessStatusCode();
+        await WaitUntilAsync(() => heard.Any(m => m.Kind == "Read"));
+        Assert.Equal(0, (await InboxAsync(_bob)).UnreadCount);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "the other client heard nothing");
+            await Task.Delay(50);
+        }
+    }
+
     private HubConnection Connect(string sub, string email, string name) =>
         new HubConnectionBuilder()
             .WithUrl(new Uri(_factory.Server.BaseAddress, BoardHubConstants.Path), options =>
