@@ -27,6 +27,7 @@ with its version in parentheses).
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
 
 ### Desktop
+- The app no longer bundles a client: it proxies everything, the client included, to each instance, so it always runs the client its instance serves and an extension's pages always match their server. Each instance keeps its own local address, storage and session. When an instance can't be reached and the client's offline mode hasn't cached it, the window shows a "Can't reach the instance" page with Try again and Instances. Installers are smaller, and a client change no longer needs a desktop release.
 - Instances in the profile menu and on the sign-in page opens the Settings window, where the instances are listed.
 - With no instance yet, the app opens on an "Add your first instance" page, with a link to the guide for setting one up, and nothing else until one is connected. The iPad and iPhone app opens on the same setup.
 - Every instance signs in through its sign-in page in the browser or the macOS sign-in sheet, whatever its provider, so a Microsoft or generic instance signs in as a Google one does. Settings no longer lists a per-app OIDC redirect URI: the instance's `/desktop-auth` address replaces it, for the desktop and mobile apps alike.

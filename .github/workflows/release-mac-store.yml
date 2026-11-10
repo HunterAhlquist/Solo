@@ -56,8 +56,8 @@ jobs:
 
       # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
       # an extension zip, not the app. Otherwise build/testflight-gate.sh skips
-      # a tag that leaves the app as testers already have it: a server-only
-      # change, say. A client change does reach this app, which bundles it.
+      # a tag that leaves the app as testers already have it, such as a server
+      # or client change: the app proxies the client its instance serves.
       - name: Check what this run uploads
         id: gate
         working-directory: .
@@ -82,11 +82,6 @@ jobs:
           else
             bash build/testflight-gate.sh mac >> "$GITHUB_OUTPUT"
           fi
-
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        if: steps.gate.outputs.upload == 'true'
-        with:
-          dotnet-version: "10.0.x"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.gate.outputs.upload == 'true'
@@ -124,10 +119,6 @@ jobs:
         run: |
           npm run test:app-identity
           npm run test:updater
-
-      - name: Publish Blazor client into shell
-        if: steps.gate.outputs.upload == 'true'
-        run: npm run build:client
 
       - name: Build the macOS sign-in window
         if: steps.gate.outputs.upload == 'true'

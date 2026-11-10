@@ -82,14 +82,13 @@ A device that you sign out must sign in again. The list shows desktop apps only.
 
 ## Keep the app current
 
-The desktop app contains its own copy of the Solo client. That copy can be older than the instance.
+The desktop app runs the client that your instance serves. When the instance gets a new version, the app gets the new client too. Install a new desktop release for changes to the app itself.
 
-- An extension page can be missing in the desktop app while it shows in a browser. The extension needs a newer client. Install the newest desktop release.
-- If sign-in fails after an update of the instance, install the newest desktop release.
+Desktop releases before 1.21 contain their own copy of the client, which can be older than the instance. If an extension page is missing in such an app while it shows in a browser, install the newest desktop release.
 
 ## For administrators
 
-The app runs the client from a local address and sends API requests to your instance. Each instance in the app has its own local address. The first is `http://localhost:41321`, and the port number increases by one for each instance that a person adds. The **Settings** window shows the local address below each instance.
+The app loads your instance from a local address: every request, the client's files included, goes through that address to your instance. Each instance in the app has its own local address. The first is `http://localhost:41321`, and the port number increases by one for each instance that a person adds. The **Settings** window shows the local address below each instance.
 
 - **Google.** No change is necessary. Sign-in runs on the address of your instance, which the identity provider knows. By default, the sign-in page shows Google's button, and Google opens a second window. To go directly to Google's sign-in in one window, use redirect mode. See [Desktop sign-in with Google](../admin/configuration.md#desktop-sign-in-with-google).
 - **Other identity providers.** Add the local address with `/authentication/login-callback` as a redirect address for the OIDC client, for example `http://localhost:41321/authentication/login-callback`. The local address can be different on each computer, because it depends on the sequence in which the person added their instances.

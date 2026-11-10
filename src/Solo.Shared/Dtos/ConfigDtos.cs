@@ -60,11 +60,10 @@ public static class InstanceBranding
 /// What the instance is running, fetched anonymously at client bootstrap.
 /// </summary>
 /// <remarks>
-/// Exists for the extension compat check. The hosted web build ships client and
-/// server together so they can never disagree, but the Electron shell serves a
-/// client bundled with the app and proxies the API to whatever instance is
-/// configured — so the two halves version independently, and the client has to
-/// be able to tell. Also lets the shell warn that it is older than the instance.
+/// Exists for the extension compat check. The server ships client and server
+/// together, and the apps run the client the instance serves, but a client
+/// cached for offline use — or a desktop app from before 1.21, which bundled
+/// its own — can still be older than the server, and has to be able to tell.
 /// </remarks>
 /// <param name="ExtensionApiVersion">The extension contract the server implements.</param>
 /// <param name="ServerVersion">Informational build version of the running server.</param>
