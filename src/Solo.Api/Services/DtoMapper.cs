@@ -10,7 +10,8 @@ public static class DtoMapper
         new(n.Id, n.Kind, n.Title, n.Body, n.ProjectId, n.BoardId, n.TaskId, n.EpicId, n.CreatedAt, n.ReadAt);
 
     public static NotificationPreferencesDto ToDto(this NotificationPreferences p) =>
-        new(p.TimeZone, p.NotifyOnAssigned, p.NotifyOnDeadline, p.Version);
+        new(p.TimeZone, p.NotifyOnAssigned, p.NotifyOnDeadline, p.EmailOnAssigned, p.EmailOnDeadline,
+            p.DigestFrequency, p.DigestHour, p.DigestWeekday, p.Version);
 
     public static UserDto ToDto(this User u) =>
         new(u.Id, u.Email, u.DisplayName, u.AvatarUrl, u.IsSuperAdmin);

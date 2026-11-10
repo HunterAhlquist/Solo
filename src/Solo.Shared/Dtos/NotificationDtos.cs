@@ -24,12 +24,17 @@ public sealed record NotificationInboxDto(IReadOnlyList<NotificationDto> Items, 
 
 /// <summary>
 /// <paramref name="TimeZone"/> is an IANA id; null until a client reports one,
-/// and deadline reminders go by UTC meanwhile.
+/// and reminders and digests go by UTC meanwhile.
 /// </summary>
 public sealed record NotificationPreferencesDto(
     string? TimeZone,
     bool NotifyOnAssigned,
     bool NotifyOnDeadline,
+    bool EmailOnAssigned,
+    bool EmailOnDeadline,
+    DigestFrequency DigestFrequency,
+    int DigestHour,
+    DayOfWeek DigestWeekday,
     uint Version);
 
 public sealed class UpdateNotificationPreferencesRequest
@@ -40,6 +45,17 @@ public sealed class UpdateNotificationPreferencesRequest
     public bool NotifyOnAssigned { get; init; }
 
     public bool NotifyOnDeadline { get; init; }
+
+    public bool EmailOnAssigned { get; init; }
+
+    public bool EmailOnDeadline { get; init; }
+
+    public DigestFrequency DigestFrequency { get; init; }
+
+    [Range(0, 23)]
+    public int DigestHour { get; init; }
+
+    public DayOfWeek DigestWeekday { get; init; }
 
     public uint Version { get; init; }
 }

@@ -68,6 +68,17 @@ public sealed class AuditRetentionService(
                     logger.LogInformation(
                         "Removed {Count} notifications older than {Days} days.", staleNotifications, NotificationRetentionDays);
                 }
+
+                // Sent or abandoned email: kept as long as notifications, so the
+                // Email section can still show a failure from last month.
+                var staleEmail = await db.EmailMessages
+                    .Where(m => (m.SentAt != null || m.FailedAt != null) &&
+                                m.CreatedAt < DateTimeOffset.UtcNow.AddDays(-NotificationRetentionDays))
+                    .ExecuteDeleteAsync(stoppingToken);
+                if (staleEmail > 0)
+                {
+                    logger.LogInformation("Removed {Count} emails older than {Days} days.", staleEmail, NotificationRetentionDays);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

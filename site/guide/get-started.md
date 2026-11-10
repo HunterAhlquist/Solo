@@ -10,7 +10,7 @@ You need two things:
 - The address of a Solo instance.
 - An invitation to a project on that instance.
 
-A project owner invites you by email address. Solo does not send a message. The owner gives you the address of the instance.
+A project owner invites you by email address. If the instance sends email, you get an email with a link to the instance. If not, the owner gives you the address.
 
 Solo has no sign-up page. If nobody invited your email address, the instance refuses your sign-in.
 

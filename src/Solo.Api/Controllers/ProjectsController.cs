@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
+using Solo.Api.Email;
 using Solo.Api.Realtime;
 using Solo.Api.Services;
 using Solo.Data;
@@ -18,7 +19,8 @@ namespace Solo.Api.Controllers;
 public sealed class ProjectsController(
     SoloDbContext db,
     CurrentUserAccessor currentUser,
-    IBoardNotifier notifier)
+    IBoardNotifier notifier,
+    EmailOutbox outbox)
     : ApiControllerBase
 {
     [HttpGet]
@@ -193,12 +195,62 @@ public sealed class ProjectsController(
             Role = request.Role,
         };
         db.ProjectMembers.Add(member);
+        // In the same save as the member, so an invite never exists without its email or the other way round.
+        var emailed = await QueueInviteAsync(projectId, email, ct);
         await db.SaveChangesAsync(ct);
+        if (emailed)
+        {
+            outbox.Wake();
+        }
 
         await notifier.ProjectEntityChanged(projectId, EntityTypes.Project, projectId,
             ChangeKind.Updated, "Members");
         member.User = knownUser;
         return CreatedAtAction(nameof(ListMembers), new { projectId }, member.ToDto());
+    }
+
+    /// <summary>Emails a pending invite again, for when the first one went astray.</summary>
+    [HttpPost("{projectId:guid}/members/{memberId:guid}/invite")]
+    [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
+    public async Task<IActionResult> ResendInvite(Guid projectId, Guid memberId, CancellationToken ct)
+    {
+        var member = await db.ProjectMembers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.ProjectId == projectId && m.Id == memberId, ct);
+        if (member is null)
+        {
+            return NotFound();
+        }
+
+        if (member.UserId is not null)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: "Already joined",
+                detail: "This person has already signed in, so there's no invite to send.");
+        }
+
+        if (!await QueueInviteAsync(projectId, member.Email, ct))
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: "Email is off",
+                detail: "Email isn't set up on this instance.");
+        }
+
+        await db.SaveChangesAsync(ct);
+        outbox.Wake();
+        return NoContent();
+    }
+
+    /// <summary>Adds the invite email to this save, or does nothing and says so when email is off.</summary>
+    private async Task<bool> QueueInviteAsync(Guid projectId, string email, CancellationToken ct)
+    {
+        if (await EmailOutbox.ReadySettingsAsync(db, ct) is not { } settings)
+        {
+            return false;
+        }
+
+        var project = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => p.Name).FirstAsync(ct);
+        var inviter = currentUser.User!.DisplayName ?? currentUser.User.Email;
+        EmailOutbox.Queue(db, email, EmailTemplates.Invite(
+            await EmailOutbox.InstanceNameAsync(db, ct), inviter, project, email, EmailOutbox.BaseAddress(settings)), "invite");
+        return true;
     }
 
     [HttpPut("{projectId:guid}/members/{memberId:guid}")]

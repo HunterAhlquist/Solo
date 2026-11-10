@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
+using Solo.Api.Email;
 using Solo.Data;
 using Solo.Data.Entities;
 using Solo.Extensibility;
@@ -34,6 +35,7 @@ public sealed class ConfigController(IConfiguration config, SoloDbContext db) : 
         {
             DisplayName = settings?.DisplayName,
             Tagline = settings?.Tagline,
+            EmailEnabled = await EmailOutbox.ReadySettingsAsync(db, ct) is not null,
         };
     }
 

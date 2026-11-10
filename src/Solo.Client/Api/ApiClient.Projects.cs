@@ -44,4 +44,7 @@ public sealed partial class ApiClient
 
     public Task RemoveMemberAsync(Guid projectId, Guid memberId, CancellationToken ct = default) =>
         SendAsync(HttpMethod.Delete, $"api/projects/{projectId}/members/{memberId}", null, ct);
+
+    public Task ResendInviteAsync(Guid projectId, Guid memberId, CancellationToken ct = default) =>
+        SendAsync(HttpMethod.Post, $"api/projects/{projectId}/members/{memberId}/invite", null, ct);
 }

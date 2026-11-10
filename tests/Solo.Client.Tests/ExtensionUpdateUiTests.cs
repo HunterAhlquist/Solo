@@ -21,7 +21,8 @@ public class ExtensionUpdateUiTests : ComponentTestBase
 
     private IRenderedComponent<InstanceSettings> Render(object? updates, params ExtensionRegistrationDto[] installed)
     {
-        _http.RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
+        _http.RouteJson("api/settings/email", new EmailSettingsDto(false, null, null, null, null, 587, Solo.Shared.SmtpSecurity.StartTls, null, false, false, [], 0))
+            .RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
             .RouteJson("api/themes", new ThemeScanResultDto([], []))
             .RouteJson("api/extensions/admin",
                 new ExtensionAdminDto(installed.Length > 0 ? [.. installed] : [Registration()], []))

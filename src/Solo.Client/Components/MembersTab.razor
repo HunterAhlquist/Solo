@@ -3,6 +3,7 @@
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 @inject SaveGuard Guard
+@inject AppConfig Config
 
 @if (_members is null)
 {
@@ -85,7 +86,14 @@ else
                                ValueChanged="@(owner => SetRoleAsync(member, member.Role, owner))" />
                 </MudTooltip>
             </MudTd>
-            <MudTd Style="text-align:right">
+            <MudTd Style="text-align:right; white-space:nowrap">
+                @if (IsOwner && member.IsPending && Config.Auth?.EmailEnabled == true)
+                {
+                    <MudTooltip Text="Resend invite">
+                        <MudIconButton Icon="@Icons.Material.Outlined.ForwardToInbox" Size="Size.Small"
+                                       OnClick="@(() => ResendAsync(member))" aria-label="Resend invite" />
+                    </MudTooltip>
+                }
                 @if (IsOwner)
                 {
                     <MudTooltip Text="A project must keep at least one owner." Disabled="@(!IsLastOwner(member))">
@@ -159,6 +167,9 @@ else
                 new InviteMemberRequest { Email = _inviteEmail.Trim(), Role = _inviteRole }));
             if (invited is not null)
             {
+                Snackbar.Add(Config.Auth?.EmailEnabled == true
+                    ? $"Invite sent to {invited.Email}."
+                    : $"Invite saved. Email is off on this instance, so let {invited.Email} know yourself.", Severity.Success);
                 _inviteEmail = string.Empty;
                 await LoadAsync();
                 await OnMembersChanged.InvokeAsync();
@@ -167,6 +178,14 @@ else
         finally
         {
             _busy = false;
+        }
+    }
+
+    private async Task ResendAsync(ProjectMemberDto member)
+    {
+        if (await Guard.RunAsync(() => Api.ResendInviteAsync(ProjectId, member.Id)))
+        {
+            Snackbar.Add($"Invite sent to {member.Email}.", Severity.Success);
         }
     }
 

@@ -1,0 +1,229 @@
+@*
+    The instance's outgoing mail. Saved by its button, like the branding: a
+    half-typed server name shouldn't start sending anything.
+*@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject AppConfig Config
+
+<MudPaper Elevation="1" Class="pa-4 mb-4">
+    <MudText Typo="Typo.h4" Class="mb-1">Email</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Project invites, and each person's digest of their notifications. Nothing is sent until email is switched on here.
+    </MudText>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_error</MudAlert>
+    }
+
+    @if (_saved is null)
+    {
+        @if (_error is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+    }
+    else
+    {
+
+        <MudSwitch T="bool" @bind-Value="_form.Enabled" Color="Color.Primary" Label="Send email" Class="mb-2" />
+
+        <MudTextField T="string" @bind-Value="_form.PublicAddress" Label="Public address" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" Immediate="true" MaxLength="@EmailLimits.PublicAddressLength"
+                      Placeholder="https://solo.example.com" Class="mb-3"
+                      HelperText="The address people use to reach this instance. Links in emails point here." />
+        <div class="d-flex flex-wrap" style="gap:.75rem">
+            <MudTextField T="string" @bind-Value="_form.FromName" Label="Sender name" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="true" MaxLength="@EmailLimits.NameLength"
+                          Placeholder="@Config.SiteName" Class="email-settings__field" />
+            <MudTextField T="string" @bind-Value="_form.FromAddress" Label="Sender address" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="true" MaxLength="@EmailLimits.AddressLength"
+                          Placeholder="solo@example.com" Class="email-settings__field" />
+        </div>
+        <div class="d-flex flex-wrap mt-3" style="gap:.75rem">
+            <MudTextField T="string" @bind-Value="_form.SmtpHost" Label="SMTP server" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="true" MaxLength="@EmailLimits.HostLength"
+                          Placeholder="smtp.example.com" Class="email-settings__field" />
+            <MudNumericField T="int" @bind-Value="_form.SmtpPort" Label="Port" Variant="Variant.Outlined"
+                             Margin="Margin.Dense" Min="1" Max="65535" Immediate="true" Class="email-settings__port" />
+            <MudSelect T="SmtpSecurity" Value="_form.Security" ValueChanged="@OnSecurityChanged" Label="Security"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Class="email-settings__security">
+                <MudSelectItem T="SmtpSecurity" Value="SmtpSecurity.StartTls">STARTTLS</MudSelectItem>
+                <MudSelectItem T="SmtpSecurity" Value="SmtpSecurity.SslOnConnect">SSL/TLS</MudSelectItem>
+                <MudSelectItem T="SmtpSecurity" Value="SmtpSecurity.None">None</MudSelectItem>
+            </MudSelect>
+        </div>
+        <div class="d-flex flex-wrap mt-3" style="gap:.75rem">
+            <MudTextField T="string" @bind-Value="_form.Username" Label="Username" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="true" MaxLength="@EmailLimits.NameLength"
+                          Class="email-settings__field" />
+            <MudTextField T="string" @bind-Value="_form.Password" Label="Password" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="true" InputType="InputType.Password"
+                          MaxLength="@EmailLimits.PasswordLength" Disabled="@_saved.PasswordFromEnvironment"
+                          Placeholder="@(_saved.HasPassword ? "Saved" : null)" Class="email-settings__field"
+                          HelperText="@(_saved.PasswordFromEnvironment ? "Set by the server's environment." : null)" />
+        </div>
+
+        <div class="d-flex justify-end flex-wrap mt-4" style="gap:.5rem">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@_busy" OnClick="@SendTestAsync">
+                Send test email
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!Changed || _busy)" OnClick="@SaveAsync">
+                Save changes
+            </MudButton>
+        </div>
+
+        @if (_saved.RecentFailures.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-5 mb-1">Couldn't send</MudText>
+            @foreach (var failure in _saved.RecentFailures)
+            {
+                <div class="mb-2">
+                    <MudText Typo="Typo.body2">@failure.Subject · @failure.To</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @failure.FailedAt.ToLocalTime().ToString("MMM d, HH:mm") · @failure.Error
+                    </MudText>
+                </div>
+            }
+        }
+    }
+</MudPaper>
+
+@code {
+    private EmailSettingsDto? _saved;
+    private Form _form = new();
+    private string? _error;
+    private bool _busy;
+
+    private sealed record Form
+    {
+        public bool Enabled { get; set; }
+        public string? PublicAddress { get; set; }
+        public string? FromName { get; set; }
+        public string? FromAddress { get; set; }
+        public string? SmtpHost { get; set; }
+        public int SmtpPort { get; set; } = 587;
+        public SmtpSecurity Security { get; set; }
+        public string? Username { get; set; }
+        public string? Password { get; set; }
+    }
+
+    private bool Changed => _saved is not null && _form != FormFor(_saved);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Load(await Api.GetEmailSettingsAsync());
+        }
+        catch (Exception e) when (e is HttpRequestException or ApiException)
+        {
+            _saved = null;
+            _error = "Couldn't load the email settings.";
+        }
+
+        // A browser's address is the public one far more often than not, but the
+        // desktop app reaches the server through a local proxy, so that one isn't.
+        if (_saved is { PublicAddress: null } && new Uri(Navigation.BaseUri) is { IsLoopback: false } here)
+        {
+            _form.PublicAddress = here.GetLeftPart(UriPartial.Authority);
+        }
+    }
+
+    private void Load(EmailSettingsDto settings)
+    {
+        _saved = settings;
+        _form = FormFor(settings);
+    }
+
+    private static Form FormFor(EmailSettingsDto s) => new()
+    {
+        Enabled = s.Enabled,
+        PublicAddress = s.PublicAddress,
+        FromName = s.FromName,
+        FromAddress = s.FromAddress,
+        SmtpHost = s.SmtpHost,
+        SmtpPort = s.SmtpPort,
+        Security = s.Security,
+        Username = s.Username,
+    };
+
+    /// <summary>Follows the usual port for the security picked, unless someone typed their own.</summary>
+    private void OnSecurityChanged(SmtpSecurity security)
+    {
+        _form.SmtpPort = (security, _form.SmtpPort) switch
+        {
+            (SmtpSecurity.SslOnConnect, 587 or 25) => 465,
+            (SmtpSecurity.StartTls, 465 or 25) => 587,
+            _ => _form.SmtpPort,
+        };
+        _form.Security = security;
+    }
+
+    private UpdateEmailSettingsRequest Request() => new()
+    {
+        Enabled = _form.Enabled,
+        PublicAddress = _form.PublicAddress,
+        FromName = _form.FromName,
+        FromAddress = _form.FromAddress,
+        SmtpHost = _form.SmtpHost,
+        SmtpPort = _form.SmtpPort,
+        Security = _form.Security,
+        Username = _form.Username,
+        // Null keeps the saved one; the field starts empty rather than showing it.
+        Password = string.IsNullOrEmpty(_form.Password) ? null : _form.Password,
+        Version = _saved?.Version ?? 0,
+    };
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            Load(await Api.UpdateEmailSettingsAsync(Request()));
+        }
+        catch (ApiConflictException)
+        {
+            _error = "Someone else changed these settings. They've been reloaded.";
+            Load(await Api.GetEmailSettingsAsync());
+        }
+        catch (ApiException e)
+        {
+            _error = e.Detail ?? "Couldn't save the email settings.";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Couldn't save the email settings.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SendTestAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Api.SendTestEmailAsync(Request());
+            Snackbar.Add($"Test email sent to {result.SentTo}.", Severity.Success);
+        }
+        catch (ApiException e)
+        {
+            _error = e.Title == "Couldn't send" ? $"Couldn't send: {e.Detail}" : e.Detail ?? "Couldn't send the test email.";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Couldn't send the test email.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

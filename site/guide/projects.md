@@ -55,7 +55,9 @@ Only an owner can invite a member.
 3. Select a **Role**: **Read only** or **Read/write**.
 4. Select **Invite**.
 
-The new member has a **Pending** chip until the first sign-in. Solo does not send an email. Give the person the address of the instance.
+The new member has a **Pending** chip until the first sign-in. If the instance sends email, Solo sends the person an invite with a link to the instance. If email is off, give the person the address of the instance yourself.
+
+To send the invite again, select the resend button in the row of a pending member.
 
 The email address must be the address of the account that the person signs in with. The first sign-in with that address activates the invitation.
 

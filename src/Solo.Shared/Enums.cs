@@ -50,3 +50,21 @@ public enum NotificationKind
     /// <summary>The second: the deadline is a week away or less.</summary>
     DueThisWeek = 2,
 }
+
+/// <summary>How often someone's email digest goes out (contract 1.16).</summary>
+public enum DigestFrequency
+{
+    Off = 0,
+    /// <summary>New notifications, batched at most every 15 minutes.</summary>
+    AsItHappens = 1,
+    Daily = 2,
+    Weekly = 3,
+}
+
+/// <summary>How the connection to the SMTP server is secured (contract 1.16).</summary>
+public enum SmtpSecurity
+{
+    StartTls = 0,
+    SslOnConnect = 1,
+    None = 2,
+}

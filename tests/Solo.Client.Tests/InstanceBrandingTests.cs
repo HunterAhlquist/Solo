@@ -95,6 +95,7 @@ public class InstanceBrandingTests : ComponentTestBase
     public void Branding_is_saved_by_its_button_and_not_by_leaving_a_field()
     {
         var http = new StubHttp()
+            .RouteJson("api/settings/email", new EmailSettingsDto(false, null, null, null, null, 587, Solo.Shared.SmtpSecurity.StartTls, null, false, false, [], 0))
             .RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1) { Tagline = "Old line." })
             .RouteJson("api/themes", new ThemeScanResultDto([], []))
             .RouteJson("api/extensions/admin", new ExtensionAdminDto([], []))
@@ -104,14 +105,15 @@ public class InstanceBrandingTests : ComponentTestBase
         Services.AddSingleton(new UserSession(api));
 
         var page = Render<InstanceSettings>();
-        page.WaitForAssertion(() => Assert.Equal(3, page.FindAll(".mud-input-control input").Count));
-        IElement Save() => page.FindAll("button").Single(b => b.TextContent.Contains("Save changes"));
+        IElement Branding() => page.FindAll(".mud-paper").First(p => p.TextContent.Contains("Branding"));
+        page.WaitForAssertion(() => Assert.Equal(2, Branding().QuerySelectorAll(".mud-input-control input").Length));
+        IElement Save() => Branding().QuerySelectorAll("button").Single(b => b.TextContent.Contains("Save changes"));
         Assert.True(Save().HasAttribute("disabled"));
 
-        var name = page.FindAll(".mud-input-control input")[0];
+        var name = Branding().QuerySelectorAll(".mud-input-control input")[0];
         name.Input("  Acme Games ");
         name.Blur();
-        page.FindAll(".mud-input-control input")[1].Input("");
+        Branding().QuerySelectorAll(".mud-input-control input")[1].Input("");
 
         Assert.DoesNotContain(http.Paths, path => path.StartsWith("PUT"));
         Assert.False(Save().HasAttribute("disabled"));
