@@ -94,29 +94,34 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     }
 
     /// For the app returning to the foreground: after a suspend(), a new
-    /// listener on the same port and upstream afresh. Not waited for — the
-    /// foreground transition mustn't block on it; the page's first retry may
-    /// beat it, and the next one finds it. iOS also posts the foreground
-    /// notification as the app launches, when the listener start() opened is
-    /// the one to keep: replacing it then raced the page's first load.
+    /// listener on the same port and upstream afresh, listening before this
+    /// returns — the page resumes right after, a tapped notification with it,
+    /// and its first requests mustn't find nothing there. iOS also posts the
+    /// foreground notification as the app launches, when the listener start()
+    /// opened is the one to keep: replacing it then raced the page's first load.
     func resume() {
-        queue.async { [self] in
-            guard !stopped else { return }
-            guard suspended else {
-                if listener?.state != .ready { try? listen(wait: false) }
-                return
-            }
+        var reopen = false
+        queue.sync {
+            guard !stopped, suspended else { return }
             suspended = false
             resetUpstream()
-            do { try listen(wait: false) } catch { NSLog("Solo: local proxy didn't restart: \(error)") }
+            reopen = true
         }
+        guard reopen else {
+            queue.async { [self] in
+                if !stopped, listener?.state != .ready { try? listen(wait: false) }
+            }
+            return
+        }
+        // A failure here is retried by the listener's own state handler.
+        do { try listen(wait: true) } catch { NSLog("Solo: local proxy didn't restart: \(error)") }
     }
 
     // MARK: Listening
 
     /// `wait` only from outside `queue`, where the state handler runs: start()
-    /// waits so the web view never loads before anything answers; a restart
-    /// from a failure, a network change or the foreground doesn't need to.
+    /// and resume() wait so the page never finds nothing answering; a restart
+    /// from a failure or a network change doesn't need to.
     private func listen(wait: Bool) throws {
         listener?.cancel()
         // Bound to 127.0.0.1 itself: requiredInterfaceType alone still binds

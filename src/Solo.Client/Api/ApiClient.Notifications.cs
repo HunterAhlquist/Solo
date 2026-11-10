@@ -13,6 +13,9 @@ public sealed partial class ApiClient
     public Task MarkAllNotificationsReadAsync(CancellationToken ct = default) =>
         SendAsync(HttpMethod.Post, "api/notifications/read", null, ct);
 
+    public Task<IReadOnlyList<UpcomingReminderDto>> GetUpcomingRemindersAsync(CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<UpcomingReminderDto>>("api/notifications/upcoming", ct);
+
     public Task<NotificationPreferencesDto> GetNotificationPreferencesAsync(CancellationToken ct = default) =>
         GetAsync<NotificationPreferencesDto>("api/notifications/preferences", ct);
 

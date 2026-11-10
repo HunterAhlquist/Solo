@@ -16,6 +16,7 @@ with its version in parentheses).
 ### Server
 - A bell in the app bar collects your notifications: when someone assigns you to a task or epic, and when a task of yours is due, two weeks before its deadline and again one week before, at 9:00 your time. Clicking one opens the task.
 - With Solo open, a new notification also shows as a notification from your browser or the desktop app once you allow it. Choose which events notify you under **Notifications** in the account menu.
+- The iPad and iPhone app shows notifications too. Allow them under **Notifications** in the account menu. Deadline reminders are scheduled on the device ahead of time, so they arrive at 9:00 your time even when the app is closed, and tapping one opens the task, switching to its instance if another is open. New assignments show while the app is open; with the app closed they reach you by the email digest. Nothing goes through a push service: the device schedules its own reminders from `api/notifications/upcoming`.
 - Email: a super admin sets up SMTP under **Email** in Admin settings, with a test email before saving. The password is encrypted at rest, or comes from `Email__Smtp__Password`. Email goes through a queue and is retried for about 2.5 hours before it shows as failed. Emails use the instance theme's colors and fonts, in light or dark to match the mail app.
 - Inviting someone to a project emails them a link to the instance, when email is on. Pending members get a resend button.
 - Each person gets an email digest: daily or weekly at the hour they pick, or as it happens, batched every 15 minutes. It lists overdue work, work due within 2 weeks with the earliest deadline first, and work recently assigned to them. Mail apps can unsubscribe in one click. People can now pick their time zone in **Notifications**.
@@ -46,6 +47,7 @@ with its version in parentheses).
 - Contract 1.16.0: the notification and email settings DTOs, `NotificationKind`, `DigestFrequency`, `SmtpSecurity`, `AuthConfigDto.EmailEnabled` and the core user topic `BoardHubConstants.NotificationsTopic`, used by core's own client and API.
 - Contract 1.17.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.
 - Contract 1.17.0: `extension.json` accepts `updateFeeds`, other release manifests (`id`, `label`, `url`) an administrator can switch the extension's updates to. `updates` stays the default and is what older hosts read.
+- Contract 1.17.0: `UpcomingReminderDto`, the deadline reminders still to come for the signed-in person (`GET api/notifications/upcoming`).
 
 ### Extensions
 

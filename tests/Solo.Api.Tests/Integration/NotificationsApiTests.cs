@@ -174,6 +174,58 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
     }
 
     [SkippableFact]
+    public async Task Upcoming_PlansTheRemindersStillToCome_AsTheSweepWillRaiseThem()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var preferences = await _bob.GetJson<NotificationPreferencesDto>("/api/notifications/preferences");
+        preferences = await _bob.PutJson<NotificationPreferencesDto>("/api/notifications/preferences", new
+        {
+            timeZone = "America/Los_Angeles", notifyOnAssigned = false, notifyOnDeadline = true, preferences.Version,
+        });
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).DateTime);
+
+        var far = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks", new { name = "Far", deadlineAt = today.AddDays(40) });
+        var near = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks", new { name = "Near", deadlineAt = today.AddDays(10) });
+        var done = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks", new { name = "Done", deadlineAt = today.AddDays(40) });
+        var theirs = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks", new { name = "Theirs", deadlineAt = today.AddDays(40) });
+        await AssignAsync(far.Id, _bobId);
+        await AssignAsync(near.Id, _bobId);
+        await AssignAsync(done.Id, _bobId);
+        await _admin.PutJson<TaskDto>($"/api/tasks/{done.Id}/status", new { status = "Finished" });
+
+        var upcoming = await _bob.GetJson<List<UpcomingReminderDto>>("/api/notifications/upcoming");
+        // Far gets both; Near's two-week reminder is already past (the sweep
+        // raises it now, worded "in 10 days"), so only its one-week one is ahead.
+        Assert.Equal(
+            [(near.Id, NotificationKind.DueThisWeek), (far.Id, NotificationKind.DueInTwoWeeks), (far.Id, NotificationKind.DueThisWeek)],
+            upcoming.Select(r => (r.TaskId, r.Kind)));
+        Assert.DoesNotContain(upcoming, r => r.TaskId == done.Id || r.TaskId == theirs.Id);
+
+        var twoWeeks = upcoming[1];
+        Assert.Equal($"DueInTwoWeeks:{far.Id}:{today.AddDays(40):yyyy-MM-dd}", twoWeeks.Key);
+        Assert.Equal("GAME-SP-1 Far is due in 2 weeks", twoWeeks.Title);
+        Assert.Equal("Game · Sprint", twoWeeks.Body);
+        var nineAm = today.AddDays(26).ToDateTime(new TimeOnly(DeadlineReminderService.ReminderHour, 0));
+        Assert.Equal(new DateTimeOffset(nineAm, zone.GetUtcOffset(nineAm)), twoWeeks.FireAt);
+        Assert.Equal("GAME-SP-1 Far is due in 1 week", upcoming[2].Title);
+
+        // Once the sweep has raised a reminder, it's no longer upcoming.
+        var sweeper = _factory.Services.GetRequiredService<DeadlineReminderService>();
+        await sweeper.SweepAsync(twoWeeks.FireAt.AddMinutes(1), default);
+        upcoming = await _bob.GetJson<List<UpcomingReminderDto>>("/api/notifications/upcoming");
+        Assert.DoesNotContain(upcoming, r => r.Key == twoWeeks.Key);
+        Assert.Contains(upcoming, r => r.Key == $"DueThisWeek:{far.Id}:{today.AddDays(40):yyyy-MM-dd}");
+
+        // Deadline notifications off: nothing to plan.
+        await _bob.PutJson<NotificationPreferencesDto>("/api/notifications/preferences", new
+        {
+            timeZone = "America/Los_Angeles", notifyOnAssigned = false, notifyOnDeadline = false, preferences.Version,
+        });
+        Assert.Empty(await _bob.GetJson<List<UpcomingReminderDto>>("/api/notifications/upcoming"));
+    }
+
+    [SkippableFact]
     public async Task LeavingTheProject_HidesItsNotifications()
     {
         postgres.SkipUnlessDockerAvailable();
