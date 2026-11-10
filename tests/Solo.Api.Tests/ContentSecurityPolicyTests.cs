@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Xunit;
 
 namespace Solo.Api.Tests;
@@ -59,12 +61,145 @@ public sealed class ContentSecurityPolicyTests
     [Fact]
     public void The_rest_of_the_policy_is_the_same_for_every_provider()
     {
-        static string WithoutConnect(string policy) =>
-            string.Join("; ", policy.Split("; ").Where(d => !d.StartsWith("connect-src ", StringComparison.Ordinal)));
+        static string WithoutProvider(string policy) =>
+            string.Join("; ", policy.Split("; ").Where(d =>
+                !d.StartsWith("connect-src ", StringComparison.Ordinal) &&
+                !d.StartsWith("frame-src ", StringComparison.Ordinal)));
 
         Assert.Equal(
-            WithoutConnect(SecurityHeaders.ContentSecurityPolicyFor("google", "https://accounts.google.com")),
-            WithoutConnect(SecurityHeaders.ContentSecurityPolicyFor("microsoft",
+            WithoutProvider(SecurityHeaders.ContentSecurityPolicyFor("google", "https://accounts.google.com")),
+            WithoutProvider(SecurityHeaders.ContentSecurityPolicyFor("microsoft",
                 "https://login.microsoftonline.com/tenant/v2.0")));
+    }
+
+    [Fact]
+    public void Google_frames_only_Google()
+    {
+        var policy = SecurityHeaders.ContentSecurityPolicyFor("google", "https://accounts.google.com");
+
+        Assert.Single(policy.Split("; "), d => d == "frame-src https://accounts.google.com");
+    }
+}
+
+/// <summary>
+/// The provider's endpoints come from its discovery document, because they
+/// needn't share the issuer's origin: Entra ID's userinfo endpoint is on
+/// graph.microsoft.com, and the web client's OIDC library calls it straight
+/// after the token exchange.
+/// </summary>
+public sealed class ContentSecurityPoliciesTests
+{
+    private const string Authority = "https://login.microsoftonline.com/0f1e2d3c-0000-0000-0000-000000000000/v2.0";
+
+    private static readonly OpenIdConnectConfiguration Entra = new()
+    {
+        AuthorizationEndpoint = "https://login.microsoftonline.com/0f1e2d3c-0000-0000-0000-000000000000/oauth2/v2.0/authorize",
+        TokenEndpoint = "https://login.microsoftonline.com/0f1e2d3c-0000-0000-0000-000000000000/oauth2/v2.0/token",
+        UserInfoEndpoint = "https://graph.microsoft.com/oidc/userinfo",
+        JwksUri = "https://login.microsoftonline.com/0f1e2d3c-0000-0000-0000-000000000000/discovery/v2.0/keys",
+    };
+
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = DateTimeOffset.Parse("2026-11-10T00:00:00Z");
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    private static string ConnectSrc(string policy) =>
+        Assert.Single(policy.Split("; "), d => d.StartsWith("connect-src ", StringComparison.Ordinal));
+
+    private static string FrameSrc(string policy) =>
+        Assert.Single(policy.Split("; "), d => d.StartsWith("frame-src ", StringComparison.Ordinal));
+
+    private static ContentSecurityPolicies For(
+        string provider, Func<CancellationToken, Task<OpenIdConnectConfiguration>>? discover, TimeProvider? time = null) =>
+        new(provider, Authority, discover, time ?? new Clock(), NullLogger<ContentSecurityPolicies>.Instance);
+
+    [Fact]
+    public async Task Entra_gets_its_userinfo_origin_as_well_as_its_own()
+    {
+        var policies = For("microsoft", _ => Task.FromResult(Entra));
+
+        var policy = await policies.GetAsync();
+        Assert.Equal(
+            "connect-src 'self' https://accounts.google.com https://login.microsoftonline.com https://graph.microsoft.com",
+            ConnectSrc(policy));
+        // Silent renewal frames the authorization endpoint; userinfo isn't framed.
+        Assert.Equal("frame-src https://accounts.google.com https://login.microsoftonline.com", FrameSrc(policy));
+    }
+
+    [Fact]
+    public async Task A_session_check_page_on_another_origin_may_be_framed()
+    {
+        var policies = For("generic", _ => Task.FromResult(new OpenIdConnectConfiguration
+        {
+            AuthorizationEndpoint = "https://login.microsoftonline.com/t/authorize",
+            CheckSessionIframe = "https://session.example.com/check",
+        }));
+
+        Assert.Equal("frame-src https://accounts.google.com https://login.microsoftonline.com https://session.example.com",
+            FrameSrc(await policies.GetAsync()));
+    }
+
+    [Fact]
+    public async Task Google_never_reads_a_discovery_document()
+    {
+        var policies = For("google", _ => throw new InvalidOperationException("must not be called"));
+
+        Assert.Equal("connect-src 'self' https://accounts.google.com", ConnectSrc(await policies.GetAsync()));
+    }
+
+    [Fact]
+    public async Task Endpoints_are_reduced_to_safe_origins()
+    {
+        var policies = For("generic", _ => Task.FromResult(new OpenIdConnectConfiguration
+        {
+            TokenEndpoint = "https://login.microsoftonline.com/t/token; script-src *",
+            UserInfoEndpoint = "http://userinfo.example.com/me",
+            JwksUri = "javascript:alert(1)",
+        }));
+
+        var policy = await policies.GetAsync();
+        Assert.Equal("connect-src 'self' https://accounts.google.com https://login.microsoftonline.com", ConnectSrc(policy));
+        Assert.DoesNotContain("script-src *", policy);
+    }
+
+    [Fact]
+    public async Task An_unreadable_document_serves_the_issuer_alone_and_is_retried_later()
+    {
+        var clock = new Clock();
+        var calls = 0;
+        var fail = true;
+        var policies = For("microsoft", _ =>
+        {
+            calls++;
+            return fail
+                ? Task.FromException<OpenIdConnectConfiguration>(new HttpRequestException("down"))
+                : Task.FromResult(Entra);
+        }, clock);
+
+        Assert.Equal("connect-src 'self' https://accounts.google.com https://login.microsoftonline.com",
+            ConnectSrc(await policies.GetAsync()));
+        Assert.Equal(1, calls);
+
+        // Not asked again on every response while it's down.
+        fail = false;
+        await policies.GetAsync();
+        Assert.Equal(1, calls);
+
+        clock.Now += ContentSecurityPolicies.RetryAfter;
+        await policies.GetAsync();
+        Assert.Equal(2, calls);
+        Assert.Contains("https://graph.microsoft.com", ConnectSrc(await policies.GetAsync()));
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task Without_a_bearer_scheme_the_policy_is_the_issuers()
+    {
+        var policies = For("generic", discover: null);
+
+        Assert.Equal("connect-src 'self' https://accounts.google.com https://login.microsoftonline.com",
+            ConnectSrc(await policies.GetAsync()));
     }
 }

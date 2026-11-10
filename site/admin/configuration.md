@@ -83,7 +83,7 @@ The desktop app and the iPad and iPhone app sign in to every instance on the pag
 
 If the redirect URI is not registered, the provider refuses the app sign-in. The web sign-in does not use this address.
 
-The provider must serve its discovery document and its token endpoint at the origin of `Auth__Authority`. Solo allows the browser to connect to that origin, and to no other origin of the provider.
+Solo reads the discovery document of the provider when it starts. It allows the browser to connect to the origin of `Auth__Authority` and to the origins of the token, userinfo and key endpoints in the document. It allows the browser to frame the origin of the authorization endpoint, for silent renewal of the sign-in. Solo allows no other origin of the provider. If Solo cannot read the document, it allows only the origin of `Auth__Authority` and tries again one minute later.
 
 ## Reverse proxy
 
