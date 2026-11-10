@@ -91,11 +91,24 @@ the port is what keeps them apart: the client stores its session in
 one instance is never sent to another. The port is saved with the instance
 because a different port is a different origin — the sign-in stored under the
 old one would be gone. Removing an instance clears what was stored under its
-origin, since the port is reused. It does not sign the session out on the
+origins, since its ports are reused. It does not sign the session out on the
 server; do that from the app first, or from *Signed-in devices* on the web.
 
-`settings.json` holds `instances` (`id`, `name`, `url`, `port`); `port` can be
-edited there while the app is closed, and `name` is only the last name the
+When another program holds an instance's port, the instance moves to another
+port of its own instead of failing to start (`main/ports.js`): one it already
+owns, or else the next one nobody owns, in the desktop's range of 100 ports
+from `41321` (the iPhone and iPad app uses `43321` up, since a simulator or the
+iPad app on a Mac shares this machine's loopback). It stays on that port from
+then on, because moving back when the old port came free would strand what was
+stored on the new one, and its first window explains why it opens signed out.
+What was stored under the old port, unsynced offline edits included, is kept
+there: setting `port` back to it reaches it again. No two instances ever own the
+same port; `scripts/check-instance-ports.mjs` checks these rules.
+
+`settings.json` holds `instances` (`id`, `name`, `url`, `port`, `ports`):
+`port` is the port the instance opens on and `ports` every port it owns.
+`port` can be edited there while the app is closed, to any of its `ports` or a
+port no other instance owns, and `name` is only the last name the
 instance gave. A file from before the
 shell knew more than one instance, with a lone `instanceUrl`, is read as that
 one instance on its old port, so it stays signed in.

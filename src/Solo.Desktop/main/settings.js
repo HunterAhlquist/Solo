@@ -11,7 +11,9 @@
 // persisted rather than picked at launch for the same reason — a different
 // port is a different origin, and the sign-in stored under the old one is
 // gone. It is also the redirect origin a non-Google OIDC provider requires to
-// be registered. `port` at the top level is where the numbering starts.
+// be registered. `port` at the top level is where the numbering starts. When
+// another program holds an instance's port, it moves to a fallback port of its
+// own and stays there (main/ports.js).
 const { app } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -64,17 +66,25 @@ function migrateSingleInstance(instanceUrl, port) {
 // The file is hand-editable, so entries are checked rather than trusted. A
 // second entry claiming an id or port already taken is dropped: two instances
 // on one port would share an origin, which is the one thing this file exists
-// to prevent.
+// to prevent. `port` is the port the instance opens on and `ports` every port
+// it owns (main/ports.js); a fallback port another entry already owns is
+// dropped from the later one's list rather than dropping the entry.
 function readInstances(entries) {
     const instances = [];
+    const owned = new Set();
     for (const entry of entries) {
         const url = normalizeInstanceUrl(entry?.url);
         if (!url || !validPort(entry.port) ||
             typeof entry.id !== 'string' || !entry.id ||
-            instances.some(i => i.id === entry.id || i.port === entry.port)) {
+            instances.some(i => i.id === entry.id) || owned.has(entry.port)) {
             continue;
         }
 
+        const ports = [...new Set([
+            ...(Array.isArray(entry.ports) ? entry.ports : []).filter(port => validPort(port) && !owned.has(port)),
+            entry.port,
+        ])];
+        ports.forEach(port => owned.add(port));
         instances.push({
             id: entry.id,
             // The name the instance last gave, kept so the menu is right
@@ -82,13 +92,17 @@ function readInstances(entries) {
             name: instanceName(url, entry.name),
             url,
             port: entry.port,
+            ports,
         });
     }
     return instances;
 }
 
 function createInstance(url, port, displayName) {
-    return { id: crypto.randomUUID(), name: instanceName(url, displayName), url, port };
+    return {
+        id: crypto.randomUUID(), name: instanceName(url, displayName), url, port,
+        ports: port ? [port] : [],
+    };
 }
 
 // What the instance is called in menus and window titles: the display name

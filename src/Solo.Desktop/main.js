@@ -14,6 +14,7 @@ configureAppIdentity(app, process.env);
 const settingsStore = require('./main/settings');
 const { connectionError } = require('./main/connection-error');
 const { createSoloServer } = require('./main/server');
+const ports = require('./main/ports');
 const { buildMenu } = require('./main/menu');
 const { attachContextMenu, popupClientMenu } = require('./main/context-menu');
 const { DesktopAuth } = require('./main/desktop-auth');
@@ -287,7 +288,9 @@ async function openInstanceWindow(instance) {
         focusWindow(existing);
         return existing;
     }
-    return createInstanceWindow(instance);
+    const win = createInstanceWindow(instance);
+    noticeMove(win, instance);
+    return win;
 }
 
 // Points an open window at a different instance. The window stays — size,
@@ -310,6 +313,7 @@ async function showInstanceInWindow(win, instance) {
     state.reconnectPending = false;
     win.loadURL(localUrl(instance));
     focusWindow(win);
+    noticeMove(win, instance);
     rememberLastInstance(instance);
     refreshInstanceViews();
 }
@@ -356,16 +360,44 @@ async function requestOpenInstance(id) {
 // Local servers
 // ---------------------------------------------------------------------------
 
+// Instances that opened on a different port this run than they last used,
+// so their next window load explains why they're signed out (noticeMove).
+const movedInstances = new Map();
+
 // Starts the instance's server if it isn't running, and says so when it can't.
+// When something else holds its port, it moves to another of its own rather
+// than stopping (main/ports.js).
 async function startServer(instance) {
+    if (servers.has(instance.id)) {
+        try {
+            await servers.get(instance.id).listening;
+            return true;
+        } catch {
+            // Forgotten already (ensureServer); start over below.
+        }
+    }
+    const previous = instance.port;
+    const owned = JSON.stringify(ports.ownedPorts(instance));
     try {
-        await ensureServer(instance);
+        const { port, moved } = await ports.openOnPort(instance, settings.instances, {
+            first: settings.port,
+            start: port => ensureServer(instance, port),
+            prepare: port => clearOrigin(localOriginFor(port), instance.name),
+        });
+        if (moved) {
+            movedInstances.set(instance.id, { from: previous, to: port });
+        }
+        // Written only when that changed, so a normal launch leaves the file
+        // as it is: the next launch has to open where this one did.
+        if (moved || JSON.stringify(instance.ports) !== owned) {
+            settingsStore.save(settings);
+        }
         return true;
     } catch (err) {
         dialog.showErrorBox(
             'Solo could not start its local server',
-            `Port ${instance.port} is unavailable (${err.message}).\n` +
-            `Change the port for ${instance.name} in settings.json and restart.`);
+            `There's no free local port for ${instance.name} (${err.message}).\n` +
+            'Quit whatever is using them, then open it again.');
         if (windows.size === 0 && !settingsWindow) {
             app.quit();
         }
@@ -373,13 +405,40 @@ async function startServer(instance) {
     }
 }
 
-function ensureServer(instance) {
+// Tells the person, once, why an instance that moved port opens signed out:
+// a new port is a new origin, with nothing stored under it yet.
+function noticeMove(win, instance) {
+    const move = movedInstances.get(instance.id);
+    if (!move || win.isDestroyed()) {
+        return;
+    }
+    movedInstances.delete(instance.id);
+    // Over the page, once it's there: a sheet on a window not yet shown is lost.
+    win.webContents.once('did-finish-load', () => {
+        if (!win.isDestroyed()) showMove(win, instance, move);
+    });
+}
+
+function showMove(win, instance, move) {
+    dialog.showMessageBox(win, {
+        type: 'info',
+        message: `${instance.name} moved to a new local address`,
+        detail:
+            `Another app is using port ${move.from}, so Solo opened ${instance.name} on port ${move.to}, ` +
+            'and you need to sign in again here.\n\n' +
+            `What it stored on this Mac under port ${move.from}, offline edits that hadn't synced among it, ` +
+            `is kept there. To get back to it, quit the app using port ${move.from}, set this instance's ` +
+            `"port" back to ${move.from} in settings.json, and restart Solo.`,
+    }).catch(() => {});
+}
+
+function ensureServer(instance, port = instance.port) {
     let entry = servers.get(instance.id);
     if (!entry) {
         const server = createSoloServer({ getTarget: () => instance.url });
         const listening = new Promise((resolve, reject) => {
             server.once('error', reject);
-            server.listen(instance.port, '127.0.0.1', () => {
+            server.listen(port, '127.0.0.1', () => {
                 server.removeListener('error', reject);
                 resolve();
             });
@@ -414,30 +473,21 @@ function stopServer(instance) {
 // instance's nor taken by something else on the machine, by starting its
 // server there — the only honest test of whether a port can be had.
 async function claimPort(instance) {
-    const taken = new Set(settings.instances.map(other => other.port));
-    for (let port = settings.port; port < Math.min(settings.port + 100, 65536); port++) {
-        if (taken.has(port)) {
-            continue;
-        }
-
-        instance.port = port;
-        try {
-            await ensureServer(instance);
-            return;
-        } catch (err) {
-            if (err.code !== 'EADDRINUSE') {
-                throw err;
-            }
-        }
-    }
-    throw new Error(`no free local port from ${settings.port} up`);
+    await ports.openOnPort(instance, settings.instances, {
+        first: settings.port,
+        start: port => ensureServer(instance, port),
+    });
 }
 
 function localOrigin(instance) {
+    return localOriginFor(instance.port);
+}
+
+function localOriginFor(port) {
     // localhost rather than 127.0.0.1, and one port per instance kept across
     // launches: each origin holds that instance's local storage, its session
     // among it. (Sign-in itself runs on the instance's own origin.)
-    return `http://localhost:${instance.port}`;
+    return `http://localhost:${port}`;
 }
 
 function localUrl(instance) {
@@ -449,11 +499,18 @@ function localUrl(instance) {
 // is first used: a port is reused once its instance is gone, and a session
 // left behind there would be sent, as a bearer token, to whichever server the
 // next instance on that port turned out to be.
+// Every port it owns: one it fell back to holds a session too.
 async function clearLocalStorage(instance) {
+    for (const port of ports.ownedPorts(instance)) {
+        await clearOrigin(localOriginFor(port), instance.name);
+    }
+}
+
+async function clearOrigin(origin, name) {
     try {
-        await session.defaultSession.clearStorageData({ origin: localOrigin(instance) });
+        await session.defaultSession.clearStorageData({ origin });
     } catch (err) {
-        console.warn(`Solo could not clear what was stored for ${instance.name}: ${err.message}`);
+        console.warn(`Solo could not clear what was stored for ${name}: ${err.message}`);
     }
 }
 
