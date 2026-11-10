@@ -31,8 +31,11 @@ client's own files included, to the instance, like the desktop app's
   `crypto.randomUUID()` and the rest.
 - **One port per instance**, from 41321 up (`InstancePorts`, saved in user
   defaults), so each instance keeps its own origin, and with it its storage
-  and session, across launches. A port that's taken moves the instance to the
-  next free one, which signs it out once.
+  and session, across launches. A port is never handed to a second instance,
+  which would open signed in as the first, with its offline edits. When
+  another app holds an instance's port, that launch uses a fallback port of
+  the instance's own (signed in separately), and the next launch tries the
+  main port again.
 - **Loopback only.** The listener binds to 127.0.0.1 and refuses any other
   peer, and a request whose `Host` isn't `localhost:<port>` or
   `127.0.0.1:<port>` gets a 403, the desktop app's DNS-rebinding guard.
