@@ -202,8 +202,8 @@ window.solo = {
         // Registers the .NET receiver the shell's delivery notifies.
         init: dotnetRef => { window.solo.desktop._dotnet = dotnetRef; },
 
-        // soloApp first: the login shim (dev-desktop.js) can leave a no-op
-        // soloDesktop behind on a device that used it.
+        // soloApp first: the verify skill's temporary login shim defines a
+        // no-op soloDesktop, and the iPad app must not hand sign-in to that.
         beginSignIn: () => (window.soloApp ?? window.soloDesktop).beginSignIn(),
 
         // The shell's own list of instances: the desktop app's settings window,
