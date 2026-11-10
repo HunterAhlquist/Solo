@@ -6,16 +6,20 @@ import Foundation
 /// handed to another one, or that one would open signed in as the first, with
 /// its offline data. Ports are handed out from 41321 up, like the desktop app's.
 ///
-/// Each instance has its main port, tried first on every launch, and the
-/// fallbacks it was given when another app held that port. A fallback stays
-/// the instance's, so whatever was left on its origin is there again whenever
-/// it's used.
+/// Each instance has its main port and the fallbacks it was given when another
+/// app held that port. A launch tries the port the instance last opened on
+/// first, so it moves only when that port is held: moving strands whatever
+/// is on the old origin (a session, edits still waiting to sync) until the
+/// instance opens there again, so it shouldn't happen just because the main
+/// port came free. A fallback stays the instance's, so what was left on its
+/// origin is there again whenever it's used.
 ///
 /// Foundation only, so `src/Solo.Mobile/scripts/check-instance-ports.sh` can
 /// compile and run it on the Mac.
 enum InstancePorts {
     private static let mainKey = "solo.instances.ports"
     private static let fallbackKey = "solo.instances.fallbackPorts"
+    private static let lastKey = "solo.instances.lastPorts"
     static let first: UInt16 = 41321
     /// New fallbacks one launch may add once every saved port has failed.
     /// Bounded, so a launch that can't listen at all doesn't burn through
@@ -23,16 +27,27 @@ enum InstancePorts {
     /// can't leave the instance with nowhere to go.
     static let newPortsPerLaunch = 5
 
-    /// The first result `start` gives on one of the instance's ports: every
-    /// saved port in order, main port first, then up to `newPortsPerLaunch`
-    /// new fallbacks, each saved before it's tried. Nil when none started.
+    /// The first result `start` gives on one of the instance's ports: the one
+    /// it last opened on, then every other saved port, main port first, then
+    /// up to `newPortsPerLaunch` new fallbacks, each saved before it's tried.
+    /// Nil when none started.
     static func start<T>(for instance: URL, defaults: UserDefaults = .standard,
                          _ start: (UInt16) throws -> T) -> T? {
-        for port in ports(for: instance, defaults: defaults) {
-            if let started = try? start(port) { return started }
+        let saved = ports(for: instance, defaults: defaults)
+        let last = (defaults.dictionary(forKey: lastKey) as? [String: Int])?[instance.absoluteString]
+            .map(UInt16.init).flatMap { saved.contains($0) ? $0 : nil }
+        let candidates = (last.map { [$0] } ?? []) + saved.filter { $0 != last }
+        func opened(_ port: UInt16) {
+            var lasts = (defaults.dictionary(forKey: lastKey) as? [String: Int]) ?? [:]
+            lasts[instance.absoluteString] = Int(port)
+            defaults.set(lasts, forKey: lastKey)
+        }
+        for port in candidates {
+            if let started = try? start(port) { opened(port); return started }
         }
         for _ in 0..<newPortsPerLaunch {
-            if let started = try? start(addFallback(for: instance, defaults: defaults)) { return started }
+            let port = addFallback(for: instance, defaults: defaults)
+            if let started = try? start(port) { opened(port); return started }
         }
         return nil
     }
