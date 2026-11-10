@@ -4,7 +4,10 @@ import Foundation
 /// origin, and the origin holds the instance's storage — its session, and any
 /// edits still waiting to sync. So a port, once handed to an instance, is never
 /// handed to another one, or that one would open signed in as the first, with
-/// its offline data. Ports are handed out from 41321 up, like the desktop app's.
+/// its offline data. Ports are handed out from 43321 up: not the desktop app's
+/// range (41321 up), because an iPhone or iPad app can run on a Mac too, and
+/// an iOS simulator shares the Mac's loopback, so the two would take each
+/// other's ports. Instances already saved keep theirs.
 ///
 /// Each instance has its main port and the fallbacks it was given when another
 /// app held that port. A launch tries the port the instance last opened on
@@ -20,7 +23,7 @@ enum InstancePorts {
     private static let mainKey = "solo.instances.ports"
     private static let fallbackKey = "solo.instances.fallbackPorts"
     private static let lastKey = "solo.instances.lastPorts"
-    static let first: UInt16 = 41321
+    static let first: UInt16 = 43321
     /// New fallbacks one launch may add once every saved port has failed.
     /// Bounded, so a launch that can't listen at all doesn't burn through
     /// ports; but always some, so the saved ones failing on every launch

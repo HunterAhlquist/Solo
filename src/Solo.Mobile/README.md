@@ -29,9 +29,11 @@ client's own files included, to the instance, like the desktop app's
   scripts; links to anywhere else open in Safari as before. `http://localhost`
   is also a secure context, so a plain-HTTP instance on the LAN gets
   `crypto.randomUUID()` and the rest.
-- **One port per instance**, from 41321 up (`InstancePorts`, saved in user
+- **One port per instance**, from 43321 up (`InstancePorts`, saved in user
   defaults), so each instance keeps its own origin, and with it its storage
-  and session, across launches. A port is never handed to a second instance,
+  and session, across launches. The range stays clear of the desktop app's
+  (41321 up): an iOS simulator, or the app running on a Mac, shares the Mac's
+  loopback. A port is never handed to a second instance,
   which would open signed in as the first, with its offline edits. When
   another app holds an instance's port, it moves to a fallback port of its own
   (signed in separately), and stays there until that port is held in turn:
