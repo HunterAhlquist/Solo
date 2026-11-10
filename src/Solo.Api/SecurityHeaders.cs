@@ -1,3 +1,5 @@
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+
 namespace Solo.Api;
 
 /// <summary>
@@ -27,21 +29,22 @@ public static class SecurityHeaders
     ///
     /// <para><c>connect-src</c> is <c>'self'</c> and Google, plus the
     /// instance's own identity provider when that isn't Google (see
-    /// <see cref="ProviderOrigin"/>). The SignalR hub's WebSocket is
+    /// <see cref="ProviderConnectSources"/>). The SignalR hub's WebSocket is
     /// same-origin, and CSP Level 3 resolves that through <c>'self'</c> — it
     /// matches the ws/wss form of the page's own origin. Bare
     /// <c>ws:</c>/<c>wss:</c> scheme sources are deliberately avoided: they
     /// permit a socket to <em>any</em> host, which would hand a script that
     /// slipped past the other controls a ready exfiltration channel.</para>
     /// </summary>
-    private static string ContentSecurityPolicy(string? providerOrigin) =>
+    private static string ContentSecurityPolicy(
+        IReadOnlyCollection<string> providerConnect, IReadOnlyCollection<string> providerFrames) =>
         "default-src 'self'; " +
         "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com; " +
         "style-src 'self' 'unsafe-inline' https://accounts.google.com; " +
         "img-src 'self' data: https: blob:; " +
         "font-src 'self' data:; " +
-        $"connect-src 'self' https://accounts.google.com{(providerOrigin is null ? "" : " " + providerOrigin)}; " +
-        "frame-src https://accounts.google.com; " +
+        $"connect-src 'self' https://accounts.google.com{string.Concat(providerConnect.Select(o => " " + o))}; " +
+        $"frame-src https://accounts.google.com{string.Concat(providerFrames.Select(o => " " + o))}; " +
         "worker-src 'self' blob:; " +
         // Nothing here is meant to be framed, submit off-site, or rebase its
         // relative URLs — an injected <base> would repoint every asset.
@@ -65,45 +68,80 @@ public static class SecurityHeaders
     public const string IsolationPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
     /// <summary>
-    /// The origin a code + PKCE sign-in calls from the browser: the provider's
-    /// discovery document and token endpoint, fetched by the web client's OIDC
-    /// library and by the apps' <c>/desktop-auth</c> page. Without it in
-    /// <c>connect-src</c> the first of those fetches is blocked, and every
-    /// Microsoft or generic sign-in ends in a network error.
+    /// The origins a code + PKCE sign-in calls from the browser, for a provider
+    /// other than Google: its discovery document (at the authority), and the
+    /// token, userinfo and key endpoints the document names. The web client's
+    /// OIDC library calls all of them, the apps' <c>/desktop-auth</c> page the
+    /// first two; without them in <c>connect-src</c> the sign-in ends in a
+    /// network error. They needn't share an origin — Entra ID's userinfo
+    /// endpoint is on graph.microsoft.com — so the endpoints come from the
+    /// document rather than from the authority.
     /// </summary>
     /// <remarks>
-    /// Null for Google, whose sign-in never calls a token endpoint, and for
-    /// anything that isn't a plain https origin: the value goes into a header,
-    /// so it is rebuilt from a parsed URI rather than passed through. Plain
-    /// http is allowed for a loopback host only, for a provider run locally.
-    /// A provider whose token endpoint sits on another origin than its issuer
-    /// isn't covered; none of the documented ones does that.
+    /// Empty for Google, whose sign-in never calls a token endpoint. Anything
+    /// that isn't a plain https origin is left out: these go into a header, so
+    /// each is rebuilt from a parsed URI rather than passed through. Plain http
+    /// is allowed for a loopback host only, for a provider run locally.
     /// </remarks>
-    public static string? ProviderOrigin(string? provider, string? authority)
+    public static IReadOnlyCollection<string> ProviderConnectSources(
+        string? provider, string? authority, OpenIdConnectConfiguration? metadata = null) =>
+        ProviderOrigins(provider, authority, metadata?.TokenEndpoint, metadata?.UserInfoEndpoint, metadata?.JwksUri);
+
+    /// <summary>
+    /// The origins the web client's OIDC library frames: the authorization
+    /// endpoint, which renews the sign-in silently in a hidden iframe before
+    /// the ID token runs out, and the provider's session-check page where it
+    /// has one. Without them renewal fails, and the person is sent back to
+    /// sign in about an hour after they did.
+    /// </summary>
+    public static IReadOnlyCollection<string> ProviderFrameSources(
+        string? provider, string? authority, OpenIdConnectConfiguration? metadata = null) =>
+        ProviderOrigins(provider, authority, metadata?.AuthorizationEndpoint, metadata?.CheckSessionIframe);
+
+    private static IReadOnlyCollection<string> ProviderOrigins(
+        string? provider, string? authority, params string?[] endpoints)
     {
         if (string.Equals(provider, "google", StringComparison.OrdinalIgnoreCase) ||
-            !Uri.TryCreate(authority, UriKind.Absolute, out var uri) ||
-            uri.Scheme is not ("https" or "http") ||
-            (uri.Scheme == "http" && !uri.IsLoopback) ||
-            uri.UserInfo.Length > 0)
+            SafeOrigin(authority) is not { } issuer)
         {
-            return null;
+            return [];
         }
 
-        return uri.GetLeftPart(UriPartial.Authority);
+        var origins = new List<string> { issuer };
+        foreach (var endpoint in endpoints)
+        {
+            if (SafeOrigin(endpoint) is { } origin && !origins.Contains(origin))
+            {
+                origins.Add(origin);
+            }
+        }
+        return origins;
     }
 
-    /// <summary>The app's policy for an instance signing in with this provider.</summary>
-    public static string ContentSecurityPolicyFor(string? provider, string? authority) =>
-        ContentSecurityPolicy(ProviderOrigin(provider, authority));
+    private static string? SafeOrigin(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        uri.Scheme is "https" or "http" &&
+        (uri.Scheme == "https" || uri.IsLoopback) &&
+        uri.UserInfo.Length == 0
+            ? uri.GetLeftPart(UriPartial.Authority)
+            : null;
 
-    public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app, IConfiguration config)
+    /// <summary>
+    /// The app's policy for an instance signing in with this provider, from
+    /// its discovery document where that has been read.
+    /// </summary>
+    public static string ContentSecurityPolicyFor(
+        string? provider, string? authority, OpenIdConnectConfiguration? metadata = null) =>
+        ContentSecurityPolicy(
+            ProviderConnectSources(provider, authority, metadata),
+            ProviderFrameSources(provider, authority, metadata));
+
+    public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app)
     {
-        // Read once: the provider is fixed for the life of the process.
-        var policy = ContentSecurityPolicyFor(config["Auth:Provider"], config["Auth:Authority"]);
+        var policies = app.ApplicationServices.GetRequiredService<ContentSecurityPolicies>();
         return app.Use((context, next) =>
         {
-            context.Response.OnStarting(state =>
+            context.Response.OnStarting(async state =>
             {
                 var headers = ((HttpContext)state).Response.Headers;
 
@@ -111,7 +149,7 @@ public static class SecurityHeaders
                 // stricter policy (IsolationPolicy); don't overwrite it.
                 if (!headers.ContainsKey("Content-Security-Policy"))
                 {
-                    headers.ContentSecurityPolicy = policy;
+                    headers.ContentSecurityPolicy = await policies.GetAsync();
                 }
 
                 headers.XContentTypeOptions = "nosniff";
@@ -145,7 +183,6 @@ public static class SecurityHeaders
                     "accelerometer=(), autoplay=(), camera=(), display-capture=(), " +
                     "encrypted-media=(), geolocation=(), gyroscope=(), magnetometer=(), " +
                     "microphone=(), midi=(), payment=(), usb=()";
-                return Task.CompletedTask;
             }, context);
 
             return next();
