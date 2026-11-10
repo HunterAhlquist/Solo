@@ -32,13 +32,18 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let queue = DispatchQueue(label: "solo.local-proxy")
     private var listener: NWListener?
     private var session: URLSession?
-    private var exchanges: [Int: Exchange] = [:]
+    /// Keyed by the task itself (which the exchange keeps alive), not its
+    /// taskIdentifier: identifiers are unique only within one URLSession, and
+    /// a reset replaces the session while the old one's cancellations are
+    /// still arriving.
+    private var exchanges: [ObjectIdentifier: Exchange] = [:]
     private var tunnels: [ObjectIdentifier: (NWConnection, NWConnection)] = [:]
     private let monitor = NWPathMonitor()
     private var lastPath: NWPath?
     private var stopped = false
 
     private struct Exchange {
+        let task: URLSessionTask
         let connection: NWConnection
         let method: String
         let navigation: Bool
@@ -242,7 +247,7 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         let navigation = method == "GET" &&
             (header("Sec-Fetch-Mode") == "navigate" || (header("Accept") ?? "").contains("text/html"))
         let task = upstream.dataTask(with: request)
-        exchanges[task.taskIdentifier] = Exchange(connection: connection, method: method, navigation: navigation)
+        exchanges[ObjectIdentifier(task)] = Exchange(task: task, connection: connection, method: method, navigation: navigation)
         task.resume()
     }
 
@@ -281,12 +286,12 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        guard let http = response as? HTTPURLResponse, var exchange = exchanges[dataTask.taskIdentifier] else {
+        guard let http = response as? HTTPURLResponse, var exchange = exchanges[ObjectIdentifier(dataTask)] else {
             return completionHandler(.cancel)
         }
         // HEAD, 1xx, 204 and 304 have no body, so no chunked framing either.
         exchange.bodyless = exchange.method == "HEAD" || http.statusCode < 200 || [204, 304].contains(http.statusCode)
-        exchanges[dataTask.taskIdentifier] = exchange
+        exchanges[ObjectIdentifier(dataTask)] = exchange
 
         var head = "HTTP/1.1 \(http.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: http.statusCode))\r\n"
         // URLSession has already decoded the body, so its length and encoding
@@ -306,7 +311,7 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        guard let exchange = exchanges[dataTask.taskIdentifier], !exchange.bodyless, !data.isEmpty else { return }
+        guard let exchange = exchanges[ObjectIdentifier(dataTask)], !exchange.bodyless, !data.isEmpty else { return }
         var chunk = Data(String(data.count, radix: 16).utf8) + Data("\r\n".utf8)
         chunk.append(data)
         chunk.append(Data("\r\n".utf8))
@@ -314,7 +319,7 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        guard let exchange = exchanges.removeValue(forKey: task.taskIdentifier) else { return }
+        guard let exchange = exchanges.removeValue(forKey: ObjectIdentifier(task)) else { return }
         let connection = exchange.connection
         if task.response == nil {
             // The instance never answered. A page load gets something to read;
@@ -330,7 +335,16 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             return
         }
         if exchange.bodyless {
+            // Its error, if any, is the cancel didReceive asked for.
             connection.send(content: nil, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
+            return
+        }
+        if error != nil {
+            // Cut off mid-body: drop the connection without the last chunk, so
+            // the page sees a failed load. Ending the chunked stream properly
+            // would pass the truncated body off as complete, and the client's
+            // service worker would cache it.
+            connection.forceCancel()
             return
         }
         connection.send(content: Data("0\r\n\r\n".utf8), completion: .contentProcessed { _ in connection.cancel() })
@@ -457,34 +471,55 @@ private extension String {
     }
 }
 
-/// One local port per instance, kept for good: the port is part of the page's
-/// origin, and the origin holds the instance's storage and session. Ports are
-/// handed out from 41321 up, like the desktop app's.
+/// Local ports per instance, kept for good: the port is part of the page's
+/// origin, and the origin holds the instance's storage — its session, and any
+/// edits still waiting to sync. So a port, once handed to an instance, is never
+/// handed to another one, or that one would open signed in as the first, with
+/// its offline data. Ports are handed out from 41321 up, like the desktop app's.
+///
+/// Each instance has its main port, tried first on every launch, and the
+/// fallbacks it was given when another app held that port. A fallback stays
+/// the instance's, so whatever was left on its origin is there again whenever
+/// it's used.
 enum InstancePorts {
-    private static let key = "solo.instances.ports"
+    private static let mainKey = "solo.instances.ports"
+    private static let fallbackKey = "solo.instances.fallbackPorts"
     static let first: UInt16 = 41321
 
-    static func port(for instance: URL) -> UInt16 {
-        var ports = (UserDefaults.standard.dictionary(forKey: key) as? [String: Int]) ?? [:]
-        if let port = ports[instance.absoluteString] { return UInt16(port) }
-        var port = Int(first)
-        let taken = Set(ports.values)
-        while taken.contains(port) { port += 1 }
-        ports[instance.absoluteString] = port
-        UserDefaults.standard.set(ports, forKey: key)
+    /// The ports to try for an instance, main port first. Assigns the main
+    /// port the first time an instance is seen.
+    static func ports(for instance: URL) -> [UInt16] {
+        var main = mainPorts
+        let id = instance.absoluteString
+        if main[id] == nil {
+            main[id] = nextFree()
+            UserDefaults.standard.set(main, forKey: mainKey)
+        }
+        return ([main[id]!] + (fallbackPorts[id] ?? [])).map { UInt16($0) }
+    }
+
+    /// A new port of the instance's own, for when none of its ports can be had.
+    static func addFallback(for instance: URL) -> UInt16 {
+        var fallbacks = fallbackPorts
+        let port = nextFree()
+        fallbacks[instance.absoluteString, default: []].append(port)
+        UserDefaults.standard.set(fallbacks, forKey: fallbackKey)
         return UInt16(port)
     }
 
-    /// When the port can't be had (another app is listening on it), the
-    /// instance moves to the next free one, at the cost of signing in again.
-    static func reassign(_ instance: URL) -> UInt16 {
-        var ports = (UserDefaults.standard.dictionary(forKey: key) as? [String: Int]) ?? [:]
-        let current = ports[instance.absoluteString] ?? Int(first)
-        let taken = Set(ports.values)
-        var port = current + 1
+    private static var mainPorts: [String: Int] {
+        (UserDefaults.standard.dictionary(forKey: mainKey) as? [String: Int]) ?? [:]
+    }
+
+    private static var fallbackPorts: [String: [Int]] {
+        (UserDefaults.standard.dictionary(forKey: fallbackKey) as? [String: [Int]]) ?? [:]
+    }
+
+    /// The lowest port no instance has ever been given.
+    private static func nextFree() -> Int {
+        let taken = Set(mainPorts.values).union(fallbackPorts.values.joined())
+        var port = Int(first)
         while taken.contains(port) { port += 1 }
-        ports[instance.absoluteString] = port
-        UserDefaults.standard.set(ports, forKey: key)
-        return UInt16(port)
+        return port
     }
 }
