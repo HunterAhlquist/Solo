@@ -17,14 +17,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <Version>1.10.3</Version>
+    <Version>1.10.4</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Pinned and kept private for the reasons in Solo.Mcp.csproj. The host's
          copy reaches Solo.Roadmap.Tests through Solo.Api; Solo.Roadmap.Data.Tests,
          which has no host, references the package itself. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.16.0" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.17.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

@@ -136,7 +136,7 @@ first-party extension therefore costs no extra request.
 
 A package can also list `updateFeeds` — a beta channel, say — and Admin
 settings then shows an **Updates from** picker beside it: Default, plus one
-entry per feed. Added in contract 1.16.0; an older host ignores the field and
+entry per feed. Added in contract 1.17.0; an older host ignores the field and
 keeps reading `updates`.
 
 - **Default** is everything above: Solo's manifest for a package it describes,

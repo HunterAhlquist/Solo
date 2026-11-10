@@ -95,7 +95,7 @@ window.dispatchEvent(new CustomEvent('solo:device-action', { detail: { id: 'acti
 
 The client's `solo.deviceActions` hands it to `ISoloDeviceActions`, where a
 page or an extension has registered for `DeviceActions.StylusToolSwap`
-(contract 1.16). Design Docs' sketch uses it to swap to the eraser and back.
+(contract 1.17). Design Docs' sketch uses it to swap to the eraser and back.
 
 The direction is deliberate. Native code only pushes a generic action name into
 the page; nothing in the page, and nothing in an extension, can call native
