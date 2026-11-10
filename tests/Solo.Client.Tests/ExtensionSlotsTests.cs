@@ -245,6 +245,11 @@ public class ExtensionSlotsTests : ComponentTestBase
         Services.AddSingleton<SessionExpiry>();
         Services.AddScoped<GoogleIdentityService>();
         Services.AddScoped<TaskDrawerService>();
+        Services.AddScoped<ISoloTaskDrawer>(sp => sp.GetRequiredService<TaskDrawerService>());
+        Services.AddScoped<LiveTopics>();
+        Services.AddScoped<ISoloLiveTopics>(sp => sp.GetRequiredService<LiveTopics>());
+        Services.AddSingleton(TimeProvider.System);
+        Services.AddScoped<NotificationStore>();
         _http.RouteJson("/api/projects", Array.Empty<ProjectSummaryDto>());
 
         var layout = Render<MainLayout>();

@@ -1,0 +1,72 @@
+@implements IDisposable
+@inject NotificationStore Store
+
+@*
+    The inbox in the app bar. The badge counts every unread entry; the menu
+    lists the newest. Opening an entry marks it read.
+*@
+@* The tooltip would sit on top of the open list, so it steps aside while the menu is open. *@
+<MudTooltip Text="Notifications" Disabled="@_open">
+    <MudBadge Content="@BadgeText" Visible="@(Unread > 0)" Color="Color.Error" Overlap="true" Bordered="true">
+        <MudMenu Icon="@(Unread > 0 ? Icons.Material.Filled.Notifications : Icons.Material.Outlined.Notifications)"
+                 Color="Color.Inherit" AriaLabel="Notifications" OpenChanged="@(open => _open = open)"
+                 AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                 ListClass="notification-list" PopoverClass="notification-popover">
+            @if (Store.Inbox is not { Items.Count: > 0 } inbox)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="px-4 py-3">You're all caught up.</MudText>
+            }
+            else
+            {
+                @if (inbox.UnreadCount > 0)
+                {
+                    <MudMenuItem Icon="@Icons.Material.Filled.DoneAll" OnClick="@Store.MarkAllReadAsync">Mark all as read</MudMenuItem>
+                    <MudDivider />
+                }
+                @foreach (var item in inbox.Items)
+                {
+                    <MudMenuItem @key="item.Id" OnClick="@(() => Store.OpenAsync(item))"
+                                 Class="@(item.ReadAt is null ? "notification-item notification-item--unread" : "notification-item")">
+                        <div class="notification-item__title">@item.Title</div>
+                        @if (item.Body is not null)
+                        {
+                            <div class="notification-item__body">@item.Body</div>
+                        }
+                        <div class="notification-item__when">@Ago(item.CreatedAt)</div>
+                    </MudMenuItem>
+                }
+            }
+        </MudMenu>
+    </MudBadge>
+</MudTooltip>
+
+@code {
+    private bool _open;
+
+    private int Unread => Store.Inbox?.UnreadCount ?? 0;
+
+    private string BadgeText => Unread > 99 ? "99+" : Unread.ToString();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.Changed += OnChanged;
+        await Store.LoadAsync();
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private static string Ago(DateTimeOffset when)
+    {
+        var elapsed = DateTimeOffset.UtcNow - when;
+        return elapsed switch
+        {
+            { TotalMinutes: < 1 } => "just now",
+            { TotalHours: < 1 } => $"{(int)elapsed.TotalMinutes} min ago",
+            { TotalDays: < 1 } => $"{(int)elapsed.TotalHours} h ago",
+            { TotalDays: < 2 } => "yesterday",
+            _ => when.ToLocalTime().ToString("MMM d"),
+        };
+    }
+
+    public void Dispose() => Store.Changed -= OnChanged;
+}

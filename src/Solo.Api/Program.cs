@@ -195,6 +195,9 @@ builder.Services.AddScoped<IBoardNotifier, BoardNotifier>();
 builder.Services.AddScoped<Solo.Extensibility.ISoloLiveUpdates, LiveUpdates>();
 builder.Services.AddScoped<IExtensionFieldNotifier, ExtensionFieldNotifier>();
 builder.Services.AddHostedService<AuditRetentionService>();
+builder.Services.AddSingleton<NotificationService>();
+builder.Services.AddSingleton<DeadlineReminderService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DeadlineReminderService>());
 builder.Services.AddHealthChecks().AddDbContextCheck<SoloDbContext>();
 
 // ---------------------------------------------------------------------------

@@ -40,3 +40,13 @@ public enum ChangeKind
     Updated = 1,
     Deleted = 2,
 }
+
+/// <summary>What raised a notification (contract 1.16).</summary>
+public enum NotificationKind
+{
+    Assigned = 0,
+    /// <summary>The first reminder: the deadline is two weeks away, or less when the task got it late.</summary>
+    DueInTwoWeeks = 1,
+    /// <summary>The second: the deadline is a week away or less.</summary>
+    DueThisWeek = 2,
+}

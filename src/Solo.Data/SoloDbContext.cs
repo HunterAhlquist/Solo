@@ -23,6 +23,8 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
     public DbSet<AuthSession> AuthSessions => Set<AuthSession>();
     public DbSet<ExtensionRegistration> ExtensionRegistrations => Set<ExtensionRegistration>();
     public DbSet<ExtensionGrant> ExtensionGrants => Set<ExtensionGrant>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -224,6 +226,40 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
             e.Property(s => s.Tagline).HasMaxLength(InstanceBranding.MaxTaglineLength);
             e.ToTable(t => t.HasCheckConstraint(
                 "CK_InstanceSettings_Singleton", $"\"Id\" = {Entities.InstanceSettings.SingletonId}"));
+        });
+
+        modelBuilder.Entity<Notification>(e =>
+        {
+            e.Property(n => n.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(n => n.Title).HasMaxLength(NotificationLimits.TitleLength);
+            e.Property(n => n.Body).HasMaxLength(NotificationLimits.BodyLength);
+            e.Property(n => n.DedupeKey).HasMaxLength(200);
+            e.HasIndex(n => new { n.UserId, n.DedupeKey }).IsUnique();
+            e.HasIndex(n => new { n.UserId, n.CreatedAt });
+            e.HasIndex(n => n.CreatedAt);
+            e.HasOne(n => n.User).WithMany()
+                .HasForeignKey(n => n.UserId).OnDelete(DeleteBehavior.Cascade);
+            // A deleted project takes its notifications along; a deleted task or
+            // epic leaves the entry readable with nothing to open. Leaving a
+            // project only hides them: the inbox reads through membership.
+            e.HasOne<Project>().WithMany()
+                .HasForeignKey(n => n.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Board>().WithMany()
+                .HasForeignKey(n => n.BoardId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<TaskItem>().WithMany()
+                .HasForeignKey(n => n.TaskId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Epic>().WithMany()
+                .HasForeignKey(n => n.EpicId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<User>().WithMany()
+                .HasForeignKey(n => n.ActorUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<NotificationPreferences>(e =>
+        {
+            e.HasKey(p => p.UserId);
+            e.Property(p => p.TimeZone).HasMaxLength(NotificationLimits.TimeZoneLength);
+            e.HasOne(p => p.User).WithOne()
+                .HasForeignKey<NotificationPreferences>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ImageAsset>(e =>

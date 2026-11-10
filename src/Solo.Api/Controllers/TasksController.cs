@@ -393,7 +393,9 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
     [SoloOperation(Operations.TaskSetAssignees)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<TaskDto>> SetAssignees(
-        Guid taskId, SetAssigneesRequest request, CancellationToken ct)
+        Guid taskId, SetAssigneesRequest request,
+        [FromServices] NotificationService notifications, [FromServices] CurrentUserAccessor currentUser,
+        CancellationToken ct)
     {
         var task = await LoadTask(taskId, ct, track: true);
         if (task is null)
@@ -409,13 +411,28 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
 
         // Whoever this takes the task away from hears about it too: the board
         // broadcast reaches only those still assigned.
-        var unassigned = task.Assignments.Select(a => a.UserId).Except(request.UserIds).ToList();
+        var previous = task.Assignments.Select(a => a.UserId).ToList();
+        var unassigned = previous.Except(request.UserIds).ToList();
         AssignmentHelper.Sync(db, task.Assignments, request.UserIds, userId =>
             new Assignment { UserId = userId, TaskId = taskId });
         await db.SaveChangesAsync(ct);
         await notifier.BoardEntityChanged(task.BoardId, EntityTypes.Task, taskId,
             ChangeKind.Updated, "Assignees");
         await notifier.AssignedTasksChanged(unassigned, EntityTypes.Task, taskId, ChangeKind.Updated);
+
+        var added = request.UserIds.Except(previous).ToList();
+        if (added.Count > 0 && currentUser.User is { } actor)
+        {
+            var place = await db.Boards.AsNoTracking()
+                .Where(b => b.Id == task.BoardId)
+                .Select(b => new { b.ProjectId, ProjectAlias = b.Project!.Alias, ProjectName = b.Project.Name, b.Alias, b.Name })
+                .SingleAsync(ct);
+            await notifications.AssignedAsync(added, actor, new NotifiedItem(
+                place.ProjectId, task.BoardId, task.Id, null,
+                $"{Aliases.Serial(place.ProjectAlias, place.Alias, task.Number)} {task.Name}",
+                $"{place.ProjectName} · {place.Name}"), ct);
+        }
+
         return task.ToDto();
     }
 

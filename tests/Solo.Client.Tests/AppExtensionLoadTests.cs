@@ -86,6 +86,9 @@ public class AppExtensionLoadTests : SoloBunitContext
         Services.AddScoped<LiveTopics>();
         Services.AddScoped<ISoloLiveTopics>(sp => sp.GetRequiredService<LiveTopics>());
         Services.AddScoped<AssignedTasksStore>();
+        Services.AddScoped<ISoloTaskDrawer>(sp => sp.GetRequiredService<TaskDrawerService>());
+        Services.AddSingleton(TimeProvider.System);
+        Services.AddScoped<NotificationStore>();
 
         _http.RouteBytes($"{Inventory}/fixture/client/{AssemblyName}.dll", AssemblyBytes)
              .RouteJson("api/users/me/tasks", new AssignedTasksDto([], [], [], [], []))

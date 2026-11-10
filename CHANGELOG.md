@@ -14,11 +14,26 @@ with its version in parentheses).
 ## Latest
 
 ### Server
+- A bell in the app bar collects your notifications: when someone assigns you to a task or epic, and when a task of yours is due, two weeks before its deadline and again one week before, at 9:00 your time. Clicking one opens the task.
+- With Solo open, a new notification also shows as a notification from your browser or the desktop app once you allow it. Choose which events notify you under **Notifications** in the account menu.
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
+
+### Desktop
+- Notifications from your instance show as system notifications while the app is open.
+
+### SDK
+- Contract 1.16.0: the notification DTOs, `NotificationKind` and the core user topic `BoardHubConstants.NotificationsTopic`, used by core's own client and API.
 
 ### Extensions
 
+#### MCP Server (1.6.5)
+- Rebuilt on contract 1.16.0.
+
+#### Roadmaps (1.10.2)
+- Rebuilt on contract 1.16.0.
+
 #### Design Docs (1.5.4)
+- Rebuilt on contract 1.16.0.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
 
 ## v1.20.1 (2026-11-05)

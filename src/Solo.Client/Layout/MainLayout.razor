@@ -48,6 +48,7 @@
                         </ErrorContent>
                     </ErrorBoundary>
                 }
+                <NotificationBell />
                 <ConnectionIndicator />
                 @* Super-admin only, and silent unless a newer release exists. *@
                 <UpdateIndicator />
@@ -60,6 +61,7 @@
                     <MudDivider />
                     <ColorSchemeMenu />
                     <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Outlined.Notifications" OnClick="@ShowNotificationsAsync">Notifications</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Devices" OnClick="@ShowDevicesAsync">Signed-in devices</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@SignOut">Sign out</MudMenuItem>
                 </MudMenu>
@@ -264,6 +266,9 @@
                 config => config.RequireInteraction = true);
         }
     }
+
+    private async Task ShowNotificationsAsync() =>
+        await Dialogs.ShowAsync<NotificationsDialog>("Notifications");
 
     private async Task ShowDevicesAsync() =>
         await Dialogs.ShowAsync<SignedInDevicesDialog>("Signed-in devices");
