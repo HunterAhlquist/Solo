@@ -12,6 +12,8 @@
       icon: view-kanban
     - path: guide/tasks.md
       icon: task-alt
+    - path: guide/notifications.md
+      icon: notifications
     - path: guide/roadmaps.md
       icon: timeline
     - path: guide/design-docs.md

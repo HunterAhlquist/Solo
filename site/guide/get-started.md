@@ -51,7 +51,8 @@ The app bar is the black bar at the top.
 
 - The **menu** button shows or hides the sidebar.
 - The **Solo** title opens the Projects page.
-- Your **account picture** opens the account menu. The menu holds **Appearance**, **Signed-in devices** and **Sign out**.
+- The **bell** opens your notifications. A number on the bell shows how many you have not read. See [Notifications](notifications.md).
+- Your **account picture** opens the account menu. The menu holds **Appearance**, **Notifications**, **Signed-in devices** and **Sign out**.
 
 A cloud icon appears in the app bar when a board loses its live connection. Changes from other people can arrive late until the icon goes away.
 

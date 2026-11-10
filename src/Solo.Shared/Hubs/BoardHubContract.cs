@@ -126,6 +126,13 @@ public static class BoardHubConstants
     /// </summary>
     public const string AssignedTasksTopic = "solo:assigned-tasks";
 
+    /// <summary>
+    /// Core's notifications topic (contract 1.16): one message per notification
+    /// raised for the subscriber. <c>Kind</c> is the <c>NotificationKind</c>,
+    /// <c>Data</c> the notification's id, a prompt to refetch the inbox.
+    /// </summary>
+    public const string NotificationsTopic = "solo:notifications";
+
     /// <summary>Longest topic name accepted; topics are short keys like "roadmap:{id}", not payloads.</summary>
     public const int TopicMaxLength = 200;
 

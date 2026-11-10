@@ -10,8 +10,8 @@ namespace Solo.Data.Auditing;
 /// Writes one <see cref="AuditEntry"/> per changed column for every modified or
 /// deleted entity, plus a single creation row (column and previous value null)
 /// for added entities. Rows are appended to the same context so they persist in
-/// the same transaction as the change. <see cref="AuditEntry"/> itself is
-/// excluded from auditing.
+/// the same transaction as the change. <see cref="AuditEntry"/> itself and
+/// <see cref="INotAudited"/> entities are excluded from auditing.
 /// </summary>
 public sealed class AuditSaveChangesInterceptor(ICurrentUserProvider currentUser) : SaveChangesInterceptor
 {
@@ -41,7 +41,7 @@ public sealed class AuditSaveChangesInterceptor(ICurrentUserProvider currentUser
     private void WriteAuditEntries(DbContext context)
     {
         var entries = context.ChangeTracker.Entries()
-            .Where(e => e.Entity is not AuditEntry &&
+            .Where(e => e.Entity is not (AuditEntry or INotAudited) &&
                         e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
             .ToList();
         if (entries.Count == 0)

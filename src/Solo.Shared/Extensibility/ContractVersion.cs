@@ -94,10 +94,17 @@ namespace Solo.Shared.Extensibility;
 /// <c>ExtensionUpdateFailureDto</c>) are core's own but members of the shared
 /// assembly too; they arrived while the number sat at 1.14, unpublished, so
 /// 1.15 is the first package that carries them.</para>
+/// <para>1.16.0 adds core's notifications: <c>NotificationDto</c>,
+/// <c>NotificationInboxDto</c>, the preference DTOs and <c>NotificationLimits</c>,
+/// the <c>NotificationKind</c> enum, and the core user topic
+/// <c>BoardHubConstants.NotificationsTopic</c>. Core's own client and API use
+/// them; no seam for extensions to raise notifications yet. They are members
+/// of the shared assembly, so a package reading one needs 1.16 in the range
+/// covering the half that does.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.15.0";
+    public const string Current = "1.16.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

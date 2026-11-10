@@ -7,7 +7,7 @@ namespace Solo.Api.Services;
 /// <summary>
 /// Runs daily and deletes audit entries older than
 /// <see cref="InstanceSettings.AuditRetentionDays"/>. Retention is the only
-/// audit knob.
+/// audit knob. The same sweep drops expired sessions and old notifications.
 /// </summary>
 public sealed class AuditRetentionService(
     IServiceScopeFactory scopeFactory,
@@ -15,6 +15,7 @@ public sealed class AuditRetentionService(
     : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
+    private const int NotificationRetentionDays = 90;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,6 +56,17 @@ public sealed class AuditRetentionService(
                 {
                     logger.LogInformation(
                         "Removed {Count} expired API sessions.", expiredSessions);
+                }
+
+                // Notifications are a nudge, not a record: three months is
+                // longer than anyone scrolls back through an inbox.
+                var staleNotifications = await db.Notifications
+                    .Where(n => n.CreatedAt < DateTimeOffset.UtcNow.AddDays(-NotificationRetentionDays))
+                    .ExecuteDeleteAsync(stoppingToken);
+                if (staleNotifications > 0)
+                {
+                    logger.LogInformation(
+                        "Removed {Count} notifications older than {Days} days.", staleNotifications, NotificationRetentionDays);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

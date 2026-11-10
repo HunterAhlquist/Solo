@@ -1,0 +1,113 @@
+@*
+    The signed-in person's notification settings: whether this device may show
+    OS notifications, and which events raise one at all.
+*@
+@inject ApiClient Api
+@inject IJSRuntime Js
+@inject AppConfig Config
+
+<MudDialog>
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_error</MudAlert>
+        }
+
+        <MudText Typo="Typo.subtitle2" Class="mb-1">On this device</MudText>
+        @switch (_permission)
+        {
+            case "granted":
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Notifications are allowed on this device.</MudText>
+                break;
+            case "denied":
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Notifications are blocked for @Config.SiteName in your browser's settings.</MudText>
+                break;
+            case "unsupported":
+                <MudText Typo="Typo.body2" Color="Color.Secondary">This browser can't show notifications.</MudText>
+                break;
+            case "default":
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.NotificationsActive"
+                           OnClick="@AllowAsync">Allow notifications</MudButton>
+                break;
+        }
+
+        <MudText Typo="Typo.subtitle2" Class="mt-5 mb-1">Notify me</MudText>
+        @if (_preferences is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudSwitch T="bool" Value="@_preferences.NotifyOnAssigned" ValueChanged="@(v => SaveAsync(assigned: v))"
+                       Disabled="@_busy" Color="Color.Primary" Label="When I'm assigned to a task or epic" />
+            <MudSwitch T="bool" Value="@_preferences.NotifyOnDeadline" ValueChanged="@(v => SaveAsync(deadline: v))"
+                       Disabled="@_busy" Color="Color.Primary" Label="When a task of mine is due in two weeks, and again in one" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2">
+                Reminders go out at 9:00, @(_preferences.TimeZone ?? "UTC") time.
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Close())">Done</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private NotificationPreferencesDto? _preferences;
+    private string? _permission;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _permission = await Js.InvokeAsync<string>("solo.notifications.permission");
+        try
+        {
+            _preferences = await Api.GetNotificationPreferencesAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or ApiException)
+        {
+            _error = "Couldn't load your notification settings. Try again in a moment.";
+        }
+    }
+
+    private async Task AllowAsync() =>
+        _permission = await Js.InvokeAsync<string>("solo.notifications.request");
+
+    private async Task SaveAsync(bool? assigned = null, bool? deadline = null)
+    {
+        if (_preferences is not { } current)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            _preferences = await Api.UpdateNotificationPreferencesAsync(new UpdateNotificationPreferencesRequest
+            {
+                TimeZone = current.TimeZone,
+                NotifyOnAssigned = assigned ?? current.NotifyOnAssigned,
+                NotifyOnDeadline = deadline ?? current.NotifyOnDeadline,
+                Version = current.Version,
+            });
+        }
+        catch (ApiConflictException)
+        {
+            // Changed on another device meanwhile: show what's there now.
+            _preferences = await Api.GetNotificationPreferencesAsync();
+        }
+        catch (Exception e) when (e is HttpRequestException or ApiException)
+        {
+            _error = "Couldn't save that change. Try again in a moment.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

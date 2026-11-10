@@ -176,7 +176,9 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
     [SoloOperation(Operations.EpicSetAssignees)]
     [Authorize(Policy = AuthConstants.ProjectWritePolicy)]
     public async Task<ActionResult<EpicDto>> SetAssignees(
-        Guid epicId, SetAssigneesRequest request, CancellationToken ct)
+        Guid epicId, SetAssigneesRequest request,
+        [FromServices] NotificationService notifications, [FromServices] CurrentUserAccessor currentUser,
+        CancellationToken ct)
     {
         var epic = await db.Epics.Include(e => e.Assignments)
             .FirstOrDefaultAsync(e => e.Id == epicId, ct);
@@ -191,11 +193,25 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
             return AssignmentHelper.InvalidAssigneesProblem(this, invalid);
         }
 
+        var previous = epic.Assignments.Select(a => a.UserId).ToList();
         AssignmentHelper.Sync(db, epic.Assignments, request.UserIds, userId =>
             new Assignment { UserId = userId, EpicId = epicId });
         await db.SaveChangesAsync(ct);
         await notifier.BoardEntityChanged(epic.BoardId, EntityTypes.Epic, epicId,
             ChangeKind.Updated, "Assignees");
+
+        var added = request.UserIds.Except(previous).ToList();
+        if (added.Count > 0 && currentUser.User is { } actor)
+        {
+            var place = await db.Boards.AsNoTracking()
+                .Where(b => b.Id == epic.BoardId)
+                .Select(b => new { b.ProjectId, ProjectName = b.Project!.Name, b.Name })
+                .SingleAsync(ct);
+            await notifications.AssignedAsync(added, actor, new NotifiedItem(
+                place.ProjectId, epic.BoardId, null, epic.Id, $"the epic {epic.Name}",
+                $"{place.ProjectName} · {place.Name}"), ct);
+        }
+
         return epic.ToDto();
     }
 }

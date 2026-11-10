@@ -6,6 +6,12 @@ namespace Solo.Api.Services;
 /// <summary>Entity → DTO mapping; entities never cross the API boundary.</summary>
 public static class DtoMapper
 {
+    public static NotificationDto ToDto(this Notification n) =>
+        new(n.Id, n.Kind, n.Title, n.Body, n.ProjectId, n.BoardId, n.TaskId, n.EpicId, n.CreatedAt, n.ReadAt);
+
+    public static NotificationPreferencesDto ToDto(this NotificationPreferences p) =>
+        new(p.TimeZone, p.NotifyOnAssigned, p.NotifyOnDeadline, p.Version);
+
     public static UserDto ToDto(this User u) =>
         new(u.Id, u.Email, u.DisplayName, u.AvatarUrl, u.IsSuperAdmin);
 
