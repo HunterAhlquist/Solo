@@ -11,6 +11,9 @@ on:
 
 permissions:
   contents: read
+  # build/testflight-gate.sh reads this workflow's earlier runs to find the
+  # last build that reached TestFlight.
+  actions: read
 
 jobs:
   testflight:
@@ -36,6 +39,9 @@ jobs:
         working-directory: src/Solo.Mobile
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history, so the gate can diff against the last uploaded build.
+          fetch-depth: 0
 
       - name: Classify the release
         id: channel
@@ -49,12 +55,17 @@ jobs:
           fi
 
       # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
-      # an extension zip, not the app.
+      # an extension zip, not the app. Otherwise build/testflight-gate.sh skips
+      # a tag that leaves the app as testers already have it, which is most of
+      # them: the app loads its instance, so a server change doesn't reach it.
       - name: Check what this run uploads
         id: gate
+        working-directory: .
         env:
           PACKAGE_LABEL: ${{ steps.channel.outputs.package_label }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           if [ -n "$PACKAGE_LABEL" ]; then
             echo "::notice::A Design Docs package preview; no app upload."
             echo "upload=false" >> "$GITHUB_OUTPUT"
@@ -62,7 +73,7 @@ jobs:
             echo "::notice::No App Store Connect key in the testflight environment; skipping the upload."
             echo "upload=false" >> "$GITHUB_OUTPUT"
           else
-            echo "upload=true" >> "$GITHUB_OUTPUT"
+            bash build/testflight-gate.sh ios >> "$GITHUB_OUTPUT"
           fi
 
       # The newest release (non-beta) Xcode 27 on the image. Fails rather
@@ -124,7 +135,8 @@ jobs:
 
       # ExportOptions-testflight.plist uploads straight to App Store Connect
       # and marks the build internal-only, so it can't reach external testers
-      # or a review by accident.
+      # or a review by accident. The step's name is how build/testflight-gate.sh
+      # recognises a run that uploaded; rename both together.
       - name: Upload
         if: steps.gate.outputs.upload == 'true'
         run: |
