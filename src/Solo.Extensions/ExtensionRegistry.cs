@@ -40,6 +40,7 @@ public sealed class ExtensionRegistry(SoloDbContext db, ILogger<ExtensionRegistr
             row.DisplayName = package.Manifest.Name;
             row.LastSeenVersion = package.Manifest.Version;
             row.LastLoadedAt = now;
+            state.SelectUpdateFeed(package.Id, row.UpdateFeed);
 
             if (state.IsDisabled(package.Id, out var reason))
             {
@@ -89,6 +90,21 @@ public sealed class ExtensionRegistry(SoloDbContext db, ILogger<ExtensionRegistr
             ? $"Package is version {offered} but this database was last migrated by {seen}. " +
               "Install {seen} or newer, or purge the extension's data first."
             : null;
+    }
+
+    /// <summary>Stores which update feed an extension follows; null for the default.</summary>
+    /// <returns>False when the extension has no registration.</returns>
+    public async Task<bool> SetUpdateFeedAsync(string extensionId, string? feedId, CancellationToken ct = default)
+    {
+        var row = await db.ExtensionRegistrations.FirstOrDefaultAsync(r => r.ExtensionId == extensionId, ct);
+        if (row is null)
+        {
+            return false;
+        }
+
+        row.UpdateFeed = feedId;
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     public Task<List<ExtensionRegistration>> ListAsync(CancellationToken ct = default) =>

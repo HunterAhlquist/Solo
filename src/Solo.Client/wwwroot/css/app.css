@@ -1447,6 +1447,10 @@ html[data-solo-input="pen"] .mud-tooltip {
     min-width: 0;
 }
 
+.extension-feed {
+    max-width: 16rem;
+}
+
 /* ---------------------------------------------------------------------------
    Restart overlay — the whole app, while the instance restarts
    --------------------------------------------------------------------------- */

@@ -137,12 +137,51 @@ public sealed class ExtensionsController(
                 // Purge only for something not loaded this boot: nothing in the
                 // process is holding a DbContext against the schema, so the drop
                 // needs no locking and no coordination.
-                CanPurge: !loadedThisBoot);
+                CanPurge: !loadedThisBoot,
+                package?.Manifest.UpdateFeeds.Select(f => new ExtensionUpdateFeedDto(f.Id, f.Label)).ToList() ?? [],
+                row.UpdateFeed);
         }).ToList();
 
         return new ExtensionAdminDto(
             extensions,
             state.Failures.Select(f => new ExtensionFailureDto(f.Source, f.Reason)).ToList());
+    }
+
+    /// <summary>
+    /// Switches which feed an extension's updates are read from: one of the
+    /// <c>updateFeeds</c> its package declares, or the default.
+    /// </summary>
+    /// <remarks>
+    /// Only a feed the loaded package names can be picked. The URL comes from
+    /// the package, never from this request, so the endpoint cannot be used to
+    /// point the instance's outbound fetches somewhere new.
+    /// </remarks>
+    [HttpPut("{extensionId}/update-feed")]
+    [Authorize(Policy = AuthConstants.SuperAdminPolicy)]
+    public async Task<IActionResult> SetUpdateFeed(
+        string extensionId, SetExtensionUpdateFeedRequest request, CancellationToken ct)
+    {
+        var package = state.Find(extensionId);
+        if (package is null)
+        {
+            return NotFound();
+        }
+
+        if (request.FeedId is not null && package.Manifest.UpdateFeeds.All(f => f.Id != request.FeedId))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Unknown update feed",
+                detail: $"{package.Manifest.Name} {package.Manifest.Version} declares no feed with that id.");
+        }
+
+        if (!await registry.SetUpdateFeedAsync(package.Id, request.FeedId, ct))
+        {
+            return NotFound();
+        }
+
+        state.SelectUpdateFeed(package.Id, request.FeedId);
+        return NoContent();
     }
 
     /// <summary>

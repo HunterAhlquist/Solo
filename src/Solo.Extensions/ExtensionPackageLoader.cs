@@ -232,6 +232,30 @@ public static partial class ExtensionPackageLoader
             }
         }
 
+        // Checked here rather than when a feed is read, so a package author
+        // finds out at load and an administrator is never offered a choice that
+        // cannot work. The id is what Admin settings stores, so it must be
+        // unique to mean anything.
+        var feedIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var feed in manifest.UpdateFeeds)
+        {
+            if (!IdPattern().IsMatch(feed.Id) || !feedIds.Add(feed.Id))
+            {
+                throw new ExtensionPackageException(
+                    $"Every \"updateFeeds\" entry needs a unique \"id\" of a-z, 0-9 and '-'; got '{feed.Id}'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(feed.Label))
+            {
+                throw new ExtensionPackageException($"Update feed '{feed.Id}' needs a \"label\".");
+            }
+
+            if (!Uri.TryCreate(feed.Url, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps)
+            {
+                throw new ExtensionPackageException($"Update feed '{feed.Id}' needs an absolute https \"url\".");
+            }
+        }
+
         RequireRange(manifest.SoloApiVersion, "soloApiVersion", manifest.Server is not null);
         RequireRange(manifest.SoloClientVersion, "soloClientVersion", manifest.Client is not null);
     }

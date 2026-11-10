@@ -497,6 +497,10 @@ namespace Solo.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("UpdateFeed")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.HasKey("ExtensionId");
 
                     b.ToTable("ExtensionRegistrations");

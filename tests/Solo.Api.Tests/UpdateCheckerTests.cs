@@ -136,20 +136,76 @@ public sealed class UpdateCheckerTests
             new UpdateOptions { ManifestUrl = "https://mirror.invalid/release-manifest.json" }
                 .ManifestUrlFor("1.21.0-mobile.3"));
 
-    /// <summary>Serves one feed for any URL; the point here is the comparison, not resolution.</summary>
-    private sealed class StubFactory(ReleaseFeed feed) : IHttpClientFactory
+    private const string HostFeed = "https://host.invalid/release-manifest.json";
+    private const string BetaFeed = "https://feed.invalid/beta.json";
+
+    /// <summary>
+    /// Which feed is read once an administrator has picked one. The host
+    /// manifest describes this package too, so an answer of 1.1.0 would mean
+    /// the pick was ignored.
+    /// </summary>
+    private static async Task<ExtensionUpdateDto?> CheckWithPickAsync(string? picked)
     {
-        public HttpClient CreateClient(string name) =>
-            new(new StubHandler(feed)) { Timeout = Timeout.InfiniteTimeSpan };
+        var manifest = new ExtensionManifest
+        {
+            Id = "roadmap",
+            Name = "Roadmap",
+            Version = "1.0.0",
+            Server = "server/Thing.dll",
+            UpdateFeeds = [new ExtensionUpdateFeed { Id = "beta", Label = "Beta", Url = BetaFeed }],
+        };
+        var package = new ExtensionPackage { Manifest = manifest, Source = "solo-roadmap-1.0.0.zip" };
+        var state = new ExtensionState([package], []);
+        state.SelectUpdateFeed("roadmap", picked);
+
+        var options = new UpdateOptions { ManifestUrl = HostFeed };
+        var factory = new StubFactory(url => url switch
+        {
+            HostFeed => new ReleaseFeed { Schema = 1, Extensions = [Entry("1.1.0")] },
+            BetaFeed => new ReleaseFeed { Schema = 1, Extensions = [Entry("1.2.0-beta.1")] },
+            _ => null,
+        });
+        var feeds = new ReleaseFeedClient(
+            factory, Options.Create(options), TimeProvider.System,
+            NullLogger<ReleaseFeedClient>.Instance);
+        var checker = new UpdateChecker(
+            feeds, state, Options.Create(options), NullLogger<UpdateChecker>.Instance);
+
+        var status = await checker.GetStatusAsync(force: false, CancellationToken.None);
+        return status.Extensions.SingleOrDefault();
     }
 
-    private sealed class StubHandler(ReleaseFeed feed) : HttpMessageHandler
+    [Fact]
+    public async Task WithNoPickTheHostManifestStillWins() =>
+        Assert.Equal("1.1.0", (await CheckWithPickAsync(null))?.AvailableVersion);
+
+    [Fact]
+    public async Task APickedFeedIsReadInsteadOfTheHostManifest() =>
+        Assert.Equal("1.2.0-beta.1", (await CheckWithPickAsync("beta"))?.AvailableVersion);
+
+    /// <summary>A newer package can drop a feed; the stored pick must not strand it with no updates.</summary>
+    [Fact]
+    public async Task APickThePackageNoLongerDeclaresFallsBackToTheDefault() =>
+        Assert.Equal("1.1.0", (await CheckWithPickAsync("nightly"))?.AvailableVersion);
+
+    /// <summary>Serves a feed per URL, and 404 for any URL it has none for.</summary>
+    private sealed class StubFactory(Func<string, ReleaseFeed?> serve) : IHttpClientFactory
+    {
+        public StubFactory(ReleaseFeed feed) : this(_ => feed) { }
+
+        public HttpClient CreateClient(string name) =>
+            new(new StubHandler(serve)) { Timeout = Timeout.InfiniteTimeSpan };
+    }
+
+    private sealed class StubHandler(Func<string, ReleaseFeed?> serve) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken ct) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = System.Net.Http.Json.JsonContent.Create(feed),
-            });
+            Task.FromResult(serve(request.RequestUri!.ToString()) is { } feed
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = System.Net.Http.Json.JsonContent.Create(feed),
+                }
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
     }
 }
