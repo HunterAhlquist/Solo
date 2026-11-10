@@ -31,7 +31,7 @@ else
                 <PageSectionHeader Title="Boards" />
             }
             <BoardsGrid ProjectId="@_project.Id" ProjectAlias="@_project.Alias" CanWrite="@_canWrite"
-                        CanManage="@Session.IsSuperAdmin" />
+                        CanManage="@_isOwner" />
 
             @* Each contributed section under its own boundary, as in the sidebar:
                one that throws costs a line of error text, not the page. *@

@@ -19,6 +19,7 @@ with its version in parentheses).
 - In the desktop, iPad and iPhone apps, the profile menu has an Instances item, and the sign-in page a "Use another instance" link, which open the app's list of instances.
 - On iPhone and iPad, in Safari and in the app, the page now reaches under the status bar and the home indicator and keeps its own content clear of them: the app bar's colour runs up behind the status bar, a drawer's scrim covers it too, and the nav drawer's last row sits above the home indicator instead of under it. The page's theme color follows the app bar, which Safari tints its bars with and the app picks its status bar text by.
 - A preview server checks its own preview release for updates instead of the newest stable one, so Admin settings offers the extension versions built with that preview. Stable instances are unchanged, and `Updates__ManifestUrl` still overrides both.
+- A project's owners can create, close, reopen and delete its boards, not only a super admin. Add board appears in the sidebar for each project you own.
 - Admin settings → Extensions can switch an extension to another update feed its package offers, such as a beta channel, from an "Updates from" picker. It appears only for a package that lists more than one feed, and switching back to Default keeps the installed version until Default has a newer one.
 
 ### Desktop
@@ -31,7 +32,8 @@ with its version in parentheses).
 
 ### Extensions
 
-#### Design Docs (1.6.0)
+#### Design Docs (1.6.1)
+- A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
 - In the iPad app, double-tapping Apple Pencil while sketching switches to the eraser and back to the tool you had before. It follows the Pencil setting in iPadOS: it works when that setting is to switch to the eraser or the previous tool. Needs Solo with contract 1.16.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
 - The full-screen sketch and image viewer keep their controls clear of the status bar and home indicator on iPhone and iPad.
@@ -39,8 +41,9 @@ with its version in parentheses).
 #### MCP Server (1.6.5)
 - Rebuilt on contract 1.16.0.
 
-#### Roadmaps (1.10.2)
+#### Roadmaps (1.10.3)
 - Rebuilt on contract 1.16.0.
+- A project's owners can create and delete its roadmaps, not only a super admin.
 
 ## v1.20.1 (2026-11-05)
 

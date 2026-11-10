@@ -43,7 +43,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         foreach(var id in ids)clocks.TryAdd(id,"0");
         var tree=new TreeDto(VaultsController.Dto(v),await db.Folders.Where(f=>f.VaultId==vaultId).Select(f=>new FolderDto(f.Id,f.ParentId,f.Name,f.Version)).ToListAsync(ct),notes.Select(VaultsController.Dto).ToArray());
         var images=(await db.Images.AsNoTracking().Where(i=>i.VaultId==vaultId).Select(i=>new DocImage{Id=i.Id,Path=i.Path,ContentType=i.ContentType,Width=i.Width,Height=i.Height,Bytes=i.Bytes,Version=i.Version}).ToListAsync(ct)).Select(Dto).ToArray();
-        return new OfflineManifest(tree,sketches.Select(Dto).ToArray(),images,clocks,!v.IsClosed&&await CanWrite(ct),(await query.CallerAsync(ct)).IsSuperAdmin,await CanWrite(ct));
+        return new OfflineManifest(tree,sketches.Select(Dto).ToArray(),images,clocks,!v.IsClosed&&await CanWrite(ct),VaultsController.CanManage(await query.CallerAsync(ct)),await CanWrite(ct));
     }
     [HttpGet("documents/{id:guid}")]
     public async Task<ActionResult<OfflineDocument>> Read(Guid projectId,Guid vaultId,Guid id,[FromQuery]string after="0",CancellationToken ct=default)
@@ -115,7 +115,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
         var receipt=await db.OfflineReceipts.FindAsync([caller.UserId,r.Id],ct);
         if(receipt is not null)return receipt.ProjectId==projectId&&receipt.VaultId==vaultId&&receipt.Hash==hash?Content(receipt.Result,"application/json"):Conflict(new{title="Command ID already used"});
         var vault=(await db.Vaults.FromSqlInterpolated($"SELECT *, xmin FROM ext_design_docs.\"Vaults\" WHERE \"Id\"={vaultId} AND \"ProjectId\"={projectId} FOR UPDATE").ToListAsync(ct)).SingleOrDefault();
-        if(r.Entity=="vault"){if(!caller.IsSuperAdmin)return Forbid();if(r.TargetId!=vaultId)return BadRequest();}
+        if(r.Entity=="vault"){if(!VaultsController.CanManage(caller))return Forbid();if(r.TargetId!=vaultId)return BadRequest();}
         else{if(!await CanWrite(ct))return Forbid();if(vault is null)return NotFound();if(vault.IsClosed)return Conflict(new{title="Design doc is closed"});}
         if(r.Action=="delete"&&r.BaseVersions is not null&&!await DeletionUnchanged(vaultId,r,ct))return Conflict(new{title="Content changed elsewhere. Review it before deleting."});
         object? result=null;Sketch? changedSketch=null;string? previousName=null;var kind="tree";var deletedDocs=new List<Guid>();
@@ -176,7 +176,7 @@ public sealed class OfflineController(DesignDocsDbContext db, ISoloQuery query, 
                     if(!VaultsController.ValidName(r.Name)||!await db.Notes.AnyAsync(n=>n.Id==owner&&n.VaultId==vaultId,ct))return BadRequest();
                     path=AttachmentPaths.ForNote(owner,r.Name!);
                 }else{
-                    if(!caller.IsSuperAdmin)return Forbid();
+                    if(!VaultsController.CanManage(caller))return Forbid();
                     if(string.IsNullOrWhiteSpace(r.Name)||r.Name.Length>1024||r.Name.StartsWith('/')||r.Name.Contains('\\')||r.Name.Split('/').Any(p=>p is "" or "." or ".."||p.Any(char.IsControl)))return BadRequest();
                     path=r.Name;
                 }
