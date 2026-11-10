@@ -2111,6 +2111,39 @@ html.solo-desktop .solo-titlebar {
     transform: translate(-14px, 11px);
 }
 
+.email-settings__field {
+    flex: 1 1 13rem;
+}
+
+.email-settings__port {
+    flex: 0 0 7rem;
+}
+
+.email-settings__security {
+    flex: 0 0 10rem;
+}
+
+.digest-field {
+    flex: 1 1 8rem;
+}
+
+.notification-events {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    column-gap: 12px;
+    justify-items: center;
+}
+
+.notification-events--email {
+    grid-template-columns: 1fr auto auto;
+}
+
+.notification-events:not(.notification-events--email) > :nth-child(2n + 1),
+.notification-events--email > :nth-child(3n + 1) {
+    justify-self: start;
+}
+
 .notification-popover {
     width: min(360px, calc(100vw - 32px));
 }

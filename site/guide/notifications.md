@@ -1,6 +1,6 @@
 ---
 title: Notifications
-lede: Get told when someone assigns work to you, and when your work is due.
+lede: Get told when someone assigns work to you, and when your work is due, in the app and by email.
 ---
 
 ## What notifies you
@@ -39,9 +39,27 @@ If your browser blocks notifications for the site, change the setting in your br
 
 When Solo is closed, your device gets no notifications. The bell holds them for the next time that you open Solo.
 
+## Email digest
+
+If the instance sends email, Solo also sends you a digest. A digest never goes out empty, and it does not repeat a notification that you already read in the app.
+
+| Digest | What it holds | When it goes out |
+| --- | --- | --- |
+| **Daily** | Your overdue tasks, your tasks due in the next 2 weeks, and the work assigned to you since the last digest. The earliest deadline is first. | Each day, at the hour that you select. |
+| **Weekly** | The same, once a week. | On the day and at the hour that you select. |
+| **As it happens** | Your new notifications. | At most every 15 minutes. |
+| **Off** | Nothing. | Never. |
+
+A new account starts with **Daily** at 8:00. Each task in a digest links to the task in Solo.
+
+To stop the digest from the email, use the unsubscribe button of your mail app, or follow the link at the bottom of the digest.
+
 ## Choose what notifies you
 
 1. Open the account menu and select **Notifications**.
-2. Turn each event on or off.
+2. For each event, set **Notify me** for the bell and your device, and **Email me** for the digest.
+3. Select how often the **Email digest** goes out, and when.
 
-The dialog also shows the time zone for deadline notifications. Solo takes it from your browser the first time that you sign in.
+The dialog also has your **Time zone**, for deadline notifications and the digest. Solo takes it from your browser the first time that you sign in. To change it, enter the name of a city in the zone, for example `Los_Angeles`.
+
+If the instance does not send email, the dialog has no **Email me** column, and says so under **Email digest**.

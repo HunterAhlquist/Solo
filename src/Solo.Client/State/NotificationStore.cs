@@ -178,6 +178,11 @@ public sealed class NotificationStore(
                 TimeZone = zone,
                 NotifyOnAssigned = preferences.NotifyOnAssigned,
                 NotifyOnDeadline = preferences.NotifyOnDeadline,
+                EmailOnAssigned = preferences.EmailOnAssigned,
+                EmailOnDeadline = preferences.EmailOnDeadline,
+                DigestFrequency = preferences.DigestFrequency,
+                DigestHour = preferences.DigestHour,
+                DigestWeekday = preferences.DigestWeekday,
                 Version = preferences.Version,
             }, ct);
         }

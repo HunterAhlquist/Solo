@@ -29,6 +29,7 @@ A variable name uses two underscores between its parts, for example `Auth__Clien
 | `Auth__SessionDays` | `30` | The number of days that a session lasts with no use. This applies to the desktop app and to browsers that sign in with Google. |
 | `Auth__DesktopRedirect` | `false` | Google only. The desktop app goes directly to Google's sign-in, in one window. See [Desktop sign-in with Google](#desktop-sign-in-with-google). |
 | `Database__AutoMigrate` | `true` | Apply database migrations at startup. |
+| `Email__Smtp__Password` | None | The SMTP password. When you set it, Solo uses it instead of the password in [Admin settings](admin-settings.md#email). |
 | `Themes__Directory` | `/data/themes` | The directory that Solo scans for theme packages. |
 | `Extensions__Directory` | `/data/extensions` | The directory that Solo scans for extension packages. |
 | `Extensions__ApiBaseUrl` | The listen address | The address at which background work of an extension reaches the Solo API. |
@@ -149,6 +150,6 @@ The first line shows the server version and the commit, for example `Solo server
 
 ## Backup
 
-Make a backup of the database. It holds all projects, the audit log, and the data of each extension.
+Make a backup of the database. It holds all projects, the audit log, and the data of each extension. It also holds the key that decrypts the SMTP password: restore the two together.
 
 The themes volume and the extensions volume hold only the packages that you copied there. Keep the original package files and you can copy them again.

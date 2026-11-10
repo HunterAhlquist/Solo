@@ -1,6 +1,7 @@
 @*
     The signed-in person's notification settings: whether this device may show
-    OS notifications, and which events raise one at all.
+    OS notifications, which events notify them and which reach their email, and
+    when their digest goes out.
 *@
 @inject ApiClient Api
 @inject IJSRuntime Js
@@ -31,19 +32,88 @@
                 break;
         }
 
-        <MudText Typo="Typo.subtitle2" Class="mt-5 mb-1">Notify me</MudText>
-        @if (_preferences is null)
+        @if (_preferences is not { } p)
         {
-            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-5" />
         }
         else
         {
-            <MudSwitch T="bool" Value="@_preferences.NotifyOnAssigned" ValueChanged="@(v => SaveAsync(assigned: v))"
-                       Disabled="@_busy" Color="Color.Primary" Label="When I'm assigned to a task or epic" />
-            <MudSwitch T="bool" Value="@_preferences.NotifyOnDeadline" ValueChanged="@(v => SaveAsync(deadline: v))"
-                       Disabled="@_busy" Color="Color.Primary" Label="When a task of mine is due in two weeks, and again in one" />
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2">
-                Reminders go out at 9:00, @(_preferences.TimeZone ?? "UTC") time.
+            <div class="@(EmailOn ? "notification-events notification-events--email mt-5" : "notification-events mt-5")">
+                <span></span>
+                <MudText Typo="Typo.subtitle2">Notify me</MudText>
+                @if (EmailOn)
+                {
+                    <MudText Typo="Typo.subtitle2">Email me</MudText>
+                }
+
+                <MudText Typo="Typo.body2">When I'm assigned to a task or epic</MudText>
+                <MudCheckBox T="bool" Value="@p.NotifyOnAssigned" ValueChanged="@(v => SaveAsync(p with { NotifyOnAssigned = v }))"
+                             Disabled="@_busy" Color="Color.Primary" aria-label="Notify me when I'm assigned" />
+                @if (EmailOn)
+                {
+                    <MudCheckBox T="bool" Value="@p.EmailOnAssigned" ValueChanged="@(v => SaveAsync(p with { EmailOnAssigned = v }))"
+                                 Disabled="@_busy" Color="Color.Primary" aria-label="Email me when I'm assigned" />
+                }
+
+                <MudText Typo="Typo.body2">When a task of mine is due in two weeks, and again in one</MudText>
+                <MudCheckBox T="bool" Value="@p.NotifyOnDeadline" ValueChanged="@(v => SaveAsync(p with { NotifyOnDeadline = v }))"
+                             Disabled="@_busy" Color="Color.Primary" aria-label="Notify me about deadlines" />
+                @if (EmailOn)
+                {
+                    <MudCheckBox T="bool" Value="@p.EmailOnDeadline" ValueChanged="@(v => SaveAsync(p with { EmailOnDeadline = v }))"
+                                 Disabled="@_busy" Color="Color.Primary" aria-label="Email me about deadlines" />
+                }
+            </div>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-5 mb-2">Email digest</MudText>
+            @if (!EmailOn)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Email isn't set up on this instance. Ask an admin to turn it on.</MudText>
+            }
+            else
+            {
+                <div class="d-flex flex-wrap" style="gap:.75rem">
+                    <MudSelect T="DigestFrequency" Value="@p.DigestFrequency" ValueChanged="@(v => SaveAsync(p with { DigestFrequency = v }))"
+                               Label="How often" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@_busy" Class="digest-field">
+                        <MudSelectItem T="DigestFrequency" Value="DigestFrequency.Off">Off</MudSelectItem>
+                        <MudSelectItem T="DigestFrequency" Value="DigestFrequency.AsItHappens">As it happens</MudSelectItem>
+                        <MudSelectItem T="DigestFrequency" Value="DigestFrequency.Daily">Daily</MudSelectItem>
+                        <MudSelectItem T="DigestFrequency" Value="DigestFrequency.Weekly">Weekly</MudSelectItem>
+                    </MudSelect>
+                    @if (p.DigestFrequency == DigestFrequency.Weekly)
+                    {
+                        <MudSelect T="DayOfWeek" Value="@p.DigestWeekday" ValueChanged="@(v => SaveAsync(p with { DigestWeekday = v }))"
+                                   Label="On" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@_busy" Class="digest-field">
+                            @foreach (var day in Weekdays)
+                            {
+                                <MudSelectItem T="DayOfWeek" Value="@day">@day</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    @if (p.DigestFrequency is DigestFrequency.Daily or DigestFrequency.Weekly)
+                    {
+                        <MudSelect T="int" Value="@p.DigestHour" ValueChanged="@(v => SaveAsync(p with { DigestHour = v }))"
+                                   Label="Send at" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@_busy" Class="digest-field">
+                            @foreach (var hour in Enumerable.Range(0, 24))
+                            {
+                                <MudSelectItem T="int" Value="@hour">@($"{hour}:00")</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                </div>
+                @if (p.DigestFrequency == DigestFrequency.AsItHappens)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+                        New notifications are gathered into one email at most every 15 minutes.
+                    </MudText>
+                }
+            }
+
+            <MudAutocomplete T="string" Value="@p.TimeZone" ValueChanged="@(v => SaveAsync(p with { TimeZone = v }))"
+                             SearchFunc="@SearchZonesAsync" Label="Time zone" Variant="Variant.Outlined" Margin="Margin.Dense"
+                             Disabled="@_busy" ResetValueOnEmptyText="false" CoerceText="true" MaxItems="50" Class="mt-5" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+                Reminders go out at 9:00, @(p.TimeZone ?? "UTC") time.
             </MudText>
         }
     </DialogContent>
@@ -77,9 +147,30 @@
     private async Task AllowAsync() =>
         _permission = await Js.InvokeAsync<string>("solo.notifications.request");
 
-    private async Task SaveAsync(bool? assigned = null, bool? deadline = null)
+    private bool EmailOn => Config.Auth?.EmailEnabled == true;
+
+    private static readonly DayOfWeek[] Weekdays =
+        [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday];
+
+    private IReadOnlyList<string>? _zones;
+
+    private async Task<IEnumerable<string>> SearchZonesAsync(string? text, CancellationToken ct)
     {
-        if (_preferences is not { } current)
+        try
+        {
+            _zones ??= await Api.GetTimeZonesAsync(ct);
+        }
+        catch (Exception e) when (e is HttpRequestException or ApiException)
+        {
+            return [];
+        }
+
+        return string.IsNullOrWhiteSpace(text) ? _zones : _zones.Where(z => z.Contains(text.Trim().Replace(' ', '_'), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task SaveAsync(NotificationPreferencesDto changed)
+    {
+        if (_preferences is null || changed == _preferences)
         {
             return;
         }
@@ -90,10 +181,15 @@
         {
             _preferences = await Api.UpdateNotificationPreferencesAsync(new UpdateNotificationPreferencesRequest
             {
-                TimeZone = current.TimeZone,
-                NotifyOnAssigned = assigned ?? current.NotifyOnAssigned,
-                NotifyOnDeadline = deadline ?? current.NotifyOnDeadline,
-                Version = current.Version,
+                TimeZone = changed.TimeZone,
+                NotifyOnAssigned = changed.NotifyOnAssigned,
+                NotifyOnDeadline = changed.NotifyOnDeadline,
+                EmailOnAssigned = changed.EmailOnAssigned,
+                EmailOnDeadline = changed.EmailOnDeadline,
+                DigestFrequency = changed.DigestFrequency,
+                DigestHour = changed.DigestHour,
+                DigestWeekday = changed.DigestWeekday,
+                Version = changed.Version,
             });
         }
         catch (ApiConflictException)

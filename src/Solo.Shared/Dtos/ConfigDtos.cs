@@ -33,6 +33,9 @@ public sealed record AuthConfigDto(
     /// has none of its own and shows the product's.
     /// </summary>
     public string? Tagline { get; init; }
+
+    /// <summary>Whether this instance sends email, so the app can say who learns of an invite (contract 1.16).</summary>
+    public bool EmailEnabled { get; init; }
 }
 
 /// <summary>

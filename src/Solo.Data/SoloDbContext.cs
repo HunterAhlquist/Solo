@@ -25,6 +25,9 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
     public DbSet<ExtensionGrant> ExtensionGrants => Set<ExtensionGrant>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<NotificationPreferences> NotificationPreferences => Set<NotificationPreferences>();
+    public DbSet<EmailSettings> EmailSettings => Set<EmailSettings>();
+    public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -258,8 +261,34 @@ public class SoloDbContext(DbContextOptions<SoloDbContext> options) : DbContext(
         {
             e.HasKey(p => p.UserId);
             e.Property(p => p.TimeZone).HasMaxLength(NotificationLimits.TimeZoneLength);
+            e.Property(p => p.DigestFrequency).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.DigestWeekday).HasConversion<string>().HasMaxLength(10);
             e.HasOne(p => p.User).WithOne()
                 .HasForeignKey<NotificationPreferences>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EmailSettings>(e =>
+        {
+            e.Property(s => s.Id).ValueGeneratedNever();
+            e.Property(s => s.PublicAddress).HasMaxLength(EmailLimits.PublicAddressLength);
+            e.Property(s => s.FromName).HasMaxLength(EmailLimits.NameLength);
+            e.Property(s => s.FromAddress).HasMaxLength(EmailLimits.AddressLength);
+            e.Property(s => s.SmtpHost).HasMaxLength(EmailLimits.HostLength);
+            e.Property(s => s.Security).HasConversion<string>().HasMaxLength(20);
+            e.Property(s => s.Username).HasMaxLength(EmailLimits.NameLength);
+            e.ToTable(t => t.HasCheckConstraint(
+                "CK_EmailSettings_Singleton", $"\"Id\" = {Entities.EmailSettings.SingletonId}"));
+        });
+
+        modelBuilder.Entity<EmailMessage>(e =>
+        {
+            e.Property(m => m.To).HasMaxLength(EmailLimits.AddressLength);
+            e.Property(m => m.Subject).HasMaxLength(NotificationLimits.TitleLength);
+            e.Property(m => m.Kind).HasMaxLength(20);
+            e.Property(m => m.UnsubscribeUrl).HasMaxLength(EmailLimits.PublicAddressLength + 1000);
+            e.Property(m => m.LastError).HasMaxLength(NotificationLimits.BodyLength);
+            e.HasIndex(m => m.NextAttemptAt).HasFilter("\"SentAt\" IS NULL AND \"FailedAt\" IS NULL");
+            e.HasIndex(m => m.CreatedAt);
         });
 
         modelBuilder.Entity<ImageAsset>(e =>

@@ -19,4 +19,16 @@ public sealed partial class ApiClient
     public Task<NotificationPreferencesDto> UpdateNotificationPreferencesAsync(
         UpdateNotificationPreferencesRequest request, CancellationToken ct = default) =>
         SendAsync<NotificationPreferencesDto>(HttpMethod.Put, "api/notifications/preferences", request, ct);
+
+    public Task<IReadOnlyList<string>> GetTimeZonesAsync(CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<string>>("api/notifications/time-zones", ct);
+
+    public Task<EmailSettingsDto> GetEmailSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<EmailSettingsDto>("api/settings/email", ct);
+
+    public Task<EmailSettingsDto> UpdateEmailSettingsAsync(UpdateEmailSettingsRequest request, CancellationToken ct = default) =>
+        SendAsync<EmailSettingsDto>(HttpMethod.Put, "api/settings/email", request, ct);
+
+    public Task<TestEmailResultDto> SendTestEmailAsync(UpdateEmailSettingsRequest request, CancellationToken ct = default) =>
+        SendAsync<TestEmailResultDto>(HttpMethod.Post, "api/settings/email/test", request, ct);
 }

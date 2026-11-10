@@ -104,13 +104,28 @@ public sealed class NotificationsController(
                 detail: $"\"{zone}\" isn't a time zone this server knows.");
         }
 
+        if (!Enum.IsDefined(request.DigestFrequency) || !Enum.IsDefined(request.DigestWeekday))
+        {
+            return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid digest schedule");
+        }
+
         var preferences = await PreferencesAsync(me, ct);
         UseClientVersion(db, preferences, request.Version);
         preferences.TimeZone = request.TimeZone;
         preferences.NotifyOnAssigned = request.NotifyOnAssigned;
         preferences.NotifyOnDeadline = request.NotifyOnDeadline;
+        preferences.EmailOnAssigned = request.EmailOnAssigned;
+        preferences.EmailOnDeadline = request.EmailOnDeadline;
+        preferences.DigestFrequency = request.DigestFrequency;
+        preferences.DigestHour = request.DigestHour;
+        preferences.DigestWeekday = request.DigestWeekday;
         return await SaveOrConflictAsync(db, ct) ?? (ActionResult<NotificationPreferencesDto>)preferences.ToDto();
     }
+
+    /// <summary>The IANA ids this server knows, for picking a time zone by hand.</summary>
+    [HttpGet("time-zones")]
+    public ActionResult<IReadOnlyList<string>> TimeZones() =>
+        TimeZoneInfo.GetSystemTimeZones().Select(z => z.Id).Order(StringComparer.Ordinal).ToList();
 
     private IQueryable<Notification> Visible(Guid me) =>
         db.Notifications.AsNoTracking().Where(n =>

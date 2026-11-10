@@ -21,7 +21,8 @@ public class ExtensionSettingsTests : ComponentTestBase
 
     private IRenderedComponent<InstanceSettings> Render(ExtensionAdminDto extensions, ExtensionCatalog catalog)
     {
-        _http.RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
+        _http.RouteJson("api/settings/email", new EmailSettingsDto(false, null, null, null, null, 587, Solo.Shared.SmtpSecurity.StartTls, null, false, false, [], 0))
+            .RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
             .RouteJson("api/themes", new ThemeScanResultDto([], []))
             .RouteJson("api/extensions/admin", extensions)
             .RouteJson("api/admin/users", new List<AdminUserDto>());

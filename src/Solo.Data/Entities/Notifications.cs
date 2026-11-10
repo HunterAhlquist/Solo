@@ -27,6 +27,8 @@ public class Notification : INotAudited
     public required string DedupeKey { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ReadAt { get; set; }
+    /// <summary>When a digest carried it, or decided it had no place in one. Read ones never go out.</summary>
+    public DateTimeOffset? EmailedAt { get; set; }
 
     public User? User { get; set; }
 }
@@ -39,6 +41,13 @@ public class NotificationPreferences : IVersioned, INotAudited
     public string? TimeZone { get; set; }
     public bool NotifyOnAssigned { get; set; } = true;
     public bool NotifyOnDeadline { get; set; } = true;
+    public bool EmailOnAssigned { get; set; } = true;
+    public bool EmailOnDeadline { get; set; } = true;
+    public DigestFrequency DigestFrequency { get; set; } = DigestFrequency.Daily;
+    /// <summary>Local hour, 0–23, in <see cref="TimeZone"/>.</summary>
+    public int DigestHour { get; set; } = 8;
+    public DayOfWeek DigestWeekday { get; set; } = DayOfWeek.Monday;
+    public DateTimeOffset? LastDigestAt { get; set; }
     public uint Version { get; set; }
 
     public User? User { get; set; }

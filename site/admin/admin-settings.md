@@ -1,13 +1,13 @@
 ---
 title: Admin settings
-lede: The page where a super admin sets the branding, the audit retention and the theme, and manages the extensions and users of the instance.
+lede: The page where a super admin sets the branding, email, the audit retention and the theme, and manages the extensions and users of the instance.
 ---
 
 ## Open the Admin settings
 
 Select **Admin settings** at the bottom of the sidebar. Only a super admin sees this entry.
 
-The page has five parts: **Branding**, **Audit retention**, **Theme**, **Extensions** and **Users**.
+The page has six parts: **Branding**, **Email**, **Audit retention**, **Theme**, **Extensions** and **Users**.
 
 ## Branding
 
@@ -25,6 +25,24 @@ Solo does not save these two fields when you leave them. You must select **Save 
 To remove the name or the tagline, clear the field and save. An instance with no display name shows the name Solo. An instance with no tagline shows the tagline of Solo.
 
 The footer of each page always tells that the instance runs Solo.
+
+## Email
+
+Solo sends two types of email: project invites, and the digest of each person's notifications. Email is off until you turn it on here.
+
+1. Set **Send email**.
+2. Enter the **Public address**: the address that people use to open the instance, for example `https://solo.example.com`. Links in emails go to this address. In a browser, Solo fills in the address of the page.
+3. Enter the **Sender name** and the **Sender address**.
+4. Enter the **SMTP server**, the **Port** and the **Security**: **STARTTLS** (usually port 587), **SSL/TLS** (usually port 465) or **None**.
+5. Enter the **Username** and the **Password**, if your SMTP server needs them.
+6. Select **Send test email**. Solo sends an email to your own address with the values in the form, and shows the error from the server if the email does not go.
+7. Select **Save changes**.
+
+Solo encrypts the password before it stores it, and never shows it again. The field shows **Saved** when a password is stored. Leave the field empty to keep that password. If you change the SMTP server, Solo forgets the stored password, so enter it again.
+
+To keep the password out of the database, set `Email__Smtp__Password` in the environment. See [Configuration](configuration.md). The field is then disabled.
+
+Solo puts each email in a queue before it sends it. If the server refuses an email, Solo tries again after about 1 minute, 5 minutes, 30 minutes and 2 hours. After that, the email shows under **Couldn't send** with the error from the server.
 
 ## Audit retention
 

@@ -1,0 +1,21 @@
+@page "/notifications"
+@attribute [Authorize]
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+@*
+    Where the digest's footer link lands. The settings live in a dialog, so this
+    page is only that dialog, and closing it goes on to the dashboard.
+*@
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var dialog = await Dialogs.ShowAsync<NotificationsDialog>("Notifications");
+            await dialog.Result;
+            Navigation.NavigateTo("", replace: true);
+        }
+    }
+}

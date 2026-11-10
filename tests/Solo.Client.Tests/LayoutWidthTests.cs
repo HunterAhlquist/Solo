@@ -52,6 +52,7 @@ public class LayoutWidthTests : ComponentTestBase
     public void Admin_settings_uses_the_shared_readable_width_without_inline_caps()
     {
         var http = new StubHttp()
+            .RouteJson("api/settings/email", new EmailSettingsDto(false, null, null, null, null, 587, Solo.Shared.SmtpSecurity.StartTls, null, false, false, [], 0))
             .RouteJson("api/settings", new InstanceSettingsDto(90, true, null, 1))
             .RouteJson("api/themes", new ThemeScanResultDto([], []))
             .RouteJson("api/extensions/admin", new ExtensionAdminDto([], []))
