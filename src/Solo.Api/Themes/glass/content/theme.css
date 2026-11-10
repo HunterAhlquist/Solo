@@ -15,8 +15,8 @@
      and anything inset in a pane takes the pane's radius minus the inset.
    - Tint sparingly. The accent marks the primary action and the selection;
      the material itself stays neutral and picks up colour from behind it.
-   - Glass needs something behind it, so the page carries a soft wash of the
-     palette's accents rather than flat grey.
+   - Glass needs something behind it, so the page carries a field of pixel
+     icons over a soft wash of the palette's accents rather than flat grey.
 
    In the desktop shell the app bar is the window's title bar (the traffic
    lights and the drag region live in it), so it stays docked. With the shell's
@@ -39,6 +39,15 @@
         0 10px 36px rgba(0, 0, 0, 0.10),
         0 1px 3px rgba(0, 0, 0, 0.08);
     --glass-wash-strength: 22%;
+    --glass-wash:
+        radial-gradient(70vw 60vh at 0% 0%, color-mix(in srgb, var(--mud-palette-info) var(--glass-wash-strength), transparent), transparent 70%),
+        radial-gradient(60vw 60vh at 100% 15%, color-mix(in srgb, var(--mud-palette-secondary) var(--glass-wash-strength), transparent), transparent 70%),
+        radial-gradient(70vw 60vh at 70% 100%, color-mix(in srgb, var(--mud-palette-tertiary) calc(var(--glass-wash-strength) * 0.7), transparent), transparent 70%);
+    /* The art is bold and the board sits right on it, so a veil of the page
+       colour tones it down, and the lanes cover most of what is left. The
+       glass panes still show it at full strength, blurred. */
+    --glass-art-veil: color-mix(in srgb, var(--mud-palette-background) 45%, transparent);
+    --glass-content-alpha: 80%;
     /* How far the floating panes sit below the app bar. The browser's own
        --solo-appbar-bottom already includes the gap; the shell's doesn't. */
     --glass-below-bar: var(--glass-inset);
@@ -77,9 +86,11 @@ html:not(.solo-desktop) {
 }
 
 /* ---------------------------------------------------------------------------
-   The page: a fixed wash of the accents under everything. A layer of its own
-   rather than <body>'s background, because <body> is one viewport tall and a
-   long board would scroll past the end of it.
+   The page: a field of pixel icons over a soft wash of the accents, fixed
+   under everything. The art is transparent, so the palette's background and
+   the wash show between the icons. A layer of its own rather than <body>'s
+   background, because <body> is one viewport tall and a long board would
+   scroll past the end of it.
    --------------------------------------------------------------------------- */
 html:not(.solo-desktop--glass) body {
     background: transparent;
@@ -93,15 +104,25 @@ html:not(.solo-desktop--glass) body::after {
     pointer-events: none;
     background-color: var(--mud-palette-background);
     background-image:
-        radial-gradient(70vw 60vh at 0% 0%, color-mix(in srgb, var(--mud-palette-info) var(--glass-wash-strength), transparent), transparent 70%),
-        radial-gradient(60vw 60vh at 100% 15%, color-mix(in srgb, var(--mud-palette-secondary) var(--glass-wash-strength), transparent), transparent 70%),
-        radial-gradient(70vw 60vh at 70% 100%, color-mix(in srgb, var(--mud-palette-tertiary) calc(var(--glass-wash-strength) * 0.7), transparent), transparent 70%);
+        linear-gradient(var(--glass-art-veil), var(--glass-art-veil)),
+        url("background-light.webp"),
+        var(--glass-wash);
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
 }
 
-/* Content surfaces let the wash through faintly; cards stay solid on top. */
+html[data-color-scheme="dark"]:not(.solo-desktop--glass) body::after {
+    background-image:
+        linear-gradient(var(--glass-art-veil), var(--glass-art-veil)),
+        url("background-dark.webp"),
+        var(--glass-wash);
+}
+
+/* Content surfaces let the background through faintly; cards stay solid on top. */
 html:not(.solo-desktop--glass) .kanban-lane:not(.kanban-lane--adhoc),
 html:not(.solo-desktop--glass) .epic-group {
-    background: color-mix(in srgb, var(--mud-palette-background) 55%, transparent);
+    background: color-mix(in srgb, var(--mud-palette-background) var(--glass-content-alpha), transparent);
 }
 
 /* The board's sticky headers are pinned over scrolling content, the one place
@@ -299,7 +320,7 @@ html:not(.solo-desktop) body:has(.mud-appbar)::before {
 }
 
 .mud-button-outlined {
-    background-color: var(--glass-fill);
+    background-color: var(--glass-fill-dense);
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
 }
@@ -325,8 +346,8 @@ html:not(.solo-desktop) body:has(.mud-appbar)::before {
 /* ---------------------------------------------------------------------------
    Accessibility, and browsers without a backdrop filter.
 
-   Reduce Transparency asks for frostier glass: the materials go opaque and the
-   wash goes away. Increase Contrast wants edges you can see. Without
+   Reduce Transparency asks for frostier glass: the materials and the lanes go
+   opaque. Increase Contrast wants edges you can see. Without
    backdrop-filter a translucent pane would show the page sharp behind its
    text, so it goes opaque too.
    --------------------------------------------------------------------------- */
@@ -335,7 +356,7 @@ html:not(.solo-desktop) body:has(.mud-appbar)::before {
     html[data-color-scheme="dark"] {
         --glass-fill: var(--mud-palette-surface);
         --glass-fill-dense: var(--mud-palette-surface);
-        --glass-wash-strength: 0%;
+        --glass-content-alpha: 100%;
     }
 }
 

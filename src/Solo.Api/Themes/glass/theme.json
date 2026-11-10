@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "id": "glass",
   "name": "Glass",
-  "description": "Frosted, floating navigation over a soft colour wash. System font, capsule controls.",
+  "description": "Frosted, floating navigation over a field of pixel icons. System font, capsule controls.",
   "author": "Solo",
 
   "stylesheet": "content/theme.css",
@@ -23,8 +23,8 @@
 
   "login": {
     "background": {
-      "image": "content/login-dark.svg",
-      "imageLight": "content/login-light.svg",
+      "image": "content/background-dark.webp",
+      "imageLight": "content/background-light.webp",
       "fit": "cover",
       "position": "center",
       "scrim": 0
