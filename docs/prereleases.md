@@ -36,8 +36,7 @@ Preview publication does not publish NuGet packages or create SDK/template relea
 
 Keep previous packages as backups outside the active extensions directory.
 Database migrations can prevent a simple image downgrade. Restore a compatible snapshot when required.
-Use a matching desktop client when the preview changes the client contract.
-The browser client comes with the server image.
+The browser client comes with the server image, and so does the client the desktop and mobile apps run.
 
 See the [Design Docs guide](../site/guide/design-docs.md) for extension features.
 The [design record](design-docs-plan.md#validation) lists pending device checks.

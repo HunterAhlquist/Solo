@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import { createServer } from 'node:net';
 import {
     copyFileSync,
     mkdirSync,
     mkdtempSync,
+    readFileSync,
     rmSync,
     writeFileSync,
 } from 'node:fs';
@@ -28,15 +30,30 @@ mkdirSync(path.join(fixtureDir, 'js'));
 copyFileSync(path.join(clientDir, 'index.html'), path.join(fixtureDir, 'index.html'));
 copyFileSync(path.join(clientDir, 'css', 'app.css'), path.join(fixtureDir, 'css', 'app.css'));
 copyFileSync(path.join(clientDir, 'js', 'theme-boot.js'), path.join(fixtureDir, 'js', 'theme-boot.js'));
+
+// Stands in for the instance, which is where the shell now gets the client:
+// the loading view is the client's own index.html, before Blazor boots.
+const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
+const instance = http.createServer((req, res) => {
+    const pathname = new URL(req.url, 'http://instance').pathname;
+    const file = ['/css/app.css', '/js/theme-boot.js'].includes(pathname) ? pathname : '/index.html';
+    if (file === '/index.html' && pathname !== '/' && pathname !== '/index.html' && path.extname(pathname)) {
+        res.writeHead(404).end();
+        return;
+    }
+    res.writeHead(200, { 'Content-Type': `${types[path.extname(file)]}; charset=utf-8` });
+    res.end(readFileSync(path.join(fixtureDir, file)));
+});
+await new Promise(resolve => instance.listen(0, '127.0.0.1', resolve));
+
 writeFileSync(path.join(userDataDir, 'settings.json'), JSON.stringify({
-    instanceUrl: 'http://127.0.0.1:9',
+    instanceUrl: `http://127.0.0.1:${instance.address().port}`,
     port: localPort,
     backgroundAlpha: 0.35,
 }));
 
 const env = {
     ...process.env,
-    SOLO_CLIENT_DIR: fixtureDir,
     SOLO_USER_DATA_DIR: userDataDir,
 };
 delete env.SOLO_GLASS_APP;
@@ -168,6 +185,8 @@ try {
         await closed;
     }
     rmSync(userDataDir, { recursive: true, force: true });
+    instance.closeAllConnections();
+    instance.close();
     rmSync(fixtureDir, { recursive: true, force: true });
 }
 

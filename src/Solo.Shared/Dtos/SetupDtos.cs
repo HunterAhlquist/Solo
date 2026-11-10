@@ -31,9 +31,9 @@ public sealed class UpdateInstanceSettingsRequest
     /// The instance's display name. Empty clears it; null leaves it as it is.
     /// </summary>
     /// <remarks>
-    /// Null cannot mean "clear" here the way it does for the theme. The
-    /// desktop app bundles its own client, which can be older than the
-    /// instance, and a client from before this field existed sends nothing for
+    /// Null cannot mean "clear" here the way it does for the theme. A client
+    /// can be older than the instance (desktop apps before 1.21 bundled their
+    /// own), and a client from before this field existed sends nothing for
     /// it — saving an unrelated setting there would otherwise wipe the name.
     /// </remarks>
     [StringLength(InstanceBranding.MaxDisplayNameLength)]

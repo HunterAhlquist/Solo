@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
-import path from 'node:path';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -14,9 +11,6 @@ const { createSoloServer } = require('../main/server');
 // requests carry that name in Host — and must be refused on both ways in:
 // the request handler, and the WebSocket upgrade the hub uses, which Node
 // routes past the request handler altogether.
-const sandbox = mkdtempSync(path.join(tmpdir(), 'solo-host-guard-'));
-writeFileSync(path.join(sandbox, 'index.html'), 'INDEX');
-
 // Stands in for the instance: records which requests and upgrades reach it.
 const reached = [];
 const upstream = http.createServer((req, res) => {
@@ -30,7 +24,6 @@ upstream.on('upgrade', (req, socket) => {
 await listen(upstream);
 
 const desktop = createSoloServer({
-    clientDir: sandbox,
     getTarget: () => `http://127.0.0.1:${upstream.address().port}`,
 });
 await listen(desktop);
@@ -39,10 +32,10 @@ const ownHost = `localhost:${port}`;
 const foreignHost = `solo-desktop.attacker.example:${port}`;
 
 try {
-    // The app's own origin is served and proxied.
+    // The app's own origin is proxied, the client's files as well as the API.
     assert.equal((await get('/', ownHost)).status, 200);
     assert.equal((await get('/api/users/me', ownHost)).status, 200);
-    assert.deepEqual(reached.splice(0), ['http /api/users/me']);
+    assert.deepEqual(reached.splice(0), ['http /', 'http /api/users/me']);
 
     // Another name for the same port is refused before the proxy.
     assert.equal((await get('/', foreignHost)).status, 403);
@@ -64,7 +57,6 @@ try {
     await close(desktop);
     upstream.closeAllConnections();
     await close(upstream);
-    rmSync(sandbox, { recursive: true, force: true });
 }
 
 function get(target, host) {

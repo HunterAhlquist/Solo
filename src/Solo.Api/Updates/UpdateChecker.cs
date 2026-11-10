@@ -179,10 +179,9 @@ public sealed class UpdateChecker(
     /// does that is worse than not offering one.</para>
     ///
     /// <para>The client range is compared against this build's contract, which
-    /// is what the hosted client ships with. A desktop shell older than the
-    /// instance bundles its own, older client and may still skip the pages; the
-    /// server cannot know the shell's version, and the shell already warns when
-    /// it is behind.</para>
+    /// is what the hosted client ships with, and what the apps run too. Only a
+    /// client cached for offline use, or a desktop app from before 1.21 (which
+    /// bundled its own), can be older and still skip the pages.</para>
     ///
     /// <para>An unparseable or absent range is treated as compatible, matching
     /// what the loader does with one.</para>

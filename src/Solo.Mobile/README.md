@@ -172,8 +172,9 @@ preview tags: the app loads its instance, so a server or client change doesn't
 reach it. `build/testflight-gate.sh` diffs the app's inputs against the commit
 of the last run whose Upload step succeeded and, when nothing changed, ends the
 run with a notice in its summary. The Mac TestFlight upload uses the same gate,
-with the client among its inputs, since the desktop app bundles it. A manual
-run always uploads, and so does any run where the gate can't tell.
+and a client change skips it too, since the desktop app proxies the client its
+instance serves. A manual run always uploads, and so does any run where the
+gate can't tell.
 
 ## Testing against a local instance
 

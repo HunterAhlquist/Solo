@@ -7,9 +7,10 @@ namespace Solo.Shared.Extensibility;
 /// <remarks>
 /// <para>Two ranges exist because they move independently. <c>soloApiVersion</c> is
 /// checked on the server against this constant; <c>soloClientVersion</c> is
-/// checked in the browser against the running client build, which in the
-/// Electron shell is bundled with the app and can be older than the instance.
-/// On the hosted web build the two are always the same number.</para>
+/// checked in the browser against the running client build. The apps run the
+/// client the instance serves, so the two are normally the same number; a
+/// client cached for offline use, or a desktop app from before 1.21 (which
+/// bundled its own), can be older.</para>
 ///
 /// <para><b>Adding a member to the contract is a minor bump, and it is not
 /// optional.</b> A package compiled against the new member declares a floor
