@@ -5,12 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <Version>1.6.2</Version>
+    <Version>1.6.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Keep the contract package out of host tests, which must bind to the host's assembly. -->
-    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.16.0" PrivateAssets="all" />
+    <PackageReference Include="HunterAhlquist.Solo.Extensibility" Version="1.17.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

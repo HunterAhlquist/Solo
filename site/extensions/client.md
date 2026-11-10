@@ -217,7 +217,7 @@ Inject these services into a page or a component. They are in `Solo.Shared.Exten
 | `ISoloLiveTopics` | Get [live updates](hooks-and-events.md#live-updates). | 1.4 |
 | `ISoloTaskPicker` | Let a person select a task. | 1.5 |
 | `ISoloContextMenu` | Show a menu at the pointer. | 1.6 |
-| `ISoloDeviceActions` | Respond to a device control, such as an Apple Pencil double-tap. | 1.16 |
+| `ISoloDeviceActions` | Respond to a device control, such as an Apple Pencil double-tap. | 1.17 |
 
 ### Open the task drawer
 
