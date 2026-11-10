@@ -11,6 +11,9 @@ import Capacitor
 /// - Sign-in, which Google refuses inside a web view. The page can post one
 ///   fixed message, `request_sign-in`, and the sign-in sheet takes it from
 ///   there (`AppSignIn`).
+/// - OS notifications (`AppNotifications`): permission, an alert for an inbox
+///   entry nobody saw, and deadline reminders scheduled ahead, through the
+///   fixed messages of `window.soloApp.notifications`.
 /// - Its list of instances (`InstancesView`), opened by the fixed message
 ///   `request_instance-settings`. Opening another instance builds a new view
 ///   controller on it, since Capacitor reads the address once, at load.
@@ -24,8 +27,11 @@ import Capacitor
 ///   paints nothing there.
 ///
 /// Nothing native is handed to the page or the extensions it loads.
-class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, WKScriptMessageHandler {
+class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, WKScriptMessageHandler,
+    WKScriptMessageHandlerWithReply {
     private static let messageHandler = "soloApp"
+    /// The notification messages, which answer (`AppNotifications`).
+    private static let replyHandler = "soloAppReply"
 
     private var signIn: AppSignIn?
     /// The instance this controller opened; nil until one is added.
@@ -35,6 +41,9 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     private var builtIn: URL?
 
     private var themeColorObservation: NSKeyValueObservation?
+    /// Set once the page's client has used the notification bridge, which it
+    /// does as it loads: from then on a tapped notification can be handed to it.
+    private var clientListening = false
     private var foregroundObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
 
@@ -55,6 +64,11 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             pageURL = Self.startProxy(for: instance)?.pageURL
         }
         descriptor.serverURL = pageURL?.absoluteString ?? instance.map { $0.absoluteString + "/" }
+        // Capacitor's bridge would make itself the notification delegate as it
+        // loads, and route taps to plugins this app doesn't have; the app's own
+        // delegate (AppNotifications, installed at launch) has to keep them,
+        // a tap that launched the app included.
+        descriptor.handleApplicationNotifications = false
         return descriptor
     }
 
@@ -67,6 +81,7 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         configuration.limitsNavigationsToAppBoundDomains = true
         let controller = configuration.userContentController
         controller.add(WeakMessageHandler(self), name: Self.messageHandler)
+        controller.addScriptMessageHandler(WeakReplyHandler(self), contentWorld: .page, name: Self.replyHandler)
         // What solo.desktop in the client looks for, in place of the desktop
         // app's window.soloDesktop.
         controller.addUserScript(WKUserScript(
@@ -74,6 +89,12 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                 window.soloApp = Object.freeze({
                     beginSignIn: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_sign-in'),
                     openInstances: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_instance-settings'),
+                    notifications: Object.freeze({
+                        permission: () => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'permission' }),
+                        request: () => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'request' }),
+                        show: (id, title, body) => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'show', id, title, body }),
+                        schedule: reminders => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'schedule', reminders }),
+                    }),
                 });
                 """,
             injectionTime: .atDocumentStart,
@@ -101,6 +122,9 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
         ) { _ in Self.proxy?.suspend() }
+
+        AppNotifications.shared.deliver = { [weak self] tap in self?.deliver(tap) ?? false }
+        AppNotifications.shared.switchTo = { [weak self] url in self?.reopen(on: url) }
 
         let pencil = UIPencilInteraction()
         pencil.delegate = self
@@ -130,6 +154,78 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         case "request_instance-settings": showInstances()
         default: break
         }
+    }
+
+    /// The notification messages. Same rule as above: the instance's own page,
+    /// main frame only. Each payload is checked here rather than trusted, since
+    /// it ends up in system UI.
+    func userContentController(
+        _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
+    ) async -> (Any?, String?) {
+        guard message.frameInfo.isMainFrame,
+              let instance,
+              Self.isOrigin(message.frameInfo.securityOrigin, of: pageURL ?? instance),
+              let body = message.body as? [String: Any], let type = body["type"] as? String
+        else { return (nil, "Not available here.") }
+
+        defer { clientIsListening(on: instance) }
+        switch type {
+        case "permission":
+            return (await AppNotifications.permission(), nil)
+        case "request":
+            return (await AppNotifications.request(), nil)
+        case "show":
+            guard let id = Self.text(body["id"], max: 64), let title = Self.text(body["title"], max: AppNotifications.titleLength)
+            else { return (nil, "Invalid notification.") }
+            let text = Self.text(body["body"], max: AppNotifications.bodyLength)
+            return (await AppNotifications.show(on: instance, id: id, title: title, body: text), nil)
+        case "schedule":
+            guard let list = body["reminders"] as? [[String: Any]], list.count <= AppNotifications.reminderCount
+            else { return (nil, "Invalid reminders.") }
+            let reminders = list.compactMap(Self.reminder)
+            guard reminders.count == list.count else { return (nil, "Invalid reminders.") }
+            return (await AppNotifications.schedule(on: instance, reminders), nil)
+        default:
+            return (nil, "Unknown request.")
+        }
+    }
+
+    private static func text(_ value: Any?, max: Int) -> String? {
+        guard let text = value as? String, !text.isEmpty else { return nil }
+        return text.count <= max ? text : String(text.prefix(max - 1)) + "…"
+    }
+
+    /// `{ key, taskId, fireAt, title, body }`, `fireAt` in milliseconds since the epoch.
+    private static func reminder(_ value: [String: Any]) -> AppNotifications.Reminder? {
+        guard let key = value["key"] as? String, !key.isEmpty, key.count <= AppNotifications.keyLength,
+              let taskId = (value["taskId"] as? String).flatMap(UUID.init(uuidString:)),
+              let millis = value["fireAt"] as? Double, millis.isFinite,
+              let title = text(value["title"], max: AppNotifications.titleLength)
+        else { return nil }
+        return AppNotifications.Reminder(
+            key: key, taskId: taskId, fireAt: Date(timeIntervalSince1970: millis / 1000),
+            title: title, body: text(value["body"], max: AppNotifications.bodyLength))
+    }
+
+    private func clientIsListening(on instance: URL) {
+        clientListening = true
+        if let tap = AppNotifications.shared.takeTap(for: instance) {
+            dispatch(tap)
+        }
+    }
+
+    /// A tap for the open instance goes straight to the page once its client
+    /// listens; anything else waits in `AppNotifications`.
+    private func deliver(_ tap: AppNotifications.Tap) -> Bool {
+        guard tap.instance == instance, clientListening, webView != nil else { return false }
+        dispatch(tap)
+        return true
+    }
+
+    private func dispatch(_ tap: AppNotifications.Tap) {
+        guard let data = try? JSONSerialization.data(withJSONObject: tap.detail) else { return }
+        webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('solo:notification-open', { detail: \(String(decoding: data, as: UTF8.self)) }))")
     }
 
     // iPadOS 17.5 and later call this one and skip pencilInteractionDidTap.
@@ -206,7 +302,15 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     }
 
     private func reopen(on chosen: SavedInstance) {
-        SavedInstances.current = chosen.url
+        reopen(on: chosen.url)
+    }
+
+    private func reopen(on url: URL) {
+        SavedInstances.current = url
+        guard presentedViewController != nil else {
+            view.window?.rootViewController = SoloViewController()
+            return
+        }
         dismiss(animated: true) { [weak self] in
             self?.view.window?.rootViewController = SoloViewController()
         }
@@ -220,15 +324,22 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         if let proxy, proxy.target == instance { return proxy }
         proxy?.stop()
         proxy = InstancePorts.start(for: instance) { port in
-            let candidate = LocalProxy(port: port, target: instance)
-            do {
-                try candidate.start()
-                return candidate
-            } catch {
-                NSLog("Solo: local port \(port) unavailable (\(error)) for \(instance.host ?? "").")
-                candidate.stop()
-                throw error
+            // A relaunch can find its own port held for a moment by the
+            // process it replaces; moving on from it would sign the instance
+            // out, so it gets a second try first.
+            for attempt in 0..<2 {
+                let candidate = LocalProxy(port: port, target: instance)
+                do {
+                    try candidate.start()
+                    return candidate
+                } catch {
+                    NSLog("Solo: local port \(port) unavailable (\(error)) for \(instance.host ?? "").")
+                    candidate.stop()
+                    if attempt == 1 { throw error }
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
             }
+            throw CancellationError()
         }
         return proxy
     }
@@ -243,6 +354,22 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
 
 /// The content controller holds its handlers strongly, and the web view it
 /// belongs to is held by the view controller.
+private final class WeakReplyHandler: NSObject, WKScriptMessageHandlerWithReply {
+    private weak var target: SoloViewController?
+
+    init(_ target: SoloViewController) {
+        self.target = target
+    }
+
+    @MainActor
+    func userContentController(
+        _ userContentController: WKUserContentController, didReceive message: WKScriptMessage
+    ) async -> (Any?, String?) {
+        guard let target else { return (nil, "Not available here.") }
+        return await target.userContentController(userContentController, didReceive: message)
+    }
+}
+
 private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
     private weak var target: WKScriptMessageHandler?
 

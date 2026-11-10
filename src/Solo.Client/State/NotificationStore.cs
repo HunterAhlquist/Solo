@@ -25,6 +25,12 @@ namespace Solo.Client.State;
 /// <para>The browser's time zone is reported the first time this loads without
 /// one on file: deadline reminders go out at 9:00 the person's time, and they
 /// shouldn't have to find a setting for that to be right.</para>
+///
+/// <para>In the iPhone and iPad app, which shows notifications while it's
+/// closed only if they were scheduled ahead, every refresh also hands it the
+/// deadline reminders still to come (<c>api/notifications/upcoming</c>), and
+/// so does the page coming back into view. A change made elsewhere reaches the
+/// schedule at the next of those.</para>
 /// </remarks>
 public sealed class NotificationStore(
     ApiClient api,
@@ -39,6 +45,7 @@ public sealed class NotificationStore(
     private readonly HashSet<(Guid, DateTimeOffset)> _known = [];
     private IAsyncDisposable? _subscription;
     private DotNetObjectReference<NotificationStore>? _self;
+    private bool _canSchedule;
 
     public NotificationInboxDto? Inbox { get; private set; }
 
@@ -54,6 +61,28 @@ public sealed class NotificationStore(
         _self = DotNetObjectReference.Create(this);
         _subscription = await live.SubscribeUserAsync(BoardHubConstants.NotificationsTopic, _ => RefreshAsync());
         live.ConnectionChanged += OnConnectionChangedAsync;
+        try
+        {
+            _canSchedule = await js.InvokeAsync<bool>("solo.notifications.canSchedule", ct);
+        }
+        catch (JSException e)
+        {
+            logger.LogWarning(e, "Couldn't tell whether this device schedules notifications.");
+        }
+
+        // Before the first read: the app hands over a tap that launched it on
+        // the first call this page makes to it, which the read's scheduling
+        // would otherwise be, before anything listens. Opening one reads the
+        // inbox itself.
+        try
+        {
+            await js.InvokeAsync<bool>("solo.notifications.attach", ct, _self);
+        }
+        catch (JSException e)
+        {
+            logger.LogWarning(e, "Couldn't listen for notification taps.");
+        }
+
         await RefreshAsync();
         await ReportTimeZoneAsync(ct);
     }
@@ -77,6 +106,8 @@ public sealed class NotificationStore(
             {
                 await AnnounceAsync(item);
             }
+
+            await ScheduleRemindersAsync();
         }
         catch (Exception e) when (e is HttpRequestException or ApiException or TaskCanceledException)
         {
@@ -113,9 +144,60 @@ public sealed class NotificationStore(
     [JSInvokable]
     public async Task OpenFromNotification(string id)
     {
+        if (Inbox?.Items.FirstOrDefault(n => n.Id.ToString() == id) is null)
+        {
+            // Raised after the last read, such as one the app showed while closed.
+            await RefreshAsync();
+        }
+
         if (Inbox?.Items.FirstOrDefault(n => n.Id.ToString() == id) is { } notification)
         {
             await OpenAsync(notification);
+        }
+    }
+
+    /// <summary>
+    /// A tapped deadline reminder the app scheduled ahead: it names the task,
+    /// not an entry, since the server raises the entry only when it's due. Any
+    /// unread entry for the task is what the person just read.
+    /// </summary>
+    [JSInvokable]
+    public async Task OpenTaskFromNotification(string taskId)
+    {
+        if (!Guid.TryParse(taskId, out var id))
+        {
+            return;
+        }
+
+        await RefreshAsync();
+        foreach (var notification in Inbox?.Items.Where(n => n.TaskId == id && n.ReadAt is null).ToList() ?? [])
+        {
+            await MarkReadAsync(notification);
+        }
+
+        await drawer.OpenAsync(id);
+    }
+
+    /// <summary>Back in view, perhaps after a while away: catch up, and in the app reschedule.</summary>
+    [JSInvokable]
+    public Task PageVisible() => RefreshAsync();
+
+    private async Task ScheduleRemindersAsync()
+    {
+        if (!_canSchedule)
+        {
+            return;
+        }
+
+        try
+        {
+            var reminders = await api.GetUpcomingRemindersAsync();
+            await js.InvokeAsync<int>("solo.notifications.schedule", reminders);
+        }
+        catch (Exception e) when (e is HttpRequestException or ApiException or TaskCanceledException or JSException)
+        {
+            // What was scheduled before stays; the next refresh tries again.
+            logger.LogWarning(e, "Couldn't schedule deadline reminders on this device.");
         }
     }
 
@@ -198,6 +280,15 @@ public sealed class NotificationStore(
     public async ValueTask DisposeAsync()
     {
         live.ConnectionChanged -= OnConnectionChangedAsync;
+        try
+        {
+            await js.InvokeVoidAsync("solo.notifications.detach");
+        }
+        catch (Exception e) when (e is JSException or JSDisconnectedException or TaskCanceledException)
+        {
+            // The page is going away with its listeners.
+        }
+
         if (_subscription is not null)
         {
             await _subscription.DisposeAsync();

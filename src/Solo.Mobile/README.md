@@ -104,6 +104,38 @@ Review guideline 4.7.2 ("may not extend or expose native platform APIs or
 technologies to the software"), and the same name can come from another
 platform's control later.
 
+## Notifications
+
+A WKWebView has no Notification API, so the client's notifications
+(`wwwroot/js/notifications.js`) use fixed messages on `window.soloApp.notifications`
+instead, answered by `App/App/AppNotifications.swift` through a
+`WKScriptMessageHandlerWithReply` (main frame and the instance's local origin
+only, every payload checked):
+
+- `permission` and `request`: the system authorization, worded as the browser
+  API words it (`granted`, `denied`, `default`).
+- `show`: an inbox entry the page heard about while nobody was looking at it,
+  shown at once.
+- `schedule`: the deadline reminders still to come, from
+  `GET api/notifications/upcoming`. The client calls it after every inbox
+  refresh and when the page comes back into view. Each instance's requests are
+  replaced together, soonest first, and the app keeps at most 60 pending in
+  all, since iOS drops anything past 64 without a word.
+
+There is no push relay, by design: nothing leaves the instance or the device
+for this. So a deadline reminder shows while the app is closed, because the
+device scheduled it, but an assignment reaches a closed app only through the
+email digest. A deadline changed, or a task finished, while the app is closed
+can still fire a reminder scheduled before; the next open reschedules.
+
+The app's own `UNUserNotificationCenterDelegate` is installed at launch, and
+`handleApplicationNotifications` is off so Capacitor's bridge doesn't replace
+it. In the foreground the system stays quiet for reminders (the page shows a
+snackbar once the server raises them). A tap names its instance and an entry
+id or a task id. For another saved instance the app switches to it first. The
+tap waits until the page's client has attached (`solo.notifications.attach`,
+its first call), then arrives as a `solo:notification-open` event.
+
 ## Sign-in
 
 Whatever the instance's provider, the app signs in the way the desktop app

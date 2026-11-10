@@ -122,6 +122,22 @@ public sealed class NotificationsController(
         return await SaveOrConflictAsync(db, ct) ?? (ActionResult<NotificationPreferencesDto>)preferences.ToDto();
     }
 
+    /// <summary>
+    /// The caller's deadline reminders still to come, soonest first, for a
+    /// device that shows notifications while the app is closed (the iPhone and
+    /// iPad app schedules them locally). Nothing leaves the instance for it.
+    /// </summary>
+    [HttpGet("upcoming")]
+    public async Task<ActionResult<IReadOnlyList<UpcomingReminderDto>>> Upcoming(CancellationToken ct)
+    {
+        if (currentUser.UserId is not { } me)
+        {
+            return Forbid();
+        }
+
+        return Ok(await DeadlineReminderService.UpcomingAsync(db, me, time.GetUtcNow(), ct));
+    }
+
     /// <summary>The IANA ids this server knows, for picking a time zone by hand.</summary>
     [HttpGet("time-zones")]
     public ActionResult<IReadOnlyList<string>> TimeZones() =>

@@ -37,7 +37,17 @@ To turn on device notifications:
 
 If your browser blocks notifications for the site, change the setting in your browser. Solo cannot show the prompt again.
 
-When Solo is closed, your device gets no notifications. The bell holds them for the next time that you open Solo.
+When Solo is closed, your browser and the desktop app get no notifications. The bell holds them for the next time that you open Solo.
+
+### On iPhone and iPad
+
+The Solo app for iPhone and iPad shows notifications as well. Turn them on the same way: **Notifications** in the account menu, **Allow notifications**, then accept the prompt. If you select **Don't Allow**, turn notifications on for Solo in the Settings app.
+
+- **Deadline notifications** reach you even when the app is closed. Each time that you open the app, it schedules the deadline notifications that are still to come, at 9:00 in your time zone.
+- **Assignments** show while the app is open. When the app is closed, you get them in your email digest, and on the bell the next time that you open the app.
+- Select a notification to open its task. If the notification is from another instance in your list, the app opens that instance first.
+
+Nothing goes through a push service: the app gets its deadline notifications from your instance and schedules them on the device. If a deadline changes, or you finish a task, while the app is closed, a notification that the app scheduled before can still arrive. The next time that you open the app, it updates the schedule.
 
 ## Email digest
 
