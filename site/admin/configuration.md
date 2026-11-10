@@ -74,6 +74,17 @@ Do step 2 before step 3. If the redirect URI is not registered, Google refuses t
 
 Use an `https` address. With an `http` address, Safari shows a warning about a non-secure form when Google returns to the page.
 
+### App sign-in with other providers
+
+The desktop app and the iPad and iPhone app sign in to every instance on the page `https://<your address>/desktop-auth`. With Microsoft Entra ID or a different OIDC issuer, the page uses the authorization code flow with PKCE. It goes directly to the provider and does not need a client secret.
+
+1. Open the client of your instance at the provider.
+2. Add `https://<your address>/desktop-auth` as a redirect URI. Use the exact address: no slash at the end and no query. For Microsoft Entra ID, add it under the **Single-page application** platform, next to `https://<your address>/authentication/login-callback`.
+
+If the redirect URI is not registered, the provider refuses the app sign-in. The web sign-in does not use this address.
+
+The provider must serve its discovery document and its token endpoint at the origin of `Auth__Authority`. Solo allows the browser to connect to that origin, and to no other origin of the provider.
+
 ## Reverse proxy
 
 The container serves HTTP on port 8080. Terminate TLS in a reverse proxy or a tunnel, and connect it to the container with `http`.

@@ -21,10 +21,13 @@ with its version in parentheses).
 - A preview server checks its own preview release for updates instead of the newest stable one, so Admin settings offers the extension versions built with that preview. Stable instances are unchanged, and `Updates__ManifestUrl` still overrides both.
 - A project's owners can create, close, reopen and delete its boards, not only a super admin. Add board appears in the sidebar for each project you own.
 - Admin settings → Extensions can switch an extension to another update feed its package offers, such as a beta channel, from an "Updates from" picker. It appears only for a package that lists more than one feed, and switching back to Default keeps the installed version until Default has a newer one.
+- Sign-in with Microsoft Entra ID or another OIDC provider works on the web again. The content security policy only allowed Google, so the browser blocked the provider's discovery document and the sign-in ended in "Network Error"; it now allows the instance's own provider too.
+- The desktop, iPad and iPhone apps sign in with whatever provider the instance uses, not only Google. The app sign-in page (`/desktop-auth`) runs the authorization code flow with PKCE against a Microsoft or generic provider, with no client secret. Register `https://<instance>/desktop-auth` as a redirect URI of the provider's client: for Entra ID, under Single-page application.
 
 ### Desktop
 - Instances in the profile menu and on the sign-in page opens the Settings window, where the instances are listed.
 - With no instance yet, the app opens on an "Add your first instance" page, with a link to the guide for setting one up, and nothing else until one is connected. The iPad and iPhone app opens on the same setup.
+- Every instance signs in through its sign-in page in the browser or the macOS sign-in sheet, whatever its provider, so a Microsoft or generic instance signs in as a Google one does. Settings no longer lists a per-app OIDC redirect URI: the instance's `/desktop-auth` address replaces it, for the desktop and mobile apps alike.
 
 ### SDK
 - Contract 1.16.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.

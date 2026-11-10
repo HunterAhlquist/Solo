@@ -14,7 +14,7 @@
                 anything you had open is still here.
             </MudText>
 
-            @if (Config.IsGoogle)
+            @if (Config.UsesSessionSignIn)
             {
                 <GoogleSignInButton OnSignedIn="@Close" />
             }
