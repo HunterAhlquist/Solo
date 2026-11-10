@@ -206,24 +206,25 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         }
     }
 
-    /// The instance's proxy, started if it isn't running. Its port is the
+    /// The instance's proxy, started if it isn't running. Its main port is the
     /// instance's for good (`InstancePorts`); only when another app holds it
-    /// does the instance move on, and sign in again on the new origin.
+    /// does this launch use one of the instance's fallback ports, which has a
+    /// sign-in of its own. The next launch tries the main port again.
     private static func startProxy(for instance: URL) -> LocalProxy? {
         if let proxy, proxy.target == instance { return proxy }
         proxy?.stop()
         proxy = nil
-        var port = InstancePorts.port(for: instance)
-        for _ in 0..<10 {
+        let ports = InstancePorts.ports(for: instance)
+        for attempt in 0..<10 {
+            let port = attempt < ports.count ? ports[attempt] : InstancePorts.addFallback(for: instance)
             let candidate = LocalProxy(port: port, target: instance)
             do {
                 try candidate.start()
                 proxy = candidate
                 return candidate
             } catch {
-                NSLog("Solo: local port \(port) unavailable (\(error)); moving \(instance.host ?? "") on.")
+                NSLog("Solo: local port \(port) unavailable (\(error)) for \(instance.host ?? "").")
                 candidate.stop()
-                port = InstancePorts.reassign(instance)
             }
         }
         return nil
