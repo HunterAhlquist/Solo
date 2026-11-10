@@ -19,9 +19,10 @@ import Network
 /// HTTP requests go upstream through URLSession and stream back as chunked
 /// responses. A WebSocket (SignalR's hub) is carried as a raw TCP or TLS
 /// tunnel once its head is rewritten, as http-proxy does on the desktop.
-/// A network-path change, or the app returning to the foreground, resets the
-/// upstream connections and restarts the listener if it died, so nothing
-/// waits on a connection that went away with the old network.
+/// A network-path change resets the upstream connections and restarts the
+/// listener if it died, so nothing waits on a connection that went away with
+/// the old network. Going to the background closes the listener and coming
+/// back opens a new one (`suspend()`, `resume()`).
 final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     let port: UInt16
     /// The instance, with its path when it's hosted under one.
@@ -41,6 +42,9 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private var lastPath: NWPath?
     private var stopped = false
+    /// Between the app going to the background and coming back: no listener,
+    /// and nothing may start one.
+    private var suspended = false
 
     private struct Exchange {
         let task: URLSessionTask
@@ -74,13 +78,37 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         }
     }
 
-    /// For the app returning to the foreground: iOS may have torn down the
-    /// listener's socket and the upstream connections while it was suspended.
-    func recover() {
+    /// For the app going to the background. iOS defuncts a suspended app's
+    /// listener without telling it: the NWListener stays `.ready` and simply
+    /// stops accepting, which is what left the page unable to reconnect after
+    /// the device was locked (TN2277; Apple's advice is to close listeners on
+    /// the way into the background and open them again on the way back).
+    func suspend() {
         queue.async { [self] in
             guard !stopped else { return }
+            suspended = true
+            listener?.cancel()
+            listener = nil
             resetUpstream()
-            if listener?.state != .ready { try? listen(wait: false) }
+        }
+    }
+
+    /// For the app returning to the foreground: after a suspend(), a new
+    /// listener on the same port and upstream afresh. Not waited for — the
+    /// foreground transition mustn't block on it; the page's first retry may
+    /// beat it, and the next one finds it. iOS also posts the foreground
+    /// notification as the app launches, when the listener start() opened is
+    /// the one to keep: replacing it then raced the page's first load.
+    func resume() {
+        queue.async { [self] in
+            guard !stopped else { return }
+            guard suspended else {
+                if listener?.state != .ready { try? listen(wait: false) }
+                return
+            }
+            suspended = false
+            resetUpstream()
+            do { try listen(wait: false) } catch { NSLog("Solo: local proxy didn't restart: \(error)") }
         }
     }
 
@@ -111,7 +139,7 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
                 // Not on start: a failure later (a network change, a
                 // suspension) is retried rather than leaving the app blank.
                 self?.queue.asyncAfter(deadline: .now() + 0.5) {
-                    guard let self, !self.stopped, self.listener === listener else { return }
+                    guard let self, !self.stopped, !self.suspended, self.listener === listener else { return }
                     try? self.listen(wait: false)
                 }
             default:
@@ -128,7 +156,7 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
 
     private func pathChanged(_ path: NWPath) {
         defer { lastPath = path }
-        guard let lastPath, !stopped else { return }
+        guard let lastPath, !stopped, !suspended else { return }
         // A different network, or the network coming back: connections made on
         // the old one may never answer, so start upstream afresh.
         if path.status != lastPath.status || path.availableInterfaces.map(\.name) != lastPath.availableInterfaces.map(\.name) {

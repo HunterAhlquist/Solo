@@ -53,9 +53,16 @@ client's own files included, to the instance, like the desktop app's
   the client already handles. Once a vault is kept offline, the client's
   service worker answers page loads before they reach the proxy.
 - **Network changes:** a change of network path (airplane mode, Wi-Fi coming
-  back) or the app returning to the foreground drops the upstream connections
-  and restarts the listener if iOS closed it, so nothing waits on a connection
-  that went away with the old network.
+  back) drops the upstream connections and restarts the listener if it died,
+  so nothing waits on a connection that went away with the old network.
+- **Background and lock:** iOS defuncts a suspended app's listener without
+  telling it. The `NWListener` still reports `.ready` and simply stops
+  accepting, which is how locking the device used to leave the page unable to
+  reconnect until the app was relaunched. So the proxy closes the listener when
+  the app goes to the background and opens a new one on the same port when it
+  comes back (TN2277's advice). The client keeps retrying its live connection
+  every five seconds after SignalR's own reconnect gives up, so it recovers
+  however long that took.
 
 ## Instances
 
