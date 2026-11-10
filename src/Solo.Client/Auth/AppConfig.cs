@@ -68,6 +68,24 @@ public sealed class AppConfig
     public bool IsGoogle =>
         ProviderConfigured && string.Equals(Auth!.Provider, "google", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Every other provider (Microsoft, generic OIDC) does code + PKCE properly.</summary>
-    public bool UsesOidcRedirect => ProviderConfigured && !IsGoogle;
+    /// <summary>
+    /// A desktop or mobile app hosts the page. Read once at bootstrap: the
+    /// app's bridge object exists before any of the page's scripts run.
+    /// </summary>
+    public bool InApp { get; init; }
+
+    /// <summary>
+    /// Signed in through a Solo session rather than the web client's OIDC
+    /// library: Google always (see <see cref="IsGoogle"/>), and every provider
+    /// inside an app. An app signs in on the instance's <c>/desktop-auth</c>
+    /// page, in the system's sign-in sheet or browser, and gets a session
+    /// back, because its web view can't run the provider's pages itself: Google
+    /// refuses to, the iPad app opens other hosts in Safari, and the desktop
+    /// shell's CSP allows no provider but Google. The provider's flow then runs
+    /// on the instance's own origin, whichever provider it is.
+    /// </summary>
+    public bool UsesSessionSignIn => IsGoogle || (ProviderConfigured && InApp);
+
+    /// <summary>Every other provider (Microsoft, generic OIDC) does code + PKCE properly, on the web.</summary>
+    public bool UsesOidcRedirect => ProviderConfigured && !UsesSessionSignIn;
 }

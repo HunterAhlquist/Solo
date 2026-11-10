@@ -18,7 +18,7 @@ Create a client in your identity provider.
 1. Select the client type for a browser application (a single-page application).
 2. Register the address of your Solo instance:
    - **Google.** Add the address as an authorized JavaScript origin. Optional: for desktop sign-in in one window, also add `https://<your address>/desktop-auth` as an authorized redirect URI. See [Desktop sign-in with Google](configuration.md#desktop-sign-in-with-google).
-   - **Other providers.** Add `https://<your address>/authentication/login-callback` as a redirect address. The flow is authorization code with PKCE.
+   - **Other providers.** Add `https://<your address>/authentication/login-callback` as a redirect address. The flow is authorization code with PKCE. For the desktop app and the mobile app, also add `https://<your address>/desktop-auth`. See [App sign-in with other providers](configuration.md#app-sign-in-with-other-providers).
 3. Copy the client ID.
 
 For Google, copy the full client ID. It ends in `.apps.googleusercontent.com`. With a shortened ID, sign-in works but each request to Solo fails.

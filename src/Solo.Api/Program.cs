@@ -297,7 +297,7 @@ builder.Services.AddRateLimiter(limiter =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
-app.UseSoloSecurityHeaders();
+app.UseSoloSecurityHeaders(app.Configuration);
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 

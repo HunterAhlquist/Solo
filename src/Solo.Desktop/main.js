@@ -204,7 +204,6 @@ function instanceList() {
             ? `${instance.name} (${settingsStore.instanceAddress(instance.url)})`
             : instance.name,
         url: instance.url,
-        // Non-Google OIDC clients need this origin for redirect registration.
         origin: localOrigin(instance),
         open: windowFor(instance) !== null,
     }));
@@ -442,9 +441,9 @@ async function claimPort(instance) {
 }
 
 function localOrigin(instance) {
-    // localhost rather than 127.0.0.1: for non-Google OIDC providers this is
-    // still the redirect origin operators register, so it must be stable and
-    // predictable. (Google sign-in runs on the instance's own origin.)
+    // localhost rather than 127.0.0.1, and one port per instance kept across
+    // launches: each origin holds that instance's local storage, its session
+    // among it. (Sign-in itself runs on the instance's own origin.)
     return `http://localhost:${instance.port}`;
 }
 
@@ -994,13 +993,15 @@ async function fetchInstanceConfig(url) {
     }
 }
 
-// The browser flow is Google's: the instance's /desktop-auth page runs Google
-// Identity Services. Any other provider redirects the window itself, and an
-// instance still in setup has nobody to sign in as — both are left to the
-// client, in the instance's window.
+// Every provider signs in through the browser flow: the instance's
+// /desktop-auth page runs Google's sign-in or the code flow against the
+// instance's own provider, on the instance's origin, and hands back a session.
+// The window can't do it itself — Google refuses Electron, and this shell's
+// CSP allows no other provider. An instance still in setup has nobody to sign
+// in as, so that is left to the client, in the instance's window.
 function signsInInBrowser(config) {
     return config.setupCompleted &&
-        typeof config.provider === 'string' && config.provider.toLowerCase() === 'google' &&
+        typeof config.provider === 'string' && Boolean(config.provider) &&
         Boolean(config.authority) && Boolean(config.clientId);
 }
 
