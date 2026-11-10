@@ -23,6 +23,7 @@ with its version in parentheses).
 - Admin settings → Extensions can switch an extension to another update feed its package offers, such as a beta channel, from an "Updates from" picker. It appears only for a package that lists more than one feed, and switching back to Default keeps the installed version until Default has a newer one.
 - Sign-in with Microsoft Entra ID or another OIDC provider works on the web again. The content security policy only allowed Google, so the browser blocked the provider's discovery document and the sign-in ended in "Network Error"; it now allows the instance's own provider too.
 - The desktop, iPad and iPhone apps sign in with whatever provider the instance uses, not only Google. The app sign-in page (`/desktop-auth`) runs the authorization code flow with PKCE against a Microsoft or generic provider, with no client secret. Register `https://<instance>/desktop-auth` as a redirect URI of the provider's client: for Entra ID, under Single-page application.
+- The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
 
 ### Desktop
 - Instances in the profile menu and on the sign-in page opens the Settings window, where the instances are listed.
