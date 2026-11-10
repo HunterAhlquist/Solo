@@ -38,7 +38,9 @@ with its version in parentheses).
 
 ### Extensions
 
-#### Design Docs (1.6.1)
+#### Design Docs (1.6.2)
+- A design doc's heading and its tree of notes are translucent in every theme, in the browser and the iPad and iPhone app as on the desktop, so a theme's background shows through them; the note itself stays solid for reading. On a narrow screen the tree opens as a frosted panel over the note. The page used to be opaque everywhere but the desktop's glass mode.
+- The offline sync menu counts the documents and items waiting to sync instead of every edit, so a few offline paragraphs read "2 items waiting to sync" rather than hundreds of changes.
 - A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
 - In the iPad app, double-tapping Apple Pencil while sketching switches to the eraser and back to the tool you had before. It follows the Pencil setting in iPadOS: it works when that setting is to switch to the eraser or the previous tool. Needs Solo with contract 1.16.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
