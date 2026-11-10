@@ -7,7 +7,7 @@
 *@
 @* The tooltip would sit on top of the open list, so it steps aside while the menu is open. *@
 <MudTooltip Text="Notifications" Disabled="@_open">
-    <MudBadge Content="@BadgeText" Visible="@(Unread > 0)" Color="Color.Error" Overlap="true" Bordered="true">
+    <MudBadge Content="@BadgeText" Visible="@(Unread > 0)" Color="Color.Error" Overlap="true" Bordered="true" Class="notification-badge">
         <MudMenu Icon="@(Unread > 0 ? Icons.Material.Filled.Notifications : Icons.Material.Outlined.Notifications)"
                  Color="Color.Inherit" AriaLabel="Notifications" OpenChanged="@(open => _open = open)"
                  AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"

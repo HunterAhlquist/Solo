@@ -2105,6 +2105,12 @@ html.solo-desktop .solo-titlebar {
 .workspace-container { flex:1; min-height:0; height:100%; padding:0; display:flex; flex-direction:column; }
 
 /* Notification bell: a readable column of entries, not the menu's one-line items. */
+/* MudBadge places its count on the corner of the 48px icon button, which
+   leaves it floating clear of the 24px bell; pull it onto the bell's shoulder. */
+.notification-badge .mud-badge.mud-badge-top.right {
+    transform: translate(-14px, 11px);
+}
+
 .notification-popover {
     width: min(360px, calc(100vw - 32px));
 }
