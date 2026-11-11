@@ -53,8 +53,9 @@ with its version in parentheses).
 
 ### Extensions
 
-#### Design Docs (1.6.4)
+#### Design Docs (1.6.5)
 - Rebuilt on contract 1.17.0.
+- On iPad, tapping the text you're editing in a sketch with your finger brings up the keyboard, and writing on it with Apple Pencil puts the keyboard away so Scribble has the screen. With a box opened by the Pencil, the keyboard used to be hard to bring up. With a hardware keyboard attached, iPadOS keeps the on-screen keyboard hidden either way.
 - A design doc's heading and its tree of notes are translucent in every theme, in the browser and the iPad and iPhone app as on the desktop, so a theme's background shows through them; the note itself stays solid for reading. On a narrow screen the tree opens as a frosted panel over the note, thin enough that the note shows through it blurred. Under a floating app bar the heading fades in over a short ramp at its top instead of starting on a hard edge. The page used to be opaque everywhere but the desktop's glass mode.
 - The offline sync menu counts the notes, sketches and other items waiting to sync instead of every edit: a sketch counts once however many strokes it has, as a note does however much was typed, so a few offline paragraphs and a drawing read "2 items waiting to sync" rather than hundreds of changes.
 - A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
