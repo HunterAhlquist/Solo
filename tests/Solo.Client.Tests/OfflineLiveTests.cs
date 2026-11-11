@@ -56,4 +56,23 @@ public sealed class OfflineLiveTests : ComponentTestBase
         }
         finally { await hub.DisposeAsync(); }
     }
+
+    [Fact]
+    public async Task A_board_left_before_the_connection_came_up_is_not_rejoined()
+    {
+        // The join waits for the reconnect; leaving first has to cancel it,
+        // or the reconnect rejoins a board nobody is looking at.
+        JSInterop.Setup<bool>("solo.offline.isOffline").SetResult(true);
+        var hub = new BoardHubClient(new InstanceConnection("https://solo.test/"), null!, new ConnectionIdAccessor(), new OfflineCache(JSInterop.JSRuntime));
+        try
+        {
+            var boardId = Guid.NewGuid();
+            await hub.JoinBoard(boardId);
+            Assert.True(hub.IsActive);
+
+            await hub.LeaveBoard(boardId);
+            Assert.False(hub.IsActive);
+        }
+        finally { await hub.DisposeAsync(); }
+    }
 }

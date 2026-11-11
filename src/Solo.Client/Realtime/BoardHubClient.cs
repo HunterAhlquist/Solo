@@ -140,23 +140,29 @@ public sealed class BoardHubClient(
         await _gate.WaitAsync();
         try
         {
-            if (_connection is null || _boardId != boardId)
+            if (_boardId != boardId)
             {
                 return;
             }
 
-            // Clear presence before leaving so the remaining clients see the
-            // avatar disappear rather than waiting for a disconnect timeout.
-            await SetPresenceCoreAsync(EntityTypes.Board, boardId, PresenceMode.None);
-            await _connection.InvokeAsync(nameof(IBoardHubServer.LeaveBoard), boardId);
+            // Forgotten first, whatever the connection's state: a join still
+            // waiting for the reconnect mustn't rejoin a board already left.
             _boardId = null;
-            _presence = null;
-            await Notify();
-        }
-        catch (Exception e) when (e is HubException || Dropped(e))
-        {
-            // Navigating away from a dead connection is not worth a stack trace.
-            _boardId = null;
+            try
+            {
+                if (IsConnected)
+                {
+                    // Clear presence before leaving so the remaining clients see the
+                    // avatar disappear rather than waiting for a disconnect timeout.
+                    await SetPresenceCoreAsync(EntityTypes.Board, boardId, PresenceMode.None);
+                    await _connection!.InvokeAsync(nameof(IBoardHubServer.LeaveBoard), boardId);
+                }
+            }
+            catch (Exception e) when (e is HubException || Dropped(e))
+            {
+                // Navigating away from a dead connection is not worth a stack trace.
+            }
+
             _presence = null;
             await Notify();
         }
