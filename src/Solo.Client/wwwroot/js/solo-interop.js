@@ -321,6 +321,29 @@ window.solo = {
     },
 
     // -----------------------------------------------------------------------
+    // The live connection's wake-up: the page coming back into view, or the
+    // browser back online, tells BoardHubClient to reconnect now instead of
+    // at the next step of SignalR's backoff, which a few seconds with the
+    // device locked can have pushed out to half a minute.
+    // -----------------------------------------------------------------------
+    live: {
+        _dotnet: null,
+
+        watchWake(dotnetRef) {
+            const live = window.solo.live;
+            if (!live._dotnet) {
+                const wake = () => live._dotnet?.invokeMethodAsync('Wake');
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible') wake();
+                });
+                window.addEventListener('online', wake);
+                window.addEventListener('pageshow', wake);
+            }
+            live._dotnet = dotnetRef;
+        },
+    },
+
+    // -----------------------------------------------------------------------
     // Solo API sessions. A sign-in buys a long-lived `solo_` session from the
     // instance, and the server slides its expiry on use. The desktop app holds
     // it as a bearer token. The web app gets it as an HttpOnly cookie no script

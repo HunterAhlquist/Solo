@@ -18,8 +18,10 @@ public sealed class OfflineLiveTests : ComponentTestBase
         var hub=new BoardHubClient(instance,new ApiClient(http,instance),new ConnectionIdAccessor(),new OfflineCache(JSInterop.JSRuntime));
         try
         {
-            await Assert.ThrowsAsync<ApiException>(()=>hub.SubscribeTopic(Guid.NewGuid(),"test:recovered"));
+            // The start fails, so the topic waits for the retry, but it was tried.
+            await hub.SubscribeTopic(Guid.NewGuid(),"test:recovered");
             Assert.Contains("POST /api/auth/hub-ticket",stub.Paths);
+            Assert.False(hub.IsConnected);
         }
         finally{await hub.DisposeAsync();}
     }
@@ -30,9 +32,28 @@ public sealed class OfflineLiveTests : ComponentTestBase
         var hub = new BoardHubClient(new InstanceConnection("https://solo.test/"), null!, new ConnectionIdAccessor(), new OfflineCache(JSInterop.JSRuntime));
         try
         {
-            await Assert.ThrowsAsync<HttpRequestException>(() => hub.SubscribeTopic(Guid.NewGuid(), "test:offline"));
+            // Returns at once, the topic held for when the connection comes back.
+            await hub.SubscribeTopic(Guid.NewGuid(), "test:offline").WaitAsync(TimeSpan.FromSeconds(5));
             Assert.False(hub.IsConnected);
         }
         finally { await hub.DisposeAsync(); await hub.DisposeAsync(); }
+    }
+
+    [Fact]
+    public async Task A_board_opened_while_the_connection_is_down_opens_and_joins_later()
+    {
+        // After the device was locked the connection is down for a while;
+        // opening a board then threw, and the page showed its error banner.
+        JSInterop.Setup<bool>("solo.offline.isOffline").SetResult(true);
+        var hub = new BoardHubClient(new InstanceConnection("https://solo.test/"), null!, new ConnectionIdAccessor(), new OfflineCache(JSInterop.JSRuntime));
+        try
+        {
+            var boardId = Guid.NewGuid();
+            await hub.JoinBoard(boardId);
+            await hub.SetPresence(Solo.Shared.Hubs.EntityTypes.Board, boardId, Solo.Shared.PresenceMode.Viewing);
+            Assert.True(hub.IsActive);
+            Assert.False(hub.IsConnected);
+        }
+        finally { await hub.DisposeAsync(); }
     }
 }

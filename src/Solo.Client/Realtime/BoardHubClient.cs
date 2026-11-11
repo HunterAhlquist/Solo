@@ -1,5 +1,7 @@
+using System.Net.WebSockets;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.JSInterop;
 using Solo.Client.Api;
 using Solo.Shared;
 using Solo.Shared.Hubs;
@@ -21,9 +23,11 @@ public sealed class BoardHubClient(
     InstanceConnection instance,
     ApiClient api,
     ConnectionIdAccessor connections,
-    Solo.Client.Offline.OfflineCache? offline = null)
+    Solo.Client.Offline.OfflineCache? offline = null,
+    IJSRuntime? js = null)
     : IBoardHubClient, IAsyncDisposable
 {
+    private DotNetObjectReference<BoardHubClient>? _self;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private HubConnection? _connection;
     private Timer? _retry;
@@ -65,36 +69,69 @@ public sealed class BoardHubClient(
             return await _connection.InvokeAsync<LiveSendResult>(
                 nameof(IBoardHubServer.SendTopicMessage), projectId, topic, kind, data);
         }
-        catch (Exception e) when (e is HubException or InvalidOperationException or HttpRequestException)
+        catch (Exception e) when (e is HubException || Dropped(e))
         {
             return IsConnected ? LiveSendResult.Failed : LiveSendResult.NotConnected;
         }
     }
 
+    /// <summary>
+    /// Joins the board's live group, or — while the connection is down or
+    /// still coming back, as it is for a while after the device was locked —
+    /// remembers to, and joins it the moment the connection is back
+    /// (<see cref="RestoreConnectionAsync"/>). The page works without live
+    /// updates meanwhile; it mustn't fail to open.
+    /// </summary>
     public async Task JoinBoard(Guid boardId)
     {
+        bool waiting;
         await _gate.WaitAsync();
         try
         {
-            await EnsureStartedAsync();
+            await TryEnsureStartedAsync();
             if (_boardId == boardId)
             {
                 return;
             }
 
-            if (_boardId is { } previous)
-            {
-                await _connection!.InvokeAsync(nameof(IBoardHubServer.LeaveBoard), previous);
-            }
-
-            await _connection!.InvokeAsync(nameof(IBoardHubServer.JoinBoard), boardId);
+            var previous = _boardId;
             _boardId = boardId;
             _presence = null;
+            if (IsConnected)
+            {
+                try
+                {
+                    if (previous is { } left)
+                    {
+                        await _connection!.InvokeAsync(nameof(IBoardHubServer.LeaveBoard), left);
+                    }
+
+                    await _connection!.InvokeAsync(nameof(IBoardHubServer.JoinBoard), boardId);
+                }
+                catch (HubException)
+                {
+                    _boardId = previous;
+                    throw;
+                }
+                catch (Exception e) when (Dropped(e))
+                {
+                    // Dropped mid-call; the reconnect joins it.
+                }
+            }
+
+            waiting = _connection?.State == HubConnectionState.Reconnecting;
             await Notify();
         }
         finally
         {
             _gate.Release();
+        }
+
+        // Someone opening a board wants it live now, not at the backoff's
+        // next try; in the background, so the page doesn't wait on it.
+        if (waiting)
+        {
+            _ = Wake();
         }
     }
 
@@ -116,7 +153,7 @@ public sealed class BoardHubClient(
             _presence = null;
             await Notify();
         }
-        catch (Exception e) when (e is HubException or InvalidOperationException)
+        catch (Exception e) when (e is HubException || Dropped(e))
         {
             // Navigating away from a dead connection is not worth a stack trace.
             _boardId = null;
@@ -161,7 +198,11 @@ public sealed class BoardHubClient(
             // Held before the call, so a connection that comes up later still
             // subscribes it on reconnect — unless the server refused it outright.
             _topics[(projectId, topic)] = (1, PresenceMode.None);
-            await EnsureStartedAsync();
+            if (!await TryEnsureStartedAsync() || !IsConnected)
+            {
+                return;
+            }
+
             try
             {
                 await _connection!.InvokeAsync(nameof(IBoardHubServer.SubscribeTopic), projectId, topic);
@@ -170,6 +211,10 @@ public sealed class BoardHubClient(
             {
                 _topics.Remove((projectId, topic));
                 throw;
+            }
+            catch (Exception e) when (Dropped(e))
+            {
+                // Dropped mid-call; the reconnect subscribes it.
             }
         }
         finally
@@ -202,7 +247,7 @@ public sealed class BoardHubClient(
 
             await Notify();
         }
-        catch (Exception e) when (e is HubException or InvalidOperationException)
+        catch (Exception e) when (e is HubException || Dropped(e))
         {
             // Leaving over a dead connection: the server forgets it on disconnect anyway.
         }
@@ -225,7 +270,14 @@ public sealed class BoardHubClient(
             _topics[(projectId, topic)] = held with { Mode = mode };
             if (_connection is { State: HubConnectionState.Connected })
             {
-                await _connection.InvokeAsync(nameof(IBoardHubServer.SetTopicPresence), projectId, topic, mode);
+                try
+                {
+                    await _connection.InvokeAsync(nameof(IBoardHubServer.SetTopicPresence), projectId, topic, mode);
+                }
+                catch (Exception e) when (Dropped(e))
+                {
+                    // The reconnect restates it.
+                }
             }
 
             await Notify();
@@ -248,7 +300,11 @@ public sealed class BoardHubClient(
             }
 
             _userTopics[topic] = 1;
-            await EnsureStartedAsync();
+            if (!await TryEnsureStartedAsync() || !IsConnected)
+            {
+                return;
+            }
+
             try
             {
                 await _connection!.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), topic);
@@ -257,6 +313,10 @@ public sealed class BoardHubClient(
             {
                 _userTopics.Remove(topic);
                 throw;
+            }
+            catch (Exception e) when (Dropped(e))
+            {
+                // Dropped mid-call; the reconnect subscribes it.
             }
         }
         finally
@@ -287,7 +347,7 @@ public sealed class BoardHubClient(
                 await _connection.InvokeAsync(nameof(IBoardHubServer.UnsubscribeUserTopic), topic);
             }
         }
-        catch (Exception e) when (e is HubException or InvalidOperationException)
+        catch (Exception e) when (e is HubException || Dropped(e))
         {
             // As with project topics: the server forgets it on disconnect anyway.
         }
@@ -299,13 +359,87 @@ public sealed class BoardHubClient(
 
     private async Task SetPresenceCoreAsync(string entityType, Guid entityId, PresenceMode mode)
     {
+        _presence = mode == PresenceMode.None ? null : (entityType, entityId, mode);
         if (_connection is not { State: HubConnectionState.Connected })
         {
             return;
         }
 
-        await _connection.InvokeAsync(nameof(IBoardHubServer.SetPresence), entityType, entityId, mode);
-        _presence = mode == PresenceMode.None ? null : (entityType, entityId, mode);
+        try
+        {
+            await _connection.InvokeAsync(nameof(IBoardHubServer.SetPresence), entityType, entityId, mode);
+        }
+        catch (Exception e) when (Dropped(e))
+        {
+            // Recorded above, so the reconnect restates it.
+        }
+    }
+
+    /// <summary>
+    /// What a call throws when the connection goes down under it: the
+    /// browser's WebSocket error, a call made while it reconnects, one cut
+    /// off by the close. None of them is the page's fault, and the reconnect
+    /// restores whatever the call was for, so the callers swallow them rather
+    /// than fail the page — after the device was locked, they did.
+    /// </summary>
+    private static bool Dropped(Exception e) =>
+        e is WebSocketException or InvalidOperationException or HttpRequestException or IOException or OperationCanceledException;
+
+    /// <summary>
+    /// As <see cref="EnsureStartedAsync"/>, but a connection that can't start
+    /// now is left to the retry rather than thrown: what the caller wanted is
+    /// already recorded, and the reconnect applies it.
+    /// </summary>
+    private async Task<bool> TryEnsureStartedAsync()
+    {
+        try
+        {
+            await EnsureStartedAsync();
+            return true;
+        }
+        catch (Exception e) when (e is ApiException || Dropped(e))
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The page came back into view, or the browser back online: reconnect now
+    /// rather than at the next step of the automatic reconnect's backoff. After
+    /// the device was locked, even for a few seconds, that backoff can have
+    /// reached 10 or 30 seconds with every try failing while the app was
+    /// suspended, and live updates would stay off that long after unlocking.
+    /// </summary>
+    [JSInvokable]
+    public async Task Wake()
+    {
+        if (_disposed || _connection is null || _connection.State is HubConnectionState.Connected or HubConnectionState.Connecting)
+        {
+            return;
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            if (_connection.State == HubConnectionState.Reconnecting)
+            {
+                // Ends the backoff; Closed fires and arms the retry timer,
+                // which a successful start below disposes.
+                await _connection.StopAsync();
+            }
+
+            await StartCoreAsync();
+            _retry?.Dispose();
+            _retry = null;
+        }
+        catch (Exception e) when (e is ApiException or HubException || Dropped(e))
+        {
+            ScheduleRetry();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private async Task EnsureStartedAsync()
@@ -334,7 +468,7 @@ public sealed class BoardHubClient(
             _retry?.Dispose();
             _retry = null;
         }
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException or InvalidOperationException or ApiException or HubException) { }
+        catch (Exception e) when (e is ApiException or HubException || Dropped(e)) { }
         finally { _gate.Release(); }
     }
 
@@ -396,6 +530,7 @@ public sealed class BoardHubClient(
         connection.Reconnected += _ => RestoreConnectionAsync(connection);
 
         _connection = connection;
+        await WatchWakeAsync();
         using var startTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await connection.StartAsync(startTimeout.Token);
         await RestoreConnectionAsync(connection);
@@ -452,11 +587,27 @@ public sealed class BoardHubClient(
 
     private Task Notify() => ConnectionStateChanged?.Invoke() ?? Task.CompletedTask;
 
+    // Once per client: the page's visibility and online events call Wake.
+    private async Task WatchWakeAsync()
+    {
+        if (js is null || _self is not null) return;
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            await js.InvokeVoidAsync("solo.live.watchWake", _self);
+        }
+        catch (JSException)
+        {
+            // Without it the automatic reconnect still gets there, later.
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
         _retry?.Dispose();
+        _self?.Dispose();
         await _gate.WaitAsync();
         try
         {
