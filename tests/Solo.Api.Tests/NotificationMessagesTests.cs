@@ -67,9 +67,9 @@ public sealed partial class NotificationMessagesTests
     [Fact]
     public void Fill_puts_the_values_in()
     {
-        var message = Fill(new Template("{assigner} assigned you a task", "Task '{task}' was assigned to you."), Typical);
+        var message = Fill(new Template("{assigner} assigned you a task.", "Task '{task}' was assigned to you."), Typical);
 
-        Assert.Equal(new Message("Alex Johnson assigned you a task", "Task 'Ship the demo build' was assigned to you."), message);
+        Assert.Equal(new Message("Alex Johnson assigned you a task.", "Task 'Ship the demo build' was assigned to you."), message);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public sealed partial class NotificationMessagesTests
     [Fact]
     public void The_requested_lines_are_in_the_catalog()
     {
-        Assert.Contains(new Template("{assigner} assigned you a task", "Task '{task}' was assigned to you."), Templates(Situation.Assigned));
+        Assert.Contains(new Template("{assigner} assigned you a task.", "Task '{task}' was assigned to you."), Templates(Situation.Assigned));
         Assert.Contains(new Template("{serial} is due {when}", "Deadline for '{task}' is creeping up soon!"), Templates(Situation.DueThisWeek));
         Assert.Contains(new Template("{serial} is due {when}", "Deadline for '{task}' is creeping up soon!"), Templates(Situation.DueInTwoWeeks));
     }
