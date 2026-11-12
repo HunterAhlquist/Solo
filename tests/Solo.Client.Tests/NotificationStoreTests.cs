@@ -98,7 +98,33 @@ public class NotificationStoreTests : ComponentTestBase
         await store.PageVisible();
 
         Assert.Empty(JSInterop.Invocations["solo.notifications.schedule"]);
+        Assert.Empty(JSInterop.Invocations["solo.notifications.claim"]);
         Assert.DoesNotContain(_http.Paths, p => p.Contains("upcoming"));
+    }
+
+    [Fact]
+    public async Task In_the_app_an_entry_the_app_already_announced_is_not_announced_again()
+    {
+        // The app reads the inbox while it's closed and announces what's new;
+        // the page, back in view, announces only what the app answers it hadn't.
+        static string Key(NotificationDto n) => $"{n.Id}|{n.CreatedAt.ToUnixTimeMilliseconds()}";
+        var backlog = _inbox.Items.Select(Key).ToList();
+        JSInterop.Setup<string[]?>("solo.notifications.claim", i => ((IEnumerable<string>)i.Arguments[0]!).Count() == 2)
+            .SetResult([]);
+        var shownByApp = Entry(Guid.NewGuid(), TaskId, read: false) with { Title = "Shown while closed" };
+        var news = Entry(Guid.NewGuid(), OtherTaskId, read: false) with { Title = "Not shown yet" };
+        JSInterop.Setup<string[]?>("solo.notifications.claim", i => ((IEnumerable<string>)i.Arguments[0]!).Count() == 4)
+            .SetResult([Key(news)]);
+
+        var store = Store(inApp: true);
+        await store.LoadAsync();
+        _inbox = _inbox with { Items = [news, shownByApp, .. _inbox.Items], UnreadCount = 4 };
+        await store.RefreshAsync();
+
+        // The first read records the backlog with the app, unannounced.
+        var claims = JSInterop.Invocations["solo.notifications.claim"];
+        Assert.Equal(backlog, Assert.IsAssignableFrom<IEnumerable<string>>(claims[0].Arguments[0]));
+        Assert.Equal(["Not shown yet"], Services.GetRequiredService<ISnackbar>().ShownSnackbars.Select(s => s.Message));
     }
 
     [Fact]

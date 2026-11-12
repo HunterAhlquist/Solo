@@ -121,12 +121,39 @@ only, every payload checked):
   refresh and when the page comes back into view. Each instance's requests are
   replaced together, soonest first, and the app keeps at most 60 pending in
   all, since iOS drops anything past 64 without a word.
+- `claim`: of the unread inbox entries' keys (`<id>|<raised at, ms since the
+  epoch>`), the ones nothing on the device has announced yet, now recorded as
+  announced. The client asks before announcing anything new, so it never
+  repeats what the background refresh already showed. The first ask for an
+  instance only records its backlog.
 
 There is no push relay, by design: nothing leaves the instance or the device
-for this. So a deadline reminder shows while the app is closed, because the
-device scheduled it, but an assignment reaches a closed app only through the
-email digest. A deadline changed, or a task finished, while the app is closed
-can still fire a reminder scheduled before; the next open reschedules.
+for this. While the app is closed, `App/App/BackgroundSync.swift` fills in as
+far as iOS lets it: a `BGAppRefreshTask` (`<bundle id>.refresh`, listed in
+Info.plist with the `fetch` background mode), asked for each time the app goes
+into the background, at most every 15 minutes and in practice when iOS
+chooses, and never after the app was swiped away until it's opened again. Each
+run reads every signed-in instance straight from its address (not the local
+proxy, which is suspended): it shows the unread entries `claim` says are new,
+and replaces the instance's reminders with `GET api/notifications/upcoming`,
+through the same `AppNotifications` code and identifiers as the page, so the
+two never double up and a tap opens the same way. A deadline changed while the
+app is closed is rescheduled at the next run or open.
+
+It signs in with a copy of the page's `solo_` session
+(`App/App/AppCredentials.swift`), in the Keychain, readable after first unlock
+and never in a backup. The client hands it over through
+`window.soloApp.keepSession` as it loads and whenever it stores or clears its
+session; a session kept for the window only ("Stay signed in" off) is not
+handed over. The copy goes, with everything scheduled and recorded for that
+instance, on sign-out, when the instance is removed, and when the instance
+answers 401; the instance isn't read again until the page hands over a new one.
+The instance's notification settings already shape both endpoints.
+
+To run a refresh by hand on a device, pause a debug build in Xcode and enter
+`e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.hunterahlquist.solo.preview.refresh"]`
+(the bundle id of the build, plus `.refresh`), then continue. The simulator
+doesn't run background tasks.
 
 The app's own `UNUserNotificationCenterDelegate` is installed at launch, and
 `handleApplicationNotifications` is off so Capacitor's bridge doesn't replace

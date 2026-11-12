@@ -13,7 +13,9 @@ import Capacitor
 ///   there (`AppSignIn`).
 /// - OS notifications (`AppNotifications`): permission, an alert for an inbox
 ///   entry nobody saw, and deadline reminders scheduled ahead, through the
-///   fixed messages of `window.soloApp.notifications`.
+///   fixed messages of `window.soloApp.notifications`; and, while the app is
+///   closed, `BackgroundSync`, which signs in with the copy of the page's
+///   session the page hands over through `window.soloApp.keepSession`.
 /// - Its list of instances (`InstancesView`), opened by the fixed message
 ///   `request_instance-settings`. Opening another instance builds a new view
 ///   controller on it, since Capacitor reads the address once, at load.
@@ -89,11 +91,13 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                 window.soloApp = Object.freeze({
                     beginSignIn: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_sign-in'),
                     openInstances: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_instance-settings'),
+                    keepSession: token => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'session', token }),
                     notifications: Object.freeze({
                         permission: () => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'permission' }),
                         request: () => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'request' }),
                         show: (id, title, body) => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'show', id, title, body }),
                         schedule: reminders => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'schedule', reminders }),
+                        claim: keys => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'claim', keys }),
                     }),
                 });
                 """,
@@ -168,6 +172,11 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
               let body = message.body as? [String: Any], let type = body["type"] as? String
         else { return (nil, "Not available here.") }
 
+        // Sent as the page's scripts load, before its client listens for taps.
+        if type == "session" {
+            return keepSession(body["token"], for: instance)
+        }
+
         defer { clientIsListening(on: instance) }
         switch type {
         case "permission":
@@ -185,9 +194,30 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             let reminders = list.compactMap(Self.reminder)
             guard reminders.count == list.count else { return (nil, "Invalid reminders.") }
             return (await AppNotifications.schedule(on: instance, reminders), nil)
+        case "claim":
+            guard let keys = body["keys"] as? [String], keys.count <= AppNotifications.reminderCount,
+                  keys.allSatisfy({ !$0.isEmpty && $0.count <= 80 })
+            else { return (nil, "Invalid keys.") }
+            return (AppNotifications.claim(on: instance, unread: keys), nil)
         default:
             return (nil, "Unknown request.")
         }
+    }
+
+    /// The page's session, or null once it has none: kept for
+    /// `BackgroundSync`, and with it gone, nothing for this instance stays
+    /// scheduled. Only a `solo_` session is taken, never another credential.
+    private func keepSession(_ value: Any?, for instance: URL) -> (Any?, String?) {
+        if let token = value as? String {
+            guard token.hasPrefix("solo_"), token.count <= 200 else { return (nil, "Invalid session.") }
+            if AppCredentials.token(for: instance) != token {
+                AppCredentials.store(token, for: instance)
+            }
+        } else if AppCredentials.token(for: instance) != nil {
+            AppCredentials.remove(for: instance)
+            AppNotifications.forget(instance)
+        }
+        return (true, nil)
     }
 
     private static func text(_ value: Any?, max: Int) -> String? {

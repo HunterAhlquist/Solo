@@ -142,6 +142,11 @@ struct InstancesView: View {
                             .deleteDisabled(instance.url == current)
                         }
                         .onDelete { offsets in
+                            // Its session copy and everything scheduled for it go too.
+                            for removed in offsets.map({ instances[$0].url }) {
+                                AppCredentials.remove(for: removed)
+                                AppNotifications.forget(removed)
+                            }
                             instances.remove(atOffsets: offsets)
                             SavedInstances.all = instances
                         }
