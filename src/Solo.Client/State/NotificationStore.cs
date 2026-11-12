@@ -30,7 +30,9 @@ namespace Solo.Client.State;
 /// closed only if they were scheduled ahead, every refresh also hands it the
 /// deadline reminders still to come (<c>api/notifications/upcoming</c>), and
 /// so does the page coming back into view. A change made elsewhere reaches the
-/// schedule at the next of those.</para>
+/// schedule at the next of those. The app also reads the inbox itself while
+/// it's closed and announces what's new, so there an entry is announced only
+/// if the app hasn't already (<see cref="ClaimAsync"/>).</para>
 /// </remarks>
 public sealed class NotificationStore(
     ApiClient api,
@@ -98,6 +100,11 @@ public sealed class NotificationStore(
             foreach (var item in inbox.Items)
             {
                 _known.Add((item.Id, item.CreatedAt));
+            }
+
+            if (_canSchedule)
+            {
+                fresh = await ClaimAsync(inbox, fresh);
             }
 
             Inbox = inbox;
@@ -215,6 +222,30 @@ public sealed class NotificationStore(
             Changed?.Invoke();
         }
     }
+
+    /// <summary>
+    /// The app announces new entries itself while it's closed, so here only
+    /// the ones it hasn't: it records every unread entry as announced, the
+    /// first read's backlog included, and answers with those it hadn't been.
+    /// A device key is the entry's id and raise time, as the app makes it.
+    /// </summary>
+    private async Task<List<NotificationDto>> ClaimAsync(NotificationInboxDto inbox, List<NotificationDto> fresh)
+    {
+        try
+        {
+            var unread = inbox.Items.Where(n => n.ReadAt is null).Select(DeviceKey).ToList();
+            var claimed = await js.InvokeAsync<string[]?>("solo.notifications.claim", unread);
+            return claimed is null ? fresh : fresh.Where(n => claimed.Contains(DeviceKey(n))).ToList();
+        }
+        catch (JSException e)
+        {
+            logger.LogWarning(e, "Couldn't check which notifications the app already showed.");
+            return fresh;
+        }
+    }
+
+    private static string DeviceKey(NotificationDto notification) =>
+        $"{notification.Id:D}|{notification.CreatedAt.ToUnixTimeMilliseconds()}";
 
     private async Task AnnounceAsync(NotificationDto notification)
     {

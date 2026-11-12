@@ -123,6 +123,40 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         return added
     }
 
+    /// The keys in `unread` (`<id>|<raised at, ms>`, the instance's unread
+    /// inbox entries) that nothing on this device has announced yet, now
+    /// counted as announced. The page and `BackgroundSync` both ask before
+    /// announcing an entry, so whichever hears of it first is the only one to.
+    /// The first ask for an instance only records its backlog: an inbox
+    /// full of old entries isn't news.
+    static func claim(on instance: URL, unread: [String]) -> [String] {
+        let defaults = UserDefaults.standard
+        let storeKey = seenKey(instance)
+        let seen = defaults.stringArray(forKey: storeKey).map(Set.init)
+        // Only what's still unread can come up again, so that's all it keeps.
+        defaults.set(unread, forKey: storeKey)
+        guard let seen else { return [] }
+        return unread.filter { !seen.contains($0) }
+    }
+
+    /// Everything this device holds for the instance: its scheduled reminders
+    /// and what it has announced. For a sign-out, a session the instance
+    /// stopped accepting, or the instance being removed.
+    static func forget(_ instance: URL) {
+        UserDefaults.standard.removeObject(forKey: seenKey(instance))
+        let prefix = identifier("reminder", instance, "")
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let pending = await center.pendingNotificationRequests()
+            center.removePendingNotificationRequests(
+                withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(prefix) })
+        }
+    }
+
+    private static func seenKey(_ instance: URL) -> String {
+        "solo.notifications.seen.\(key(of: instance))"
+    }
+
     // MARK: Delegate
 
     /// In the foreground the page shows its own snackbar for anything new, a

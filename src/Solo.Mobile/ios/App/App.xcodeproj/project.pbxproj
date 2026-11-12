@@ -20,6 +20,8 @@
 		A1C0DE012FF0000100000012 /* LocalProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000011 /* LocalProxy.swift */; };
 		A1C0DE012FF0000100000014 /* InstancePorts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000013 /* InstancePorts.swift */; };
 		A1C0DE012FF0000100000016 /* AppNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000015 /* AppNotifications.swift */; };
+		A1C0DE012FF0000100000018 /* AppCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000017 /* AppCredentials.swift */; };
+		A1C0DE012FF000010000001A /* BackgroundSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000019 /* BackgroundSync.swift */; };
 		A1C0DE012FF0000100000004 /* DevShim.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000003 /* DevShim.swift */; };
 		A1C0DE012FF000010000000A /* AppSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000009 /* AppSignIn.swift */; };
 		A1C0DE012FF000010000000C /* Instances.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF000010000000B /* Instances.swift */; };
@@ -43,6 +45,8 @@
 		A1C0DE012FF0000100000011 /* LocalProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalProxy.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000013 /* InstancePorts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstancePorts.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000015 /* AppNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNotifications.swift; sourceTree = "<group>"; };
+		A1C0DE012FF0000100000017 /* AppCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCredentials.swift; sourceTree = "<group>"; };
+		A1C0DE012FF0000100000019 /* BackgroundSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSync.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000003 /* DevShim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevShim.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000009 /* AppSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSignIn.swift; sourceTree = "<group>"; };
 		A1C0DE012FF000010000000B /* Instances.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Instances.swift; sourceTree = "<group>"; };
@@ -92,6 +96,8 @@
 				A1C0DE012FF0000100000011 /* LocalProxy.swift */,
 				A1C0DE012FF0000100000013 /* InstancePorts.swift */,
 				A1C0DE012FF0000100000015 /* AppNotifications.swift */,
+				A1C0DE012FF0000100000017 /* AppCredentials.swift */,
+				A1C0DE012FF0000100000019 /* BackgroundSync.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -196,6 +202,8 @@
 				A1C0DE012FF0000100000012 /* LocalProxy.swift in Sources */,
 				A1C0DE012FF0000100000014 /* InstancePorts.swift in Sources */,
 				A1C0DE012FF0000100000016 /* AppNotifications.swift in Sources */,
+				A1C0DE012FF0000100000018 /* AppCredentials.swift in Sources */,
+				A1C0DE012FF000010000001A /* BackgroundSync.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
