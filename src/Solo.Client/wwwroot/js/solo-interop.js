@@ -369,7 +369,6 @@ window.solo = {
                 into.setItem(this.userKey, JSON.stringify(user));
             }
             outOf.removeItem(this.userKey);
-            this._handOver();
         },
 
         token: () => sessionStorage.getItem(window.solo.session.tokenKey)
@@ -383,15 +382,6 @@ window.solo = {
                 sessionStorage.removeItem(key);
                 localStorage.removeItem(key);
             }
-            this._handOver();
-        },
-
-        // The iPhone and iPad app keeps a copy of a remembered session to check
-        // for notifications while it's closed, and drops it with the session.
-        // One kept for the window only stays the window's. On every change, and
-        // as the page loads (below).
-        _handOver() {
-            window.soloApp?.keepSession?.(localStorage.getItem(this.tokenKey))?.catch(() => {});
         },
 
         // Web: trades a Google credential for the session cookie. Resolves the
@@ -587,5 +577,3 @@ document.addEventListener('click', e => {
         if (event.key === 'Tab') document.documentElement.dataset.soloInput = 'keyboard';
     }, true);
 })();
-
-window.solo.session._handOver();

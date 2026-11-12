@@ -43,20 +43,7 @@ When Solo is closed, your browser and the desktop app get no notifications. The 
 
 ### On iPhone and iPad
 
-The Solo app for iPhone and iPad shows notifications as well. Turn them on the same way: **Notifications** in the account menu, **Allow notifications**, then accept the prompt. If you select **Don't Allow**, turn notifications on for Solo in the Settings app.
-
-- **Deadline notifications** reach you even when the app is closed. The app schedules the deadline notifications that are still to come, at 9:00 in your time zone, each time that you open it and each time that it checks your instances in the background.
-- **Assignments** show while the app is open. While the app is closed, it checks your instances in the background from time to time and shows new assignments then. You also get them in your email digest, and on the bell.
-- Select a notification to open its task. If the notification is from another instance in your list, the app opens that instance first.
-
-iOS decides when the app can check in the background. It is often a few times each day, and it can be less if you do not use the app much or if Low Power Mode is on. Thus a notification for an assignment can arrive some hours late. The app checks in the background only when:
-
-- **Background App Refresh** is on for Solo in the Settings app.
-- You did not close the app from the app switcher. If you swipe the app up to close it, it does not check again until you open it.
-
-When you sign out, or remove an instance from your list, the app stops checking that instance and removes its scheduled notifications.
-
-Nothing goes through a push service: the app gets its notifications from your instance and shows or schedules them on the device. If a deadline changes, or you finish a task, while the app is closed, a notification that the app scheduled before can still arrive. The next time that the app checks, or that you open it, it updates the schedule.
+The Solo app for iPhone and iPad does not show notifications. Your notifications wait on the bell for the next time that you open the app, and your email digest reaches you while the app is closed.
 
 ## Email digest
 
