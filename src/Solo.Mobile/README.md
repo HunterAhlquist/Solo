@@ -131,6 +131,11 @@ only, every payload checked):
   records what it adds, by key, keeps the ones that fired for 30 days, and
   drops one the system kept quiet because the app was open (`willPresent`).
   If that reminder is still pending, it's taken down and the entry says it.
+  The script offers it as `claimEntries`; `claim` takes the device keys alone,
+  as a client from before reminder keys sends them. An instance from before
+  `NotificationDto.Key` writes no `key` at all: the background refresh only
+  records its deadline entries, leaving them to the reminders the device
+  scheduled.
 
 There is no push relay, by design: nothing leaves the instance or the device
 for this. While the app is closed, `App/App/BackgroundSync.swift` fills in as
