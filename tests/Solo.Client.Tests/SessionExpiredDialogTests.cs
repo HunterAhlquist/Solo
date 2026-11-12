@@ -55,4 +55,45 @@ public class SessionExpiredDialogTests : ComponentTestBase
 
         Assert.Contains("Sign in with microsoft", host.Markup);
     }
+
+    [Fact]
+    public async Task There_is_always_a_way_on_even_when_signing_in_keeps_failing()
+    {
+        var host = await ShowDialogAsync("microsoft");
+
+        // A browser has no instance list; signing out is the way on.
+        Assert.DoesNotContain("Open instances", host.Markup);
+        Assert.Contains("Sign out", host.Markup);
+        Assert.Empty(host.FindAll(".mud-button-close"));
+    }
+
+    [Fact]
+    public async Task The_apps_can_also_open_their_instance_list()
+    {
+        JSInterop.Setup<bool>("solo.desktop.canOpenInstances").SetResult(true);
+        var host = await ShowDialogAsync("microsoft");
+
+        var open = host.FindAll("button").Single(b => b.TextContent.Contains("Open instances"));
+        await host.InvokeAsync(() => open.Click());
+
+        Assert.Single(JSInterop.Invocations["solo.desktop.openInstances"]);
+        // Still there: the list opens over it, and choosing an instance reloads the app.
+        Assert.Contains("Your session has expired", host.Markup);
+    }
+
+    [Fact]
+    public async Task Sign_out_closes_with_the_result_the_layout_signs_out_on()
+    {
+        Services.AddSingleton(Config("microsoft"));
+        Services.AddSingleton<SessionExpiry>();
+        Services.AddScoped<GoogleIdentityService>();
+        var host = Render<MudDialogProvider>();
+        var dialogs = Services.GetRequiredService<IDialogService>();
+        var dialog = await host.InvokeAsync(() => dialogs.ShowAsync<SessionExpiredDialog>("Session expired"));
+
+        var signOut = host.FindAll("button").Single(b => b.TextContent.Contains("Sign out"));
+        await host.InvokeAsync(() => signOut.Click());
+
+        Assert.Equal(SessionExpiredDialog.SignOutResult, (await dialog.Result)!.Data);
+    }
 }

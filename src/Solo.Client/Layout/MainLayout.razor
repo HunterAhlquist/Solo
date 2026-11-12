@@ -182,10 +182,23 @@
         _expiryDialogOpen = true;
         try
         {
+            // Not dismissable, and over a black backdrop: nothing behind it
+            // works until the person signs in again, signs out, or moves to
+            // another instance, which are the dialog's own buttons.
             var dialog = await Dialogs.ShowAsync<SessionExpiredDialog>(
                 "Session expired",
-                new DialogOptions { BackdropClick = false });
-            await dialog.Result;
+                new DialogOptions
+                {
+                    BackdropClick = false,
+                    CloseOnEscapeKey = false,
+                    CloseButton = false,
+                    BackgroundClass = "solo-session-expired-backdrop",
+                });
+            if (await dialog.Result is { Data: SessionExpiredDialog.SignOutResult })
+            {
+                await SignOut();
+                return;
+            }
 
             // An app that started on an expired session never got its profile
             // (the first load was refused), so the app bar kept the generic
