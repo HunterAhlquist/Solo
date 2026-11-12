@@ -1,4 +1,6 @@
 App/build
+# Builds with their own -derivedDataPath, one per destination (build-sim, build-device)
+App/build-*/
 App/Pods
 App/output
 App/App/public
