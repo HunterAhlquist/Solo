@@ -11,7 +11,8 @@ import UIKit
 /// - an unread entry nothing on the device has announced yet shows as a
 ///   notification, through the same `AppNotifications` the page uses, so a
 ///   tap opens it the same way, and the page won't announce it again
-///   (`AppNotifications.claim`);
+///   (`AppNotifications.claim`). Deadline entries are only recorded: their
+///   reminders were scheduled on the device ahead, and already say it;
 /// - the reminders are rescheduled, replacing the page's schedule for that
 ///   instance, so a deadline changed elsewhere fires at its new time.
 ///
@@ -109,18 +110,31 @@ enum BackgroundSync {
     }
 
     private static func sync(_ instance: URL, token: String) async -> Bool {
+        // Checked before every write: a sign-out while a request was out
+        // forgets the instance, and nothing may put any of it back.
+        func current() -> Bool { AppCredentials.token(for: instance) == token }
+
         do {
             let inbox = try await get("api/notifications", on: instance, token: token) as? [String: Any]
             let unread = (inbox?["items"] as? [[String: Any]] ?? []).compactMap(Entry.init)
+            guard current() else { return true }
             let fresh = Set(AppNotifications.claim(on: instance, unread: unread.map(\.key)))
-            // The inbox lists the newest first; they show oldest first.
-            for entry in unread.reversed() where fresh.contains(entry.key) {
+            // The inbox lists the newest first; they show oldest first. A
+            // deadline entry is only recorded: the reminder this device
+            // scheduled for it has shown, or will, at 9:00.
+            for entry in unread.reversed() where fresh.contains(entry.key) && !entry.isDeadline {
+                guard current() else { return true }
                 _ = await AppNotifications.show(on: instance, id: entry.id, title: entry.title, body: entry.body)
             }
 
             let upcoming = try await get("api/notifications/upcoming", on: instance, token: token) as? [[String: Any]]
             let reminders = (upcoming ?? []).prefix(AppNotifications.reminderCount).compactMap(reminder)
+            guard current() else { return true }
             _ = await AppNotifications.schedule(on: instance, reminders)
+            // Signed out while it scheduled: undo what it added.
+            if !current() {
+                AppNotifications.forget(instance)
+            }
             return true
         } catch Failure.signedOut {
             AppCredentials.remove(for: instance)
@@ -156,6 +170,7 @@ enum BackgroundSync {
         let key: String
         let title: String
         let body: String?
+        let isDeadline: Bool
 
         init?(_ json: [String: Any]) {
             guard json["readAt"] == nil || json["readAt"] is NSNull,
@@ -167,6 +182,7 @@ enum BackgroundSync {
             key = "\(self.id)|\(raised)"
             self.title = title
             body = BackgroundSync.text(json["body"], max: AppNotifications.bodyLength)
+            isDeadline = ["DueInTwoWeeks", "DueThisWeek"].contains(json["kind"] as? String)
         }
     }
 
