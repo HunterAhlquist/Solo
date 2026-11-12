@@ -121,7 +121,7 @@ enum BackgroundSync {
             let fresh = Set(await AppNotifications.claim(
                 on: instance, unread: unread.map { .init(key: $0.key, reminder: $0.reminder) }))
             // The inbox lists the newest first; they show oldest first.
-            for entry in unread.reversed() where fresh.contains(entry.key) {
+            for entry in unread.reversed() where fresh.contains(entry.key) && !entry.unmatchable {
                 guard current() else { return true }
                 _ = await AppNotifications.show(on: instance, id: entry.id, title: entry.title, body: entry.body)
             }
@@ -170,6 +170,11 @@ enum BackgroundSync {
         let title: String
         let body: String?
         let reminder: String?
+        /// A deadline entry from an instance too old to name its reminder
+        /// (no `key` at all): the reminder this device scheduled may have said
+        /// it, and there's no telling, so it's only recorded, as before this
+        /// refresh existed.
+        let unmatchable: Bool
 
         init?(_ json: [String: Any]) {
             guard json["readAt"] == nil || json["readAt"] is NSNull,
@@ -182,6 +187,8 @@ enum BackgroundSync {
             self.title = title
             body = BackgroundSync.text(json["body"], max: AppNotifications.bodyLength)
             reminder = (json["key"] as? String).flatMap { $0.isEmpty || $0.count > AppNotifications.keyLength ? nil : $0 }
+            unmatchable = json.index(forKey: "key") == nil
+                && ["DueInTwoWeeks", "DueThisWeek"].contains(json["kind"] as? String)
         }
     }
 

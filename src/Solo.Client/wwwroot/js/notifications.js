@@ -52,9 +52,14 @@
         // nothing on this device has said yet, now counted as said: the app
         // also announces new entries while it's closed, and shows deadline
         // reminders it scheduled, and the page shouldn't say either again.
-        claim: entries => app()?.claim
-            ? app().claim(entries).catch(() => entries.map(e => e.key))
-            : entries.map(e => e.key),
+        // An app from before reminder keys takes the device keys alone.
+        claim: entries => {
+            const keys = entries.map(e => e.key);
+            const claimed = app()?.claimEntries ? app().claimEntries(entries)
+                : app()?.claim ? app().claim(keys)
+                : null;
+            return claimed ? claimed.catch(() => keys) : keys;
+        },
 
         // Replaces this instance's scheduled reminders; the app keeps as many of
         // the soonest as fit. Resolves with how many it scheduled.
