@@ -205,7 +205,8 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                 else { return (nil, "Invalid keys.") }
                 return (await AppNotifications.claim(on: instance, unread: keys.map { .init(key: $0, reminder: nil) }), nil)
             }
-            guard let list = body["entries"] as? [[String: Any]], list.count <= AppNotifications.reminderCount
+            // A client built in between sends its entries through `claim` too.
+            guard let list = (body["entries"] ?? body["keys"]) as? [[String: Any]], list.count <= AppNotifications.reminderCount
             else { return (nil, "Invalid entries.") }
             let unread = list.compactMap { entry -> AppNotifications.Unread? in
                 guard let key = entry["key"] as? String, !key.isEmpty, key.count <= 80 else { return nil }
