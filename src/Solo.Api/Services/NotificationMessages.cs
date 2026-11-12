@@ -19,9 +19,8 @@ namespace Solo.Api.Services;
 /// The text is picked when a notification is raised and stored with it, so the
 /// bell, the device and the email digest all say the same thing, and changing a
 /// line here leaves the ones already raised as they were. An assignment picks
-/// at random. A deadline reminder picks by its dedupe key, so the text a device
-/// schedules ahead from <c>api/notifications/upcoming</c> is the text the server
-/// stores when it raises the same reminder.
+/// at random. A deadline reminder picks by its dedupe key, so the same
+/// reminder always reads the same.
 /// </remarks>
 public static class NotificationMessages
 {

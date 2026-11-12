@@ -125,82 +125,12 @@ public sealed class DeadlineReminderService(
         await notifications.RaiseAsync(drafts, ct);
     }
 
-    /// <summary>
-    /// The deadline reminders <paramref name="userId"/> will get after
-    /// <paramref name="now"/>, as <see cref="SweepAsync"/> will raise them, so
-    /// a device can schedule them ahead (the iPhone and iPad app, which shows
-    /// them while it's closed). Same tasks as the sweep — assigned, unfinished,
-    /// on an open board of a project the person is still in — and none already
-    /// raised, so a reminder that went out early, worded with fewer days, isn't
-    /// shown a second time. Empty when deadline notifications are off.
-    /// </summary>
-    public static async Task<IReadOnlyList<UpcomingReminderDto>> UpcomingAsync(
-        SoloDbContext db, Guid userId, DateTimeOffset now, CancellationToken ct)
-    {
-        var preferences = await db.NotificationPreferences.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.UserId == userId, ct);
-        if (preferences is { NotifyOnDeadline: false })
-        {
-            return [];
-        }
-
-        var zone = ZoneOf(preferences?.TimeZone);
-        var from = DateOnly.FromDateTime(now.UtcDateTime).AddDays(SecondReminderDays - 1);
-        var tasks = await db.Assignments.AsNoTracking()
-            .Where(a => a.UserId == userId && a.Task != null &&
-                        a.Task.DeadlineAt >= from &&
-                        a.Task.Status != TaskState.Finished &&
-                        a.Task.Board!.IsOpen &&
-                        db.ProjectMembers.Any(m => m.ProjectId == a.Task.Board.ProjectId && m.UserId == userId))
-            .Select(a => new
-            {
-                TaskId = a.Task!.Id,
-                a.Task.Name,
-                a.Task.Number,
-                Deadline = a.Task.DeadlineAt!.Value,
-                BoardAlias = a.Task.Board!.Alias,
-                BoardName = a.Task.Board.Name,
-                ProjectAlias = a.Task.Board.Project!.Alias,
-                ProjectName = a.Task.Board.Project.Name,
-            })
-            .ToListAsync(ct);
-
-        var planned = tasks
-            .SelectMany(t => Reminders.Select(r => (Task: t, r.Kind, r.DaysBefore,
-                Key: Key(r.Kind, t.TaskId, t.Deadline), FireAt: ReminderAt(t.Deadline, r.DaysBefore, zone))))
-            .Where(r => r.FireAt > now)
-            .ToList();
-        var keys = planned.Select(r => r.Key).ToList();
-        var raised = await db.Notifications.AsNoTracking()
-            .Where(n => n.UserId == userId && keys.Contains(n.DedupeKey))
-            .Select(n => n.DedupeKey)
-            .ToListAsync(ct);
-
-        return planned
-            .Where(r => !raised.Contains(r.Key))
-            .OrderBy(r => r.FireAt)
-            .Take(NotificationLimits.UpcomingLimit)
-            .Select(r => (r, Message: Message(r.Kind, r.Key, Aliases.Serial(r.Task.ProjectAlias, r.Task.BoardAlias, r.Task.Number),
-                r.Task.Name, r.DaysBefore, r.Task.ProjectName, r.Task.BoardName)))
-            .Select(p => new UpcomingReminderDto(p.r.Key, p.r.Kind, p.r.Task.TaskId, p.r.FireAt, p.Message.Title, p.Message.Body))
-            .ToList();
-    }
-
-    /// <summary>
-    /// The reminders a deadline earns, soonest last: the dedupe key and the
-    /// hour below are what <c>api/notifications/upcoming</c> plans with too, so
-    /// a device scheduling one ahead and this sweep raising it agree.
-    /// </summary>
-    public static readonly IReadOnlyList<(NotificationKind Kind, int DaysBefore)> Reminders =
-        [(NotificationKind.DueInTwoWeeks, FirstReminderDays), (NotificationKind.DueThisWeek, SecondReminderDays)];
-
     public static string Key(NotificationKind kind, Guid taskId, DateOnly deadline) =>
         $"{kind}:{taskId}:{deadline:yyyy-MM-dd}";
 
     /// <summary>
-    /// A reminder's wording, picked by its key (<see cref="NotificationMessages.Pick"/>):
-    /// what <c>api/notifications/upcoming</c> hands a device to schedule is what
-    /// the sweep stores when it raises the same reminder.
+    /// A reminder's wording, picked by its key (<see cref="NotificationMessages.Pick"/>),
+    /// so the same reminder always reads the same.
     /// </summary>
     public static NotificationMessages.Message Message(
         NotificationKind kind, string key, string serial, string name, int daysLeft, string projectName, string boardName) =>
@@ -216,23 +146,6 @@ public sealed class DeadlineReminderService(
         ["project"] = projectName,
         ["board"] = boardName,
     };
-
-    /// <summary>
-    /// When a reminder goes out: <see cref="ReminderHour"/> on the day
-    /// <paramref name="daysBefore"/> before the deadline, in <paramref name="zone"/>.
-    /// A 9:00 that a clock change skips becomes 10:00, which is when the sweep
-    /// would first find it due.
-    /// </summary>
-    public static DateTimeOffset ReminderAt(DateOnly deadline, int daysBefore, TimeZoneInfo zone)
-    {
-        var local = deadline.AddDays(-daysBefore).ToDateTime(new TimeOnly(ReminderHour, 0));
-        if (zone.IsInvalidTime(local))
-        {
-            local = local.AddHours(1);
-        }
-
-        return new DateTimeOffset(local, zone.GetUtcOffset(local));
-    }
 
     public static string When(int daysLeft) => daysLeft switch
     {

@@ -7,9 +7,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Before launch finishes, so a tap that launched the app reaches it.
-        AppNotifications.shared.install()
-        BackgroundSync.install()
         return true
     }
 

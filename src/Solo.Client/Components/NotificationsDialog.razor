@@ -6,7 +6,6 @@
 @inject ApiClient Api
 @inject IJSRuntime Js
 @inject AppConfig Config
-@inject NotificationStore Store
 
 <MudDialog>
     <DialogContent>
@@ -20,9 +19,6 @@
         {
             case "granted":
                 <MudText Typo="Typo.body2" Color="Color.Secondary">Notifications are allowed on this device.</MudText>
-                break;
-            case "denied" when _inApp:
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Notifications are turned off for this app in Settings.</MudText>
                 break;
             case "denied":
                 <MudText Typo="Typo.body2" Color="Color.Secondary">Notifications are blocked for @Config.SiteName in your browser's settings.</MudText>
@@ -132,13 +128,11 @@
 
     private NotificationPreferencesDto? _preferences;
     private string? _permission;
-    private bool _inApp;
     private string? _error;
     private bool _busy;
 
     protected override async Task OnInitializedAsync()
     {
-        _inApp = await Js.InvokeAsync<bool>("solo.notifications.inApp");
         _permission = await Js.InvokeAsync<string>("solo.notifications.permission");
         try
         {
@@ -150,15 +144,8 @@
         }
     }
 
-    private async Task AllowAsync()
-    {
+    private async Task AllowAsync() =>
         _permission = await Js.InvokeAsync<string>("solo.notifications.request");
-        // The app schedules deadline reminders only once it may show them.
-        if (_inApp && _permission == "granted")
-        {
-            await Store.RefreshAsync();
-        }
-    }
 
     private bool EmailOn => Config.Auth?.EmailEnabled == true;
 
@@ -204,12 +191,6 @@
                 DigestWeekday = changed.DigestWeekday,
                 Version = changed.Version,
             });
-            // Deadline notifications or the time zone may have changed what
-            // the app has scheduled.
-            if (_inApp)
-            {
-                await Store.RefreshAsync();
-            }
         }
         catch (ApiConflictException)
         {

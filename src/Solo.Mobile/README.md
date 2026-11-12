@@ -106,75 +106,10 @@ platform's control later.
 
 ## Notifications
 
-A WKWebView has no Notification API, so the client's notifications
-(`wwwroot/js/notifications.js`) use fixed messages on `window.soloApp.notifications`
-instead, answered by `App/App/AppNotifications.swift` through a
-`WKScriptMessageHandlerWithReply` (main frame and the instance's local origin
-only, every payload checked):
-
-- `permission` and `request`: the system authorization, worded as the browser
-  API words it (`granted`, `denied`, `default`).
-- `show`: an inbox entry the page heard about while nobody was looking at it,
-  shown at once.
-- `schedule`: the deadline reminders still to come, from
-  `GET api/notifications/upcoming`. The client calls it after every inbox
-  refresh and when the page comes back into view. Each instance's requests are
-  replaced together, soonest first, and the app keeps at most 60 pending in
-  all, since iOS drops anything past 64 without a word.
-- `claim`: of the unread inbox entries (`{ key, reminder }`: `<id>|<raised
-  at, ms since the epoch>`, and a deadline entry's reminder key,
-  `NotificationDto.Key`), the keys of the ones nothing on the device has said
-  yet, now recorded as said. The client asks before announcing anything new,
-  so it never repeats what the background refresh already showed. The first
-  ask for an instance only records its backlog. A deadline entry counts as
-  said when the device showed the reminder it was raised from: `schedule`
-  records what it adds, by key, keeps the ones that fired for 30 days, and
-  drops one the system kept quiet because the app was open (`willPresent`).
-  If that reminder is still pending, it's taken down and the entry says it.
-  The script offers it as `claimEntries`; `claim` takes the device keys alone,
-  as a client from before reminder keys sends them. An instance from before
-  `NotificationDto.Key` writes no `key` at all: the background refresh only
-  records its deadline entries, leaving them to the reminders the device
-  scheduled.
-
-There is no push relay, by design: nothing leaves the instance or the device
-for this. While the app is closed, `App/App/BackgroundSync.swift` fills in as
-far as iOS lets it: a `BGAppRefreshTask` (`<bundle id>.refresh`, listed in
-Info.plist with the `fetch` background mode), asked for each time the app goes
-into the background, at most every 15 minutes and in practice when iOS
-chooses, and never after the app was swiped away until it's opened again. Each
-run reads every signed-in instance straight from its address (not the local
-proxy, which is suspended): it shows the unread entries `claim` says are new,
-then replaces the instance's
-reminders with `GET api/notifications/upcoming`,
-through the same `AppNotifications` code and identifiers as the page, so the
-two never double up and a tap opens the same way. A deadline changed while the
-app is closed is rescheduled at the next run or open.
-
-It signs in with a copy of the page's `solo_` session
-(`App/App/AppCredentials.swift`), in the Keychain, readable after first unlock
-and never in a backup. The client hands it over through
-`window.soloApp.keepSession` as it loads and whenever it stores or clears its
-session; a session kept for the window only ("Stay signed in" off) is not
-handed over. The copy goes, with everything scheduled and recorded for that
-instance, on sign-out, when the instance is removed, and when the instance
-answers 401; the instance isn't read again until the page hands over a new one.
-A run checks the copy is still the one it started with before each write, so a
-sign-out during a run isn't undone by it.
-The instance's notification settings already shape both endpoints.
-
-To run a refresh by hand on a device, pause a debug build in Xcode and enter
-`e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.hunterahlquist.solo.preview.refresh"]`
-(the bundle id of the build, plus `.refresh`), then continue. The simulator
-doesn't run background tasks.
-
-The app's own `UNUserNotificationCenterDelegate` is installed at launch, and
-`handleApplicationNotifications` is off so Capacitor's bridge doesn't replace
-it. In the foreground the system stays quiet for reminders (the page shows a
-snackbar once the server raises them). A tap names its instance and an entry
-id or a task id. For another saved instance the app switches to it first. The
-tap waits until the page's client has attached (`solo.notifications.attach`,
-its first call), then arrives as a `solo:notification-open` event.
+The app shows no notifications. A WKWebView has no Notification API, so the
+client's OS notifications (`wwwroot/js/notifications.js`) report "unsupported"
+here, and new entries show on the bell and the in-page bar while the app is
+open. Away from the app, the email digest is the only notification.
 
 ## Sign-in
 

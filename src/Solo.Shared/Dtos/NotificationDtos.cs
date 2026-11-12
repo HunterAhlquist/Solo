@@ -17,16 +17,7 @@ public sealed record NotificationDto(
     Guid? TaskId,
     Guid? EpicId,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? ReadAt)
-{
-    /// <summary>
-    /// A deadline entry's reminder key (contract 1.17): the
-    /// <see cref="UpcomingReminderDto.Key"/> it was announced under before the
-    /// server raised it, so a device that scheduled that reminder knows this
-    /// entry is the same news. Null for other kinds.
-    /// </summary>
-    public string? Key { get; init; }
-}
+    DateTimeOffset? ReadAt);
 
 /// <summary>The newest notifications, and how many of all of them are unread.</summary>
 public sealed record NotificationInboxDto(IReadOnlyList<NotificationDto> Items, int UnreadCount);
@@ -69,26 +60,8 @@ public sealed class UpdateNotificationPreferencesRequest
     public uint Version { get; init; }
 }
 
-/// <summary>
-/// A deadline reminder the server will raise later, for a device to schedule
-/// ahead so it shows while the app is closed (contract 1.17). <paramref name="Key"/>
-/// is the notification's dedupe key, the same one the reminder is raised under,
-/// and <paramref name="Title"/> and <paramref name="Body"/> its text as it will
-/// read when <paramref name="FireAt"/> comes.
-/// </summary>
-public sealed record UpcomingReminderDto(
-    string Key,
-    NotificationKind Kind,
-    Guid TaskId,
-    DateTimeOffset FireAt,
-    string Title,
-    string? Body);
-
 public static class NotificationLimits
 {
-    /// <summary>The most upcoming reminders one call returns, soonest first; iOS keeps 64 pending at most anyway.</summary>
-    public const int UpcomingLimit = 100;
-
     /// <summary>The longest IANA id is about 30 characters; this leaves room without inviting a payload.</summary>
     public const int TimeZoneLength = 64;
 

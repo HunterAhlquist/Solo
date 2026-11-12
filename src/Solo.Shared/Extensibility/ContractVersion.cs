@@ -114,8 +114,7 @@ namespace Solo.Shared.Extensibility;
 /// change; a package needs 1.17 in <c>soloApiVersion</c> only if it relies on
 /// the switch being offered. Admin settings' own DTOs for the switch
 /// (<c>ExtensionUpdateFeedDto</c>, <c>SetExtensionUpdateFeedRequest</c>) arrive
-/// in the shared assembly with it, and so does <c>UpcomingReminderDto</c>, the
-/// deadline reminders the iPhone and iPad app schedules ahead.</para>
+/// in the shared assembly with it.</para>
 /// </remarks>
 public static class ContractVersion
 {
