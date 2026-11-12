@@ -1,4 +1,5 @@
 using Solo.Data.Entities;
+using Solo.Shared;
 using Solo.Shared.Dtos;
 
 namespace Solo.Api.Services;
@@ -7,7 +8,11 @@ namespace Solo.Api.Services;
 public static class DtoMapper
 {
     public static NotificationDto ToDto(this Notification n) =>
-        new(n.Id, n.Kind, n.Title, n.Body, n.ProjectId, n.BoardId, n.TaskId, n.EpicId, n.CreatedAt, n.ReadAt);
+        new(n.Id, n.Kind, n.Title, n.Body, n.ProjectId, n.BoardId, n.TaskId, n.EpicId, n.CreatedAt, n.ReadAt)
+        {
+            // A deadline entry's dedupe key is its reminder's key (DeadlineReminderService.Key).
+            Key = n.Kind is NotificationKind.DueInTwoWeeks or NotificationKind.DueThisWeek ? n.DedupeKey : null,
+        };
 
     public static NotificationPreferencesDto ToDto(this NotificationPreferences p) =>
         new(p.TimeZone, p.NotifyOnAssigned, p.NotifyOnDeadline, p.EmailOnAssigned, p.EmailOnDeadline,

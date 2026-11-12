@@ -121,11 +121,16 @@ only, every payload checked):
   refresh and when the page comes back into view. Each instance's requests are
   replaced together, soonest first, and the app keeps at most 60 pending in
   all, since iOS drops anything past 64 without a word.
-- `claim`: of the unread inbox entries' keys (`<id>|<raised at, ms since the
-  epoch>`), the ones nothing on the device has announced yet, now recorded as
-  announced. The client asks before announcing anything new, so it never
-  repeats what the background refresh already showed. The first ask for an
-  instance only records its backlog.
+- `claim`: of the unread inbox entries (`{ key, reminder }`: `<id>|<raised
+  at, ms since the epoch>`, and a deadline entry's reminder key,
+  `NotificationDto.Key`), the keys of the ones nothing on the device has said
+  yet, now recorded as said. The client asks before announcing anything new,
+  so it never repeats what the background refresh already showed. The first
+  ask for an instance only records its backlog. A deadline entry counts as
+  said when the device showed the reminder it was raised from: `schedule`
+  records what it adds, by key, keeps the ones that fired for 30 days, and
+  drops one the system kept quiet because the app was open (`willPresent`).
+  If that reminder is still pending, it's taken down and the entry says it.
 
 There is no push relay, by design: nothing leaves the instance or the device
 for this. While the app is closed, `App/App/BackgroundSync.swift` fills in as
@@ -135,13 +140,7 @@ into the background, at most every 15 minutes and in practice when iOS
 chooses, and never after the app was swiped away until it's opened again. Each
 run reads every signed-in instance straight from its address (not the local
 proxy, which is suspended): it shows the unread entries `claim` says are new,
-except a deadline entry the device's own reminder already said: one of the same
-kind and task that fired at most 10 minutes before the entry was raised (the
-server's sweep runs every 5 minutes from the same moment). `schedule` keeps a
-record of what it added, and of what fired for 30 days. That entry is recorded
-all the same. Any other deadline entry shows: one for a moved deadline, a
-deadline set since the last schedule, one past the pending limit, or one a late
-sweep raised (then twice, rather than never). Then it replaces the instance's
+then replaces the instance's
 reminders with `GET api/notifications/upcoming`,
 through the same `AppNotifications` code and identifiers as the page, so the
 two never double up and a tap opens the same way. A deadline changed while the

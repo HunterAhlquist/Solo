@@ -50,6 +50,7 @@ with its version in parentheses).
 - Contract 1.17.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.
 - Contract 1.17.0: `extension.json` accepts `updateFeeds`, other release manifests (`id`, `label`, `url`) an administrator can switch the extension's updates to. `updates` stays the default and is what older hosts read.
 - Contract 1.17.0: `UpcomingReminderDto`, the deadline reminders still to come for the signed-in person (`GET api/notifications/upcoming`).
+- Contract 1.17.0: `NotificationDto.Key`, a deadline entry's reminder key, the `UpcomingReminderDto.Key` it was announced under before the server raised it; null for other kinds.
 
 ### Extensions
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -108,22 +109,23 @@ public class NotificationStoreTests : ComponentTestBase
         // The app reads the inbox while it's closed and announces what's new;
         // the page, back in view, announces only what the app answers it hadn't.
         static string Key(NotificationDto n) => $"{n.Id}|{n.CreatedAt.ToUnixTimeMilliseconds()}";
-        var backlog = _inbox.Items.Select(Key).ToList();
-        JSInterop.Setup<string[]?>("solo.notifications.claim", i => ((IEnumerable<string>)i.Arguments[0]!).Count() == 2)
-            .SetResult([]);
-        var shownByApp = Entry(Guid.NewGuid(), TaskId, read: false) with { Title = "Shown while closed" };
+        static JsonElement[] Sent(JSRuntimeInvocation i) => JsonSerializer.SerializeToElement(i.Arguments[0], JsonSerializerOptions.Web).EnumerateArray().ToArray();
+        var backlog = _inbox.Items.Select(n => (Key(n), (string?)null)).ToList();
+        JSInterop.Setup<string[]?>("solo.notifications.claim", i => Sent(i).Length == 2).SetResult([]);
+        var shownByApp = Entry(Guid.NewGuid(), TaskId, read: false) with { Title = "Shown while closed", Key = "DueThisWeek:x:2027-03-31" };
         var news = Entry(Guid.NewGuid(), OtherTaskId, read: false) with { Title = "Not shown yet" };
-        JSInterop.Setup<string[]?>("solo.notifications.claim", i => ((IEnumerable<string>)i.Arguments[0]!).Count() == 4)
-            .SetResult([Key(news)]);
+        JSInterop.Setup<string[]?>("solo.notifications.claim", i => Sent(i).Length == 4).SetResult([Key(news)]);
 
         var store = Store(inApp: true);
         await store.LoadAsync();
         _inbox = _inbox with { Items = [news, shownByApp, .. _inbox.Items], UnreadCount = 4 };
         await store.RefreshAsync();
 
-        // The first read records the backlog with the app, unannounced.
+        // The first read records the backlog with the app, unannounced; a
+        // deadline entry names the reminder it was raised from.
         var claims = JSInterop.Invocations["solo.notifications.claim"];
-        Assert.Equal(backlog, Assert.IsAssignableFrom<IEnumerable<string>>(claims[0].Arguments[0]));
+        Assert.Equal(backlog, Sent(claims[0]).Select(e => (e.GetProperty("key").GetString()!, e.GetProperty("reminder").GetString())));
+        Assert.Contains(Sent(claims[1]), e => e.GetProperty("reminder").GetString() == "DueThisWeek:x:2027-03-31");
         Assert.Equal(["Not shown yet"], Services.GetRequiredService<ISnackbar>().ShownSnackbars.Select(s => s.Message));
     }
 

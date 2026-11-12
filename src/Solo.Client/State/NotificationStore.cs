@@ -224,16 +224,19 @@ public sealed class NotificationStore(
     }
 
     /// <summary>
-    /// The app announces new entries itself while it's closed, so here only
-    /// the ones it hasn't: it records every unread entry as announced, the
-    /// first read's backlog included, and answers with those it hadn't been.
-    /// A device key is the entry's id and raise time, as the app makes it.
+    /// The app announces new entries itself while it's closed, and shows the
+    /// deadline reminders it scheduled, so here only what it hasn't said: it
+    /// records every unread entry as announced, the first read's backlog
+    /// included, and answers with those it hadn't. A device key is the entry's
+    /// id and raise time, as the app makes it; a deadline entry also names the
+    /// reminder it was raised from (<see cref="NotificationDto.Key"/>).
     /// </summary>
     private async Task<List<NotificationDto>> ClaimAsync(NotificationInboxDto inbox, List<NotificationDto> fresh)
     {
         try
         {
-            var unread = inbox.Items.Where(n => n.ReadAt is null).Select(DeviceKey).ToList();
+            var unread = inbox.Items.Where(n => n.ReadAt is null)
+                .Select(n => new DeviceEntry(DeviceKey(n), n.Key)).ToList();
             var claimed = await js.InvokeAsync<string[]?>("solo.notifications.claim", unread);
             return claimed is null ? fresh : fresh.Where(n => claimed.Contains(DeviceKey(n))).ToList();
         }
@@ -246,6 +249,8 @@ public sealed class NotificationStore(
 
     private static string DeviceKey(NotificationDto notification) =>
         $"{notification.Id:D}|{notification.CreatedAt.ToUnixTimeMilliseconds()}";
+
+    private sealed record DeviceEntry(string Key, string? Reminder);
 
     private async Task AnnounceAsync(NotificationDto notification)
     {

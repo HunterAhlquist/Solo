@@ -104,8 +104,10 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         utc.timeZone = TimeZone(identifier: "UTC")!
         let now = Date()
         var added = 0
-        // What this device has scheduled for the instance: the ones that
-        // fired stay recorded, the ones just replaced are what was added now.
+        // The reminders this device scheduled for the instance, by key, with
+        // when they fire: the ones that fired stay recorded (and go when the
+        // system kept one quiet, in willPresent); the pending ones are
+        // whatever this call adds.
         var record = (UserDefaults.standard.dictionary(forKey: remindedKey(instance)) as? [String: Double] ?? [:])
             .filter { $0.value <= now.timeIntervalSince1970 && $0.value > now.timeIntervalSince1970 - recordDays * 86_400 }
         defer { UserDefaults.standard.set(record, forKey: remindedKey(instance)) }
@@ -129,46 +131,58 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         return added
     }
 
-    /// How long a fired reminder stays on record: past the second reminder,
-    /// a week before the deadline, the server raises nothing more for it.
+    /// How long a fired reminder stays on record for `claim`: past the second
+    /// reminder, a week before the deadline, the server raises nothing more.
     private static let recordDays: Double = 30
-
-    /// Whether this device already said what an inbox entry of `kind` for
-    /// `taskId`, raised at `raisedAt`, says: a reminder of its own for the same
-    /// task that fired just before. The server raises a deadline entry on its
-    /// first sweep (every 5 minutes) at or after the moment the reminder was
-    /// scheduled for, so that's the match; an entry for a moved deadline, or a
-    /// reminder still pending, doesn't, and shows. A sweep that ran late shows
-    /// it twice, which beats not at all. Reminder keys are
-    /// `<kind>:<task id>:<deadline>`.
-    static func reminded(on instance: URL, kind: String, taskId: UUID, raisedAt: Date) -> Bool {
-        let prefix = "\(kind):\(taskId.uuidString):".lowercased()
-        let raised = raisedAt.timeIntervalSince1970
-        let now = Date().timeIntervalSince1970
-        return (UserDefaults.standard.dictionary(forKey: remindedKey(instance)) as? [String: Double] ?? [:])
-            .contains { key, fired in
-                key.lowercased().hasPrefix(prefix) && fired <= now && fired - 60 <= raised && raised <= fired + 600
-            }
-    }
 
     private static func remindedKey(_ instance: URL) -> String {
         "solo.notifications.reminded.\(key(of: instance))"
     }
 
-    /// The keys in `unread` (`<id>|<raised at, ms>`, the instance's unread
-    /// inbox entries) that nothing on this device has announced yet, now
-    /// counted as announced. The page and `BackgroundSync` both ask before
-    /// announcing an entry, so whichever hears of it first is the only one to.
-    /// The first ask for an instance only records its backlog: an inbox
-    /// full of old entries isn't news.
-    static func claim(on instance: URL, unread: [String]) -> [String] {
+    /// An unread inbox entry: `key` is `<id>|<raised at, ms>`, `reminder` a
+    /// deadline entry's reminder key (`NotificationDto.Key`).
+    struct Unread {
+        let key: String
+        let reminder: String?
+    }
+
+    /// The keys of the entries in `unread` (the instance's unread inbox) that
+    /// nothing on this device has announced yet, now counted as announced. The
+    /// page and `BackgroundSync` both ask before announcing an entry, so
+    /// whichever hears of it first is the only one to. The first ask for an
+    /// instance only records its backlog: an inbox full of old entries isn't
+    /// news.
+    ///
+    /// A deadline entry is news unless this device showed the reminder it was
+    /// raised from: that reminder said it already. One still pending is taken
+    /// down instead, and the entry says it.
+    static func claim(on instance: URL, unread: [Unread]) async -> [String] {
         let defaults = UserDefaults.standard
         let storeKey = seenKey(instance)
         let seen = defaults.stringArray(forKey: storeKey).map(Set.init)
         // Only what's still unread can come up again, so that's all it keeps.
-        defaults.set(unread, forKey: storeKey)
+        defaults.set(unread.map(\.key), forKey: storeKey)
         guard let seen else { return [] }
-        return unread.filter { !seen.contains($0) }
+        let fresh = unread.filter { !seen.contains($0.key) }
+        guard fresh.contains(where: { $0.reminder != nil }) else { return fresh.map(\.key) }
+
+        let center = UNUserNotificationCenter.current()
+        let pending = Set(await center.pendingNotificationRequests().map(\.identifier))
+        let shown = defaults.dictionary(forKey: remindedKey(instance)) as? [String: Double] ?? [:]
+        let now = Date().timeIntervalSince1970
+        var news: [String] = []
+        for entry in fresh {
+            if let reminder = entry.reminder {
+                let id = identifier("reminder", instance, reminder)
+                if pending.contains(id) {
+                    center.removePendingNotificationRequests(withIdentifiers: [id])
+                } else if let fired = shown[reminder], fired <= now {
+                    continue
+                }
+            }
+            news.append(entry.key)
+        }
+        return news
     }
 
     /// Everything this device holds for the instance: its scheduled reminders
@@ -200,7 +214,24 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler(notification.request.identifier.hasPrefix("solo|show|") ? [.banner, .list, .sound] : [])
+        let id = notification.request.identifier
+        if id.hasPrefix("solo|reminder|") {
+            // Kept quiet, so it hasn't said anything: the entry the server
+            // raises for it is news to the person, if not to the page.
+            Self.unrecord(id)
+        }
+        completionHandler(id.hasPrefix("solo|show|") ? [.banner, .list, .sound] : [])
+    }
+
+    /// Takes a reminder (`solo|reminder|<instance key>|<reminder key>`) off
+    /// the record of what this device showed.
+    nonisolated private static func unrecord(_ identifier: String) {
+        let parts = identifier.split(separator: "|", maxSplits: 3).map(String.init)
+        guard parts.count == 4 else { return }
+        let storeKey = "solo.notifications.reminded.\(parts[2])"
+        var record = UserDefaults.standard.dictionary(forKey: storeKey) ?? [:]
+        record.removeValue(forKey: parts[3])
+        UserDefaults.standard.set(record, forKey: storeKey)
     }
 
     /// The completion-handler form, called back on the main thread: UIKit

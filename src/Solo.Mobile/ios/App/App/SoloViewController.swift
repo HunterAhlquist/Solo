@@ -97,7 +97,7 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                         request: () => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'request' }),
                         show: (id, title, body) => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'show', id, title, body }),
                         schedule: reminders => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'schedule', reminders }),
-                        claim: keys => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'claim', keys }),
+                        claim: entries => window.webkit.messageHandlers.\(Self.replyHandler).postMessage({ type: 'claim', entries }),
                     }),
                 });
                 """,
@@ -195,10 +195,18 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             guard reminders.count == list.count else { return (nil, "Invalid reminders.") }
             return (await AppNotifications.schedule(on: instance, reminders), nil)
         case "claim":
-            guard let keys = body["keys"] as? [String], keys.count <= AppNotifications.reminderCount,
-                  keys.allSatisfy({ !$0.isEmpty && $0.count <= 80 })
-            else { return (nil, "Invalid keys.") }
-            return (AppNotifications.claim(on: instance, unread: keys), nil)
+            // `[{ key, reminder }]`: an entry's device key, and a deadline
+            // entry's reminder key (NotificationDto.Key) or null.
+            guard let list = body["entries"] as? [[String: Any]], list.count <= AppNotifications.reminderCount
+            else { return (nil, "Invalid entries.") }
+            let unread = list.compactMap { entry -> AppNotifications.Unread? in
+                guard let key = entry["key"] as? String, !key.isEmpty, key.count <= 80 else { return nil }
+                let reminder = entry["reminder"] as? String
+                if let reminder, reminder.isEmpty || reminder.count > AppNotifications.keyLength { return nil }
+                return AppNotifications.Unread(key: key, reminder: reminder)
+            }
+            guard unread.count == list.count else { return (nil, "Invalid entries.") }
+            return (await AppNotifications.claim(on: instance, unread: unread), nil)
         default:
             return (nil, "Unknown request.")
         }

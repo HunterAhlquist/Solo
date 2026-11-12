@@ -17,7 +17,16 @@ public sealed record NotificationDto(
     Guid? TaskId,
     Guid? EpicId,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? ReadAt);
+    DateTimeOffset? ReadAt)
+{
+    /// <summary>
+    /// A deadline entry's reminder key (contract 1.17): the
+    /// <see cref="UpcomingReminderDto.Key"/> it was announced under before the
+    /// server raised it, so a device that scheduled that reminder knows this
+    /// entry is the same news. Null for other kinds.
+    /// </summary>
+    public string? Key { get; init; }
+}
 
 /// <summary>The newest notifications, and how many of all of them are unread.</summary>
 public sealed record NotificationInboxDto(IReadOnlyList<NotificationDto> Items, int UnreadCount);

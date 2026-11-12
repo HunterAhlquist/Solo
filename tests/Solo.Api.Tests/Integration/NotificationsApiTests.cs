@@ -217,6 +217,11 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         Assert.DoesNotContain(upcoming, r => r.Key == twoWeeks.Key);
         Assert.Contains(upcoming, r => r.Key == $"DueThisWeek:{far.Id}:{today.AddDays(40):yyyy-MM-dd}");
 
+        // The entry it raised carries the reminder's key, which is how a device
+        // that scheduled that reminder knows the entry for the same news.
+        var raised = Assert.Single((await InboxAsync(_bob)).Items);
+        Assert.Equal((far.Id, NotificationKind.DueInTwoWeeks, twoWeeks.Key), (raised.TaskId!.Value, raised.Kind, raised.Key));
+
         // Deadline notifications off: nothing to plan.
         await _bob.PutJson<NotificationPreferencesDto>("/api/notifications/preferences", new
         {
@@ -231,7 +236,8 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         postgres.SkipUnlessDockerAvailable();
         var task = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks", new { name = "Secret" });
         await AssignAsync(task.Id, _bobId);
-        Assert.Single((await InboxAsync(_bob)).Items);
+        // An assignment has no reminder behind it, so no key.
+        Assert.Null(Assert.Single((await InboxAsync(_bob)).Items).Key);
 
         var members = await _admin.GetJson<List<ProjectMemberDto>>($"/api/projects/{_project.Id}/members");
         var bob = members.Single(m => m.Email == "bob@example.com");
