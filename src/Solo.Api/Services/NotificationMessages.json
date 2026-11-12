@@ -4,7 +4,7 @@
     { "title": "Fresh task from {assigner}.", "body": "'{task}' just landed on your plate. Bon appétit." },
     { "title": "{assigner} picked you!", "body": "'{task}' is yours now. No take-backs." },
     { "title": "New mission from {assigner}.", "body": "The goal is clear; '{task}'. Good luck!" },
-    { "title": "Don't panic! {assigner} assigned you a task.", "body": "Hmmm, '{task}'. Can't be too difficult, right?" }
+    { "title": "Don't panic! A task from {assigner}.", "body": "Hmmm, '{task}'. Can't be too difficult, right?" }
   ],
   "assignedEpic": [
     { "title": "{assigner} assigned you an epic.", "body": "Epic '{epic}' was assigned to you." },
