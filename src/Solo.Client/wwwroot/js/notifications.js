@@ -48,12 +48,13 @@
 
         canSchedule: () => !!app(),
 
-        // Of these unread entries' keys, the ones nothing on this device has
-        // announced yet, now counted as announced: the app also announces new
-        // entries while it's closed, and the page shouldn't say them twice.
-        claim: keys => app()?.claim
-            ? app().claim(keys).catch(() => keys)
-            : keys,
+        // Of these unread entries ({ key, reminder }), the keys of the ones
+        // nothing on this device has said yet, now counted as said: the app
+        // also announces new entries while it's closed, and shows deadline
+        // reminders it scheduled, and the page shouldn't say either again.
+        claim: entries => app()?.claim
+            ? app().claim(entries).catch(() => entries.map(e => e.key))
+            : entries.map(e => e.key),
 
         // Replaces this instance's scheduled reminders; the app keeps as many of
         // the soonest as fit. Resolves with how many it scheduled.
