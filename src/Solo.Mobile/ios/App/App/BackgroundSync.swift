@@ -11,8 +11,8 @@ import UIKit
 /// - an unread entry nothing on the device has announced yet shows as a
 ///   notification, through the same `AppNotifications` the page uses, so a
 ///   tap opens it the same way, and the page won't announce it again
-///   (`AppNotifications.claim`). Deadline entries are only recorded: their
-///   reminders were scheduled on the device ahead, and already say it;
+///   (`AppNotifications.claim`). A deadline entry whose reminder this device
+///   scheduled ahead is only recorded: the reminder already says it;
 /// - the reminders are rescheduled, replacing the page's schedule for that
 ///   instance, so a deadline changed elsewhere fires at its new time.
 ///
@@ -120,9 +120,10 @@ enum BackgroundSync {
             guard current() else { return true }
             let fresh = Set(AppNotifications.claim(on: instance, unread: unread.map(\.key)))
             // The inbox lists the newest first; they show oldest first. A
-            // deadline entry is only recorded: the reminder this device
-            // scheduled for it has shown, or will, at 9:00.
-            for entry in unread.reversed() where fresh.contains(entry.key) && !entry.isDeadline {
+            // deadline entry this device scheduled a reminder for is only
+            // recorded: the reminder has shown, or will, at 9:00. One it
+            // didn't (a deadline set since, or past the pending limit) shows.
+            for entry in unread.reversed() where fresh.contains(entry.key) && !entry.reminded(on: instance) {
                 guard current() else { return true }
                 _ = await AppNotifications.show(on: instance, id: entry.id, title: entry.title, body: entry.body)
             }
@@ -170,7 +171,8 @@ enum BackgroundSync {
         let key: String
         let title: String
         let body: String?
-        let isDeadline: Bool
+        let kind: String?
+        let taskId: UUID?
 
         init?(_ json: [String: Any]) {
             guard json["readAt"] == nil || json["readAt"] is NSNull,
@@ -182,7 +184,14 @@ enum BackgroundSync {
             key = "\(self.id)|\(raised)"
             self.title = title
             body = BackgroundSync.text(json["body"], max: AppNotifications.bodyLength)
-            isDeadline = ["DueInTwoWeeks", "DueThisWeek"].contains(json["kind"] as? String)
+            kind = json["kind"] as? String
+            taskId = (json["taskId"] as? String).flatMap(UUID.init(uuidString:))
+        }
+
+        @MainActor
+        func reminded(on instance: URL) -> Bool {
+            guard let kind, let taskId, ["DueInTwoWeeks", "DueThisWeek"].contains(kind) else { return false }
+            return AppNotifications.reminded(on: instance, kind: kind, taskId: taskId)
         }
     }
 
