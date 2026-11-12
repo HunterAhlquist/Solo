@@ -464,6 +464,13 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         return Data(bytes).base64EncodedString()
     }
 
+    /// A 16×16 pixel face, X-eyed, drawn at 6× in the text colour so it reads
+    /// in light and dark alike; crispEdges keeps its pixels square. The same
+    /// as the desktop app's page.
+    private static let deadFace = """
+        <svg class="face" viewBox="0 0 16 16" width="96" height="96" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M2 2h1v1H2zM6 2h1v1H6zM9 2h1v1H9zM13 2h1v1h-1zM3 3h1v1H3zM5 3h1v1H5zM10 3h1v1h-1zM12 3h1v1h-1zM4 4h1v1H4zM11 4h1v1h-1zM3 5h1v1H3zM5 5h1v1H5zM10 5h1v1h-1zM12 5h1v1h-1zM2 6h1v1H2zM6 6h1v1H6zM9 6h1v1H9zM13 6h1v1h-1zM7 9h2v1H7zM6 10h1v3H6zM9 10h1v3H9zM7 13h2v1H7z"/></svg>
+        """
+
     /// What the app shows when the instance can't be reached and the client's
     /// offline mode hasn't cached it — its service worker answers the page load
     /// before it gets here otherwise. The same page as the desktop app's.
@@ -478,10 +485,12 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
             body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
             main { max-width: 26rem; padding: 2rem; text-align: center; }
+            .face { display: block; margin: 0 auto 1.25rem; }
             h1 { font-size: 1.25rem; margin: 0 0 .75rem; }
             p { margin: 0 0 1.5rem; line-height: 1.5; opacity: .8; }
             button { font: inherit; padding: .6rem 1.1rem; margin: .25rem; border-radius: 10px; border: 1px solid; background: transparent; color: inherit; }
             </style></head><body><main>
+            \(Self.deadFace)
             <h1>Can't reach the instance</h1>
             <p>Solo couldn't reach \(safeHost). Check your connection, or that the instance is running, then try again.</p>
             <button id="retry" type="button">Try again</button>

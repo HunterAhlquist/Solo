@@ -96,6 +96,11 @@ function createSoloServer({ getTarget }) {
     return server;
 }
 
+// A 16×16 pixel face, X-eyed, above the unreachable page's heading: drawn at
+// 6× in the text colour, so it reads in light and dark alike, with crispEdges
+// keeping its pixels square. The same as the iPhone and iPad app's page.
+const DEAD_FACE = '<svg class="face" viewBox="0 0 16 16" width="96" height="96" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M2 2h1v1H2zM6 2h1v1H6zM9 2h1v1H9zM13 2h1v1h-1zM3 3h1v1H3zM5 3h1v1H5zM10 3h1v1h-1zM12 3h1v1h-1zM4 4h1v1H4zM11 4h1v1h-1zM3 5h1v1H3zM5 5h1v1H5zM10 5h1v1h-1zM12 5h1v1h-1zM2 6h1v1H2zM6 6h1v1H6zM9 6h1v1H9zM13 6h1v1h-1zM7 9h2v1H7zM6 10h1v3H6zM9 10h1v3H9zM7 13h2v1H7z"/></svg>';
+
 // What a window shows when the instance can't be reached and the client's
 // offline mode hasn't cached it (with the cache, its service worker answers
 // the page load before it ever gets here). The bundled client used to render
@@ -126,6 +131,7 @@ function unreachablePage(res, status, target, detail) {
   :root { color-scheme: light dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
   main { max-width: 26rem; padding: 2rem; text-align: center; }
+  .face { display: block; margin: 0 auto 1.25rem; }
   h1 { font-size: 1.25rem; margin: 0 0 .75rem; }
   p { margin: 0 0 1.5rem; line-height: 1.5; opacity: .8; }
   small { display: block; margin-top: 1.25rem; opacity: .55; }
@@ -134,6 +140,7 @@ function unreachablePage(res, status, target, detail) {
 </head>
 <body>
 <main>
+  ${host ? DEAD_FACE : ''}
   <h1>Can't reach the instance</h1>
   <p>${message}</p>
   <button id="retry" type="button">Try again</button>
