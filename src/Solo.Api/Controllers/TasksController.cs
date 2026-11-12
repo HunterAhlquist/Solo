@@ -428,9 +428,8 @@ public sealed class TasksController(SoloDbContext db, IBoardNotifier notifier) :
                 .Select(b => new { b.ProjectId, ProjectAlias = b.Project!.Alias, ProjectName = b.Project.Name, b.Alias, b.Name })
                 .SingleAsync(ct);
             await notifications.AssignedAsync(added, actor, new NotifiedItem(
-                place.ProjectId, task.BoardId, task.Id, null,
-                $"{Aliases.Serial(place.ProjectAlias, place.Alias, task.Number)} {task.Name}",
-                $"{place.ProjectName} · {place.Name}"), ct);
+                place.ProjectId, task.BoardId, task.Id, null, task.Name,
+                Aliases.Serial(place.ProjectAlias, place.Alias, task.Number), place.ProjectName, place.Name), ct);
         }
 
         return task.ToDto();

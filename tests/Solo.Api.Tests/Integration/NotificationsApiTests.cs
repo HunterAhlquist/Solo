@@ -57,6 +57,15 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
     private Task<NotificationInboxDto> InboxAsync(HttpClient client) =>
         client.GetJson<NotificationInboxDto>("/api/notifications");
 
+    /// <summary>A reminder's wording, as the catalog picks it for that key.</summary>
+    private static (string Title, string Body) Reminder(
+        NotificationKind kind, Guid taskId, DateOnly deadline, string serial, string name, int daysLeft)
+    {
+        var message = DeadlineReminderService.Message(
+            kind, DeadlineReminderService.Key(kind, taskId, deadline), serial, name, daysLeft, "Game", "Sprint");
+        return (message.Title, message.Body);
+    }
+
     [SkippableFact]
     public async Task Assigning_NotifiesTheNewAssignee_NotTheAssigner_AndOnlyOnceWhileUnread()
     {
@@ -69,8 +78,10 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         var only = Assert.Single(inbox.Items);
         Assert.Equal(1, inbox.UnreadCount);
         Assert.Equal(NotificationKind.Assigned, only.Kind);
-        Assert.Equal("Admin assigned you to GAME-SP-1 Boss fight", only.Title);
-        Assert.Equal("Game · Sprint", only.Body);
+        // One of the catalog's lines for an assignment, filled in.
+        Assert.Contains(new NotificationMessages.Message(only.Title, only.Body!), NotificationMessages.Possible(
+            NotificationMessages.Situation.Assigned,
+            new Dictionary<string, string> { ["assigner"] = "Admin", ["task"] = "Boss fight", ["serial"] = "GAME-SP-1", ["project"] = "Game", ["board"] = "Sprint" }));
         Assert.Equal((task.Id, _board.Id, _project.Id), (only.TaskId, only.BoardId, only.ProjectId));
         Assert.Empty((await InboxAsync(_admin)).Items);
 
@@ -100,7 +111,9 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         var epic = await _admin.PostJson<EpicDto>($"/api/boards/{_board.Id}/epics", new { name = "Act one" });
         await _admin.PutJson<EpicDto>($"/api/epics/{epic.Id}/assignees", new { userIds = new[] { _bobId } });
         var note = Assert.Single((await InboxAsync(_bob)).Items);
-        Assert.Equal("Admin assigned you to the epic Act one", note.Title);
+        Assert.Contains(new NotificationMessages.Message(note.Title, note.Body!), NotificationMessages.Possible(
+            NotificationMessages.Situation.AssignedEpic,
+            new Dictionary<string, string> { ["assigner"] = "Admin", ["epic"] = "Act one", ["project"] = "Game", ["board"] = "Sprint" }));
         Assert.Equal((epic.Id, (Guid?)null), (note.EpicId, note.TaskId));
 
         var preferences = await _bob.GetJson<NotificationPreferencesDto>("/api/notifications/preferences");
@@ -155,12 +168,13 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         await sweeper.SweepAsync(new DateTimeOffset(2027, 3, 18, 16, 0, 0, TimeSpan.Zero), default);
         var first = Assert.Single((await InboxAsync(_bob)).Items);
         Assert.Equal(NotificationKind.DueInTwoWeeks, first.Kind);
-        Assert.Equal("GAME-SP-1 Ship demo is due in 2 weeks", first.Title);
+        Assert.Equal(Reminder(NotificationKind.DueInTwoWeeks, task.Id, deadline, "GAME-SP-1", "Ship demo", 14), (first.Title, first.Body!));
 
         await sweeper.SweepAsync(new DateTimeOffset(2027, 3, 24, 16, 0, 0, TimeSpan.Zero), default);
         var items = (await InboxAsync(_bob)).Items;
         Assert.Equal(2, items.Count);
-        Assert.Equal((NotificationKind.DueThisWeek, "GAME-SP-1 Ship demo is due in 1 week"), (items[0].Kind, items[0].Title));
+        Assert.Equal(NotificationKind.DueThisWeek, items[0].Kind);
+        Assert.Equal(Reminder(NotificationKind.DueThisWeek, task.Id, deadline, "GAME-SP-1", "Ship demo", 7), (items[0].Title, items[0].Body!));
         Assert.DoesNotContain(items, n => n.TaskId == finished.Id);
 
         // A deadline handed out inside the last week skips straight to that
@@ -170,7 +184,9 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         await AssignAsync(late.Id, _bobId);
         await sweeper.SweepAsync(new DateTimeOffset(2027, 3, 24, 17, 0, 0, TimeSpan.Zero), default);
         var rush = (await InboxAsync(_bob)).Items.Single(n => n.TaskId == late.Id);
-        Assert.Equal((NotificationKind.DueThisWeek, "GAME-SP-3 Rush is due in 3 days"), (rush.Kind, rush.Title));
+        Assert.Equal(NotificationKind.DueThisWeek, rush.Kind);
+        Assert.Equal(Reminder(NotificationKind.DueThisWeek, late.Id, new DateOnly(2027, 3, 27), "GAME-SP-3", "Rush", 3), (rush.Title, rush.Body!));
+        Assert.Contains("in 3 days", rush.Title + rush.Body);
     }
 
     [SkippableFact]
@@ -204,11 +220,10 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
 
         var twoWeeks = upcoming[1];
         Assert.Equal($"DueInTwoWeeks:{far.Id}:{today.AddDays(40):yyyy-MM-dd}", twoWeeks.Key);
-        Assert.Equal("GAME-SP-1 Far is due in 2 weeks", twoWeeks.Title);
-        Assert.Equal("Game · Sprint", twoWeeks.Body);
+        Assert.Equal(Reminder(NotificationKind.DueInTwoWeeks, far.Id, today.AddDays(40), "GAME-SP-1", "Far", 14), (twoWeeks.Title, twoWeeks.Body));
         var nineAm = today.AddDays(26).ToDateTime(new TimeOnly(DeadlineReminderService.ReminderHour, 0));
         Assert.Equal(new DateTimeOffset(nineAm, zone.GetUtcOffset(nineAm)), twoWeeks.FireAt);
-        Assert.Equal("GAME-SP-1 Far is due in 1 week", upcoming[2].Title);
+        Assert.Equal(Reminder(NotificationKind.DueThisWeek, far.Id, today.AddDays(40), "GAME-SP-1", "Far", 7), (upcoming[2].Title, upcoming[2].Body));
 
         // Once the sweep has raised a reminder, it's no longer upcoming.
         var sweeper = _factory.Services.GetRequiredService<DeadlineReminderService>();
@@ -221,6 +236,8 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         // that scheduled that reminder knows the entry for the same news.
         var raised = Assert.Single((await InboxAsync(_bob)).Items);
         Assert.Equal((far.Id, NotificationKind.DueInTwoWeeks, twoWeeks.Key), (raised.TaskId!.Value, raised.Kind, raised.Key));
+        // And says what the device scheduled under that key, word for word.
+        Assert.Equal((twoWeeks.Title, twoWeeks.Body), (raised.Title, raised.Body));
 
         // Deadline notifications off: nothing to plan.
         await _bob.PutJson<NotificationPreferencesDto>("/api/notifications/preferences", new

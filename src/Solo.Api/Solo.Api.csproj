@@ -1,6 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <!-- The notification wording (NotificationMessages.cs); built in, so not content an instance serves or edits. -->
+    <Content Remove="Services\NotificationMessages.json" />
+    <EmbeddedResource Include="Services\NotificationMessages.json" LogicalName="Solo.Api.Services.NotificationMessages.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Solo.Client\Solo.Client.csproj" />
     <ProjectReference Include="..\Solo.Data\Solo.Data.csproj" />
     <ProjectReference Include="..\Solo.Extensibility\Solo.Extensibility.csproj" />
