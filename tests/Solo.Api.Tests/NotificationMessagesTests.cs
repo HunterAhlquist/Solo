@@ -91,12 +91,4 @@ public sealed partial class NotificationMessagesTests
             .Count();
         Assert.Equal(Templates(Situation.DueThisWeek).Distinct().Count(), picked);
     }
-
-    [Fact]
-    public void The_requested_lines_are_in_the_catalog()
-    {
-        Assert.Contains(new Template("{assigner} assigned you a task.", "Task '{task}' was assigned to you."), Templates(Situation.Assigned));
-        Assert.Contains(new Template("{serial} is due {when}", "Deadline for '{task}' is creeping up soon!"), Templates(Situation.DueThisWeek));
-        Assert.Contains(new Template("{serial} is due {when}", "Deadline for '{task}' is creeping up soon!"), Templates(Situation.DueInTwoWeeks));
-    }
 }

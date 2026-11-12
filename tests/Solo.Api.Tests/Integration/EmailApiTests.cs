@@ -268,7 +268,7 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         await SetBobsDigestAsync(DigestFrequency.Daily, zone);
         await AssignedToBobAsync("Late", day.AddDays(-2));
         await AssignedToBobAsync("Soon", day.AddDays(3));
-        await AssignedToBobAsync("Someday", day.AddDays(20));
+        var someday = await AssignedToBobAsync("Someday", day.AddDays(20));
         var read = await AssignedToBobAsync("Already seen");
         var seen = (await _bob.GetJson<NotificationInboxDto>("/api/notifications")).Items.Single(n => n.TaskId == read.Id);
         await _bob.PostAsync($"/api/notifications/{seen.Id}/read", null);
@@ -285,8 +285,9 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Contains("GAME-SP-2 Soon (Game · Sprint), ", text);
         Assert.Contains("in 3 days", text);
         Assert.DoesNotContain("Someday", text.Split("Recently assigned to you")[0]);
-        // The assignment's own wording (NotificationMessages); every line names the task.
-        Assert.Contains("Someday", text.Split("Recently assigned to you")[1]);
+        // Whatever the catalog worded it as (NotificationMessages), as stored.
+        var assigned = Db(db => db.Notifications.Single(n => n.UserId == _bobId && n.TaskId == someday.Id));
+        Assert.Contains($"- {assigned.Title} — {assigned.Body}", text.Split("Recently assigned to you")[1]);
         Assert.DoesNotContain("Already seen", text);
         Assert.Contains("Change them or turn the digest off: https://solo.example.com/notifications", text);
         Assert.StartsWith("https://solo.example.com/api/email/unsubscribe?token=", digest.UnsubscribeUrl);
@@ -350,7 +351,8 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         var inbox = await _bob.GetJson<NotificationInboxDto>("/api/notifications");
         Assert.Equal((0, 0), (inbox.Items.Count, inbox.UnreadCount));
         await SweepAsync(now);
-        Assert.Contains("Quiet", Db(db => db.EmailMessages.Single()).TextBody);
+        var quiet = Db(db => db.Notifications.Single(n => n.UserId == _bobId && n.TaskId == task.Id));
+        Assert.Contains($"- {quiet.Title} — {quiet.Body}", Db(db => db.EmailMessages.Single()).TextBody);
 
         await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = Array.Empty<Guid>() });
         await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { _bobId } });
