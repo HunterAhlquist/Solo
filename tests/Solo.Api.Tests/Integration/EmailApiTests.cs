@@ -265,7 +265,8 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Contains("GAME-SP-2 Soon (Game · Sprint), ", text);
         Assert.Contains("in 3 days", text);
         Assert.DoesNotContain("Someday", text.Split("Recently assigned to you")[0]);
-        Assert.Contains("Admin assigned you to GAME-SP-3 Someday", text);
+        // The assignment's own wording (NotificationMessages); every line names the task.
+        Assert.Contains("Someday", text.Split("Recently assigned to you")[1]);
         Assert.DoesNotContain("Already seen", text);
         Assert.Contains("Change them or turn the digest off: https://solo.example.com/notifications", text);
         Assert.StartsWith("https://solo.example.com/api/email/unsubscribe?token=", digest.UnsubscribeUrl);
@@ -329,7 +330,7 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         var inbox = await _bob.GetJson<NotificationInboxDto>("/api/notifications");
         Assert.Equal((0, 0), (inbox.Items.Count, inbox.UnreadCount));
         await SweepAsync(now);
-        Assert.Contains("Admin assigned you to GAME-SP-1 Quiet", Db(db => db.EmailMessages.Single()).TextBody);
+        Assert.Contains("Quiet", Db(db => db.EmailMessages.Single()).TextBody);
 
         await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = Array.Empty<Guid>() });
         await _admin.PutJson<TaskDto>($"/api/tasks/{task.Id}/assignees", new { userIds = new[] { _bobId } });

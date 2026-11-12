@@ -114,10 +114,11 @@ public sealed class DeadlineReminderService(
                 continue;
             }
 
+            var key = Key(kind.Value, row.TaskId, row.Deadline);
+            var message = Message(kind.Value, key, Aliases.Serial(row.ProjectAlias, row.BoardAlias, row.Number),
+                row.Name, daysLeft, row.ProjectName, row.BoardName);
             drafts.Add(new NotificationDraft(
-                row.UserId, kind.Value, Key(kind.Value, row.TaskId, row.Deadline),
-                Title(Aliases.Serial(row.ProjectAlias, row.BoardAlias, row.Number), row.Name, daysLeft),
-                Location(row.ProjectName, row.BoardName),
+                row.UserId, kind.Value, key, message.Title, message.Body,
                 row.ProjectId, row.BoardId, row.TaskId, null, null));
         }
 
@@ -179,10 +180,9 @@ public sealed class DeadlineReminderService(
             .Where(r => !raised.Contains(r.Key))
             .OrderBy(r => r.FireAt)
             .Take(NotificationLimits.UpcomingLimit)
-            .Select(r => new UpcomingReminderDto(
-                r.Key, r.Kind, r.Task.TaskId, r.FireAt,
-                Title(Aliases.Serial(r.Task.ProjectAlias, r.Task.BoardAlias, r.Task.Number), r.Task.Name, r.DaysBefore),
-                Location(r.Task.ProjectName, r.Task.BoardName)))
+            .Select(r => (r, Message: Message(r.Kind, r.Key, Aliases.Serial(r.Task.ProjectAlias, r.Task.BoardAlias, r.Task.Number),
+                r.Task.Name, r.DaysBefore, r.Task.ProjectName, r.Task.BoardName)))
+            .Select(p => new UpcomingReminderDto(p.r.Key, p.r.Kind, p.r.Task.TaskId, p.r.FireAt, p.Message.Title, p.Message.Body))
             .ToList();
     }
 
@@ -197,9 +197,25 @@ public sealed class DeadlineReminderService(
     public static string Key(NotificationKind kind, Guid taskId, DateOnly deadline) =>
         $"{kind}:{taskId}:{deadline:yyyy-MM-dd}";
 
-    public static string Title(string serial, string name, int daysLeft) => $"{serial} {name} is due {When(daysLeft)}";
+    /// <summary>
+    /// A reminder's wording, picked by its key (<see cref="NotificationMessages.Pick"/>):
+    /// what <c>api/notifications/upcoming</c> hands a device to schedule is what
+    /// the sweep stores when it raises the same reminder.
+    /// </summary>
+    public static NotificationMessages.Message Message(
+        NotificationKind kind, string key, string serial, string name, int daysLeft, string projectName, string boardName) =>
+        NotificationMessages.Pick(
+            kind == NotificationKind.DueInTwoWeeks ? NotificationMessages.Situation.DueInTwoWeeks : NotificationMessages.Situation.DueThisWeek,
+            ReminderValues(serial, name, daysLeft, projectName, boardName), key);
 
-    public static string Location(string projectName, string boardName) => $"{projectName} · {boardName}";
+    public static Dictionary<string, string> ReminderValues(string serial, string name, int daysLeft, string projectName, string boardName) => new()
+    {
+        ["serial"] = serial,
+        ["task"] = name,
+        ["when"] = When(daysLeft),
+        ["project"] = projectName,
+        ["board"] = boardName,
+    };
 
     /// <summary>
     /// When a reminder goes out: <see cref="ReminderHour"/> on the day

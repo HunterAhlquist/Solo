@@ -16,6 +16,8 @@ If a task gets its deadline, or you get the task, less than two weeks before the
 
 If you change the deadline, you get new notifications for the new date.
 
+Each notification has a short title, such as "Alex assigned you a task" or "GAME-SP-12 is due in 1 week", and a line under it that tells you more. Solo picks the wording from a set of lines, some of them playful, so two notifications of the same kind can read differently. A notification keeps the wording that it got when Solo sent it.
+
 ## The bell
 
 The bell in the app bar holds your notifications. A number on the bell shows how many you have not read.

@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Email\mark.png" LogicalName="Solo.Api.Email.mark.png" />
+    <!-- The notification wording (NotificationMessages.cs); built in, so not content an instance serves or edits. -->
+    <Content Remove="Services\NotificationMessages.json" />
+    <EmbeddedResource Include="Services\NotificationMessages.json" LogicalName="Solo.Api.Services.NotificationMessages.json" />
   </ItemGroup>
 
   <ItemGroup>
