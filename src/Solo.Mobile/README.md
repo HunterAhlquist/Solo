@@ -135,11 +135,13 @@ into the background, at most every 15 minutes and in practice when iOS
 chooses, and never after the app was swiped away until it's opened again. Each
 run reads every signed-in instance straight from its address (not the local
 proxy, which is suspended): it shows the unread entries `claim` says are new,
-except a deadline entry whose reminder this device scheduled and has already
-fired, which said it first (`schedule` keeps a record of what it added, and of
-what fired for 30 days); that entry is recorded all the same. A deadline entry
-with no fired reminder behind it (a deadline set since the last schedule, or
-past the pending limit) shows. Then it replaces the instance's
+except a deadline entry the device's own reminder already said: one of the same
+kind and task that fired at most 10 minutes before the entry was raised (the
+server's sweep runs every 5 minutes from the same moment). `schedule` keeps a
+record of what it added, and of what fired for 30 days. That entry is recorded
+all the same. Any other deadline entry shows: one for a moved deadline, a
+deadline set since the last schedule, one past the pending limit, or one a late
+sweep raised (then twice, rather than never). Then it replaces the instance's
 reminders with `GET api/notifications/upcoming`,
 through the same `AppNotifications` code and identifiers as the page, so the
 two never double up and a tap opens the same way. A deadline changed while the

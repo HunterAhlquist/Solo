@@ -133,16 +133,22 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// a week before the deadline, the server raises nothing more for it.
     private static let recordDays: Double = 30
 
-    /// Whether a reminder of `kind` for `taskId` that this device scheduled
-    /// has fired: then the inbox entry the server raises for the same deadline
-    /// is no news. One still pending counts as not, since the server raising
-    /// it means it's no longer upcoming, and the next `schedule` removes it.
-    /// Reminder keys are `<kind>:<task id>:<deadline>`.
-    static func reminded(on instance: URL, kind: String, taskId: UUID) -> Bool {
-        let prefix = "\(kind):\(taskId.uuidString.lowercased()):"
+    /// Whether this device already said what an inbox entry of `kind` for
+    /// `taskId`, raised at `raisedAt`, says: a reminder of its own for the same
+    /// task that fired just before. The server raises a deadline entry on its
+    /// first sweep (every 5 minutes) at or after the moment the reminder was
+    /// scheduled for, so that's the match; an entry for a moved deadline, or a
+    /// reminder still pending, doesn't, and shows. A sweep that ran late shows
+    /// it twice, which beats not at all. Reminder keys are
+    /// `<kind>:<task id>:<deadline>`.
+    static func reminded(on instance: URL, kind: String, taskId: UUID, raisedAt: Date) -> Bool {
+        let prefix = "\(kind):\(taskId.uuidString):".lowercased()
+        let raised = raisedAt.timeIntervalSince1970
         let now = Date().timeIntervalSince1970
         return (UserDefaults.standard.dictionary(forKey: remindedKey(instance)) as? [String: Double] ?? [:])
-            .contains { $0.key.lowercased().hasPrefix(prefix) && $0.value <= now }
+            .contains { key, fired in
+                key.lowercased().hasPrefix(prefix) && fired <= now && fired - 60 <= raised && raised <= fired + 600
+            }
     }
 
     private static func remindedKey(_ instance: URL) -> String {

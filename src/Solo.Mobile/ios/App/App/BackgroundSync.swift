@@ -120,9 +120,8 @@ enum BackgroundSync {
             guard current() else { return true }
             let fresh = Set(AppNotifications.claim(on: instance, unread: unread.map(\.key)))
             // The inbox lists the newest first; they show oldest first. A
-            // deadline entry this device scheduled a reminder for is only
-            // recorded: the reminder has shown, or will, at 9:00. One it
-            // didn't (a deadline set since, or past the pending limit) shows.
+            // deadline entry whose reminder this device just showed is only
+            // recorded (AppNotifications.reminded); any other shows.
             for entry in unread.reversed() where fresh.contains(entry.key) && !entry.reminded(on: instance) {
                 guard current() else { return true }
                 _ = await AppNotifications.show(on: instance, id: entry.id, title: entry.title, body: entry.body)
@@ -173,6 +172,7 @@ enum BackgroundSync {
         let body: String?
         let kind: String?
         let taskId: UUID?
+        let raisedAt: Date
 
         init?(_ json: [String: Any]) {
             guard json["readAt"] == nil || json["readAt"] is NSNull,
@@ -182,6 +182,7 @@ enum BackgroundSync {
             else { return nil }
             self.id = id.uuidString.lowercased()
             key = "\(self.id)|\(raised)"
+            raisedAt = Date(timeIntervalSince1970: Double(raised) / 1000)
             self.title = title
             body = BackgroundSync.text(json["body"], max: AppNotifications.bodyLength)
             kind = json["kind"] as? String
@@ -191,7 +192,7 @@ enum BackgroundSync {
         @MainActor
         func reminded(on instance: URL) -> Bool {
             guard let kind, let taskId, ["DueInTwoWeeks", "DueThisWeek"].contains(kind) else { return false }
-            return AppNotifications.reminded(on: instance, kind: kind, taskId: taskId)
+            return AppNotifications.reminded(on: instance, kind: kind, taskId: taskId, raisedAt: raisedAt)
         }
     }
 
