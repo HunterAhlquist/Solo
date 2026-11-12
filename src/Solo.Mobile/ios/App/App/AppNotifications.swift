@@ -104,6 +104,11 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         utc.timeZone = TimeZone(identifier: "UTC")!
         let now = Date()
         var added = 0
+        // What this device has scheduled for the instance: the ones that
+        // fired stay recorded, the ones just replaced are what was added now.
+        var record = (UserDefaults.standard.dictionary(forKey: remindedKey(instance)) as? [String: Double] ?? [:])
+            .filter { $0.value <= now.timeIntervalSince1970 && $0.value > now.timeIntervalSince1970 - recordDays * 86_400 }
+        defer { UserDefaults.standard.set(record, forKey: remindedKey(instance)) }
         for reminder in reminders.filter({ $0.fireAt > now }).sorted(by: { $0.fireAt < $1.fireAt }).prefix(room) {
             let content = UNMutableNotificationContent()
             content.title = reminder.title
@@ -118,9 +123,30 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
                 trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false))
             if (try? await center.add(request)) != nil {
                 added += 1
+                record[reminder.key] = reminder.fireAt.timeIntervalSince1970
             }
         }
         return added
+    }
+
+    /// How long a fired reminder stays on record: past the second reminder,
+    /// a week before the deadline, the server raises nothing more for it.
+    private static let recordDays: Double = 30
+
+    /// Whether a reminder of `kind` for `taskId` that this device scheduled
+    /// has fired: then the inbox entry the server raises for the same deadline
+    /// is no news. One still pending counts as not, since the server raising
+    /// it means it's no longer upcoming, and the next `schedule` removes it.
+    /// Reminder keys are `<kind>:<task id>:<deadline>`.
+    static func reminded(on instance: URL, kind: String, taskId: UUID) -> Bool {
+        let prefix = "\(kind):\(taskId.uuidString.lowercased()):"
+        let now = Date().timeIntervalSince1970
+        return (UserDefaults.standard.dictionary(forKey: remindedKey(instance)) as? [String: Double] ?? [:])
+            .contains { $0.key.lowercased().hasPrefix(prefix) && $0.value <= now }
+    }
+
+    private static func remindedKey(_ instance: URL) -> String {
+        "solo.notifications.reminded.\(key(of: instance))"
     }
 
     /// The keys in `unread` (`<id>|<raised at, ms>`, the instance's unread
@@ -144,6 +170,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// stopped accepting, or the instance being removed.
     static func forget(_ instance: URL) {
         UserDefaults.standard.removeObject(forKey: seenKey(instance))
+        UserDefaults.standard.removeObject(forKey: remindedKey(instance))
         let prefix = identifier("reminder", instance, "")
         Task {
             let center = UNUserNotificationCenter.current()
