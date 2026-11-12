@@ -2239,3 +2239,14 @@ html.solo-desktop .solo-titlebar {
     font-size: .75rem;
     color: var(--mud-palette-text-secondary);
 }
+
+/* The session-expired dialog hides the page behind it outright, in every
+   theme: Glass's frosted overlays included. Nothing behind it works until the
+   person signs in again. */
+.solo-session-expired-backdrop,
+.solo-session-expired-backdrop .mud-overlay-scrim {
+    background-color: #000 !important;
+    opacity: 1 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}

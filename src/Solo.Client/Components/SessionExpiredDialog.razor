@@ -1,10 +1,16 @@
 @inject AppConfig Config
 @inject NavigationManager Navigation
+@inject IJSRuntime Js
 
 @*
     Raised by SessionExpiry when the API rejects the session.
     Google re-auths in place — GIS calls back with a fresh credential and nothing
     navigates, so whatever the user had open (an edit drawer, say) survives.
+
+    Nothing behind it works until then, so it can't be dismissed and hides the
+    page (MainLayout opens it so). It always offers a way on, though: sign in,
+    sign out (when signing in keeps failing), and in the desktop and iPhone and
+    iPad apps, another instance.
 *@
 <MudDialog>
     <DialogContent>
@@ -24,6 +30,18 @@
                     Sign in with @Config.ProviderName
                 </MudButton>
             }
+
+            <div class="d-flex flex-wrap justify-center" style="gap:.5rem">
+                @if (_canOpenInstances)
+                {
+                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Dns" OnClick="@OpenInstancesAsync">
+                        Open instances
+                    </MudButton>
+                }
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Logout" OnClick="@SignOut">
+                    Sign out
+                </MudButton>
+            </div>
         </div>
     </DialogContent>
 </MudDialog>
@@ -32,7 +50,28 @@
     [CascadingParameter]
     private IMudDialogInstance Dialog { get; set; } = null!;
 
+    /// <summary>What <see cref="SignOut"/> closes with, for MainLayout to sign out.</summary>
+    public const string SignOutResult = "sign-out";
+
+    private bool _canOpenInstances;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _canOpenInstances = await Js.InvokeAsync<bool>("solo.desktop.canOpenInstances");
+        }
+        catch (JSException)
+        {
+            // A browser: no instance list to offer.
+        }
+    }
+
     private void Close() => Dialog.Close(DialogResult.Ok(true));
+
+    private void SignOut() => Dialog.Close(DialogResult.Ok(SignOutResult));
+
+    private async Task OpenInstancesAsync() => await Js.InvokeVoidAsync("solo.desktop.openInstances");
 
     /// <summary>The code+PKCE flow can't re-auth in place; round-trip and come back here.</summary>
     private void BeginSignIn() =>
