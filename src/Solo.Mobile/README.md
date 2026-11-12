@@ -135,7 +135,9 @@ into the background, at most every 15 minutes and in practice when iOS
 chooses, and never after the app was swiped away until it's opened again. Each
 run reads every signed-in instance straight from its address (not the local
 proxy, which is suspended): it shows the unread entries `claim` says are new,
-and replaces the instance's reminders with `GET api/notifications/upcoming`,
+except deadline entries, whose reminders the device scheduled ahead and has
+shown already (they're recorded all the same), and replaces the instance's
+reminders with `GET api/notifications/upcoming`,
 through the same `AppNotifications` code and identifiers as the page, so the
 two never double up and a tap opens the same way. A deadline changed while the
 app is closed is rescheduled at the next run or open.
@@ -148,6 +150,8 @@ session; a session kept for the window only ("Stay signed in" off) is not
 handed over. The copy goes, with everything scheduled and recorded for that
 instance, on sign-out, when the instance is removed, and when the instance
 answers 401; the instance isn't read again until the page hands over a new one.
+A run checks the copy is still the one it started with before each write, so a
+sign-out during a run isn't undone by it.
 The instance's notification settings already shape both endpoints.
 
 To run a refresh by hand on a device, pause a debug build in Xcode and enter
