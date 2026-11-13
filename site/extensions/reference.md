@@ -29,6 +29,7 @@ The contract version is the version of the two contract packages. Declare the lo
 | 1.10 | Server, client | Client-sent live messages with refreshed sender roles; markdown insertion actions and link labels; authenticated binary API calls; blob images. |
 | 1.16 | Server, client | No new interface. Core's notification and email DTOs and enums, and the user topic `BoardHubConstants.NotificationsTopic`. |
 | 1.17 | Client | `ISoloDeviceActions`, and `updateFeeds` in `extension.json`. |
+| 1.18 | Client | `ISoloHaptics`, and `window.solo.haptics` for JavaScript. |
 
 `ContractVersion.Current` in `Solo.Shared.Extensibility` holds the contract version of an instance.
 
@@ -116,6 +117,7 @@ Call these in `ISoloExtension.ConfigureServices`.
 | `ISoloTaskPicker` | [Let a person select a task](client.md#let-a-person-select-a-task). |
 | `ISoloContextMenu` | [Show a menu](client.md#show-a-menu). |
 | `ISoloDeviceActions` | [Respond to a device control](client.md#respond-to-a-device-control). |
+| `ISoloHaptics` | [Play haptic feedback](client.md#play-haptic-feedback). |
 
 ## Addresses
 

@@ -115,10 +115,17 @@ namespace Solo.Shared.Extensibility;
 /// the switch being offered. Admin settings' own DTOs for the switch
 /// (<c>ExtensionUpdateFeedDto</c>, <c>SetExtensionUpdateFeedRequest</c>) arrive
 /// in the shared assembly with it.</para>
+/// <para>1.18.0 adds <see cref="ISoloHaptics"/> and <see cref="SoloHaptics"/>:
+/// haptic feedback by name (a pick-up tap, a drop bump, an explosion), which
+/// the iPhone app plays and every other host ignores, with
+/// <c>window.solo.haptics</c> as the same thing for a page's JavaScript. It is
+/// client-only, so a package that injects it needs 1.18 only in
+/// <c>soloClientVersion</c>; JavaScript that calls
+/// <c>window.solo?.haptics?.play</c> needs no range change at all.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.17.0";
+    public const string Current = "1.18.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

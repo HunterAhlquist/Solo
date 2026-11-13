@@ -96,6 +96,8 @@ public static class SoloClientServices
         // The device's own controls (an Apple Pencil double-tap in the iPad app),
         // which only core hears from the app shell.
         services.AddScoped<ISoloDeviceActions, DeviceActionsService>();
+        // Haptic feedback by name, which only the iPhone app plays.
+        services.AddScoped<ISoloHaptics, HapticsService>();
         // Core's task menu, which extensions add to through contributor classes
         // it finds in their assemblies and creates on demand.
         services.AddScoped<TaskMenuService>();

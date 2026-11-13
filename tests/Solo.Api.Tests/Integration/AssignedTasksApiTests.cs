@@ -64,6 +64,39 @@ public sealed class AssignedTasksApiTests(PostgresFixture postgres) : IAsyncLife
     }
 
     [SkippableFact]
+    public async Task WorkSummary_CountsTheColumnsAsTheDashboardShowsThem_AndListsOpenWorkByDeadline()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var (one, oneBoard) = await ProjectWithBobAsync("One", "ONE");
+        var closed = await _admin.PostJson<BoardDto>($"/api/projects/{one.Id}/boards", new { name = "Closed", alias = "CLOSED" });
+
+        var later = await TaskForBobAsync(oneBoard, "Later");
+        await _admin.PutJson<TaskDto>($"/api/tasks/{later.Id}", later with { DeadlineAt = new DateOnly(2027, 5, 1) });
+        var soon = await TaskForBobAsync(oneBoard, "Soon");
+        soon = await _admin.PutJson<TaskDto>($"/api/tasks/{soon.Id}", soon with { DeadlineAt = new DateOnly(2027, 4, 1) });
+        await _admin.PutJson<TaskDto>($"/api/tasks/{soon.Id}/status", new { status = "InProgress" });
+        var undated = await TaskForBobAsync(oneBoard, "Undated");
+        var done = await TaskForBobAsync(oneBoard, "Done");
+        await _admin.PutJson<TaskDto>($"/api/tasks/{done.Id}/status", new { status = "Finished" });
+        await TaskForBobAsync(closed, "Shelved");
+        await _admin.PutJson<BoardDto>($"/api/boards/{closed.Id}/open", new { isOpen = false });
+
+        var summary = await _bob.GetJson<WorkSummaryDto>("/api/users/me/work-summary");
+        Assert.Equal((2, 1, 1), (summary.Unstarted, summary.InProgress, summary.Finished));
+        // Soonest deadline first, the undated last; nothing finished, nothing on a closed board.
+        Assert.Equal(new[] { soon.Id, later.Id, undated.Id }, summary.Open.Select(t => t.Id));
+        var first = summary.Open[0];
+        Assert.Equal(("ONE-ONE-2", "Soon", TaskState.InProgress, new DateOnly(2027, 4, 1)),
+            (first.Serial, first.Name, first.Status, first.Deadline!.Value));
+        Assert.Equal("projects/ONE/boards/ONE?task=2", first.Path);
+
+        // The same tasks as the dashboard's.
+        var mine = await _bob.GetJson<AssignedTasksDto>("/api/users/me/tasks");
+        Assert.Equal(mine.Tasks.Count, summary.Unstarted + summary.InProgress + summary.Finished);
+        Assert.Equal((0, 0, 0), ((await _admin.GetJson<WorkSummaryDto>("/api/users/me/work-summary")) is var a ? (a.Unstarted, a.InProgress, a.Finished) : default));
+    }
+
+    [SkippableFact]
     public async Task MyTasks_SpanProjects_AndLeaveOutClosedBoards_OthersWork_AndProjectsLeft()
     {
         postgres.SkipUnlessDockerAvailable();

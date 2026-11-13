@@ -382,6 +382,8 @@ export async function mountSketch(root,bridge,options){
         if(disposed||!provider.canWrite)return;viewport.querySelector('textarea')?.blur();clearing=true;selected=null;
         const erase=()=>{if(!provider.canWrite)return;undo.stopCapturing();provider.doc.transact(()=>{ops.delete(0,ops.length);for(const key of texts.keys())texts.delete(key);},local);undo.stopCapturing();draw();};
         if(disposed)return;sound.currentTime=0;sound.play().catch(()=>{});
+        // Felt with the sound, reduced motion or not: the iPhone app's explosion haptic (contract 1.18), and nothing on any other host.
+        window.solo?.haptics?.play?.('explosion');
         if(reduced.matches){erase();delay(()=>{clearing=false;},100);return;}
         const blob=await effectReady;if(disposed)return;
         if(!blob){erase();clearing=false;say('Sketch cleared; explosion could not be loaded.');return;}

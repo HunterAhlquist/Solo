@@ -787,9 +787,10 @@ code {
     min-width: 2ch;
 }
 
+/* A bullet (U+2022), in the tab's own size and colour. The small square it
+   replaced (U+25AA) has an emoji form, which iOS drew as a black square. */
 .kanban-card__origin-dot {
     flex-shrink: 0;
-    font-size: 0.6rem;
     opacity: 0.7;
 }
 

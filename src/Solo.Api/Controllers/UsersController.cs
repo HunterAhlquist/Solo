@@ -63,6 +63,25 @@ public sealed class UsersController : ApiControllerBase
     }
 
     /// <summary>
+    /// The same work at a glance, for the iPhone and iPad widgets: counts per
+    /// column and the open tasks by deadline, small enough for a widget's
+    /// refresh. Scoped to the caller as <see cref="MyTasks"/> is.
+    /// </summary>
+    [HttpGet("me/work-summary")]
+    public async Task<ActionResult<WorkSummaryDto>> MyWorkSummary(
+        [FromServices] CurrentUserAccessor currentUser,
+        [FromServices] SoloDbContext db,
+        CancellationToken ct)
+    {
+        if (currentUser.User is not { } user)
+        {
+            return Forbid();
+        }
+
+        return await AssignedTasks.SummaryAsync(db, user.Id, ct);
+    }
+
+    /// <summary>
     /// Proxies a user's SSO profile picture from our own origin. The client renders
     /// <c>&lt;img src="api/users/{id}/avatar"&gt;</c>, so the browser never touches the
     /// provider's CDN directly — which is what got it rate-limited (429) at board

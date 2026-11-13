@@ -104,12 +104,89 @@ Review guideline 4.7.2 ("may not extend or expose native platform APIs or
 technologies to the software"), and the same name can come from another
 platform's control later.
 
+## Haptics
+
+The other direction, and the one exception to it: the page can ask for a
+haptic. `window.soloApp.haptic(name)` posts the name to native code, and
+`App/App/Haptics.swift` plays it. A drag in the client (`js/drag.js`) asks for
+`pick-up` as it takes hold of a card and `drop` as one lands; Roadmaps does the
+same for its bars and milestones; Design Docs asks for `explosion` when a sketch
+is cleared. Extensions reach it through `ISoloHaptics` (contract 1.18) or
+`window.solo.haptics`.
+
+Only a name crosses, and only `pick-up`, `drop` and `explosion` play: the
+client's `solo.haptics` and `Haptics` each drop any other. Nothing the page
+sends describes a pattern, a duration or an intensity, so an extension, which
+loads at runtime, gets three fixed feedback events rather than a native API
+(4.7.2 again). `pick-up` and `drop` are UIKit impact generators, light and
+medium, readied when a press starts (`window.soloApp.prepareHaptics()`) so the
+first one isn't late; `explosion` is a Core Haptics pattern. A device without
+haptics, which is every iPad, plays nothing. Android would map the same names
+to `VibrationEffect` compositions.
+
 ## Notifications
 
 The app shows no notifications. A WKWebView has no Notification API, so the
 client's OS notifications (`wwwroot/js/notifications.js`) report "unsupported"
 here, and new entries show on the bell and the in-page bar while the app is
 open. Away from the app, the email digest is the only notification.
+
+## Widgets
+
+`ios/App/Widgets` is a WidgetKit extension (iOS 17 or later; the app itself
+still runs on 15) with three Home Screen widgets, drawn in the Ahlquist
+Interactive theme whatever theme the instance uses:
+
+- **Assigned** (small): how many of your tasks are new or in progress, on a
+  two-digit seven-segment display, which reads "99+" over 99. Opens
+  Your Tasks.
+- **Assigned Work** (medium): those tasks as coloured squares under New,
+  In progress and Done, filled when due within two days or overdue, soonest
+  deadline first. Done counts what the Your Tasks board shows. Opens Your Tasks.
+- **Upcoming Due** (large): tasks due within 7 days, overdue first, each with
+  a ring of the days left: as many rows as fit, up to seven (six on the
+  smallest iPhones). A row opens its task; "+N more", on the smile's line,
+  opens Your Tasks.
+
+Each widget shows one instance, picked in its settings and the current one by
+default. All three read `GET api/users/me/work-summary`. The bottom-right
+smile is a refresh button (an App Intent); otherwise each widget refreshes
+about every 30 minutes, at midnight, and whenever the app changes its
+instances or goes to the background.
+
+The app and the extension share an App Group, `group.<bundle id>`
+(`App/App.entitlements`, `Widgets/Widgets.entitlements`; `SoloAppGroup` in
+each Info.plist names it at runtime), through `ios/App/Shared`, which both
+targets compile:
+
+- **The instance list** is copied into the group's defaults whenever the app
+  changes it (`SavedInstances.publish()`).
+- **Each instance's session** is copied into a Keychain item in the group's
+  access group, readable after first unlock and on this device only. The page
+  hands it over as it stores or clears it (`solo-interop.js` →
+  `soloApp.keepSession`). Signing out, a 401 from the summary and removing the
+  instance delete it, and the widget then asks you to sign in. Every change
+  to a session, and a widget's use of what it fetched with one, happens under
+  one lock (a `flock` in the group container), so an answer that arrives after
+  the session changed is dropped rather than written over the new one.
+- **The last summary** is cached in the group container, so a widget that can't
+  reach its instance keeps showing what it last saw. It goes whenever the
+  session changes.
+
+Taps open the app with `solo-widget://open?instance=…&path=…`, built and
+checked in `Shared/WidgetLink.swift`. iOS delivers the link before the app's
+foreground notification, so opening one reopens the local proxy first
+(`open(widgetLink:)`); otherwise the page's first requests find its port closed
+and the client shows itself offline. The scheme isn't registered, since
+WidgetKit hands a widget's links to its own app directly. The app ignores an
+instance it doesn't have and any path that isn't relative to the instance,
+then opens the path in place, or switches instances first.
+
+The extension's bundle id is the app's plus `.widgets`. Signing it needs both
+App IDs and the App Group registered under the team, for the preview
+(`com.hunterahlquist.solo.preview`) and the store bundle id alike. With
+`-allowProvisioningUpdates`, automatic signing registers what's missing where
+it can.
 
 ## Sign-in
 
@@ -203,6 +280,16 @@ Release build under the preview name, icon and bundle id
 uploads it for internal testers only (`ios/ExportOptions-testflight.plist`). It
 can also be run by hand on a branch. Signing is Xcode's automatic signing with
 an App Store Connect API key, so there's no certificate to export.
+
+Signing the archive makes an "Apple Development: Created via API" certificate
+on each fresh runner, and its key goes with the runner. The run's last step,
+`build/asc-revoke-run-certificates.swift`, revokes that certificate (and only
+that one, matched by serial against the runner's keychain), since Apple caps
+how many a team can hold. If an earlier run left some behind, revoke the
+"Created via API" development certificates under Certificates in the developer
+portal. Archiving unsigned would avoid making the certificate, but an unsigned
+archive carries no entitlements, and the App Group the app and its widgets
+share would then depend on the export step adding it back.
 
 One-time setup:
 

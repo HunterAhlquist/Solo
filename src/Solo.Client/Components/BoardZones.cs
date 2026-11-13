@@ -16,7 +16,7 @@ public static class BoardZones
         [TaskState.Unstarted, TaskState.InProgress, TaskState.Finished];
 
     /// <summary>Past this many cards, a Finished zone folds its overflow away.</summary>
-    public const int FinishedVisibleLimit = 25;
+    public const int FinishedVisibleLimit = Solo.Shared.Dtos.WorkSummaryLimits.FinishedShown;
 
     public static string Id(Guid? epicId, TaskState status) =>
         $"{(epicId?.ToString() ?? AdHoc)}:{(int)status}";

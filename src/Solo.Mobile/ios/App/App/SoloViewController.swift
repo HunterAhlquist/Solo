@@ -2,6 +2,7 @@ import UIKit
 import SwiftUI
 import WebKit
 import Capacitor
+import WidgetKit
 
 /// Capacitor's bridge view controller, plus what no web API gives the page:
 ///
@@ -11,6 +12,11 @@ import Capacitor
 /// - Sign-in, which Google refuses inside a web view. The page can post one
 ///   fixed message, `request_sign-in`, and the sign-in sheet takes it from
 ///   there (`AppSignIn`).
+/// - Haptics: the page names one of a fixed few (`window.soloApp.haptic`)
+///   and `Haptics` plays it.
+/// - The widgets (Widgets/): a copy of the page's session for them to fetch
+///   with, handed over through `window.soloApp.keepSession` (`SharedStore`),
+///   and their taps, which open a page here (`open(widgetLink:)`).
 /// - Its list of instances (`InstancesView`), opened by the fixed message
 ///   `request_instance-settings`. Opening another instance builds a new view
 ///   controller on it, since Capacitor reads the address once, at load.
@@ -43,6 +49,10 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     private static var proxy: LocalProxy?
     /// Where the page actually loads from: the proxy's local origin.
     private var pageURL: URL?
+    /// The page's haptics (`window.soloApp.haptic`), by name only.
+    private let haptics = Haptics()
+    /// A page a widget asked for, to open with the next controller's first load.
+    private static var pendingPath: String?
 
     override func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = super.instanceDescriptor()
@@ -55,6 +65,11 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             pageURL = Self.startProxy(for: instance)?.pageURL
         }
         descriptor.serverURL = pageURL?.absoluteString ?? instance.map { $0.absoluteString + "/" }
+        if let path = Self.pendingPath, let start = descriptor.serverURL.flatMap(URL.init(string:)),
+           let page = URL(string: path, relativeTo: start) {
+            descriptor.serverURL = page.absoluteString
+        }
+        Self.pendingPath = nil
         return descriptor
     }
 
@@ -74,6 +89,9 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                 window.soloApp = Object.freeze({
                     beginSignIn: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_sign-in'),
                     openInstances: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_instance-settings'),
+                    keepSession: token => window.webkit.messageHandlers.\(Self.messageHandler).postMessage({ type: 'session', token }),
+                    haptic: name => window.webkit.messageHandlers.\(Self.messageHandler).postMessage({ type: 'haptic', name: String(name) }),
+                    prepareHaptics: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('prepare_haptics'),
                 });
                 """,
             injectionTime: .atDocumentStart,
@@ -100,7 +118,11 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         ) { _ in Self.proxy?.resume() }
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
-        ) { _ in Self.proxy?.suspend() }
+        ) { _ in
+            Self.proxy?.suspend()
+            // Whatever changed while the app was open reaches the widgets now.
+            WidgetCenter.shared.reloadAllTimelines()
+        }
 
 
         let pencil = UIPencilInteraction()
@@ -126,11 +148,66 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
               Self.isOrigin(message.frameInfo.securityOrigin, of: pageURL ?? instance)
         else { return }
 
+        if let body = message.body as? [String: Any] {
+            switch body["type"] as? String {
+            case "session": keepSession(body["token"], for: instance)
+            // A name and nothing else; Haptics ignores any it doesn't know.
+            case "haptic": (body["name"] as? String).map(haptics.play)
+            default: break
+            }
+            return
+        }
+
         switch message.body as? String {
         case "request_sign-in": beginSignIn(on: instance)
         case "request_instance-settings": showInstances()
+        case "prepare_haptics": haptics.prepare()
         default: break
         }
+    }
+
+    /// The page's session, or null once it has none, copied for the widgets.
+    /// Only a `solo_` session is taken, never another credential.
+    private func keepSession(_ value: Any?, for instance: URL) {
+        let token = value as? String
+        if let token, !token.hasPrefix("solo_") || token.count > 200 { return }
+        guard SharedStore.token(for: instance) != token else { return }
+        SharedStore.setToken(token, for: instance)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// A widget's tap: the page it names, on its instance. An instance not in
+    /// the list is ignored; the app just opens.
+    func open(widgetLink url: URL) {
+        guard let link = WidgetLink.parse(url),
+              SavedInstances.all.contains(where: { $0.url == link.instance })
+        else { return }
+        if link.instance == instance, let webView, let pageURL {
+            // iOS delivers a widget's link before the app's foreground
+            // notification, which is what reopens the proxy after the app went
+            // to the background: navigating first sent the page's requests to a
+            // closed port, and the client took the refusals for being offline.
+            // resume() waits until the proxy listens again, and does nothing
+            // when it already is.
+            Self.proxy?.resume()
+            // Already open: navigate in place rather than reload the app.
+            let target = URL(string: link.path, relativeTo: pageURL)?.absoluteString ?? pageURL.absoluteString
+            let literal = (try? JSONSerialization.data(withJSONObject: target, options: .fragmentsAllowed))
+                .map { String(decoding: $0, as: UTF8.self) } ?? "null"
+            webView.evaluateJavaScript("window.Blazor ? Blazor.navigateTo(\(literal)) : location.assign(\(literal))")
+            return
+        }
+        Self.pendingPath = link.path
+        reopen(on: link.instance)
+    }
+
+    /// For a widget tap that launched the app: the controller isn't built yet.
+    static func openOnLaunch(widgetLink url: URL) {
+        guard let link = WidgetLink.parse(url),
+              SavedInstances.all.contains(where: { $0.url == link.instance })
+        else { return }
+        SavedInstances.current = link.instance
+        pendingPath = link.path
     }
 
     // iPadOS 17.5 and later call this one and skip pencilInteractionDidTap.

@@ -321,6 +321,29 @@ window.solo = {
     },
 
     // -----------------------------------------------------------------------
+    // Haptics (ISoloHaptics), the other way: the page names one of a fixed few
+    // haptics and the iPhone app plays it, so a drag can tap as it takes hold
+    // of a card and bump as it lets go. Only the names below get through, here
+    // and again in the app, and nothing describes a pattern: every installed
+    // extension's script can call this, so what each name feels like is the
+    // app's to decide. Everywhere else soloApp has no haptic and nothing plays.
+    // -----------------------------------------------------------------------
+    haptics: {
+        names: Object.freeze(['pick-up', 'drop', 'explosion']),
+
+        play(name) {
+            if (window.solo.haptics.names.includes(name)) {
+                window.soloApp?.haptic?.(name);
+            }
+        },
+
+        /** Readies the device for a haptic that may follow, so it plays without delay. */
+        prepare() {
+            window.soloApp?.prepareHaptics?.();
+        },
+    },
+
+    // -----------------------------------------------------------------------
     // The live connection's wake-up: the page coming back into view, or the
     // browser back online, tells BoardHubClient to reconnect now instead of
     // at the next step of SignalR's backoff, which a few seconds with the
@@ -369,6 +392,7 @@ window.solo = {
                 into.setItem(this.userKey, JSON.stringify(user));
             }
             outOf.removeItem(this.userKey);
+            this._handOver();
         },
 
         token: () => sessionStorage.getItem(window.solo.session.tokenKey)
@@ -382,6 +406,15 @@ window.solo = {
                 sessionStorage.removeItem(key);
                 localStorage.removeItem(key);
             }
+            this._handOver();
+        },
+
+        // The iPhone and iPad app keeps a copy of a remembered session for its
+        // widgets to fetch with, and drops it with the session. One kept for
+        // the window only stays the window's. On every change, and as the page
+        // loads (below), so a sign-in from before the widgets reaches them.
+        _handOver() {
+            window.soloApp?.keepSession?.(localStorage.getItem(this.tokenKey));
         },
 
         // Web: trades a Google credential for the session cookie. Resolves the
@@ -577,3 +610,5 @@ document.addEventListener('click', e => {
         if (event.key === 'Tab') document.documentElement.dataset.soloInput = 'keyboard';
     }, true);
 })();
+
+window.solo.session._handOver();
