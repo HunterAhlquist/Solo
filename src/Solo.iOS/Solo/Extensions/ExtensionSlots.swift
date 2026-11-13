@@ -11,7 +11,9 @@ struct TaskDetailExtensions: View {
     var store: BoardStore
 
     var body: some View {
-        EmptyView()
+        if session.extensions.hasMcp {
+            LlmWorkSection(task: task, store: store)
+        }
     }
 }
 
@@ -59,9 +61,22 @@ struct DashboardExtensions: View {
 struct InstanceExtensionLinks: View {
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
+    /// In the sidebar a link replaces what is showing; in a list it pushes.
+    var inSidebar = false
 
     var body: some View {
-        EmptyView()
+        if session.extensions.hasMcp {
+            if inSidebar {
+                SidebarRow(title: "MCP Access", symbol: "cpu",
+                           selected: navigator.tab == .account && navigator.current == .mcpAccess) {
+                    navigator.open(.mcpAccess)
+                }
+            } else {
+                RouteLink(route: .mcpAccess) {
+                    Label("MCP Access", systemImage: "cpu")
+                }
+            }
+        }
     }
 }
 

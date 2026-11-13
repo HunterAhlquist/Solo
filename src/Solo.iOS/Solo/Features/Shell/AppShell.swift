@@ -224,7 +224,7 @@ struct SidebarView: View {
             }
 
             Section {
-                InstanceExtensionLinks()
+                InstanceExtensionLinks(inSidebar: true)
                 SidebarRow(title: session.user.name, symbol: "person.crop.circle",
                            selected: navigator.tab == .account && navigator.current == nil) {
                     navigator.popToRoot(.account)
