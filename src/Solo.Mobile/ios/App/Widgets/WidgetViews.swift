@@ -77,16 +77,25 @@ struct MiniBoardView: View {
             let today = entry.date
             HStack(alignment: .top, spacing: 0) {
                 Column(title: "NEW", color: WidgetTheme.new, total: summary.unstarted,
-                       filled: summary.open.filter { !$0.isStarted }.map { Self.nearDeadline($0, today) })
+                       filled: Self.squares(summary.open.filter { !$0.isStarted }, summary.unstarted, today))
                 Divider().overlay(WidgetTheme.divider)
                 Column(title: "PROG", color: WidgetTheme.started, total: summary.inProgress,
-                       filled: summary.open.filter(\.isStarted).map { Self.nearDeadline($0, today) })
+                       filled: Self.squares(summary.open.filter(\.isStarted), summary.inProgress, today))
                 Divider().overlay(WidgetTheme.divider)
                 Column(title: "DONE", color: WidgetTheme.done, total: summary.finished,
                        filled: Array(repeating: false, count: summary.finished))
             }
         }
         .widgetURL(entry.yourWork)
+    }
+
+    /// One square per task in the column, `total` of them. The summary lists
+    /// at most 100 open tasks across both columns (the server's `WorkSummaryLimits.OpenListed`),
+    /// soonest deadline first, so a column can hold more than it lists; the
+    /// ones left out come after every listed one, and are drawn last, unfilled.
+    static func squares(_ listed: [WorkSummary.Task], _ total: Int, _ today: Date) -> [Bool] {
+        let drawn = listed.prefix(total).map { nearDeadline($0, today) }
+        return drawn + Array(repeating: false, count: max(0, total - drawn.count))
     }
 
     /// Due in two days or less, or overdue: drawn filled.

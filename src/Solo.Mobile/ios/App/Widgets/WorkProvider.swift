@@ -40,7 +40,7 @@ struct WorkProvider: AppIntentTimelineProvider {
         return Timeline(entries: entries, policy: .after(now.addingTimeInterval(30 * 60)))
     }
 
-    private func entry(for configuration: SelectInstanceIntent, at date: Date = .now) async -> WorkEntry {
+    private func entry(for configuration: SelectInstanceIntent, at date: Date = .now, again: Bool = true) async -> WorkEntry {
         let instances = SharedStore.instances
         let chosen = configuration.instance.flatMap { entity in instances.first { $0.url.absoluteString == entity.id } }
             ?? instances.first { $0.url == SharedStore.current } ?? instances.first
@@ -50,14 +50,29 @@ struct WorkProvider: AppIntentTimelineProvider {
         guard let token = SharedStore.token(for: instance) else {
             return WorkEntry(date: date, instance: instance, state: .signedOut)
         }
+        let result: Result<WorkSummary, Error>
         do {
-            let summary = try await WorkSummaryClient.fetch(instance, token: token)
+            result = .success(try await WorkSummaryClient.fetch(instance, token: token))
+        } catch {
+            result = .failure(error)
+        }
+        // The app may have signed out, or in as someone else, while this was
+        // in flight. The answer belongs to the session that asked, so it must
+        // neither delete a newer session (a late 401) nor cache work again
+        // after a sign-out (a late success): start over with what's there now.
+        guard SharedStore.token(for: instance) == token else {
+            return again
+                ? await entry(for: configuration, at: date, again: false)
+                : WorkEntry(date: date, instance: instance, state: .unreachable)
+        }
+        switch result {
+        case .success(let summary):
             SharedStore.cache(summary, for: instance)
             return WorkEntry(date: date, instance: instance, state: .work(summary))
-        } catch WorkSummaryError.signedOut {
+        case .failure(WorkSummaryError.signedOut):
             SharedStore.setToken(nil, for: instance)
             return WorkEntry(date: date, instance: instance, state: .signedOut)
-        } catch {
+        case .failure:
             // Offline or the instance down: the last good summary, if any.
             if let cached = SharedStore.cached(for: instance) {
                 return WorkEntry(date: date, instance: instance, state: .work(cached.summary))
