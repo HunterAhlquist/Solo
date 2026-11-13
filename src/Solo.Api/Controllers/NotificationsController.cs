@@ -78,6 +78,30 @@ public sealed class NotificationsController(
         return NoContent();
     }
 
+    // Rows are hidden rather than deleted: the dedupe key on each row is what keeps
+    // the deadline sweep from raising the same reminder again.
+    [HttpPost("clear")]
+    public async Task<IActionResult> Clear(CancellationToken ct)
+    {
+        if (currentUser.UserId is not { } me)
+        {
+            return Forbid();
+        }
+
+        var now = time.GetUtcNow();
+        var cleared = await db.Notifications
+            .Where(n => n.UserId == me && n.InApp)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(n => n.InApp, false)
+                .SetProperty(n => n.ReadAt, n => n.ReadAt ?? now), ct);
+        if (cleared > 0)
+        {
+            await notifications.ReadChangedAsync(me, null);
+        }
+
+        return NoContent();
+    }
+
     [HttpGet("preferences")]
     public async Task<ActionResult<NotificationPreferencesDto>> GetPreferences(CancellationToken ct)
     {

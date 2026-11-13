@@ -24,6 +24,7 @@ The bell in the app bar holds your notifications. A number on the bell shows how
 
 - Select a notification to open its task. Solo marks the notification as read.
 - Select **Mark all as read** to mark all of them as read.
+- Select **Clear all** to remove all of them from the bell. A task's deadline reminders do not come back after you clear them, but you get a new notification if someone assigns you to the task again.
 
 When you leave a project, its notifications go away from the bell. Solo deletes notifications after 90 days.
 

@@ -29,7 +29,7 @@ public class Notification : INotAudited
     public DateTimeOffset? ReadAt { get; set; }
     /// <summary>When a digest carried it, or decided it had no place in one. Read ones never go out.</summary>
     public DateTimeOffset? EmailedAt { get; set; }
-    /// <summary>False when it was raised only for email: the inbox, its count and the live nudge leave it out.</summary>
+    /// <summary>False when it was raised only for email, or the person cleared it: the inbox, its count and the live nudge leave it out.</summary>
     public bool InApp { get; set; } = true;
 
     public User? User { get; set; }

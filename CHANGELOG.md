@@ -14,7 +14,7 @@ with its version in parentheses).
 ## Latest
 
 ### Server
-- A bell in the app bar collects your notifications: when someone assigns you to a task or epic, and when a task of yours is due, two weeks before its deadline and again one week before, at 9:00 your time. Clicking one opens the task.
+- A bell in the app bar collects your notifications: when someone assigns you to a task or epic, and when a task of yours is due, two weeks before its deadline and again one week before, at 9:00 your time. Clicking one opens the task, and **Clear all** empties the bell.
 - With Solo open, a new notification also shows as a notification from your browser or the desktop app once you allow it. Choose which events notify you under **Notifications** in the account menu.
 - Email: a super admin sets up SMTP under **Email** in Admin settings, with a test email before saving. The password is encrypted at rest, or comes from `Email__Smtp__Password`. Email goes through a queue and is retried for about 2.5 hours before it shows as failed. Emails use the instance theme's colors and fonts, in light or dark to match the mail app.
 - Inviting someone to a project emails them a link to the instance, when email is on. Pending members get a resend button.
