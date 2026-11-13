@@ -186,6 +186,15 @@ html:not(.solo-desktop--glass) .mud-drawer.detail-drawer,
     backdrop-filter: var(--glass-blur);
 }
 
+/* The rule above replaces app.css's border-top on the editor, which on a phone
+   is the band that keeps its header out from under the status bar. Put it
+   back wherever the editor is full-bleed. */
+@media (max-width: 959.98px) {
+    html:not(.solo-desktop--glass) .mud-drawer.detail-drawer {
+        border-top: env(safe-area-inset-top, 0px) solid var(--mud-palette-appbar-background);
+    }
+}
+
 /* Over the shell's native glass the panes keep app.css's tint, which is tuned
    to the window's Background opacity setting, and gain only the edge and the
    shadow that make them read as panes floating on it. */
