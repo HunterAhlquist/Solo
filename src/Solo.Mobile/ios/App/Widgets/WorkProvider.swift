@@ -59,26 +59,28 @@ struct WorkProvider: AppIntentTimelineProvider {
         // The app may have signed out, or in as someone else, while this was
         // in flight. The answer belongs to the session that asked, so it must
         // neither delete a newer session (a late 401) nor cache work again
-        // after a sign-out (a late success): start over with what's there now.
-        guard SharedStore.token(for: instance) == token else {
-            return again
-                ? await entry(for: configuration, at: date, again: false)
-                : WorkEntry(date: date, instance: instance, state: .unreachable)
-        }
-        switch result {
-        case .success(let summary):
-            SharedStore.cache(summary, for: instance)
-            return WorkEntry(date: date, instance: instance, state: .work(summary))
-        case .failure(WorkSummaryError.signedOut):
-            SharedStore.setToken(nil, for: instance)
-            return WorkEntry(date: date, instance: instance, state: .signedOut)
-        case .failure:
-            // Offline or the instance down: the last good summary, if any.
-            if let cached = SharedStore.cached(for: instance) {
-                return WorkEntry(date: date, instance: instance, state: .work(cached.summary))
+        // after a sign-out (a late success). `withSession` applies it only
+        // while that session is still the stored one, under the lock the app
+        // takes to change it; otherwise start over with what's there now.
+        let applied: WorkEntry.State? = SharedStore.withSession(token, of: instance) { session in
+            switch result {
+            case .success(let summary):
+                session.cache(summary)
+                return .work(summary)
+            case .failure(WorkSummaryError.signedOut):
+                session.forget()
+                return .signedOut
+            case .failure:
+                // Offline or the instance down: the last good summary, if any.
+                return session.cached.map { .work($0.summary) } ?? .unreachable
             }
-            return WorkEntry(date: date, instance: instance, state: .unreachable)
         }
+        if let applied {
+            return WorkEntry(date: date, instance: instance, state: applied)
+        }
+        return again
+            ? await entry(for: configuration, at: date, again: false)
+            : WorkEntry(date: date, instance: instance, state: .unreachable)
     }
 }
 
