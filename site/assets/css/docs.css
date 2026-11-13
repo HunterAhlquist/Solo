@@ -1206,6 +1206,136 @@ div.highlighter-rouge:hover .copy-button,
 }
 
 /* ---------------------------------------------------------------------------
+   Form fields (the Compose generator): the app's outlined inputs.
+   --------------------------------------------------------------------------- */
+/* A field's own display rule would otherwise beat the attribute. */
+.generator [hidden] {
+    display: none !important;
+}
+
+.generator {
+    margin: 0 0 1.25rem;
+}
+
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 0 1rem;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin: 0 0 1rem;
+}
+
+.field__label {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 700;
+}
+
+.field__help,
+.field__error {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.field__error {
+    color: var(--error);
+}
+
+.input {
+    width: 100%;
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--lines-inputs);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.input:hover {
+    border-color: var(--text-secondary);
+}
+
+.input:focus {
+    border-color: var(--primary);
+    outline: 1px solid var(--primary);
+    outline-offset: 0;
+}
+
+.input[readonly] {
+    background: var(--background-gray);
+}
+
+.input[aria-invalid="true"] {
+    border-color: var(--error);
+}
+
+.input::placeholder {
+    color: var(--text-disabled);
+}
+
+.input-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-row .input {
+    flex: 1;
+}
+
+.check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    margin: 0 0 1rem;
+    cursor: pointer;
+}
+
+.check input {
+    flex: 0 0 auto;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin: 0.125rem 0 0;
+    accent-color: var(--primary);
+}
+
+.check .field__help {
+    margin-top: 0.125rem;
+}
+
+.generator__steps {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    border: 1px solid var(--lines-default);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.generator__issues {
+    margin: 0 0 1rem;
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.generator__issues ul {
+    margin: 0.25rem 0 0;
+}
+
+.generator__noscript {
+    color: var(--error);
+}
+
+/* ---------------------------------------------------------------------------
    Small screens and motion
    --------------------------------------------------------------------------- */
 @media (max-width: 599.98px) {

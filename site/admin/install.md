@@ -40,6 +40,9 @@ Then use `image: solo` in the Compose file.
 
 ## 3. Write the Compose file
 
+> The [Compose generator](compose-generator.md) makes this file for you, with new passwords and your storage paths. It runs only in your browser.
+{: .tip}
+
 The repository has a template with comments: [`deploy/docker-compose.yml`](https://github.com/HunterAhlquist/Solo/blob/main/deploy/docker-compose.yml). This is the same file with the comments removed:
 
 ```yaml

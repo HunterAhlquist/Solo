@@ -31,6 +31,8 @@
   items:
     - path: admin/install.md
       icon: download
+    - path: admin/compose-generator.md
+      icon: build
     - path: admin/configuration.md
       icon: tune
     - path: admin/admin-settings.md
