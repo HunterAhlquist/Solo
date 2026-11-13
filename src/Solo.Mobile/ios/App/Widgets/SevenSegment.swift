@@ -1,22 +1,64 @@
 import SwiftUI
 
 /// Two digits on a seven-segment display, unlit segments faintly showing as on
-/// a real one, and the zero slashed as in a terminal font.
+/// a real one, and the zero slashed as in a terminal font. Over 99 it shows 99
+/// with a plus at the first digit's top-right corner, drawn as two more
+/// segments, and the digits part a little to make room for it.
 struct SevenSegmentNumber: View {
     var value: Int
     var digitWidth: CGFloat = 44
     var color: Color = WidgetTheme.primary
 
+    /// The display's width in digit widths, for sizing it to the room it has.
+    static let width: CGFloat = 2 + gapRatio
+    static let widthOverNinetyNine: CGFloat = 2 + gapRatio + plusRatio * 0.8
+    private static let gapRatio: CGFloat = 0.22
+    private static let plusRatio: CGFloat = 0.36
+
     var body: some View {
         let clamped = max(0, min(99, value))
-        HStack(spacing: digitWidth * 0.22) {
+        let over = value > 99
+        let plus = digitWidth * Self.plusRatio
+        let gap = digitWidth * Self.gapRatio
+        HStack(alignment: .top, spacing: over ? gap + plus * 0.8 : gap) {
             SevenSegmentDigit(digit: clamped / 10, color: color)
                 .frame(width: digitWidth, height: digitWidth * 1.8)
+                .overlay(alignment: .topTrailing) {
+                    if over {
+                        SevenSegmentPlus(color: color)
+                            .frame(width: plus, height: plus)
+                            .offset(x: plus + gap * 0.35)
+                    }
+                }
             SevenSegmentDigit(digit: clamped % 10, color: color)
                 .frame(width: digitWidth, height: digitWidth * 1.8)
         }
         .accessibilityElement()
-        .accessibilityLabel("\(clamped)")
+        .accessibilityLabel(over ? "More than 99" : "\(clamped)")
+    }
+}
+
+/// A plus made of two segments, the display's own bars.
+struct SevenSegmentPlus: View {
+    var color: Color
+
+    var body: some View {
+        Canvas { context, size in
+            let s = min(size.width, size.height), t = s * 0.3, mid = s / 2
+            let across = Path { p in
+                p.move(to: CGPoint(x: 0, y: mid))
+                p.addLine(to: CGPoint(x: t / 2, y: mid - t / 2))
+                p.addLine(to: CGPoint(x: s - t / 2, y: mid - t / 2))
+                p.addLine(to: CGPoint(x: s, y: mid))
+                p.addLine(to: CGPoint(x: s - t / 2, y: mid + t / 2))
+                p.addLine(to: CGPoint(x: t / 2, y: mid + t / 2))
+                p.closeSubpath()
+            }
+            context.fill(across, with: .color(color))
+            context.fill(across.applying(CGAffineTransform(translationX: mid, y: mid).rotated(by: .pi / 2)
+                .translatedBy(x: -mid, y: -mid)), with: .color(color))
+        }
+        .accessibilityHidden(true)
     }
 }
 

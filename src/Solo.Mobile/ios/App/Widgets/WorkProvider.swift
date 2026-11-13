@@ -86,13 +86,21 @@ struct WorkProvider: AppIntentTimelineProvider {
 
 extension WorkSummary {
     /// For the widget gallery and placeholders.
-    static let sample = WorkSummary(unstarted: 3, inProgress: 4, finished: 2, open: [
+    static let sample = WorkSummary(unstarted: 5, inProgress: 6, finished: 2, open: [
         .init(id: UUID(), serial: "DMD-EA1-23", name: "Boss fight intro cutscene", status: "InProgress",
               deadline: dateString(daysFromNow: -1), path: ""),
+        .init(id: UUID(), serial: "DMD-EA1-27", name: "Controller remapping", status: "Unstarted",
+              deadline: dateString(daysFromNow: 0), path: ""),
         .init(id: UUID(), serial: "DMD-EA1-31", name: "Save menu polish", status: "Unstarted",
               deadline: dateString(daysFromNow: 1), path: ""),
+        .init(id: UUID(), serial: "DMD-EA1-33", name: "Pause menu art", status: "InProgress",
+              deadline: dateString(daysFromNow: 2), path: ""),
+        .init(id: UUID(), serial: "DMD-EA1-35", name: "Credits roll", status: "Unstarted",
+              deadline: dateString(daysFromNow: 3), path: ""),
         .init(id: UUID(), serial: "DMD-EA1-18", name: "Level 3 lighting pass", status: "InProgress",
               deadline: dateString(daysFromNow: 4), path: ""),
+        .init(id: UUID(), serial: "GAME-SP-11", name: "Wishlist button", status: "InProgress",
+              deadline: dateString(daysFromNow: 5), path: ""),
         .init(id: UUID(), serial: "GAME-SP-12", name: "Ship the demo build", status: "InProgress",
               deadline: dateString(daysFromNow: 6), path: ""),
         .init(id: UUID(), serial: "GAME-SP-14", name: "Trailer capture", status: "Unstarted",
