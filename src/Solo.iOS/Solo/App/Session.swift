@@ -18,6 +18,8 @@ final class Session {
     /// True while requests are failing to reach the instance.
     private(set) var isOffline = false
     private(set) var serverVersion: InstanceVersion?
+    /// True while the instance is restarting to load an extension update.
+    private(set) var restarting = false
 
     init(api: APIClient, config: AuthConfig, user: User) {
         self.api = api
@@ -54,6 +56,26 @@ final class Session {
 
     func stop() async {
         await hub.shutDown()
+    }
+
+    /// The server stops right after answering an extension update, so every
+    /// request fails until it is back. This waits that out — asking the
+    /// instance itself, never the cache — and then reloads what a new set of
+    /// extensions could have changed.
+    func awaitRestart() async {
+        restarting = true
+        defer { restarting = false }
+        try? await Task.sleep(for: .seconds(3))
+        for _ in 0..<150 {
+            if let version: InstanceVersion = try? await api.send("GET", "api/config/version") {
+                serverVersion = version
+                break
+            }
+            try? await Task.sleep(for: .seconds(2))
+        }
+        await extensions.load()
+        await projects.refreshProjects()
+        hub.resume()
     }
 
     // MARK: Saving

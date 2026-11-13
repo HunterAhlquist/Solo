@@ -25,6 +25,7 @@ struct RootView: View {
                             .environment(session)
                             .environment(session.toasts)
                             .environment(session.navigator)
+                            .overlay { RestartOverlay(session: session) }
                             .overlay { ToastOverlay().environment(session.toasts) }
                             .id(ObjectIdentifier(session))
                     }
@@ -49,6 +50,30 @@ struct LaunchView: View {
             theme.background.ignoresSafeArea()
             ProgressView()
                 .controlSize(.large)
+        }
+    }
+}
+
+/// Covers the app while the instance restarts: nothing underneath can work until it is back.
+struct RestartOverlay: View {
+    @Environment(\.theme) private var theme
+    var session: Session
+
+    var body: some View {
+        if session.restarting {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
+                VStack(spacing: 14) {
+                    ProgressView().controlSize(.large)
+                    Text("\(session.siteName) is restarting…").font(.headline)
+                    Text("This page comes back on its own once the instance is up.")
+                        .font(.footnote)
+                        .foregroundStyle(theme.textSecondary)
+                }
+                .padding(28)
+                .glassEffect(.regular, in: .rect(cornerRadius: 28))
+            }
+            .transition(.opacity)
         }
     }
 }
