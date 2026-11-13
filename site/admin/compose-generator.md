@@ -151,7 +151,10 @@ To check this, open the developer tools of your browser and look at the network 
     <ul id="cg-issue-list"></ul>
   </div>
   <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code id="cg-output"></code></pre></div></div>
-  <p><button class="button button--filled" type="button" id="cg-download"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download docker-compose.yml</button></p>
+  <div class="generator__actions">
+    <button class="button button--filled" type="button" id="cg-download"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Download docker-compose.yml</button>
+    <button class="button" type="button" id="cg-copy" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-content-copy"/></svg> <span>Copy</span></button>
+  </div>
 </div>
 
 > The file holds your passwords and your tunnel token. Keep it private. Do not add it to a public repository.

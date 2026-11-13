@@ -362,5 +362,21 @@
 
     $('cg-download').addEventListener('click', download);
 
+    // The clipboard API exists only on a secure page, which Pages always is.
+    if (navigator.clipboard) {
+        var copy = $('cg-copy');
+        copy.hidden = false;
+        copy.addEventListener('click', function () {
+            navigator.clipboard.writeText($('cg-output').textContent).then(function () {
+                copy.querySelector('span').textContent = 'Copied';
+                copy.querySelector('use').setAttribute('href', '#i-check');
+                window.setTimeout(function () {
+                    copy.querySelector('span').textContent = 'Copy';
+                    copy.querySelector('use').setAttribute('href', '#i-content-copy');
+                }, 1500);
+            });
+        });
+    }
+
     render();
 })();
