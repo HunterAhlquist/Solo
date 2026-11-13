@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Two digits on a seven-segment display, unlit segments faintly showing as on
-/// a real one, and the zero slashed as in a terminal font. Over 99 it shows 99
-/// with a plus at the first digit's top-right corner, drawn as two more
-/// segments, and the digits part a little to make room for it.
+/// a real one, and the zero slashed as in a terminal font. Over 99 it reads
+/// "99+": the plus follows the second digit, raised to its top like a
+/// superscript, drawn as two more segments.
 struct SevenSegmentNumber: View {
     var value: Int
     var digitWidth: CGFloat = 44
@@ -11,27 +11,25 @@ struct SevenSegmentNumber: View {
 
     /// The display's width in digit widths, for sizing it to the room it has.
     static let width: CGFloat = 2 + gapRatio
-    static let widthOverNinetyNine: CGFloat = 2 + gapRatio + plusRatio * 0.8
+    static let widthOverNinetyNine: CGFloat = 2 + gapRatio + plusGapRatio + plusRatio
     private static let gapRatio: CGFloat = 0.22
-    private static let plusRatio: CGFloat = 0.36
+    private static let plusGapRatio: CGFloat = 0.12
+    private static let plusRatio: CGFloat = 0.55
 
     var body: some View {
         let clamped = max(0, min(99, value))
         let over = value > 99
-        let plus = digitWidth * Self.plusRatio
-        let gap = digitWidth * Self.gapRatio
-        HStack(alignment: .top, spacing: over ? gap + plus * 0.8 : gap) {
+        HStack(alignment: .top, spacing: digitWidth * Self.gapRatio) {
             SevenSegmentDigit(digit: clamped / 10, color: color)
                 .frame(width: digitWidth, height: digitWidth * 1.8)
-                .overlay(alignment: .topTrailing) {
-                    if over {
-                        SevenSegmentPlus(color: color)
-                            .frame(width: plus, height: plus)
-                            .offset(x: plus + gap * 0.35)
-                    }
+            HStack(alignment: .top, spacing: digitWidth * Self.plusGapRatio) {
+                SevenSegmentDigit(digit: clamped % 10, color: color)
+                    .frame(width: digitWidth, height: digitWidth * 1.8)
+                if over {
+                    SevenSegmentPlus(color: color)
+                        .frame(width: digitWidth * Self.plusRatio, height: digitWidth * Self.plusRatio)
                 }
-            SevenSegmentDigit(digit: clamped % 10, color: color)
-                .frame(width: digitWidth, height: digitWidth * 1.8)
+            }
         }
         .accessibilityElement()
         .accessibilityLabel(over ? "More than 99" : "\(clamped)")

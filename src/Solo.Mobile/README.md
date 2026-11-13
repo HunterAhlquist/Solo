@@ -138,7 +138,7 @@ still runs on 15) with three Home Screen widgets, drawn in the Ahlquist
 Interactive theme whatever theme the instance uses:
 
 - **Assigned** (small): how many of your tasks are new or in progress, on a
-  two-digit seven-segment display, which shows 99 with a plus over 99. Opens
+  two-digit seven-segment display, which reads "99+" over 99. Opens
   Your Tasks.
 - **Assigned Work** (medium): those tasks as coloured squares under New,
   In progress and Done, filled when due within two days or overdue, soonest
