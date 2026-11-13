@@ -39,6 +39,7 @@ with its version in parentheses).
 - A fourth built-in theme, **Glass**: frosted, floating navigation over a field of pixel icons, with the system font and capsule buttons, built on the fundamentals of Apple's Liquid Glass. In a browser the app bar and the sidebar float as glass panes and the board scrolls under them; in the desktop app's native macOS glass mode it keeps its background art, and the shell's glass panes frost it. It follows Reduce Transparency and Increase Contrast.
 - Home Screen widgets on iPhone and iPad (iOS 17 or later), in the Ahlquist Interactive theme, light or dark: **Assigned**, a seven-segment count of your new and in-progress tasks; **Assigned Work**, those tasks and what you recently finished as coloured squares in three columns, filled when a deadline is two days away or past; and **Upcoming Due**, your tasks due within a week, overdue ones first, each with a ring of the days left. Tapping one opens Your Tasks or the task. The pixel smile in each corner refreshes it, and each widget can show any of the app's instances.
 - The dot between a task's project and board on the Your Tasks page is a bullet in the tab's text colour. On iPhone and iPad it showed as a black square emoji.
+- In the iPhone app, dragging is felt: a light tap when a card, an epic, a sub-task or a project is picked up, and a bump when it lands, back in its own place included. A drag that's cancelled plays nothing. An iPad has no haptics, so it plays nothing there, nor does a browser or the desktop app.
 
 ### Desktop
 - Notifications from your instance show as system notifications while the app is open.
@@ -53,11 +54,13 @@ with its version in parentheses).
 - Contract 1.17.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.
 - Contract 1.17.0: `extension.json` accepts `updateFeeds`, other release manifests (`id`, `label`, `url`) an administrator can switch the extension's updates to. `updates` stays the default and is what older hosts read.
 - Contract 1.17.0: `WorkSummaryDto` (`GET api/users/me/work-summary`), the signed-in person's work at a glance: counts per column as the Your Tasks page shows them, and the open tasks by deadline, for the iPhone and iPad widgets.
+- Contract 1.18.0: `ISoloHaptics` and `SoloHaptics` play a haptic by name (`pick-up`, `drop`, `explosion`) in the iPhone app and nothing elsewhere, with `window.solo.haptics.play(name)` as the same for a page's JavaScript. Client-only.
 
 ### Extensions
 
-#### Design Docs (1.6.5)
-- Rebuilt on contract 1.17.0.
+#### Design Docs (1.6.6)
+- Rebuilt on contract 1.18.0.
+- Clearing a sketch is felt as well as seen and heard: in the iPhone app, the explosion comes with a heavy haptic bang that rumbles away.
 - On iPad, tapping the text you're editing in a sketch with your finger brings up the keyboard, and writing on it with Apple Pencil puts the keyboard away so Scribble has the screen. With a box opened by the Pencil, the keyboard used to be hard to bring up. With a hardware keyboard attached, iPadOS keeps the on-screen keyboard hidden either way.
 - A design doc's heading and its tree of notes are translucent in every theme, in the browser and the iPad and iPhone app as on the desktop, so a theme's background shows through them; the note itself stays solid for reading. On a narrow screen the tree opens as a frosted panel over the note, thin enough that the note shows through it blurred. Under a floating app bar the heading fades in over a short ramp at its top instead of starting on a hard edge. The page used to be opaque everywhere but the desktop's glass mode.
 - The offline sync menu counts the notes, sketches and other items waiting to sync instead of every edit: a sketch counts once however many strokes it has, as a note does however much was typed, so a few offline paragraphs and a drawing read "2 items waiting to sync" rather than hundreds of changes.
@@ -66,11 +69,12 @@ with its version in parentheses).
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
 - The full-screen sketch and image viewer keep their controls clear of the status bar and home indicator on iPhone and iPad.
 
-#### MCP Server (1.6.6)
-- Rebuilt on contract 1.17.0.
+#### MCP Server (1.6.7)
+- Rebuilt on contract 1.18.0.
 
-#### Roadmaps (1.10.4)
-- Rebuilt on contract 1.17.0.
+#### Roadmaps (1.10.5)
+- Rebuilt on contract 1.18.0.
+- In the iPhone app, picking up a bar or a milestone to move it taps, and putting it down bumps.
 - A project's owners can create and delete its roadmaps, not only a super admin.
 
 ## v1.20.1 (2026-11-05)

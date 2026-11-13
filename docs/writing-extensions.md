@@ -1127,3 +1127,26 @@ platform, and an extension never touches native code. Only the newest live
 handler for a name runs, so a dialog takes the action while it is open. A
 browser never sends one, so whatever the action does needs a button too.
 Client-only: a package that injects it needs 1.17 in `soloClientVersion`.
+
+## Contract 1.18: haptics
+
+```csharp
+Haptics.Prepare();                  // a press that may become a drag
+Haptics.Play(SoloHaptics.PickUp);   // the drag took hold
+Haptics.Play(SoloHaptics.Drop);     // it landed
+```
+
+`ISoloHaptics` plays haptic feedback by name: `SoloHaptics.PickUp` (a light
+tap), `SoloHaptics.Drop` (a firmer bump) and `SoloHaptics.Explosion` (a heavy
+bang that rumbles away). The iPhone app plays them; a browser, the desktop app
+and an iPad, which has no haptics, play nothing, so a haptic is only ever a
+companion to something the page shows. There is no way to describe a pattern
+of your own: the app shell decides what each name feels like. Core's drag
+engine already taps and bumps for anything dragged with `data-drag-*`, so a
+page using that needs nothing more.
+
+JavaScript in the page uses `window.solo.haptics.play(name)` and `prepare()`
+with the same names. Call them as `window.solo?.haptics?.play(name)`: a host
+older than 1.18 has no `solo.haptics`, and the call then does nothing, so
+JavaScript that uses them needs no range change. A package that injects
+`ISoloHaptics` needs 1.18 in `soloClientVersion`.
