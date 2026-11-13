@@ -68,15 +68,61 @@ struct RouteView: View {
     }
 }
 
+/// One section's navigation stack.
 private struct SectionStack: View {
     @Environment(Navigator.self) private var navigator
     var tab: AppTab
 
+    /// The stack's own path, mirrored to and from the navigator. It is state
+    /// the stack owns, and a NavigationPath rather than an array of routes:
+    /// bound to a typed array, a stack in a split view's detail column traps
+    /// (`comparisonTypeMismatch`) as soon as its path changes.
+    @State private var path = NavigationPath()
+    /// What `path` currently holds, since a NavigationPath can't be read back.
+    @State private var shown: [Route] = []
+
     var body: some View {
-        NavigationStack(path: navigator.path(for: tab)) {
+        NavigationStack(path: $path) {
             TabRoot(tab: tab)
                 .navigationDestination(for: Route.self) { RouteView(route: $0) }
         }
+        .onChange(of: navigator[tab], initial: true) { _, routes in
+            guard routes != shown else { return }
+            shown = routes
+            path = NavigationPath(routes)
+        }
+        .onChange(of: path.count) { _, count in
+            // Every push goes through the navigator, so the only change that
+            // starts here is a pop: Back, or the swipe.
+            guard count < shown.count else { return }
+            shown = Array(shown.prefix(count))
+            navigator[tab] = shown
+        }
+    }
+}
+
+/// A row that pushes a route. Used in place of a value link, because the
+/// navigator has to hear about every push.
+struct RouteLink<Content: View>: View {
+    @Environment(Navigator.self) private var navigator
+    @Environment(\.theme) private var theme
+    var route: Route
+    @ViewBuilder var label: Content
+
+    var body: some View {
+        Button {
+            navigator.push(route)
+        } label: {
+            HStack {
+                label
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(theme.textDisabled)
+            }
+            .contentShape(.rect)
+        }
+        .foregroundStyle(theme.textPrimary)
     }
 }
 
@@ -198,6 +244,7 @@ struct SidebarView: View {
                 ConnectionIndicator()
             }
         }
+
         .refreshable {
             await nav.refreshProjects()
             for id in nav.expanded {

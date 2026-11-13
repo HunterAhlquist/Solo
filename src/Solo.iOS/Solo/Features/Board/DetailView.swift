@@ -9,6 +9,7 @@ struct DetailView: View {
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
     @Environment(\.theme) private var theme
+    @Environment(\.detailInInspector) private var inInspector
 
     var store: BoardStore
     var selection: BoardSelection
@@ -43,24 +44,40 @@ struct DetailView: View {
     private var canWrite: Bool { store.canWrite }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if task == nil && epic == nil {
-                    // Deleted or moved away while open.
-                    ContentUnavailableView("This is no longer on the board", systemImage: "questionmark.folder")
-                } else {
-                    content
+        Group {
+            if inInspector {
+                // An inspector column sits inside the page's own navigation
+                // stack. A second stack in there takes the first one's
+                // pushes with it, so the column gets a header of its own.
+                VStack(spacing: 0) {
+                    HStack(spacing: 10) {
+                        Text(title).font(.headline)
+                        PresenceCluster(entries: store.presence(on: entityType, entityId), max: 4)
+                        Spacer()
+                        Button("Close", systemImage: "xmark", action: onClose)
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.glass)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    panel
                 }
-            }
-            .themedBackground()
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    PresenceCluster(entries: store.presence(on: entityType, entityId), max: 4)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Close", systemImage: "xmark", action: onClose)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .themedBackground()
+            } else {
+                NavigationStack {
+                    panel
+                        .themedBackground()
+                        .navigationTitle(title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                PresenceCluster(entries: store.presence(on: entityType, entityId), max: 4)
+                            }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Close", systemImage: "xmark", action: onClose)
+                            }
+                        }
                 }
             }
         }
@@ -83,6 +100,16 @@ struct DetailView: View {
     private var title: String {
         if let task { return store.serial(task) }
         return "Epic"
+    }
+
+    @ViewBuilder
+    private var panel: some View {
+        if task == nil && epic == nil {
+            // Deleted or moved away while open.
+            ContentUnavailableView("This is no longer on the board", systemImage: "questionmark.folder")
+        } else {
+            content
+        }
     }
 
     private var content: some View {

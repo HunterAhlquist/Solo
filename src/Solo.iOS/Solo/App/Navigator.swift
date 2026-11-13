@@ -53,8 +53,10 @@ final class Navigator {
     var tab: AppTab = .work
     var paths: [AppTab: [Route]] = [:]
 
-    func path(for tab: AppTab) -> Binding<[Route]> {
-        Binding(get: { self.paths[tab] ?? [] }, set: { self.paths[tab] = $0 })
+    /// A tab's stack, empty until something is pushed.
+    subscript(tab: AppTab) -> [Route] {
+        get { paths[tab] ?? [] }
+        set { paths[tab] = newValue }
     }
 
     /// The route on top of the visible stack, which is what the sidebar highlights.
@@ -70,16 +72,18 @@ final class Navigator {
     func open(_ route: Route) {
         switch route {
         case .project:
-            tab = .projects
-            paths[.projects] = [route]
+            show(.projects, [route])
         case .board(let project, _, _), .roadmap(let project, _), .designDocs(let project, _, _):
-            tab = .projects
-            paths[.projects] = [.project(alias: project), route]
+            show(.projects, [.project(alias: project), route])
         case .mcpAccess, .notificationSettings, .devices, .appearance, .admin, .adminUsers, .adminEmail,
              .adminExtensions, .adminUpdates, .adminThemes, .about:
-            tab = .account
-            paths[.account] = [route]
+            show(.account, [route])
         }
+    }
+
+    private func show(_ tab: AppTab, _ path: [Route]) {
+        self.tab = tab
+        paths[tab] = path
     }
 
     /// Pushes onto whatever is showing, for a link followed from inside a page.

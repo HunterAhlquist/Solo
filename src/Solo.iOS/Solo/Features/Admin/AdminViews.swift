@@ -60,11 +60,11 @@ struct AdminSettingsView: View {
                 .themedRow()
 
                 Section {
-                    NavigationLink(value: Route.adminUpdates) { Label("Version & Updates", systemImage: "arrow.down.circle") }
-                    NavigationLink(value: Route.adminThemes) { Label("Theme", systemImage: "paintpalette") }
-                    NavigationLink(value: Route.adminEmail) { Label("Email", systemImage: "envelope") }
-                    NavigationLink(value: Route.adminUsers) { Label("Users", systemImage: "person.2") }
-                    NavigationLink(value: Route.adminExtensions) { Label("Extensions", systemImage: "puzzlepiece.extension") }
+                    RouteLink(route: Route.adminUpdates) { Label("Version & Updates", systemImage: "arrow.down.circle") }
+                    RouteLink(route: Route.adminThemes) { Label("Theme", systemImage: "paintpalette") }
+                    RouteLink(route: Route.adminEmail) { Label("Email", systemImage: "envelope") }
+                    RouteLink(route: Route.adminUsers) { Label("Users", systemImage: "person.2") }
+                    RouteLink(route: Route.adminExtensions) { Label("Extensions", systemImage: "puzzlepiece.extension") }
                 }
                 .themedRow()
 

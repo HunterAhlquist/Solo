@@ -71,7 +71,7 @@ struct AccountView: View {
     }
 
     private func link(_ title: String, _ symbol: String, _ route: Route) -> some View {
-        NavigationLink(value: route) {
+        RouteLink(route: route) {
             Label(title, systemImage: symbol)
         }
     }

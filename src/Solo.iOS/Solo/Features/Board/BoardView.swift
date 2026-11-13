@@ -55,6 +55,9 @@ private struct BoardContent: View {
 
     var body: some View {
         let board = model.board!
+        // Read here, not only inside the inspector's closures: that is what
+        // makes this body run again when the selection changes.
+        let selection = model.selection
         Group {
             if sizeClass == .regular {
                 BoardGrid(model: model)
@@ -62,6 +65,10 @@ private struct BoardContent: View {
                 BoardPager(model: model)
             }
         }
+        // Inside the panel modifier below: an inspector lays its own backing
+        // under the page it sits beside.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .themedBackground()
         .navigationTitle(board.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -95,11 +102,10 @@ private struct BoardContent: View {
                 }
             }
         }
-        .inspector(isPresented: Binding(get: { model.selection != nil }, set: { if !$0 { model.closeDetail() } })) {
-            if let selection = model.selection {
+        .detailPanel(isPresented: Binding(get: { selection != nil }, set: { if !$0 { model.closeDetail() } })) {
+            if let selection {
                 DetailView(store: model.store, selection: selection) { model.closeDetail() }
                     .id(selection)
-                    .inspectorColumnWidth(min: 340, ideal: 440, max: 560)
             }
         }
         .textPrompt($model.prompt)

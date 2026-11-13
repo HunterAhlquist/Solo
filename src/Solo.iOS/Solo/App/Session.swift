@@ -52,6 +52,23 @@ final class Session {
         if let fresh = try? await api.currentUser() {
             user = fresh
         }
+
+        #if DEBUG
+        // Simulator verification: start on a given page instead of tapping there.
+        // "DMD", "DMD-PW26" or "DMD-PW26-2"; or a tab's name.
+        if let target = ProcessInfo.processInfo.environment["SOLO_OPEN"] {
+            let parts = target.split(separator: "-").map(String.init)
+            if let tab = AppTab(rawValue: target) {
+                navigator.popToRoot(tab)
+            } else if parts.count == 3, let number = Int(parts[2]) {
+                navigator.open(.board(project: parts[0], board: parts[1], task: number))
+            } else if parts.count == 2 {
+                navigator.open(.board(project: parts[0], board: parts[1]))
+            } else if parts.count == 1 {
+                navigator.open(.project(alias: parts[0]))
+            }
+        }
+        #endif
     }
 
     func stop() async {
@@ -71,7 +88,6 @@ final class Session {
                 serverVersion = version
                 break
             }
-            try? await Task.sleep(for: .seconds(2))
         }
         await extensions.load()
         await projects.refreshProjects()
