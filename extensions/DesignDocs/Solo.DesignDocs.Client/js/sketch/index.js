@@ -169,8 +169,16 @@ export async function mountSketch(root,bridge,options){
     function point(e){return [...pagePoint(currentView(),localPoint(e)),e.pointerType==='mouse'?mousePressure:e.pressure];}
     function updateAwareness(p,type=lastPointerType){lastPointer=p;lastPointerType=type;if(!provider.canWrite)return;provider.awareness.setLocalStateField('pointer',{x:p[0],y:p[1],tool,width:pressureWidth(level,p[2]??0,type)});provider.awareness.setLocalStateField('stroke',heldPresence());}
     const heldPresence=()=>strokePresence(active,delivered.id===active?.id?delivered.count:0);
-    function editText(box,id){
+    function editText(box,id,pointerType){
         viewport.querySelector('textarea')?.blur();editing=box;editingId=id;const text=box.get('text'),input=document.createElement('textarea');input.className='design-docs-sketch-text';input.setAttribute('aria-label','Sketch text');input.value=text.toString();input.spellcheck=false;
+        // iPadOS picks the keyboard once, when the field is focused, and a tap on
+        // the field it already has does not revisit that, so a box opened with
+        // Pencil stayed keyboard-less however it was tapped. inputmode is read
+        // again whenever it changes: a finger asks for the keyboard and Pencil
+        // (Scribble) puts it away. With a hardware keyboard attached iPadOS shows
+        // no virtual keyboard for either.
+        const keyboardFor=type=>{if(type==='pen'||type==='touch')input.inputMode=type==='pen'?'none':'text';};
+        keyboardFor(pointerType);input.addEventListener('pointerdown',event=>keyboardFor(event.pointerType));
         viewport.append(input);transform();undo.stopCapturing();
         input.addEventListener('input',()=>{if(!provider.canWrite)return;const before=text.toString(),after=input.value;let start=0,end=0;while(start<before.length&&start<after.length&&before[start]===after[start])start++;while(end<before.length-start&&end<after.length-start&&before[before.length-1-end]===after[after.length-1-end])end++;
             provider.doc.transact(()=>{text.delete(start,before.length-start-end);text.insert(start,after.slice(start,after.length-end));},local);draw();});
@@ -285,8 +293,8 @@ export async function mountSketch(root,bridge,options){
         }
         selected=null;
         if(tool==='text'){
-            const existing=textBoxes().reverse().find(t=>contains(t.bounds,p));if(existing){editText(texts.get(existing.id),existing.id);return;}
-            const id=crypto.randomUUID(),box=new Y.Map(),text=new Y.Text();undo.stopCapturing();provider.doc.transact(()=>{box.set('x',Math.round(p[0]));box.set('y',Math.round(p[1]));box.set('ink',ink);box.set('scale',2);box.set('text',text);texts.set(id,box);},local);editText(box,id);return;
+            const existing=textBoxes().reverse().find(t=>contains(t.bounds,p));if(existing){editText(texts.get(existing.id),existing.id,e.pointerType);return;}
+            const id=crypto.randomUUID(),box=new Y.Map(),text=new Y.Text();undo.stopCapturing();provider.doc.transact(()=>{box.set('x',Math.round(p[0]));box.set('y',Math.round(p[1]));box.set('ink',ink);box.set('scale',2);box.set('text',text);texts.set(id,box);},local);editText(box,id,e.pointerType);return;
         }
         active={id:crypto.randomUUID(),pointerId:e.pointerId,pointerType:e.pointerType,tool,ink,level,seed:Math.floor(Math.random()*2147483647),points:[p],shift:e.shiftKey};undo.stopCapturing();updateAwareness(p,e.pointerType);draw();
     }

@@ -36,6 +36,7 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
 
     private var themeColorObservation: NSKeyValueObservation?
     private var foregroundObserver: NSObjectProtocol?
+    private var backgroundObserver: NSObjectProtocol?
 
     /// The running proxy, kept across the view controllers that opening
     /// another instance builds, and replaced when the instance changes.
@@ -87,14 +88,20 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
 
     deinit {
         if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
     }
 
     override func capacitorDidLoad() {
-        // Suspension can take the listener's socket and the upstream
-        // connections with it.
+        // iOS defuncts a suspended app's listener without telling it, so the
+        // proxy closes it on the way into the background and opens a new one
+        // on the way back (LocalProxy.suspend, resume).
         foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
-        ) { _ in Self.proxy?.recover() }
+        ) { _ in Self.proxy?.resume() }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { _ in Self.proxy?.suspend() }
+
 
         let pencil = UIPencilInteraction()
         pencil.delegate = self
@@ -200,7 +207,15 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     }
 
     private func reopen(on chosen: SavedInstance) {
-        SavedInstances.current = chosen.url
+        reopen(on: chosen.url)
+    }
+
+    private func reopen(on url: URL) {
+        SavedInstances.current = url
+        guard presentedViewController != nil else {
+            view.window?.rootViewController = SoloViewController()
+            return
+        }
         dismiss(animated: true) { [weak self] in
             self?.view.window?.rootViewController = SoloViewController()
         }
@@ -214,15 +229,22 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         if let proxy, proxy.target == instance { return proxy }
         proxy?.stop()
         proxy = InstancePorts.start(for: instance) { port in
-            let candidate = LocalProxy(port: port, target: instance)
-            do {
-                try candidate.start()
-                return candidate
-            } catch {
-                NSLog("Solo: local port \(port) unavailable (\(error)) for \(instance.host ?? "").")
-                candidate.stop()
-                throw error
+            // A relaunch can find its own port held for a moment by the
+            // process it replaces; moving on from it would sign the instance
+            // out, so it gets a second try first.
+            for attempt in 0..<2 {
+                let candidate = LocalProxy(port: port, target: instance)
+                do {
+                    try candidate.start()
+                    return candidate
+                } catch {
+                    NSLog("Solo: local port \(port) unavailable (\(error)) for \(instance.host ?? "").")
+                    candidate.stop()
+                    if attempt == 1 { throw error }
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
             }
+            throw CancellationError()
         }
         return proxy
     }

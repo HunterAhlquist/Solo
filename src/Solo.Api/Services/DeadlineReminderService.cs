@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Solo.Data;
 using Solo.Shared;
+using Solo.Shared.Dtos;
 
 namespace Solo.Api.Services;
 
@@ -113,15 +114,38 @@ public sealed class DeadlineReminderService(
                 continue;
             }
 
-            var serial = Aliases.Serial(row.ProjectAlias, row.BoardAlias, row.Number);
+            var key = Key(kind.Value, row.TaskId, row.Deadline);
+            var message = Message(kind.Value, key, Aliases.Serial(row.ProjectAlias, row.BoardAlias, row.Number),
+                row.Name, daysLeft, row.ProjectName, row.BoardName);
             drafts.Add(new NotificationDraft(
-                row.UserId, kind.Value, $"{kind}:{row.TaskId}:{row.Deadline:yyyy-MM-dd}",
-                $"{serial} {row.Name} is due {When(daysLeft)}", $"{row.ProjectName} · {row.BoardName}",
+                row.UserId, kind.Value, key, message.Title, message.Body,
                 row.ProjectId, row.BoardId, row.TaskId, null, null));
         }
 
         await notifications.RaiseAsync(drafts, ct);
     }
+
+    public static string Key(NotificationKind kind, Guid taskId, DateOnly deadline) =>
+        $"{kind}:{taskId}:{deadline:yyyy-MM-dd}";
+
+    /// <summary>
+    /// A reminder's wording, picked by its key (<see cref="NotificationMessages.Pick"/>),
+    /// so the same reminder always reads the same.
+    /// </summary>
+    public static NotificationMessages.Message Message(
+        NotificationKind kind, string key, string serial, string name, int daysLeft, string projectName, string boardName) =>
+        NotificationMessages.Pick(
+            kind == NotificationKind.DueInTwoWeeks ? NotificationMessages.Situation.DueInTwoWeeks : NotificationMessages.Situation.DueThisWeek,
+            ReminderValues(serial, name, daysLeft, projectName, boardName), key);
+
+    public static Dictionary<string, string> ReminderValues(string serial, string name, int daysLeft, string projectName, string boardName) => new()
+    {
+        ["serial"] = serial,
+        ["task"] = name,
+        ["when"] = When(daysLeft),
+        ["project"] = projectName,
+        ["board"] = boardName,
+    };
 
     public static string When(int daysLeft) => daysLeft switch
     {

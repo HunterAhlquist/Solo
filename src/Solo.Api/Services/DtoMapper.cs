@@ -1,4 +1,5 @@
 using Solo.Data.Entities;
+using Solo.Shared;
 using Solo.Shared.Dtos;
 
 namespace Solo.Api.Services;

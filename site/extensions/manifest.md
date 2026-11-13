@@ -132,7 +132,7 @@ By default, a request fails when one of your hooks throws an exception or takes 
 
 `updates` is the default feed. Admin settings uses it to show an update for your extension and to install it. Without it, a person can only update your package by hand.
 
-`updateFeeds` adds other feeds. When it has entries, the Admin settings page shows an **Updates from** list for your extension, with **Default** and one item for each feed. Contract 1.16.0 or later shows the list. An older instance ignores `updateFeeds` and uses `updates`.
+`updateFeeds` adds other feeds. When it has entries, the Admin settings page shows an **Updates from** list for your extension, with **Default** and one item for each feed. Contract 1.17.0 or later shows the list. An older instance ignores `updateFeeds` and uses `updates`.
 
 ```jsonc
 "updates": "https://github.com/me/roadmap/releases/latest/download/release-manifest.json",

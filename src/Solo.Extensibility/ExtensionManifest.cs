@@ -78,7 +78,7 @@ public sealed class ExtensionManifest
     /// <summary>
     /// Other feeds an administrator may switch this extension to — a beta
     /// channel, say — in Admin settings → Extensions. <see cref="Updates"/>
-    /// stays the default, and is what a host older than contract 1.16 reads.
+    /// stays the default, and is what a host older than contract 1.17 reads.
     /// </summary>
     /// <remarks>
     /// <para>A switch changes where the next update comes from and nothing

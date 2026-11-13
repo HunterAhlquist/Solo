@@ -146,7 +146,6 @@ public sealed class NotificationsController(
         return await SaveOrConflictAsync(db, ct) ?? (ActionResult<NotificationPreferencesDto>)preferences.ToDto();
     }
 
-    /// <summary>The IANA ids this server knows, for picking a time zone by hand.</summary>
     [HttpGet("time-zones")]
     public ActionResult<IReadOnlyList<string>> TimeZones() =>
         TimeZoneInfo.GetSystemTimeZones().Select(z => z.Id).Order(StringComparer.Ordinal).ToList();

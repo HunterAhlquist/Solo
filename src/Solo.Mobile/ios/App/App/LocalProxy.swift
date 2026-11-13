@@ -19,9 +19,10 @@ import Network
 /// HTTP requests go upstream through URLSession and stream back as chunked
 /// responses. A WebSocket (SignalR's hub) is carried as a raw TCP or TLS
 /// tunnel once its head is rewritten, as http-proxy does on the desktop.
-/// A network-path change, or the app returning to the foreground, resets the
-/// upstream connections and restarts the listener if it died, so nothing
-/// waits on a connection that went away with the old network.
+/// A network-path change resets the upstream connections and restarts the
+/// listener if it died, so nothing waits on a connection that went away with
+/// the old network. Going to the background closes the listener and coming
+/// back opens a new one (`suspend()`, `resume()`).
 final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     let port: UInt16
     /// The instance, with its path when it's hosted under one.
@@ -41,6 +42,9 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private var lastPath: NWPath?
     private var stopped = false
+    /// Between the app going to the background and coming back: no listener,
+    /// and nothing may start one.
+    private var suspended = false
 
     private struct Exchange {
         let task: URLSessionTask
@@ -74,21 +78,50 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         }
     }
 
-    /// For the app returning to the foreground: iOS may have torn down the
-    /// listener's socket and the upstream connections while it was suspended.
-    func recover() {
+    /// For the app going to the background. iOS defuncts a suspended app's
+    /// listener without telling it: the NWListener stays `.ready` and simply
+    /// stops accepting, which is what left the page unable to reconnect after
+    /// the device was locked (TN2277; Apple's advice is to close listeners on
+    /// the way into the background and open them again on the way back).
+    func suspend() {
         queue.async { [self] in
             guard !stopped else { return }
+            suspended = true
+            listener?.cancel()
+            listener = nil
             resetUpstream()
-            if listener?.state != .ready { try? listen(wait: false) }
         }
+    }
+
+    /// For the app returning to the foreground: after a suspend(), a new
+    /// listener on the same port and upstream afresh, listening before this
+    /// returns — the page resumes right after, a tapped notification with it,
+    /// and its first requests mustn't find nothing there. iOS also posts the
+    /// foreground notification as the app launches, when the listener start()
+    /// opened is the one to keep: replacing it then raced the page's first load.
+    func resume() {
+        var reopen = false
+        queue.sync {
+            guard !stopped, suspended else { return }
+            suspended = false
+            resetUpstream()
+            reopen = true
+        }
+        guard reopen else {
+            queue.async { [self] in
+                if !stopped, listener?.state != .ready { try? listen(wait: false) }
+            }
+            return
+        }
+        // A failure here is retried by the listener's own state handler.
+        do { try listen(wait: true) } catch { NSLog("Solo: local proxy didn't restart: \(error)") }
     }
 
     // MARK: Listening
 
     /// `wait` only from outside `queue`, where the state handler runs: start()
-    /// waits so the web view never loads before anything answers; a restart
-    /// from a failure, a network change or the foreground doesn't need to.
+    /// and resume() wait so the page never finds nothing answering; a restart
+    /// from a failure or a network change doesn't need to.
     private func listen(wait: Bool) throws {
         listener?.cancel()
         // Bound to 127.0.0.1 itself: requiredInterfaceType alone still binds
@@ -111,7 +144,7 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
                 // Not on start: a failure later (a network change, a
                 // suspension) is retried rather than leaving the app blank.
                 self?.queue.asyncAfter(deadline: .now() + 0.5) {
-                    guard let self, !self.stopped, self.listener === listener else { return }
+                    guard let self, !self.stopped, !self.suspended, self.listener === listener else { return }
                     try? self.listen(wait: false)
                 }
             default:
@@ -128,7 +161,7 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
 
     private func pathChanged(_ path: NWPath) {
         defer { lastPath = path }
-        guard let lastPath, !stopped else { return }
+        guard let lastPath, !stopped, !suspended else { return }
         // A different network, or the network coming back: connections made on
         // the old one may never answer, so start upstream afresh.
         if path.status != lastPath.status || path.availableInterfaces.map(\.name) != lastPath.availableInterfaces.map(\.name) {
@@ -431,6 +464,13 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         return Data(bytes).base64EncodedString()
     }
 
+    /// A 16×16 pixel face, X-eyed, drawn at 6× in the text colour so it reads
+    /// in light and dark alike; crispEdges keeps its pixels square. The same
+    /// as the desktop app's page.
+    private static let deadFace = """
+        <svg class="face" viewBox="0 0 16 16" width="96" height="96" shape-rendering="crispEdges" fill="currentColor" aria-hidden="true"><path d="M2 2h1v1H2zM6 2h1v1H6zM9 2h1v1H9zM13 2h1v1h-1zM3 3h1v1H3zM5 3h1v1H5zM10 3h1v1h-1zM12 3h1v1h-1zM4 4h1v1H4zM11 4h1v1h-1zM3 5h1v1H3zM5 5h1v1H5zM10 5h1v1h-1zM12 5h1v1h-1zM2 6h1v1H2zM6 6h1v1H6zM9 6h1v1H9zM13 6h1v1h-1zM7 9h2v1H7zM6 10h1v3H6zM9 10h1v3H9zM7 13h2v1H7z"/></svg>
+        """
+
     /// What the app shows when the instance can't be reached and the client's
     /// offline mode hasn't cached it — its service worker answers the page load
     /// before it gets here otherwise. The same page as the desktop app's.
@@ -445,10 +485,12 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
             body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: Canvas; color: CanvasText; }
             main { max-width: 26rem; padding: 2rem; text-align: center; }
+            .face { display: block; margin: 0 auto 1.25rem; }
             h1 { font-size: 1.25rem; margin: 0 0 .75rem; }
             p { margin: 0 0 1.5rem; line-height: 1.5; opacity: .8; }
             button { font: inherit; padding: .6rem 1.1rem; margin: .25rem; border-radius: 10px; border: 1px solid; background: transparent; color: inherit; }
             </style></head><body><main>
+            \(Self.deadFace)
             <h1>Can't reach the instance</h1>
             <p>Solo couldn't reach \(safeHost). Check your connection, or that the instance is running, then try again.</p>
             <button id="retry" type="button">Try again</button>

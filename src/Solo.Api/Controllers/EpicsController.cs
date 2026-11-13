@@ -208,8 +208,7 @@ public sealed class EpicsController(SoloDbContext db, IBoardNotifier notifier) :
                 .Select(b => new { b.ProjectId, ProjectName = b.Project!.Name, b.Name })
                 .SingleAsync(ct);
             await notifications.AssignedAsync(added, actor, new NotifiedItem(
-                place.ProjectId, epic.BoardId, null, epic.Id, $"the epic {epic.Name}",
-                $"{place.ProjectName} · {place.Name}"), ct);
+                place.ProjectId, epic.BoardId, null, epic.Id, epic.Name, null, place.ProjectName, place.Name), ct);
         }
 
         return epic.ToDto();

@@ -1,0 +1,25 @@
+{
+  "assigned": [
+    { "title": "{assigner} assigned you a task.", "body": "Task '{task}' was assigned to you." },
+    { "title": "Fresh task from {assigner}.", "body": "'{task}' just landed on your plate. Bon appétit." },
+    { "title": "{assigner} picked you!", "body": "'{task}' is yours now. No take-backs." },
+    { "title": "New mission from {assigner}.", "body": "The goal is clear; '{task}'. Good luck!" },
+    { "title": "Don't panic! A task from {assigner}.", "body": "Hmmm, '{task}'. Can't be too difficult, right?" }
+  ],
+  "assignedEpic": [
+    { "title": "{assigner} assigned you an epic.", "body": "Epic '{epic}' was assigned to you." },
+    { "title": "An epic from {assigner}.", "body": "'{epic}' is all yours. Pace yourself." },
+    { "title": "{assigner} dreams big...", "body": "You're on the epic '{epic}' now. Godspeed." }
+  ],
+  "dueInTwoWeeks": [
+    { "title": "{serial} is due {when}", "body": "Deadline for '{task}' is creeping up soon!" },
+    { "title": "{serial} is due {when}", "body": "Future you would love it if '{task}' got started today." },
+    { "title": "Heads up: {serial} due {when}", "body": "Plenty of time for '{task}'... said everyone, always." }
+  ],
+  "dueThisWeek": [
+    { "title": "{serial} is due {when}", "body": "Deadline for '{task}' is creeping up soon!" },
+    { "title": "{serial} is due {when}", "body": "The deadline for '{task}' is close enough to wave at." },
+    { "title": "Tick-tock... {serial} due {when}", "body": "'{task}' would love some attention this week." },
+    { "title": "{serial} is due {when}", "body": "'{task}' is due {when}. Coffee is recommended." }
+  ]
+}

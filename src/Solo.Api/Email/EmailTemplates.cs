@@ -84,7 +84,7 @@ public static class EmailTemplates
             text.Append("\nRecently assigned to you\n");
             foreach (var note in assigned)
             {
-                text.Append($"- {note.Title} ({note.Body}): {note.Link}\n");
+                text.Append(NoteLine(note));
             }
         }
 
@@ -113,6 +113,14 @@ public static class EmailTemplates
         }
     }
 
+    // A notification's body is a sentence of its own (NotificationMessages),
+    // so it follows the title rather than sitting in brackets, and the link
+    // gets its own line.
+    private static string NoteLine(DigestNote note) =>
+        note.Body is { Length: > 0 } body
+            ? $"- {note.Title} — {body}\n  {note.Link}\n"
+            : $"- {note.Title}\n  {note.Link}\n";
+
     public static EmailContent AsItHappens(EmailBrand brand, string publicAddress, string settingsLink, IReadOnlyList<DigestNote> notes)
     {
         var m = new Markup(brand);
@@ -124,7 +132,7 @@ public static class EmailTemplates
         var text = new StringBuilder().Append($"{notes.Count} new on {brand.Name}\n\n");
         foreach (var note in notes)
         {
-            text.Append($"- {note.Title} ({note.Body}): {note.Link}\n");
+            text.Append(NoteLine(note));
         }
 
         text.Append($"\nOpen {brand.Name}: {publicAddress}\n\n{footerText} {settingsLink}\n");
