@@ -48,17 +48,23 @@ enum SharedStore {
 
     /// Stores `token` as the instance's session, or with nil forgets it. Either
     /// way the summary drawn with the old one goes, so another session never
-    /// shows it.
+    /// shows it. Without the lock a session isn't stored, and the widget asks
+    /// you to sign in; forgetting one goes ahead regardless, since leaving a
+    /// session behind after signing out is the worse failure, and no widget
+    /// can write without the lock either.
     static func setToken(_ token: String?, for instance: URL) {
-        locked { write(token, for: instance) }
+        if locked({ write(token, for: instance) }) == nil, token == nil {
+            write(nil, for: instance)
+        }
     }
 
     /// The instance's session as a widget fetched with it: `body` runs only if
     /// `token` is still the stored session, and holds the lock while it does,
     /// so the app can't sign out or in between that check and what `body`
-    /// writes. Nil when the session changed in the meantime.
+    /// writes. Nil when the session changed in the meantime, or the lock can't
+    /// be taken: a widget never writes without it.
     static func withSession<T>(_ token: String, of instance: URL, _ body: (Session) -> T) -> T? {
-        locked { Self.token(for: instance) == token ? body(Session(instance: instance)) : nil }
+        locked { Self.token(for: instance) == token ? body(Session(instance: instance)) : nil } ?? nil
     }
 
     /// What a widget may do with a session it holds (`withSession`).
@@ -66,8 +72,8 @@ enum SharedStore {
         let instance: URL
 
         func cache(_ summary: WorkSummary) {
-            try? JSONEncoder().encode(Cached(summary: summary, fetchedAt: Date()))
-                .write(to: SharedStore.summaryFile(instance), options: .atomic)
+            guard let file = SharedStore.summaryFile(instance) else { return }
+            try? JSONEncoder().encode(Cached(summary: summary, fetchedAt: Date())).write(to: file, options: .atomic)
         }
 
         var cached: Cached? { SharedStore.cached(for: instance) }
@@ -77,7 +83,9 @@ enum SharedStore {
     }
 
     private static func write(_ token: String?, for instance: URL) {
-        try? FileManager.default.removeItem(at: summaryFile(instance))
+        if let file = summaryFile(instance) {
+            try? FileManager.default.removeItem(at: file)
+        }
         guard let token else {
             SecItemDelete(keychainQuery(instance) as CFDictionary)
             return
@@ -95,20 +103,24 @@ enum SharedStore {
     /// app and its widgets, which run in separate processes: an exclusive
     /// `flock` on a file in the group's container. Each holder only touches
     /// the Keychain and one small file, so it's held for moments, never across
-    /// a network call or a suspension.
-    private static func locked<T>(_ body: () -> T) -> T {
-        let path = container.appendingPathComponent("sessions.lock").path
-        let fd = open(path, O_CREAT | O_RDWR, 0o600)
-        guard fd >= 0 else { return body() }
+    /// a network call or a suspension. Nil, without running `body`, when the
+    /// lock can't be taken; there's no unlocked fallback, and no stand-in for
+    /// the container, which a stand-in lock file wouldn't share.
+    private static func locked<T>(_ body: () -> T) -> T? {
+        guard let path = container?.appendingPathComponent("sessions.lock").path else { return nil }
+        let fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return nil }
         defer { close(fd) }
-        flock(fd, LOCK_EX)
+        var status: Int32
+        repeat { status = flock(fd, LOCK_EX) } while status != 0 && errno == EINTR
+        guard status == 0 else { return nil }
         defer { flock(fd, LOCK_UN) }
         return body()
     }
 
-    private static var container: URL {
+    /// The group's container; nil when the entitlement is missing.
+    private static var container: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
-            ?? FileManager.default.temporaryDirectory
     }
 
     private static func keychainQuery(_ instance: URL) -> [String: Any] {
@@ -128,12 +140,12 @@ enum SharedStore {
     }
 
     static func cached(for instance: URL) -> Cached? {
-        (try? Data(contentsOf: summaryFile(instance))).flatMap { try? JSONDecoder().decode(Cached.self, from: $0) }
+        summaryFile(instance).flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(Cached.self, from: $0) }
     }
 
-    private static func summaryFile(_ instance: URL) -> URL {
+    private static func summaryFile(_ instance: URL) -> URL? {
         let name = Data(instance.absoluteString.utf8).base64EncodedString()
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "+", with: "-")
-        return container.appendingPathComponent("summary-\(name).json")
+        return container?.appendingPathComponent("summary-\(name).json")
     }
 }
