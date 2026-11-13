@@ -14,6 +14,9 @@ struct TaskDetailExtensions: View {
         if session.extensions.hasMcp {
             LlmWorkSection(task: task, store: store)
         }
+        if session.extensions.hasRoadmap {
+            RoadmapMembershipsSection(task: task)
+        }
     }
 }
 
@@ -23,7 +26,9 @@ struct SidebarProjectExtensions: View {
     var project: ProjectSummary
 
     var body: some View {
-        EmptyView()
+        if session.extensions.hasRoadmap {
+            RoadmapSidebarSection(project: project)
+        }
     }
 }
 
@@ -33,8 +38,17 @@ struct ProjectHomeExtensions: View {
     var project: Project
     var canWrite: Bool
 
+    /// The sections are written against the project as the list knows it.
+    private var summary: ProjectSummary {
+        let me = project.members.first { $0.userId == session.user.id }
+        return ProjectSummary(id: project.id, name: project.name, alias: project.alias, icon: project.icon,
+                              imageId: project.imageId, role: me?.role ?? .read, isOwner: me?.isOwner ?? false)
+    }
+
     var body: some View {
-        EmptyView()
+        if session.extensions.hasRoadmap {
+            RoadmapHomeSection(project: summary, canWrite: canWrite)
+        }
     }
 }
 
@@ -44,16 +58,22 @@ struct ProjectCardExtensions: View {
     var project: ProjectSummary
 
     var body: some View {
-        EmptyView()
+        if session.extensions.hasRoadmap {
+            RoadmapCardSection(project: project)
+        }
     }
 }
 
 /// Sections an extension adds above the columns of Your Tasks.
 struct DashboardExtensions: View {
     @Environment(Session.self) private var session
+    /// The page's own task panel, which a section opens tasks in.
+    @Binding var openTask: UUID?
 
     var body: some View {
-        EmptyView()
+        if session.extensions.hasRoadmap {
+            RoadmapDashboardSection(openTask: $openTask)
+        }
     }
 }
 
@@ -85,6 +105,8 @@ struct AdminExtensionSettings: View {
     @Environment(Session.self) private var session
 
     var body: some View {
-        EmptyView()
+        if session.extensions.hasRoadmap {
+            RoadmapSettingsPanel()
+        }
     }
 }

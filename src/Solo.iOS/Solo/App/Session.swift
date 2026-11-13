@@ -58,7 +58,24 @@ final class Session {
         // "DMD", "DMD-PW26" or "DMD-PW26-2"; or a tab's name.
         if let target = ProcessInfo.processInfo.environment["SOLO_OPEN"] {
             let parts = target.split(separator: "-").map(String.init)
-            if let tab = AppTab(rawValue: target) {
+            let pieces = target.split(separator: ":").map(String.init)
+            if pieces.count == 3, pieces[0] == "roadmap", let id = UUID(uuidString: pieces[2]) {
+                navigator.open(.roadmap(project: pieces[1], roadmapId: id))
+            } else if pieces.count == 2, pieces[0] == "route" {
+                switch pieces[1] {
+                case "mcp": navigator.open(.mcpAccess)
+                case "admin": navigator.open(.admin)
+                case "devices": navigator.open(.devices)
+                case "notifications": navigator.open(.notificationSettings)
+                case "extensions": navigator.open(.adminExtensions)
+                case "themes": navigator.open(.adminThemes)
+                case "users": navigator.open(.adminUsers)
+                case "email": navigator.open(.adminEmail)
+                case "updates": navigator.open(.adminUpdates)
+                case "about": navigator.open(.about)
+                default: break
+                }
+            } else if let tab = AppTab(rawValue: target) {
                 navigator.popToRoot(tab)
             } else if parts.count == 3, let number = Int(parts[2]) {
                 navigator.open(.board(project: parts[0], board: parts[1], task: number))

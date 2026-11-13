@@ -31,7 +31,7 @@ struct DashboardView: View {
                 if sizeClass == .regular {
                     ScrollView {
                         VStack(spacing: 16) {
-                            DashboardExtensions()
+                            DashboardExtensions(openTask: $openTask)
                             HStack(alignment: .top, spacing: 10) {
                                 ForEach(TaskState.allCases) { status in
                                     VStack(spacing: 8) {
@@ -58,7 +58,7 @@ struct DashboardView: View {
                         ForEach(TaskState.allCases) { status in
                             ScrollView {
                                 VStack(spacing: 14) {
-                                    DashboardExtensions()
+                                    DashboardExtensions(openTask: $openTask)
                                     zone(cards, status, work)
                                     if cards.isEmpty { empty }
                                 }

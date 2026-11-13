@@ -11,6 +11,8 @@ struct TaskPickerSheet: View {
     /// Nil searches every project.
     var projectId: UUID?
     var exclude: Set<UUID> = []
+    /// Only tasks assigned to this person, for a roadmap of their own.
+    var assignedTo: UUID?
     var onPick: (TaskReference, TaskItem, BoardDetail) -> Void
 
     @State private var boards: [BoardDetail]?
@@ -26,11 +28,12 @@ struct TaskPickerSheet: View {
         self.onPick = { reference, _, _ in onPick(reference) }
     }
 
-    init(title: String = "Choose a task", projectId: UUID? = nil, exclude: Set<UUID> = [],
+    init(title: String = "Choose a task", projectId: UUID? = nil, exclude: Set<UUID> = [], assignedTo: UUID? = nil,
          onPickTask: @escaping (TaskItem, BoardDetail) -> Void) {
         self.title = title
         self.projectId = projectId
         self.exclude = exclude
+        self.assignedTo = assignedTo
         self.onPick = { _, task, board in onPickTask(task, board) }
     }
 
@@ -52,8 +55,16 @@ struct TaskPickerSheet: View {
                 if let boards {
                     let results = filter(boards)
                     if results.isEmpty {
-                        ContentUnavailableView.search(text: query)
-                            .listRowBackground(Color.clear)
+                        if query.isEmpty {
+                            ContentUnavailableView(
+                                assignedTo == nil ? "Nothing left to add" : "Every task assigned to you is already here",
+                                systemImage: "checkmark.circle",
+                                description: Text("Finished tasks and closed boards are hidden. The filter can show them."))
+                                .listRowBackground(Color.clear)
+                        } else {
+                            ContentUnavailableView.search(text: query)
+                                .listRowBackground(Color.clear)
+                        }
                     }
                     ForEach(results) { result in
                         Section {
@@ -136,6 +147,7 @@ struct TaskPickerSheet: View {
             let known = Dictionary(uniqueKeysWithValues: epics.map { ($0.id, $0) })
             let shown = board.tasks
                 .filter { !exclude.contains($0.id) && (includeFinished || $0.status != .finished) }
+                .filter { task in assignedTo.map(task.assigneeIds.contains) ?? true }
                 .filter { task in
                     text.isEmpty || task.name.localizedCaseInsensitiveContains(text)
                         || Aliases.serial(board.projectAlias, board.alias, task.number).localizedCaseInsensitiveContains(text)
