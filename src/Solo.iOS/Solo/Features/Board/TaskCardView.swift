@@ -109,7 +109,7 @@ struct TaskCardView: View {
     }
 
     private var cardShape: UnevenRoundedRectangle {
-        let radius = min(theme.cornerRadius, 12)
+        let radius: CGFloat = 12
         return UnevenRoundedRectangle(topLeadingRadius: origin == nil ? radius : 0, bottomLeadingRadius: radius,
                                       bottomTrailingRadius: radius, topTrailingRadius: radius)
     }

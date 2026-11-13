@@ -159,8 +159,8 @@ struct IconImagePicker: View {
                         Image(systemName: entry.symbol)
                             .font(.system(size: 18))
                             .frame(width: 44, height: 44)
-                            .foregroundStyle(selected ? theme.onPrimary : theme.textPrimary)
-                            .background(selected ? theme.primary : theme.backgroundGray,
+                            .foregroundStyle(selected ? theme.primary : theme.textPrimary)
+                            .background(selected ? theme.accentWash : theme.backgroundGray,
                                         in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)

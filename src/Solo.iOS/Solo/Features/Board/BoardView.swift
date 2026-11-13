@@ -189,8 +189,7 @@ private struct GridLane: View {
             }
         }
         .padding(10)
-        .background(theme.backgroundGray.opacity(0.55), in: theme.cardShape)
-        .overlay(theme.cardShape.strokeBorder(theme.divider))
+        .glassEffect(.regular, in: theme.cardShape)
     }
 }
 
@@ -218,11 +217,10 @@ private struct Zone: View {
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .top)
-        .background(targeted ? theme.primary.opacity(0.12) : theme.background.opacity(0.6),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(targeted ? theme.accentWash : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             if targeted {
-                RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(theme.primary.opacity(0.6))
+                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(theme.primary.opacity(0.6))
             }
         }
         .dropDestination(for: String.self) { payloads, _ in
@@ -453,7 +451,6 @@ private struct GroupContainer<Lane: View>: View {
 
                 Text(group.name)
                     .font(.headline.weight(theme.headingWeight))
-                    .foregroundStyle(theme.primary)
                 Text("\(model.epics(in: group).count)")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(theme.textSecondary)
@@ -484,7 +481,7 @@ private struct GroupContainer<Lane: View>: View {
             }
         }
         .padding(10)
-        .overlay(theme.cardShape.strokeBorder(theme.primary.opacity(0.45), lineWidth: 1.5))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(theme.divider, lineWidth: 1))
     }
 }
 
@@ -496,7 +493,7 @@ private struct EmptyBoard: View {
             Label("This board is empty.", systemImage: "rectangle.split.3x1")
         } actions: {
             if model.canWrite {
-                Button("Add a Task") { model.promptNewTask(epicId: nil) }.buttonStyle(.glassProminent)
+                Button("Add a Task") { model.promptNewTask(epicId: nil) }.buttonStyle(.glass)
                 Button("Add an Epic") { model.promptNewEpic() }.buttonStyle(.glass)
             }
         }
@@ -568,8 +565,7 @@ private struct PagerLane: View {
             }
         }
         .padding(10)
-        .background(theme.backgroundGray.opacity(0.55), in: theme.cardShape)
-        .overlay(theme.cardShape.strokeBorder(theme.divider))
+        .glassEffect(.regular, in: theme.cardShape)
     }
 }
 
@@ -617,12 +613,10 @@ private struct ColumnSwitcherSegment: View {
             .font(.footnote.weight(.semibold))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
-            .foregroundStyle(selected ? theme.onPrimary : theme.textPrimary)
+            .foregroundStyle(selected ? theme.primary : theme.textPrimary)
             .background {
-                if selected {
-                    Capsule().fill(theme.primary)
-                } else if targeted {
-                    Capsule().fill(theme.primary.opacity(0.25))
+                if selected || targeted {
+                    Capsule().fill(theme.accentWash)
                 }
             }
             .contentShape(.capsule)

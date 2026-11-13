@@ -1,128 +1,65 @@
 import SwiftUI
 
-/// One scheme of the instance's theme, resolved to colours SwiftUI can draw.
+/// How the app is coloured.
 ///
-/// A Solo theme is written for the web app: palettes, a stylesheet, fonts.
-/// The native app takes the palette and leaves the rest to the system, so the
-/// instance's colours arrive on Apple's own controls and materials.
+/// A Solo theme is written for the web app: palettes, a stylesheet, fonts,
+/// corner radii. The native app looks like an Apple app first — system
+/// backgrounds, system type, Liquid Glass — and takes one thing from the
+/// instance's theme: its accent. That accent arrives as the tint on controls
+/// and as a faint wash behind the content, which is enough to tell one
+/// instance from another without repainting the system.
 nonisolated struct Theme: Equatable, Sendable {
+    /// The instance's accent for the scheme in effect.
     var primary: Color
     var secondary: Color
-    var tertiary: Color
-    /// Text on a filled primary surface.
+    /// Text on a filled accent surface: black or white, whichever reads.
     var onPrimary: Color
-    var background: Color
-    var backgroundGray: Color
-    var surface: Color
-    var textPrimary: Color
-    var textSecondary: Color
-    var textDisabled: Color
-    var divider: Color
-    var success: Color
-    var warning: Color
-    var error: Color
-    var info: Color
     var isDark: Bool
 
-    /// The theme's type family reduced to the nearest system design: a
-    /// monospaced terminal theme stays monospaced without shipping a web font.
-    var fontDesign: Font.Design = .default
-    var headingWeight: Font.Weight = .bold
-    /// Card corners, scaled from the theme's `borderRadius`.
-    var cornerRadius: CGFloat = 14
+    // Everything else is the system's, named for what it is used for.
+    var textPrimary: Color { .primary }
+    var textSecondary: Color { .secondary }
+    var textDisabled: Color { Color(uiColor: .tertiaryLabel) }
+    var divider: Color { Color(uiColor: .separator) }
+    /// A quiet fill for a chip, a well, a card resting on glass.
+    var backgroundGray: Color { Color(uiColor: .tertiarySystemFill) }
+    var surface: Color { Color(uiColor: .quaternarySystemFill) }
+    var success: Color { .green }
+    var warning: Color { .orange }
+    var error: Color { .red }
+    var info: Color { .blue }
+    var headingWeight: Font.Weight { .bold }
 
-    /// The neutral look: system colours, for before a theme arrives and for a
-    /// palette key the theme leaves out.
+    /// A soft tint of the accent, for a selected row or segment.
+    var accentWash: Color { primary.opacity(isDark ? 0.24 : 0.16) }
+
     static func fallback(dark: Bool) -> Theme {
-        Theme(
-            primary: dark ? Color(red: 1, green: 0.965, blue: 0) : Color(red: 0.875, green: 0.4, blue: 0.063),
-            secondary: .secondary, tertiary: .gray,
-            onPrimary: dark ? .black : .white,
-            background: Color(uiColor: .systemBackground),
-            backgroundGray: Color(uiColor: .secondarySystemBackground),
-            surface: Color(uiColor: .secondarySystemGroupedBackground),
-            textPrimary: Color(uiColor: .label),
-            textSecondary: Color(uiColor: .secondaryLabel),
-            textDisabled: Color(uiColor: .tertiaryLabel),
-            divider: Color(uiColor: .separator),
-            success: .green, warning: .orange, error: .red, info: .blue,
-            isDark: dark)
+        Theme(primary: .accentColor, secondary: .secondary, onPrimary: .white, isDark: dark)
     }
 
-    init(primary: Color, secondary: Color, tertiary: Color, onPrimary: Color, background: Color, backgroundGray: Color,
-         surface: Color, textPrimary: Color, textSecondary: Color, textDisabled: Color, divider: Color, success: Color,
-         warning: Color, error: Color, info: Color, isDark: Bool) {
+    init(primary: Color, secondary: Color, onPrimary: Color, isDark: Bool) {
         self.primary = primary
         self.secondary = secondary
-        self.tertiary = tertiary
         self.onPrimary = onPrimary
-        self.background = background
-        self.backgroundGray = backgroundGray
-        self.surface = surface
-        self.textPrimary = textPrimary
-        self.textSecondary = textSecondary
-        self.textDisabled = textDisabled
-        self.divider = divider
-        self.success = success
-        self.warning = warning
-        self.error = error
-        self.info = info
         self.isDark = isDark
     }
 
     init(document: ThemeDocument?, dark: Bool) {
-        let base = Theme.fallback(dark: dark)
-        guard let document, let palette = dark ? document.dark : document.light else {
-            self = base
+        guard let palette = dark ? document?.dark : document?.light, let primary = CSSColor(palette.primary ?? "") else {
+            self = .fallback(dark: dark)
             return
         }
-
-        func color(_ value: String?, _ fallback: Color) -> Color {
-            value.flatMap(CSSColor.init)?.color ?? fallback
-        }
-
-        let primary = CSSColor(palette.primary ?? "")
         self.init(
-            primary: primary?.color ?? base.primary,
-            secondary: color(palette.secondary, base.secondary),
-            tertiary: color(palette.tertiary, base.tertiary),
+            primary: primary.color,
+            secondary: CSSColor(palette.secondary ?? "")?.color ?? primary.color,
             // Left out by most themes on purpose: derived from the fill, so a
             // light accent gets dark labels.
-            onPrimary: CSSColor(palette.primaryContrastText ?? "")?.color
-                ?? (primary.map { $0.luminance > 0.45 ? Color.black : Color.white } ?? base.onPrimary),
-            background: color(palette.background, base.background),
-            backgroundGray: color(palette.backgroundGray, base.backgroundGray),
-            surface: color(palette.surface, base.surface),
-            textPrimary: color(palette.textPrimary, base.textPrimary),
-            textSecondary: color(palette.textSecondary, base.textSecondary),
-            textDisabled: color(palette.textDisabled, base.textDisabled),
-            divider: color(palette.divider ?? palette.linesDefault, base.divider),
-            success: color(palette.success, base.success),
-            warning: color(palette.warning, base.warning),
-            error: color(palette.error, base.error),
-            info: color(palette.info, base.info),
+            onPrimary: CSSColor(palette.primaryContrastText ?? "")?.color ?? (primary.luminance > 0.45 ? .black : .white),
             isDark: dark)
-
-        let families = (document.typography?.fontFamily ?? []).map { $0.lowercased() }
-        if families.contains(where: { $0.contains("mono") || $0.contains("courier") || $0.contains("consolas") }) {
-            fontDesign = .monospaced
-        } else if families.contains(where: { $0 == "serif" || $0.contains("georgia") || $0.contains("times") }) {
-            fontDesign = .serif
-        } else if families.contains(where: { $0.contains("rounded") }) {
-            fontDesign = .rounded
-        }
-
-        if let weight = document.typography?.headingWeight.flatMap(Int.init) {
-            headingWeight = weight >= 800 ? .heavy : weight >= 700 ? .bold : weight >= 600 ? .semibold : .medium
-        }
-
-        if let radius = document.layout?.borderRadius, let px = Double(radius.replacingOccurrences(of: "px", with: "")) {
-            cornerRadius = max(4, px * 1.5)
-        }
     }
 
-    /// A card's shape everywhere a card is drawn.
-    var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: cornerRadius, style: .continuous) }
+    /// The shape of a panel everywhere one is drawn.
+    var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: 20, style: .continuous) }
 
     /// The countdown colour a deadline wears: green at the start of its window, red at the end.
     static func deadlineColor(elapsed: Double) -> Color {

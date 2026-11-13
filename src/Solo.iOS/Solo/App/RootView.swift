@@ -47,7 +47,7 @@ struct LaunchView: View {
 
     var body: some View {
         ZStack {
-            theme.background.ignoresSafeArea()
+            AppBackground()
             ProgressView()
                 .controlSize(.large)
         }

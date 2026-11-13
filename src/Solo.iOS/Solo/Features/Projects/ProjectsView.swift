@@ -23,7 +23,7 @@ struct ProjectsView: View {
                     }
                 } actions: {
                     if session.user.isSuperAdmin {
-                        Button("Create One") { creating = true }.buttonStyle(.glassProminent)
+                        Button("Create One") { creating = true }.buttonStyle(.glass)
                     }
                 }
                 .padding(.top, 60)
@@ -94,7 +94,7 @@ private struct ProjectCard: View {
                             .lineLimit(1)
                         HStack(spacing: 6) {
                             if project.isOwner {
-                                Badge(text: "Owner", color: theme.primary, foreground: theme.onPrimary)
+                                Badge(text: "Owner", color: theme.accentWash, foreground: theme.primary)
                             }
                             Badge(text: project.role == .readWrite ? "Read/write" : "Read only",
                                   color: theme.backgroundGray, foreground: theme.textSecondary)

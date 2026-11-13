@@ -11,7 +11,7 @@ struct InstanceEntryView: View {
 
     var body: some View {
         ZStack {
-            theme.background.ignoresSafeArea()
+            AppBackground()
 
             ScrollView {
                 VStack(spacing: 28) {
@@ -94,7 +94,7 @@ struct InstanceEntryView: View {
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 13)
-                                    .background(theme.surface, in: theme.cardShape)
+                                    .glassEffect(.regular.interactive(), in: theme.cardShape)
                                 }
                                 .contextMenu {
                                     Button("Forget", systemImage: "trash", role: .destructive) {
@@ -136,7 +136,7 @@ struct UnreachableView: View {
 
     var body: some View {
         ZStack {
-            theme.background.ignoresSafeArea()
+            AppBackground()
             ContentUnavailableView {
                 Label("Can't reach your instance", systemImage: "icloud.slash")
             } description: {
@@ -170,7 +170,7 @@ struct SetupRequiredView: View {
 
     var body: some View {
         ZStack {
-            theme.background.ignoresSafeArea()
+            AppBackground()
             ContentUnavailableView {
                 Label("This instance isn't set up yet", systemImage: "wrench.and.screwdriver")
             } description: {

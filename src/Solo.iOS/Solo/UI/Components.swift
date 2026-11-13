@@ -2,8 +2,8 @@ import SwiftUI
 
 // MARK: - Surfaces
 
-/// Content sits on the theme's surface colour; glass is kept for the controls
-/// floating above it, which is how the system draws its own apps.
+/// A panel of content: Liquid Glass, so what is behind it still comes through.
+/// Nothing in the app paints a solid block of colour under or over the glass.
 struct CardBackground: ViewModifier {
     @Environment(\.theme) private var theme
     var padding: CGFloat = 12
@@ -13,8 +13,31 @@ struct CardBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(padding)
-            .background(theme.surface, in: theme.cardShape)
-            .overlay(theme.cardShape.strokeBorder(outline ?? theme.divider, lineWidth: lineWidth))
+            .glassEffect(.regular, in: theme.cardShape)
+            .overlay {
+                if let outline {
+                    theme.cardShape.strokeBorder(outline, lineWidth: lineWidth)
+                }
+            }
+    }
+}
+
+/// The page behind everything: the system's own background, with the
+/// instance's accent as a faint wash at the top. The wash is what the glass
+/// above it picks up, and the only place the accent is painted large.
+struct AppBackground: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        ZStack {
+            Color(uiColor: .systemGroupedBackground)
+            LinearGradient(
+                colors: [theme.primary.opacity(theme.isDark ? 0.16 : 0.12), theme.secondary.opacity(0.05), .clear],
+                startPoint: .topLeading, endPoint: .bottom)
+            RadialGradient(colors: [theme.primary.opacity(theme.isDark ? 0.10 : 0.07), .clear],
+                           center: .bottomTrailing, startRadius: 0, endRadius: 520)
+        }
+        .ignoresSafeArea()
     }
 }
 
@@ -23,47 +46,18 @@ extension View {
         modifier(CardBackground(padding: padding, outline: outline, lineWidth: lineWidth))
     }
 
-    /// The page behind everything: the theme's background, edge to edge.
+    /// The app's page background, edge to edge.
     func themedBackground() -> some View {
-        modifier(ThemedBackground())
+        background { AppBackground() }
     }
 
-    /// A grouped list or form drawn in the theme's colours rather than the system's greys.
+    /// A grouped list or form over the app's page background; its rows stay the system's.
     func themedList() -> some View {
-        modifier(ThemedList())
+        scrollContentBackground(.hidden).background { AppBackground() }
     }
-}
 
-private struct ThemedBackground: ViewModifier {
-    @Environment(\.theme) private var theme
-
-    func body(content: Content) -> some View {
-        content.background(theme.background.ignoresSafeArea())
-    }
-}
-
-private struct ThemedList: ViewModifier {
-    @Environment(\.theme) private var theme
-
-    func body(content: Content) -> some View {
-        content
-            .scrollContentBackground(.hidden)
-            .background(theme.background.ignoresSafeArea())
-            .listRowSeparatorTint(theme.divider)
-    }
-}
-
-/// Row background for themed lists and forms.
-struct ThemedRow: ViewModifier {
-    @Environment(\.theme) private var theme
-
-    func body(content: Content) -> some View {
-        content.listRowBackground(theme.surface)
-    }
-}
-
-extension View {
-    func themedRow() -> some View { modifier(ThemedRow()) }
+    /// Kept as the one place a list row's look would change; the system's is used as it is.
+    func themedRow() -> some View { self }
 }
 
 /// A small upper-case heading over a block of content.

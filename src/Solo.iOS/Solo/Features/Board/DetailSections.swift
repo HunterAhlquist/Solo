@@ -311,8 +311,7 @@ struct CommentsSection: View {
                         Task { await post(newBody) }
                     }
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glassProminent)
-                    .foregroundStyle(theme.onPrimary)
+                    .buttonStyle(.glass)
                     .disabled(newBody.nilIfBlank == nil || posting)
                 }
             }

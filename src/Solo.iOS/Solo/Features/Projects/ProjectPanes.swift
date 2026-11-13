@@ -37,8 +37,7 @@ struct MembersSection: View {
                         }
                         .pickerStyle(.segmented)
                         Button("Invite") { Task { await invite() } }
-                            .buttonStyle(.glassProminent)
-                            .foregroundStyle(theme.onPrimary)
+                            .buttonStyle(.glass)
                             .disabled(inviteEmail.nilIfBlank == nil || busy)
                     }
                 }
@@ -130,7 +129,7 @@ struct MembersSection: View {
     private func roleSummary(_ member: ProjectMember) -> some View {
         HStack(spacing: 6) {
             if member.isOwner {
-                Badge(text: "Owner", color: theme.primary, foreground: theme.onPrimary)
+                Badge(text: "Owner", color: theme.accentWash, foreground: theme.primary)
             }
             Text(member.role == .readWrite ? "Read/write" : "Read only")
                 .font(.footnote)

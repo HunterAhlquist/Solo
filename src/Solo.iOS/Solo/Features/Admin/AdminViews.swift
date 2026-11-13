@@ -253,7 +253,7 @@ struct AdminUsersView: View {
                                 HStack(spacing: 6) {
                                     Text(user.name).lineLimit(1)
                                     if user.isSuperAdmin {
-                                        Badge(text: "Super admin", color: theme.primary, foreground: theme.onPrimary)
+                                        Badge(text: "Super admin", color: theme.accentWash, foreground: theme.primary)
                                     }
                                 }
                                 if user.displayName != nil {

@@ -203,8 +203,7 @@ private struct DashboardZone<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .padding(6)
-        .background(targeted ? theme.primary.opacity(0.12) : theme.backgroundGray.opacity(0.5),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .glassEffect(targeted ? .regular.tint(theme.accentWash) : .regular, in: theme.cardShape)
         .dropDestination(for: String.self) { payloads, _ in onDrop(payloads) } isTargeted: { targeted = $0 }
         .animation(.easeOut(duration: 0.15), value: targeted)
     }

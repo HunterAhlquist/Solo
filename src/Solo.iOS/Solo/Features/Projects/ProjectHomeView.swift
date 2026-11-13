@@ -144,10 +144,10 @@ struct ChipPicker<Option: Hashable & Identifiable, ChipLabel: View>: View {
                                 .font(.subheadline.weight(.medium))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
-                                .foregroundStyle(selected ? theme.onPrimary : theme.textPrimary)
+                                .foregroundStyle(selected ? theme.primary : theme.textPrimary)
                         }
                         .buttonStyle(.plain)
-                        .glassEffect(selected ? .regular.tint(theme.primary).interactive() : .regular.interactive(), in: .capsule)
+                        .glassEffect(selected ? .regular.tint(theme.accentWash).interactive() : .regular.interactive(), in: .capsule)
                         .accessibilityAddTraits(selected ? .isSelected : [])
                     }
                 }

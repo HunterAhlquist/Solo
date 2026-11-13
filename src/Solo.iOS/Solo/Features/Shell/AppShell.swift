@@ -237,7 +237,6 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
         .navigationTitle(session.siteName)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -363,10 +362,11 @@ struct SidebarRow<Icon: View>: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 icon
-                    .foregroundStyle(selected ? theme.onPrimary : theme.primary)
+                    .foregroundStyle(theme.primary)
                     .frame(width: 24)
                 Text(title)
-                    .foregroundStyle(selected ? theme.onPrimary : theme.textPrimary)
+                    .fontWeight(selected ? .semibold : .regular)
+                    .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if badge > 0 {
@@ -374,8 +374,8 @@ struct SidebarRow<Icon: View>: View {
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .foregroundStyle(selected ? theme.primary : theme.onPrimary)
-                        .background(selected ? theme.onPrimary : theme.primary, in: .capsule)
+                        .foregroundStyle(theme.primary)
+                        .background(theme.accentWash, in: .capsule)
                 }
             }
             .contentShape(.rect)
@@ -383,7 +383,7 @@ struct SidebarRow<Icon: View>: View {
         .buttonStyle(.plain)
         .listRowBackground(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(selected ? theme.primary : .clear)
+                .fill(selected ? theme.accentWash : .clear)
                 .padding(.horizontal, 4))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

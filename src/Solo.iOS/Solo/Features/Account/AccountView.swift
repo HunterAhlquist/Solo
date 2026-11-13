@@ -19,7 +19,7 @@ struct AccountView: View {
                         Text(session.user.name).font(.title3.weight(.semibold))
                         Text(session.user.email).font(.footnote).foregroundStyle(theme.textSecondary)
                         if session.user.isSuperAdmin {
-                            Badge(text: "Super admin", color: theme.primary, foreground: theme.onPrimary)
+                            Badge(text: "Super admin", color: theme.accentWash, foreground: theme.primary)
                         }
                     }
                 }
@@ -119,7 +119,7 @@ struct DevicesView: View {
                                 HStack(spacing: 6) {
                                     Text(item.description ?? "Unnamed device")
                                     if item.isCurrent {
-                                        Badge(text: "This device", color: theme.primary, foreground: theme.onPrimary)
+                                        Badge(text: "This device", color: theme.accentWash, foreground: theme.primary)
                                     }
                                 }
                                 Text("Signed in \(Day(item.createdAt).formatted) · last used \(Day(item.lastUsedAt).formatted)")

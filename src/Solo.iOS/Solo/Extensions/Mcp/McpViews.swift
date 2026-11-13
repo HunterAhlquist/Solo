@@ -117,8 +117,7 @@ struct McpAccessView: View {
                             message: "Your current token will stop working immediately. Connected assistants need the "
                                 + "new token to regain access.", action: "Regenerate") { await mint() }
                     }
-                    .buttonStyle(.glassProminent)
-                    .foregroundStyle(theme.onPrimary)
+                    .buttonStyle(.glass)
                     Button("Revoke", systemImage: "nosign", role: .destructive) {
                         confirmation = Confirmation(
                             title: "Revoke token",
@@ -145,8 +144,7 @@ struct McpAccessView: View {
                     .font(.caption)
                     .foregroundStyle(theme.textSecondary)
                 Button("Generate Token", systemImage: "key") { Task { await mint() } }
-                    .buttonStyle(.glassProminent)
-                    .foregroundStyle(theme.onPrimary)
+                    .buttonStyle(.glass)
                     .disabled(busy)
             }
         }

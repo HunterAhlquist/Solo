@@ -72,8 +72,8 @@ final class ThemeStore {
     }
 }
 
-/// Resolves the theme for the scheme actually in effect and hands it to
-/// everything below: tint, type design and the palette itself.
+/// Resolves the accent for the scheme actually in effect and hands it to
+/// everything below as the tint.
 struct ThemedRoot<Content: View>: View {
     @Environment(ThemeStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
@@ -84,7 +84,5 @@ struct ThemedRoot<Content: View>: View {
         content
             .environment(\.theme, theme)
             .tint(theme.primary)
-            .fontDesign(theme.fontDesign)
-            .foregroundStyle(theme.textPrimary)
     }
 }

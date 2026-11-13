@@ -122,7 +122,7 @@ struct LoginBackground: View {
     var body: some View {
         let background = themes.document?.login?.background
         ZStack {
-            (background?.color.flatMap(CSSColor.init)?.color ?? theme.background)
+            (background?.color.flatMap(CSSColor.init)?.color ?? Color(uiColor: .systemBackground))
             if let background, let api = model.api,
                let path = theme.isDark ? background.image : (background.imageLight ?? background.image) {
                 GeometryReader { proxy in
@@ -135,7 +135,7 @@ struct LoginBackground: View {
                     .clipped()
                 }
                 // A busy picture behind the card is the fastest way to make it unreadable.
-                theme.background.opacity(background.scrim ?? 0)
+                Color(uiColor: .systemBackground).opacity(background.scrim ?? 0)
             }
         }
         .ignoresSafeArea()
