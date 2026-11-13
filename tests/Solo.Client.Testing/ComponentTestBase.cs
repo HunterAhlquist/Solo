@@ -73,6 +73,9 @@ public abstract class ComponentTestBase : SoloBunitContext
         // Sketches and other pages register for device controls when they open.
         // Nothing sends one in a test unless the test dispatches it.
         Services.AddScoped<ISoloDeviceActions, DeviceActionsService>();
+        // And haptics, which only the iPhone app plays; here they reach JS
+        // interop in loose mode and nothing more.
+        Services.AddScoped<ISoloHaptics, HapticsService>();
 
         // It also hosts the restart overlay, hidden unless an update restarts the
         // instance. A test about restarts registers its own after this, which wins.

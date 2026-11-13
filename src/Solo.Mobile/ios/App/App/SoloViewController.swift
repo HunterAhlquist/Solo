@@ -12,6 +12,8 @@ import WidgetKit
 /// - Sign-in, which Google refuses inside a web view. The page can post one
 ///   fixed message, `request_sign-in`, and the sign-in sheet takes it from
 ///   there (`AppSignIn`).
+/// - Haptics: the page names one of a fixed few (`window.soloApp.haptic`)
+///   and `Haptics` plays it.
 /// - The widgets (Widgets/): a copy of the page's session for them to fetch
 ///   with, handed over through `window.soloApp.keepSession` (`SharedStore`),
 ///   and their taps, which open a page here (`open(widgetLink:)`).
@@ -47,6 +49,8 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     private static var proxy: LocalProxy?
     /// Where the page actually loads from: the proxy's local origin.
     private var pageURL: URL?
+    /// The page's haptics (`window.soloApp.haptic`), by name only.
+    private let haptics = Haptics()
     /// A page a widget asked for, to open with the next controller's first load.
     private static var pendingPath: String?
 
@@ -86,6 +90,8 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                     beginSignIn: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_sign-in'),
                     openInstances: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_instance-settings'),
                     keepSession: token => window.webkit.messageHandlers.\(Self.messageHandler).postMessage({ type: 'session', token }),
+                    haptic: name => window.webkit.messageHandlers.\(Self.messageHandler).postMessage({ type: 'haptic', name: String(name) }),
+                    prepareHaptics: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('prepare_haptics'),
                 });
                 """,
             injectionTime: .atDocumentStart,
@@ -142,14 +148,20 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
               Self.isOrigin(message.frameInfo.securityOrigin, of: pageURL ?? instance)
         else { return }
 
-        if let body = message.body as? [String: Any], body["type"] as? String == "session" {
-            keepSession(body["token"], for: instance)
+        if let body = message.body as? [String: Any] {
+            switch body["type"] as? String {
+            case "session": keepSession(body["token"], for: instance)
+            // A name and nothing else; Haptics ignores any it doesn't know.
+            case "haptic": (body["name"] as? String).map(haptics.play)
+            default: break
+            }
             return
         }
 
         switch message.body as? String {
         case "request_sign-in": beginSignIn(on: instance)
         case "request_instance-settings": showInstances()
+        case "prepare_haptics": haptics.prepare()
         default: break
         }
     }

@@ -29,6 +29,13 @@ const HINT_MIN_PX = 48;      // narrower than this, a hint shows nothing worth r
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 const toggles = e => IS_MAC ? e.metaKey : e.ctrlKey;
 
+// Haptics through the host (contract 1.18, client only): a tap as a bar or a
+// milestone is picked up, a bump as it's put down. In the iPhone app they're
+// felt; anywhere else, and on a host older than 1.18 that has no
+// solo.haptics, these do nothing.
+const haptic = name => window.solo?.haptics?.play?.(name);
+const prepareHaptics = () => window.solo?.haptics?.prepare?.();
+
 /** The live wiring per grid, so attaching one again replaces it rather than doubling it. */
 const attached = new WeakMap();
 
@@ -296,9 +303,13 @@ export function attach(scroller, dotnet, options) {
                 press.hold = setTimeout(() => {
                     if (press) {
                         press.lifted = true;
+                        haptic('pick-up');
                         navigator.vibrate?.(10);
                     }
                 }, HOLD_MS);
+            }
+            if (state.canWrite) {
+                prepareHaptics();
             }
             listen();
             return;
@@ -328,6 +339,9 @@ export function attach(scroller, dotnet, options) {
             };
             if (e.pointerType === 'touch' && state.canWrite) {
                 press.hold = setTimeout(() => press && lift(), HOLD_MS);
+            }
+            if (state.canWrite) {
+                prepareHaptics();
             }
             listen();
             return;
@@ -513,6 +527,7 @@ export function attach(scroller, dotnet, options) {
     const lift = () => {
         press.lifted = true;
         press.entry.classList.add('is-dragging');
+        haptic('pick-up');
         navigator.vibrate?.(10);
     };
 
@@ -552,6 +567,10 @@ export function attach(scroller, dotnet, options) {
     const startGesture = () => {
         stopTicker();
         setGesturing(true);
+        // A finger's hold already tapped, in lift(); a mouse or pen picks up here.
+        if (!press.lifted) {
+            haptic('pick-up');
+        }
         if (Math.abs(press.x - press.x0) > Math.abs(press.y - press.y0)) {
             startMove();
         } else {
@@ -764,7 +783,11 @@ export function attach(scroller, dotnet, options) {
         label = null;
     };
 
+    // Ending a move, a drag that lands on a row or between two, or a milestone's
+    // move bumps, even back where it started; a drag that found no row, and
+    // anything abandoned, doesn't.
     const endMove = async ended => {
+        haptic('drop');
         try {
             if (ended.shift !== 0) {
                 // As with a resize, .NET redraws the bar in its new place before
@@ -785,6 +808,9 @@ export function attach(scroller, dotnet, options) {
     };
 
     const endDrag = async ended => {
+        if (ended.target) {
+            haptic('drop');
+        }
         try {
             if (ended.target) {
                 // .NET redraws the bars on their new lines before this returns,
@@ -803,6 +829,9 @@ export function attach(scroller, dotnet, options) {
     const milestoneParts = id => scroller.querySelectorAll(`[data-roadmap-milestone="${id}"]`);
 
     const startMilestone = () => {
+        if (!press.lifted) {
+            haptic('pick-up');
+        }
         press.mode = 'milestone';
         press.scrollLeft0 = scroller.scrollLeft;
         press.shift = 0;
@@ -852,6 +881,7 @@ export function attach(scroller, dotnet, options) {
     };
 
     const endMilestone = async ended => {
+        haptic('drop');
         try {
             if (ended.shift !== 0) {
                 await call('OnMilestoneMove', ended.milestoneId, ended.day + ended.shift);

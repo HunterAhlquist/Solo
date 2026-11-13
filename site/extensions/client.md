@@ -218,6 +218,7 @@ Inject these services into a page or a component. They are in `Solo.Shared.Exten
 | `ISoloTaskPicker` | Let a person select a task. | 1.5 |
 | `ISoloContextMenu` | Show a menu at the pointer. | 1.6 |
 | `ISoloDeviceActions` | Respond to a device control, such as an Apple Pencil double-tap. | 1.17 |
+| `ISoloHaptics` | Play haptic feedback, such as a tap when a drag picks something up. | 1.18 |
 
 ### Open the task drawer
 
@@ -316,6 +317,25 @@ private async Task OnRowMenuAsync(MouseEventArgs e, Milestone milestone)
 - Only the newest handler for a name runs. A dialog that handles it takes the action from the page under it until the dialog is disposed.
 - A browser has no such controls, so the handler never runs there. Keep a button for everything a device action does.
 - Dispose the handle when the component goes away.
+
+### Play haptic feedback
+
+`ISoloHaptics.Play` plays a haptic by name. There are three names: `SoloHaptics.PickUp` is a light tap, `SoloHaptics.Drop` is a firmer bump and `SoloHaptics.Explosion` is a heavy bang that fades away.
+
+```csharp
+@inject ISoloHaptics Haptics
+
+@code {
+    private void OnDragStart() => Haptics.Play(SoloHaptics.PickUp);
+    private void OnDrop() => Haptics.Play(SoloHaptics.Drop);
+}
+```
+
+- Only the iPhone app plays haptics. A browser, the desktop app and an iPad play nothing. Never use a haptic as the only sign that something happened.
+- Call `Haptics.Prepare()` when a press might turn into a drag. Then the first haptic plays without a delay.
+- You cannot make a haptic of your own. The app decides how each name feels.
+- Core's drag engine plays the pick-up tap and the drop bump for every `data-drag-*` drag. You do not have to add them.
+- JavaScript code uses `window.solo?.haptics?.play('pick-up')` with the same names. On an instance older than contract 1.18 this does nothing, so it needs no range change.
 
 ### Add commands to the task menu
 

@@ -104,6 +104,26 @@ Review guideline 4.7.2 ("may not extend or expose native platform APIs or
 technologies to the software"), and the same name can come from another
 platform's control later.
 
+## Haptics
+
+The other direction, and the one exception to it: the page can ask for a
+haptic. `window.soloApp.haptic(name)` posts the name to native code, and
+`App/App/Haptics.swift` plays it. A drag in the client (`js/drag.js`) asks for
+`pick-up` as it takes hold of a card and `drop` as one lands; Roadmaps does the
+same for its bars and milestones; Design Docs asks for `explosion` when a sketch
+is cleared. Extensions reach it through `ISoloHaptics` (contract 1.18) or
+`window.solo.haptics`.
+
+Only a name crosses, and only `pick-up`, `drop` and `explosion` play: the
+client's `solo.haptics` and `Haptics` each drop any other. Nothing the page
+sends describes a pattern, a duration or an intensity, so an extension, which
+loads at runtime, gets three fixed feedback events rather than a native API
+(4.7.2 again). `pick-up` and `drop` are UIKit impact generators, light and
+medium, readied when a press starts (`window.soloApp.prepareHaptics()`) so the
+first one isn't late; `explosion` is a Core Haptics pattern. A device without
+haptics, which is every iPad, plays nothing. Android would map the same names
+to `VibrationEffect` compositions.
+
 ## Notifications
 
 The app shows no notifications. A WKWebView has no Notification API, so the

@@ -449,6 +449,9 @@ window.solo = window.solo || {};
         pending = null;
         item.classList.add('solo-drag-source');
         document.body.classList.add('solo-dragging');
+        // The tap that says the drag has taken hold: the iPhone app's, or a
+        // short buzz where a browser has the Vibration API (Android).
+        window.solo.haptics?.play('pick-up');
         navigator.vibrate?.(8);
 
         window.addEventListener('scroll', invalidate, true);
@@ -498,6 +501,12 @@ window.solo = window.solo || {};
 
         teardown();
         swallowNextClick();
+
+        // A bump for a drop that landed, back in its own slot included; a drop
+        // outside every zone is a cancel, and a cancel plays nothing.
+        if (landed) {
+            window.solo.haptics?.play('drop');
+        }
 
         if (landed && dotnet) {
             dotnet.invokeMethodAsync('OnDropAsync', landed);
@@ -564,6 +573,9 @@ window.solo = window.solo || {};
         };
 
         attach();
+        // Any press here may become a drag; readied now, the pick-up tap plays
+        // the moment the drag takes hold rather than a beat after.
+        window.solo.haptics?.prepare();
 
         if (grabbedHandle) {
             lift();
