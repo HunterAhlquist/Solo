@@ -150,6 +150,16 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
+      # Signing the archive made an "Apple Development: Created via API"
+      # certificate whose key leaves with this runner; left alone, they pile
+      # up until Apple refuses another. This revokes that one, matched by
+      # serial against this runner's keychain, and never fails the job. It runs
+      # after a failure too, since the archive makes the certificate first.
+      - name: Revoke this run's development certificate
+        if: always() && steps.gate.outputs.upload == 'true'
+        working-directory: .
+        run: swift build/asc-revoke-run-certificates.swift "$RUNNER_TEMP/asc.p8"
+
       - name: Remove the key
         if: always()
         run: rm -f "$RUNNER_TEMP/asc.p8"

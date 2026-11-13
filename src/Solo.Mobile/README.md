@@ -261,6 +261,16 @@ uploads it for internal testers only (`ios/ExportOptions-testflight.plist`). It
 can also be run by hand on a branch. Signing is Xcode's automatic signing with
 an App Store Connect API key, so there's no certificate to export.
 
+Signing the archive makes an "Apple Development: Created via API" certificate
+on each fresh runner, and its key goes with the runner. The run's last step,
+`build/asc-revoke-run-certificates.swift`, revokes that certificate (and only
+that one, matched by serial against the runner's keychain), since Apple caps
+how many a team can hold. If an earlier run left some behind, revoke the
+"Created via API" development certificates under Certificates in the developer
+portal. Archiving unsigned would avoid making the certificate, but an unsigned
+archive carries no entitlements, and the App Group the app and its widgets
+share would then depend on the export step adding it back.
+
 One-time setup:
 
 1. In App Store Connect, create the app for
