@@ -143,9 +143,13 @@ targets compile:
   access group, readable after first unlock and on this device only. The page
   hands it over as it stores or clears it (`solo-interop.js` →
   `soloApp.keepSession`). Signing out, a 401 from the summary and removing the
-  instance delete it, and the widget then asks you to sign in.
+  instance delete it, and the widget then asks you to sign in. Every change
+  to a session, and a widget's use of what it fetched with one, happens under
+  one lock (a `flock` in the group container), so an answer that arrives after
+  the session changed is dropped rather than written over the new one.
 - **The last summary** is cached in the group container, so a widget that can't
-  reach its instance keeps showing what it last saw.
+  reach its instance keeps showing what it last saw. It goes whenever the
+  session changes.
 
 Taps open the app with `solo-widget://open?instance=…&path=…`, built and
 checked in `Shared/WidgetLink.swift`. The scheme isn't registered, since

@@ -46,12 +46,40 @@ enum SharedStore {
         return String(data: data, encoding: .utf8)
     }
 
-    /// Stores `token` as the instance's session, or with nil forgets it, along
-    /// with the summary drawn with it.
+    /// Stores `token` as the instance's session, or with nil forgets it. Either
+    /// way the summary drawn with the old one goes, so another session never
+    /// shows it.
     static func setToken(_ token: String?, for instance: URL) {
+        locked { write(token, for: instance) }
+    }
+
+    /// The instance's session as a widget fetched with it: `body` runs only if
+    /// `token` is still the stored session, and holds the lock while it does,
+    /// so the app can't sign out or in between that check and what `body`
+    /// writes. Nil when the session changed in the meantime.
+    static func withSession<T>(_ token: String, of instance: URL, _ body: (Session) -> T) -> T? {
+        locked { Self.token(for: instance) == token ? body(Session(instance: instance)) : nil }
+    }
+
+    /// What a widget may do with a session it holds (`withSession`).
+    struct Session {
+        let instance: URL
+
+        func cache(_ summary: WorkSummary) {
+            try? JSONEncoder().encode(Cached(summary: summary, fetchedAt: Date()))
+                .write(to: SharedStore.summaryFile(instance), options: .atomic)
+        }
+
+        var cached: Cached? { SharedStore.cached(for: instance) }
+
+        /// The instance stopped accepting the session.
+        func forget() { SharedStore.write(nil, for: instance) }
+    }
+
+    private static func write(_ token: String?, for instance: URL) {
+        try? FileManager.default.removeItem(at: summaryFile(instance))
         guard let token else {
             SecItemDelete(keychainQuery(instance) as CFDictionary)
-            try? FileManager.default.removeItem(at: summaryFile(instance))
             return
         }
         let update = [
@@ -61,6 +89,26 @@ enum SharedStore {
         if SecItemUpdate(keychainQuery(instance) as CFDictionary, update as CFDictionary) == errSecItemNotFound {
             SecItemAdd(keychainQuery(instance).merging(update) { $1 } as CFDictionary, nil)
         }
+    }
+
+    /// One lock for every change to a session or its summary, held across the
+    /// app and its widgets, which run in separate processes: an exclusive
+    /// `flock` on a file in the group's container. Each holder only touches
+    /// the Keychain and one small file, so it's held for moments, never across
+    /// a network call or a suspension.
+    private static func locked<T>(_ body: () -> T) -> T {
+        let path = container.appendingPathComponent("sessions.lock").path
+        let fd = open(path, O_CREAT | O_RDWR, 0o600)
+        guard fd >= 0 else { return body() }
+        defer { close(fd) }
+        flock(fd, LOCK_EX)
+        defer { flock(fd, LOCK_UN) }
+        return body()
+    }
+
+    private static var container: URL {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
+            ?? FileManager.default.temporaryDirectory
     }
 
     private static func keychainQuery(_ instance: URL) -> [String: Any] {
@@ -83,15 +131,9 @@ enum SharedStore {
         (try? Data(contentsOf: summaryFile(instance))).flatMap { try? JSONDecoder().decode(Cached.self, from: $0) }
     }
 
-    static func cache(_ summary: WorkSummary, for instance: URL) {
-        try? JSONEncoder().encode(Cached(summary: summary, fetchedAt: Date())).write(to: summaryFile(instance), options: .atomic)
-    }
-
     private static func summaryFile(_ instance: URL) -> URL {
-        let folder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
-            ?? FileManager.default.temporaryDirectory
         let name = Data(instance.absoluteString.utf8).base64EncodedString()
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "+", with: "-")
-        return folder.appendingPathComponent("summary-\(name).json")
+        return container.appendingPathComponent("summary-\(name).json")
     }
 }
