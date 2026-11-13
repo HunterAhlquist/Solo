@@ -111,6 +111,54 @@ client's OS notifications (`wwwroot/js/notifications.js`) report "unsupported"
 here, and new entries show on the bell and the in-page bar while the app is
 open. Away from the app, the email digest is the only notification.
 
+## Widgets
+
+`ios/App/Widgets` is a WidgetKit extension (iOS 17 or later; the app itself
+still runs on 15) with three Home Screen widgets, drawn in the Ahlquist
+Interactive theme whatever theme the instance uses:
+
+- **Assigned** (small): how many of your tasks are new or in progress, on a
+  two-digit seven-segment display. Opens Your Tasks.
+- **Assigned Work** (medium): those tasks as coloured squares under New,
+  In progress and Done, filled when due within two days or overdue, soonest
+  deadline first. Done counts what the Your Tasks board shows. Opens Your Tasks.
+- **Upcoming Due** (large): up to five tasks due within 7 days, overdue first,
+  each with a ring of the days left. A row opens its task; past five, the last
+  row is "+N more", which opens Your Tasks.
+
+Each widget shows one instance, picked in its settings and the current one by
+default. All three read `GET api/users/me/work-summary`. The bottom-right
+smile is a refresh button (an App Intent); otherwise each widget refreshes
+about every 30 minutes, at midnight, and whenever the app changes its
+instances or goes to the background.
+
+The app and the extension share an App Group, `group.<bundle id>`
+(`App/App.entitlements`, `Widgets/Widgets.entitlements`; `SoloAppGroup` in
+each Info.plist names it at runtime), through `ios/App/Shared`, which both
+targets compile:
+
+- **The instance list** is copied into the group's defaults whenever the app
+  changes it (`SavedInstances.publish()`).
+- **Each instance's session** is copied into a Keychain item in the group's
+  access group, readable after first unlock and on this device only. The page
+  hands it over as it stores or clears it (`solo-interop.js` →
+  `soloApp.keepSession`). Signing out, a 401 from the summary and removing the
+  instance delete it, and the widget then asks you to sign in.
+- **The last summary** is cached in the group container, so a widget that can't
+  reach its instance keeps showing what it last saw.
+
+Taps open the app with `solo-widget://open?instance=…&path=…`, built and
+checked in `Shared/WidgetLink.swift`. The scheme isn't registered, since
+WidgetKit hands a widget's links to its own app directly. The app ignores an
+instance it doesn't have and any path that isn't relative to the instance,
+then opens the path in place, or switches instances first.
+
+The extension's bundle id is the app's plus `.widgets`. Signing it needs both
+App IDs and the App Group registered under the team, for the preview
+(`com.hunterahlquist.solo.preview`) and the store bundle id alike. With
+`-allowProvisioningUpdates`, automatic signing registers what's missing where
+it can.
+
 ## Sign-in
 
 Whatever the instance's provider, the app signs in the way the desktop app

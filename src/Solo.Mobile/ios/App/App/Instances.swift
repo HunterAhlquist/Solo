@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 struct SavedInstance: Codable, Equatable, Identifiable {
     let url: URL
@@ -19,12 +20,28 @@ enum SavedInstances {
             UserDefaults.standard.data(forKey: listKey)
                 .flatMap { try? JSONDecoder().decode([SavedInstance].self, from: $0) } ?? []
         }
-        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: listKey) }
+        set {
+            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: listKey)
+            publish()
+        }
     }
 
     static var current: URL? {
         get { UserDefaults.standard.url(forKey: currentKey) }
-        set { UserDefaults.standard.set(newValue, forKey: currentKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: currentKey)
+            publish()
+        }
+    }
+
+    /// Mirrors the list into the App Group for the widgets (`SharedStore`):
+    /// on every change, and at launch for a list from before there were any.
+    static func publish() {
+        SharedStore.instances = all.map { SharedStore.Instance(url: $0.url, name: $0.name) }
+        SharedStore.current = current
+        if #available(iOS 14, *) {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
 
     /// The instance to open. One built in with `SOLO_INSTANCE_URL` joins the
@@ -142,6 +159,10 @@ struct InstancesView: View {
                             .deleteDisabled(instance.url == current)
                         }
                         .onDelete { offsets in
+                            // Its session copy goes too, so no widget keeps reading it.
+                            for removed in offsets.map({ instances[$0].url }) {
+                                SharedStore.setToken(nil, for: removed)
+                            }
                             instances.remove(atOffsets: offsets)
                             SavedInstances.all = instances
                         }

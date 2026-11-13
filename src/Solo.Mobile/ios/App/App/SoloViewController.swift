@@ -2,6 +2,7 @@ import UIKit
 import SwiftUI
 import WebKit
 import Capacitor
+import WidgetKit
 
 /// Capacitor's bridge view controller, plus what no web API gives the page:
 ///
@@ -11,6 +12,9 @@ import Capacitor
 /// - Sign-in, which Google refuses inside a web view. The page can post one
 ///   fixed message, `request_sign-in`, and the sign-in sheet takes it from
 ///   there (`AppSignIn`).
+/// - The widgets (Widgets/): a copy of the page's session for them to fetch
+///   with, handed over through `window.soloApp.keepSession` (`SharedStore`),
+///   and their taps, which open a page here (`open(widgetLink:)`).
 /// - Its list of instances (`InstancesView`), opened by the fixed message
 ///   `request_instance-settings`. Opening another instance builds a new view
 ///   controller on it, since Capacitor reads the address once, at load.
@@ -43,6 +47,8 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     private static var proxy: LocalProxy?
     /// Where the page actually loads from: the proxy's local origin.
     private var pageURL: URL?
+    /// A page a widget asked for, to open with the next controller's first load.
+    private static var pendingPath: String?
 
     override func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = super.instanceDescriptor()
@@ -55,6 +61,11 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             pageURL = Self.startProxy(for: instance)?.pageURL
         }
         descriptor.serverURL = pageURL?.absoluteString ?? instance.map { $0.absoluteString + "/" }
+        if let path = Self.pendingPath, let start = descriptor.serverURL.flatMap(URL.init(string:)),
+           let page = URL(string: path, relativeTo: start) {
+            descriptor.serverURL = page.absoluteString
+        }
+        Self.pendingPath = nil
         return descriptor
     }
 
@@ -74,6 +85,7 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
                 window.soloApp = Object.freeze({
                     beginSignIn: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_sign-in'),
                     openInstances: () => window.webkit.messageHandlers.\(Self.messageHandler).postMessage('request_instance-settings'),
+                    keepSession: token => window.webkit.messageHandlers.\(Self.messageHandler).postMessage({ type: 'session', token }),
                 });
                 """,
             injectionTime: .atDocumentStart,
@@ -100,7 +112,11 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         ) { _ in Self.proxy?.resume() }
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
-        ) { _ in Self.proxy?.suspend() }
+        ) { _ in
+            Self.proxy?.suspend()
+            // Whatever changed while the app was open reaches the widgets now.
+            WidgetCenter.shared.reloadAllTimelines()
+        }
 
 
         let pencil = UIPencilInteraction()
@@ -126,11 +142,53 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
               Self.isOrigin(message.frameInfo.securityOrigin, of: pageURL ?? instance)
         else { return }
 
+        if let body = message.body as? [String: Any], body["type"] as? String == "session" {
+            keepSession(body["token"], for: instance)
+            return
+        }
+
         switch message.body as? String {
         case "request_sign-in": beginSignIn(on: instance)
         case "request_instance-settings": showInstances()
         default: break
         }
+    }
+
+    /// The page's session, or null once it has none, copied for the widgets.
+    /// Only a `solo_` session is taken, never another credential.
+    private func keepSession(_ value: Any?, for instance: URL) {
+        let token = value as? String
+        if let token, !token.hasPrefix("solo_") || token.count > 200 { return }
+        guard SharedStore.token(for: instance) != token else { return }
+        SharedStore.setToken(token, for: instance)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// A widget's tap: the page it names, on its instance. An instance not in
+    /// the list is ignored; the app just opens.
+    func open(widgetLink url: URL) {
+        guard let link = WidgetLink.parse(url),
+              SavedInstances.all.contains(where: { $0.url == link.instance })
+        else { return }
+        if link.instance == instance, let webView, let pageURL {
+            // Already open: navigate in place rather than reload the app.
+            let target = URL(string: link.path, relativeTo: pageURL)?.absoluteString ?? pageURL.absoluteString
+            let literal = (try? JSONSerialization.data(withJSONObject: target, options: .fragmentsAllowed))
+                .map { String(decoding: $0, as: UTF8.self) } ?? "null"
+            webView.evaluateJavaScript("window.Blazor ? Blazor.navigateTo(\(literal)) : location.assign(\(literal))")
+            return
+        }
+        Self.pendingPath = link.path
+        reopen(on: link.instance)
+    }
+
+    /// For a widget tap that launched the app: the controller isn't built yet.
+    static func openOnLaunch(widgetLink url: URL) {
+        guard let link = WidgetLink.parse(url),
+              SavedInstances.all.contains(where: { $0.url == link.instance })
+        else { return }
+        SavedInstances.current = link.instance
+        pendingPath = link.path
     }
 
     // iPadOS 17.5 and later call this one and skip pencilInteractionDidTap.
