@@ -24,6 +24,20 @@
 		A1C0DE012FF000010000000C /* Instances.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF000010000000B /* Instances.swift */; };
 		A1C0DE012FF0000100000006 /* Solo.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000005 /* Solo.icon */; };
 		A1C0DE012FF0000100000008 /* Solo Preview.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0DE012FF0000100000007 /* Solo Preview.icon */; };
+		B1D6E7000000000000000002 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000001 /* SharedStore.swift */; };
+		B1D6E7000000000000000003 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000001 /* SharedStore.swift */; };
+		B1D6E7000000000000000005 /* WorkSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000004 /* WorkSummary.swift */; };
+		B1D6E7000000000000000006 /* WorkSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000004 /* WorkSummary.swift */; };
+		B1D6E7000000000000000008 /* WidgetLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000007 /* WidgetLink.swift */; };
+		B1D6E7000000000000000009 /* WidgetLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000007 /* WidgetLink.swift */; };
+		B1D6E7000000000000000011 /* WidgetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000010 /* WidgetTheme.swift */; };
+		B1D6E7000000000000000013 /* PixelSmile.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000012 /* PixelSmile.swift */; };
+		B1D6E7000000000000000015 /* SevenSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000014 /* SevenSegment.swift */; };
+		B1D6E7000000000000000017 /* WidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000016 /* WidgetIntents.swift */; };
+		B1D6E7000000000000000019 /* WorkProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000018 /* WorkProvider.swift */; };
+		B1D6E700000000000000001B /* WidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E700000000000000001A /* WidgetViews.swift */; };
+		B1D6E700000000000000001D /* SoloWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1D6E700000000000000001C /* SoloWidgets.swift */; };
+		B1D6E7000000000000000022 /* SoloWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1D6E7000000000000000021 /* SoloWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,7 +60,45 @@
 		A1C0DE012FF000010000000B /* Instances.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Instances.swift; sourceTree = "<group>"; };
 		A1C0DE012FF0000100000005 /* Solo.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = Solo.icon; path = Icons/Solo.icon; sourceTree = SOURCE_ROOT; };
 		A1C0DE012FF0000100000007 /* Solo Preview.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = "Solo Preview.icon"; path = "Icons/Solo Preview.icon"; sourceTree = SOURCE_ROOT; };
+		B1D6E7000000000000000001 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
+		B1D6E7000000000000000004 /* WorkSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkSummary.swift; sourceTree = "<group>"; };
+		B1D6E7000000000000000007 /* WidgetLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetLink.swift; sourceTree = "<group>"; };
+		B1D6E7000000000000000010 /* WidgetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTheme.swift; sourceTree = "<group>"; };
+		B1D6E7000000000000000012 /* PixelSmile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelSmile.swift; sourceTree = "<group>"; };
+		B1D6E7000000000000000014 /* SevenSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SevenSegment.swift; sourceTree = "<group>"; };
+		B1D6E7000000000000000016 /* WidgetIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetIntents.swift; sourceTree = "<group>"; };
+		B1D6E7000000000000000018 /* WorkProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkProvider.swift; sourceTree = "<group>"; };
+		B1D6E700000000000000001A /* WidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetViews.swift; sourceTree = "<group>"; };
+		B1D6E700000000000000001C /* SoloWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoloWidgets.swift; sourceTree = "<group>"; };
+		B1D6E700000000000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B1D6E700000000000000001F /* Widgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Widgets.entitlements; sourceTree = "<group>"; };
+		B1D6E7000000000000000020 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		B1D6E7000000000000000021 /* SoloWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SoloWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXContainerItemProxy section */
+		B1D6E700000000000000002B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B1D6E7000000000000000024;
+			remoteInfo = SoloWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B1D6E7000000000000000023 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B1D6E7000000000000000022 /* SoloWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		504EC3011FED79650016851F /* Frameworks */ = {
@@ -54,6 +106,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1D6E7000000000000000026 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -67,6 +126,8 @@
 				A1C0DE012FF0000100000005 /* Solo.icon */,
 				A1C0DE012FF0000100000007 /* Solo Preview.icon */,
 				504EC3061FED79650016851F /* App */,
+				B1D6E700000000000000002D /* Shared */,
+				B1D6E700000000000000002E /* Widgets */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -75,6 +136,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				B1D6E7000000000000000021 /* SoloWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,10 +157,37 @@
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				B1D6E7000000000000000020 /* App.entitlements */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		B1D6E700000000000000002D /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				B1D6E7000000000000000001 /* SharedStore.swift */,
+				B1D6E7000000000000000004 /* WorkSummary.swift */,
+				B1D6E7000000000000000007 /* WidgetLink.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		B1D6E700000000000000002E /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				B1D6E7000000000000000010 /* WidgetTheme.swift */,
+				B1D6E7000000000000000012 /* PixelSmile.swift */,
+				B1D6E7000000000000000014 /* SevenSegment.swift */,
+				B1D6E7000000000000000016 /* WidgetIntents.swift */,
+				B1D6E7000000000000000018 /* WorkProvider.swift */,
+				B1D6E700000000000000001A /* WidgetViews.swift */,
+				B1D6E700000000000000001C /* SoloWidgets.swift */,
+				B1D6E700000000000000001E /* Info.plist */,
+				B1D6E700000000000000001F /* Widgets.entitlements */,
+			);
+			path = Widgets;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -111,10 +200,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				B1D6E7000000000000000023 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B1D6E700000000000000002C /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -123,6 +214,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		B1D6E7000000000000000024 /* SoloWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1D6E7000000000000000028 /* Build configuration list for PBXNativeTarget "SoloWidgets" */;
+			buildPhases = (
+				B1D6E7000000000000000025 /* Sources */,
+				B1D6E7000000000000000026 /* Frameworks */,
+				B1D6E7000000000000000027 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SoloWidgets;
+			productName = SoloWidgets;
+			productReference = B1D6E7000000000000000021 /* SoloWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -157,6 +265,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				B1D6E7000000000000000024 /* SoloWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -177,6 +286,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B1D6E7000000000000000027 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -192,10 +308,38 @@
 				A1C0DE012FF0000100000002 /* SoloViewController.swift in Sources */,
 				A1C0DE012FF0000100000012 /* LocalProxy.swift in Sources */,
 				A1C0DE012FF0000100000014 /* InstancePorts.swift in Sources */,
+				B1D6E7000000000000000002 /* SharedStore.swift in Sources */,
+				B1D6E7000000000000000005 /* WorkSummary.swift in Sources */,
+				B1D6E7000000000000000008 /* WidgetLink.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1D6E7000000000000000025 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1D6E7000000000000000003 /* SharedStore.swift in Sources */,
+				B1D6E7000000000000000006 /* WorkSummary.swift in Sources */,
+				B1D6E7000000000000000009 /* WidgetLink.swift in Sources */,
+				B1D6E7000000000000000011 /* WidgetTheme.swift in Sources */,
+				B1D6E7000000000000000013 /* PixelSmile.swift in Sources */,
+				B1D6E7000000000000000015 /* SevenSegment.swift in Sources */,
+				B1D6E7000000000000000017 /* WidgetIntents.swift in Sources */,
+				B1D6E7000000000000000019 /* WorkProvider.swift in Sources */,
+				B1D6E700000000000000001B /* WidgetViews.swift in Sources */,
+				B1D6E700000000000000001D /* SoloWidgets.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B1D6E700000000000000002C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B1D6E7000000000000000024 /* SoloWidgets */;
+			targetProxy = B1D6E700000000000000002B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -332,6 +476,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "Solo Preview";
 				SOLO_DISPLAY_NAME = "Solo (Preview)";
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
@@ -356,6 +501,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Solo;
 				SOLO_DISPLAY_NAME = Solo;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
@@ -368,6 +514,58 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SOLO_BUNDLE_ID)";
 				SOLO_BUNDLE_ID = com.hunterahlquist.solo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B1D6E7000000000000000029 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widgets/Widgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SOLO_BUNDLE_ID).widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SOLO_BUNDLE_ID = com.hunterahlquist.solo.preview;
+				SOLO_DISPLAY_NAME = "Solo (Preview)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B1D6E700000000000000002A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widgets/Widgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SOLO_BUNDLE_ID).widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SOLO_BUNDLE_ID = com.hunterahlquist.solo;
+				SOLO_DISPLAY_NAME = Solo;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -391,6 +589,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B1D6E7000000000000000028 /* Build configuration list for PBXNativeTarget "SoloWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1D6E7000000000000000029 /* Debug */,
+				B1D6E700000000000000002A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
