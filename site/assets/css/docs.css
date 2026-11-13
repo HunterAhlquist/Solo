@@ -1312,6 +1312,71 @@ div.highlighter-rouge:hover .copy-button,
     margin-top: 0.125rem;
 }
 
+.tabs {
+    display: flex;
+    margin: 0 0 1.25rem;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--divider);
+    scrollbar-width: none;
+}
+
+.tab {
+    position: relative;
+    flex: 0 0 auto;
+    padding: 0.625rem 1rem;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-weight: 700;
+    letter-spacing: 0.02857em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.tab:hover {
+    color: var(--text-primary);
+    background: var(--table-hover);
+}
+
+.tab[aria-selected="true"] {
+    border-bottom-color: var(--primary);
+    color: var(--primary);
+}
+
+/* A tab whose panel holds a value that is missing or wrong. */
+.tab[data-attention]::after {
+    content: "";
+    position: absolute;
+    top: 0.5rem;
+    right: 0.375rem;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 50%;
+    background: var(--warning);
+}
+
+.tab-panel__intro {
+    margin: 0 0 1rem;
+}
+
+/* The output stays in view of the tabs above it instead of running on. */
+.generator pre {
+    max-height: 26rem;
+}
+
+.link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--link);
+    font: inherit;
+    text-align: left;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
 .generator__steps {
     margin: 0 0 1rem;
     padding: 0.75rem 1rem 0.75rem 2.5rem;
@@ -1358,6 +1423,18 @@ div.highlighter-rouge:hover .copy-button,
 
     .appbar {
         padding: 0 0.5rem;
+    }
+
+    /* All five generator tabs in a phone's width, so none hides off the edge. */
+    .tabs {
+        flex-wrap: wrap;
+    }
+
+    .tab {
+        flex-grow: 1;
+        padding: 0.625rem 0.375rem;
+        font-size: 0.75rem;
+        letter-spacing: 0;
     }
 }
 
