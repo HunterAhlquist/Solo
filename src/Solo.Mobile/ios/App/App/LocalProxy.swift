@@ -52,6 +52,9 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         let method: String
         let navigation: Bool
         var bodyless = false
+        /// The body's length when it goes out as the instance sent it, which
+        /// is sent as Content-Length; nil when it goes out chunked.
+        var length: Int64?
     }
 
     init(port: UInt16, target: URL) {
@@ -324,6 +327,15 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         }
         // HEAD, 1xx, 204 and 304 have no body, so no chunked framing either.
         exchange.bodyless = exchange.method == "HEAD" || http.statusCode < 200 || [204, 304].contains(http.statusCode)
+        // A body URLSession passes through unchanged keeps the instance's
+        // length: the media stack behind <audio> and <video> refuses a chunked
+        // response with none ("not supported"), which left Design Docs'
+        // explosion silent in the app while a browser, which gets the length,
+        // played it. A body URLSession decoded (Content-Encoding) no longer
+        // has that length, so it goes out chunked as before.
+        if !exchange.bodyless, http.expectedContentLength >= 0, http.value(forHTTPHeaderField: "Content-Encoding") == nil {
+            exchange.length = http.expectedContentLength
+        }
         exchanges[ObjectIdentifier(dataTask)] = exchange
 
         var head = "HTTP/1.1 \(http.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: http.statusCode))\r\n"
@@ -338,13 +350,18 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             head += "\(name): \(sent)\r\n"
         }
         head += exchange.bodyless ? "Content-Length: 0\r\nConnection: close\r\n\r\n"
-                                  : "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+            : exchange.length.map { "Content-Length: \($0)\r\nConnection: close\r\n\r\n" }
+            ?? "Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
         exchange.connection.send(content: Data(head.utf8), completion: .idempotent)
         completionHandler(exchange.bodyless ? .cancel : .allow)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         guard let exchange = exchanges[ObjectIdentifier(dataTask)], !exchange.bodyless, !data.isEmpty else { return }
+        if exchange.length != nil {
+            exchange.connection.send(content: data, completion: .idempotent)
+            return
+        }
         var chunk = Data(String(data.count, radix: 16).utf8) + Data("\r\n".utf8)
         chunk.append(data)
         chunk.append(Data("\r\n".utf8))
@@ -376,11 +393,13 @@ final class LocalProxy: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             // Cut off mid-body: drop the connection without the last chunk, so
             // the page sees a failed load. Ending the chunked stream properly
             // would pass the truncated body off as complete, and the client's
-            // service worker would cache it.
+            // service worker would cache it. With a Content-Length, the short
+            // body gives it away on its own.
             connection.forceCancel()
             return
         }
-        connection.send(content: Data("0\r\n\r\n".utf8), completion: .contentProcessed { _ in connection.cancel() })
+        let end = exchange.length == nil ? Data("0\r\n\r\n".utf8) : nil
+        connection.send(content: end, isComplete: true, completion: .contentProcessed { _ in connection.cancel() })
     }
 
     private func respond(_ connection: NWConnection, status: String, type: String, body: String, nonce: String? = nil) {
