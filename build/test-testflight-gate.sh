@@ -95,12 +95,16 @@ commit src/Solo.Mobile/README.md src/Solo.Desktop/README.md > /dev/null
 expect "an iOS README change skips iOS" ios false
 expect "a desktop README change skips Mac" mac false
 
-# A client change ships in the Mac app but not the iOS one.
+# Neither app carries the client: both load the one their instance serves.
 commit src/Solo.Client/App.razor > /dev/null
 expect "a client change skips iOS" ios false
-expect "a client change uploads Mac" mac true
+expect "a client change skips Mac" mac false
 commit src/Solo.Shared/Dto.cs > /dev/null
-expect "a shared contract change uploads Mac" mac true
+expect "a shared contract change skips Mac" mac false
+# The shell itself does reach the Mac app.
+commit src/Solo.Desktop/main.js > /dev/null
+expect "a desktop shell change uploads Mac" mac true
+expect "a desktop shell change skips iOS" ios false
 
 # Icons and the staging script reach both.
 reset=$(git rev-parse HEAD)
@@ -111,19 +115,16 @@ expect "the icon staging script uploads Mac (it's in the shell)" mac true
 commit Icons/Solo.icon/icon.json > /dev/null
 expect "an icon change uploads iOS" ios true
 
-# The version and preview identity come from release-channel.sh; repository
-# .NET build settings only reach the client the Mac app bundles. Paths that
-# don't exist yet must not break the diff.
+# The version and preview identity come from release-channel.sh.
 reset=$(git rev-parse HEAD)
 echo "100 $reset" > "$RUNS"
-expect "absent build-setting paths don't break the diff" mac false
 commit build/release-channel.sh > /dev/null
 expect "a release-channel.sh change uploads iOS" ios true
 expect "a release-channel.sh change uploads Mac" mac true
 echo "100 $(git rev-parse HEAD)" > "$RUNS"
 commit Directory.Packages.props > /dev/null
-expect "a central package version change skips iOS" ios false
-expect "a central package version change uploads Mac" mac true
+expect "a .NET build setting skips iOS" ios false
+expect "a .NET build setting skips Mac" mac false
 
 # The baseline is the last run that uploaded, not the last that succeeded: a
 # newer run that skipped (or ran without the key) must not become it.

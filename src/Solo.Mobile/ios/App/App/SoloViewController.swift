@@ -14,6 +14,10 @@ import Capacitor
 /// - Its list of instances (`InstancesView`), opened by the fixed message
 ///   `request_instance-settings`. Opening another instance builds a new view
 ///   controller on it, since Capacitor reads the address once, at load.
+/// - The local origin the page loads from (`LocalProxy`): a loopback server
+///   forwarding everything to the instance, so the page lives on
+///   http://localhost:<port>, the one App-Bound Domain (Info.plist), and gets
+///   the service workers the client's offline mode needs.
 /// - Status bar text that reads against the app bar, whose colour the client
 ///   publishes as the page's `theme-color`. The page itself draws behind the
 ///   status bar and the home indicator (`contentInset: 'never'`), so the app
@@ -31,6 +35,13 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     private var builtIn: URL?
 
     private var themeColorObservation: NSKeyValueObservation?
+    private var foregroundObserver: NSObjectProtocol?
+
+    /// The running proxy, kept across the view controllers that opening
+    /// another instance builds, and replaced when the instance changes.
+    private static var proxy: LocalProxy?
+    /// Where the page actually loads from: the proxy's local origin.
+    private var pageURL: URL?
 
     override func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = super.instanceDescriptor()
@@ -39,13 +50,20 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         // With none, Capacitor shows the bundled placeholder under the sheet.
         // The trailing slash keeps an instance hosted under a path resolving
         // its relative URLs there.
-        descriptor.serverURL = instance.map { $0.absoluteString + "/" }
+        if let instance {
+            pageURL = Self.startProxy(for: instance)?.pageURL
+        }
+        descriptor.serverURL = pageURL?.absoluteString ?? instance.map { $0.absoluteString + "/" }
         return descriptor
     }
 
     // Not webViewConfiguration(for:): Capacitor swaps in its own content
     // controller after that returns, which drops any script added there.
     override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
+        // The page is always on localhost, the one App-Bound Domain. Script
+        // injection and message handlers then work there only, which is all
+        // they need; a link elsewhere opens in Safari, as Capacitor does.
+        configuration.limitsNavigationsToAppBoundDomains = true
         let controller = configuration.userContentController
         controller.add(WeakMessageHandler(self), name: Self.messageHandler)
         // What solo.desktop in the client looks for, in place of the desktop
@@ -60,12 +78,24 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true))
         #if DEBUG
-        DevShim.install(in: controller, sessionFor: builtIn)
+        // The debug session belongs to the built-in instance, so only its
+        // local origin gets it; another instance opens signed out.
+        DevShim.install(in: controller, sessionFor: instance != nil && instance == builtIn ? pageURL : nil)
         #endif
         return super.webView(with: frame, configuration: configuration)
     }
 
+    deinit {
+        if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
+    }
+
     override func capacitorDidLoad() {
+        // Suspension can take the listener's socket and the upstream
+        // connections with it.
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { _ in Self.proxy?.recover() }
+
         let pencil = UIPencilInteraction()
         pencil.delegate = self
         webView?.addInteraction(pencil)
@@ -86,7 +116,7 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
               let instance,
-              Self.isOrigin(message.frameInfo.securityOrigin, of: instance)
+              Self.isOrigin(message.frameInfo.securityOrigin, of: pageURL ?? instance)
         else { return }
 
         switch message.body as? String {
@@ -174,6 +204,27 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
         dismiss(animated: true) { [weak self] in
             self?.view.window?.rootViewController = SoloViewController()
         }
+    }
+
+    /// The instance's proxy, started if it isn't running, on the port the
+    /// instance last opened on (`InstancePorts`). Only when another app holds
+    /// that port does it move to another of the instance's own, which has a
+    /// sign-in and offline storage of its own.
+    private static func startProxy(for instance: URL) -> LocalProxy? {
+        if let proxy, proxy.target == instance { return proxy }
+        proxy?.stop()
+        proxy = InstancePorts.start(for: instance) { port in
+            let candidate = LocalProxy(port: port, target: instance)
+            do {
+                try candidate.start()
+                return candidate
+            } catch {
+                NSLog("Solo: local port \(port) unavailable (\(error)) for \(instance.host ?? "").")
+                candidate.stop()
+                throw error
+            }
+        }
+        return proxy
     }
 
     private static func isOrigin(_ origin: WKSecurityOrigin, of url: URL) -> Bool {

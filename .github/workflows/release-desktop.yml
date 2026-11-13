@@ -76,15 +76,12 @@ jobs:
             exit 0
           fi
 
-          # Everything that ends up inside an installer: the shell itself, the
-          # Blazor client it serves (plus the shared contracts that client
-          # compiles against), and the icon source. Deliberately excludes
-          # src/Solo.Api, src/Solo.Data, the Dockerfile, and docs — none of
-          # them are packaged.
+          # Everything that ends up inside an installer: the shell itself and
+          # the icon source. The client isn't packaged any more — the shell
+          # proxies the one each instance serves — so src/Solo.Client and
+          # src/Solo.Shared are left out along with the server and the docs.
           PATHS=(
             src/Solo.Desktop
-            src/Solo.Client
-            src/Solo.Shared
             Icons
             .github/workflows/release-desktop.yml
           )
@@ -148,9 +145,6 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with:
-          dotnet-version: "10.0.x"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -197,15 +191,14 @@ jobs:
         run: |
           npm run test:app-identity
           npm run test:host-guard
+          npm run test:instance-ports
+          npm run test:proxy-paths
           npm run test:mac-network-identity
           npm run test:desktop-auth
           npm run test:instance-extensions
           npm run test:rotation-gesture
           npm run test:updater
           npm run test:update-progress
-
-      - name: Publish Blazor client into shell
-        run: npm run build:client
 
       # The macOS sign-in window (main/auth-sheet.js). Without it the app still
       # works but signs in through a browser tab, so a build that can't

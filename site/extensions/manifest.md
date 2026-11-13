@@ -75,7 +75,7 @@ Set the lower limit to the lowest contract version that has each feature you use
 
 Solo checks `soloApiVersion` on the server, at startup. Solo checks `soloClientVersion` in the browser, before it loads the client assembly.
 
-The two checks can give different results. The desktop app contains its own copy of the client, and that copy can be older than the instance. When the client is too old for your `soloClientVersion`, it does not load your client half. Your pages and sidebar entries are then absent, and the server half still runs.
+The two checks can give different results. A client can be older than the instance: a client that a device keeps for offline use stays at its version until the device goes online, and a desktop app from before version 1.21 contains its own copy. When the client is too old for your `soloClientVersion`, it does not load your client half. Your pages and sidebar entries are then absent, and the server half still runs.
 
 ## Schema
 

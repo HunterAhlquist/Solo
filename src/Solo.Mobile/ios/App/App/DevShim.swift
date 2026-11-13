@@ -3,34 +3,19 @@ import Foundation
 import WebKit
 
 /// Debug builds only, for testing against a plain-HTTP instance on the local
-/// network with no Google sign-in:
-///
-/// - `crypto.randomUUID()` exists only on secure pages, and Design Docs needs
-///   it for every stroke and sync packet. `getRandomValues` works anywhere.
-/// - A `solo_` session minted on the instance, so the page starts signed in
-///   where Google's sign-in can't run (a plain-HTTP origin). The token and
-///   the user come from the git-ignored `ios/dev.xcconfig` (see the README),
-///   and belong to the instance built in with `SOLO_INSTANCE_URL`, so only
-///   that origin gets them.
+/// network with no Google sign-in: a `solo_` session minted on the instance,
+/// so the page starts signed in where Google's sign-in can't run (a plain-HTTP
+/// instance). The token and the user come from the git-ignored
+/// `ios/dev.xcconfig` (see the README), and belong to the instance built in
+/// with `SOLO_INSTANCE_URL`, so only the local origin that proxies it gets
+/// them.
 enum DevShim {
     static func install(in controller: WKUserContentController, sessionFor instance: URL?) {
         controller.addUserScript(WKUserScript(
-            source: randomUUID + (instance.flatMap(session(for:)) ?? ""),
+            source: instance.flatMap(session(for:)) ?? "",
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true))
     }
-
-    private static let randomUUID = """
-        if (!crypto.randomUUID) {
-            Object.defineProperty(crypto, 'randomUUID', { value: () => {
-                const b = crypto.getRandomValues(new Uint8Array(16));
-                b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
-                const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
-                return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-            } });
-        }
-
-        """
 
     private static func session(for instance: URL) -> String? {
         let info = Bundle.main.infoDictionary ?? [:]

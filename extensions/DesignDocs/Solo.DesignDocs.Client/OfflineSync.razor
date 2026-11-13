@@ -15,7 +15,7 @@
     <MudMenuItem Icon="@Icons.Material.Filled.Sync" OnClick="Sync">Sync now</MudMenuItem>
     @foreach(var vault in _status.Vaults){
         <MudMenuItem Href="@($"/docs/{vault.ProjectAlias}/{vault.Id}")" Disabled="@(!vault.Ready)">Open downloaded vault</MudMenuItem>
-        <MudText Class="px-4 pt-2" Typo="Typo.subtitle2">@vault.Name @(!vault.Ready?"· download incomplete":vault.Pending>0?$"· {vault.Pending} pending":"· ready offline")</MudText>
+        <MudText Class="px-4 pt-2" Typo="Typo.subtitle2">@vault.Name @(!vault.Ready?"· download incomplete":vault.Pending>0?$"· {Items(vault.Pending)} waiting to sync":"· ready offline")</MudText>
         <MudMenuItem OnClick="@(()=>Export(vault.Id))">Export recovery zip</MudMenuItem>
         @if(vault.Conflicts>0){<MudMenuItem OnClick="@(()=>Problems(vault.Id))">Review pending changes</MudMenuItem>}
         @if(vault.Pending==0){<MudMenuItem Disabled="@(_removing is not null)" OnClick="@(()=>Forget(vault.Id))">Remove download</MudMenuItem>}
@@ -26,7 +26,9 @@
     private readonly CancellationTokenSource _stop=new();
     private string? _email,_removing;
     private SyncStatus _status=new();private IJSObjectReference? _module,_agent;private DotNetObjectReference<OfflineSync>? _reference;private bool _disposed;
-    private string Label=>_status.Vaults.Count==0?"No downloaded vaults.":_status.Conflicts>0?$"{_status.Conflicts} changes need attention. Local work is retained.":_status.Pending>0?$"{(_status.Online?"Syncing":"Offline")} · {_status.Pending} pending changes":_status.Online?"Downloaded vaults are synced":"Offline · saved on this device";
+    private string Label=>_status.Vaults.Count==0?"No downloaded vaults.":_status.Conflicts>0?$"{Items(_status.Conflicts)} need attention. Local work is retained.":_status.Pending>0?$"{(_status.Online?"Syncing":"Offline")} · {Items(_status.Pending)} waiting to sync":_status.Online?"Downloaded vaults are synced":"Offline · saved on this device";
+    // Counts documents and other items with unsynced changes, not edits (unsyncedItems in offline/session.js).
+    private static string Items(int count)=>count==1?"1 item":$"{count} items";
     protected override async Task OnInitializedAsync(){Auth.AuthenticationStateChanged+=AccountChanged;await Start();}
     private async Task Start(){
         _email=(await Auth.GetAuthenticationStateAsync()).User.FindFirst("email")?.Value;

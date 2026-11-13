@@ -62,7 +62,7 @@ The theme applies to each person on the instance. Each person still selects ligh
 1. Select a theme in the list. Solo saves the selection.
 2. Load the page again to see the theme.
 
-Built-in themes have the word **built-in** next to their name. Solo has three: Ahlquist Interactive, Arcade and Blueprint.
+Built-in themes have the word **built-in** next to their name. Solo has four: Ahlquist Interactive, Arcade, Blueprint and Glass.
 
 ### Rescan
 

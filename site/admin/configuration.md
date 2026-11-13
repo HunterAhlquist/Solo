@@ -110,7 +110,7 @@ Solo answers health probes at `/healthz`.
 | `solo-themes` | `/data/themes` | Theme packages that you add. |
 | `solo-extensions` | `/data/extensions` | Extension packages that you add. |
 
-The three built-in themes are part of the image. The themes volume is only for themes that you add.
+The four built-in themes are part of the image. The themes volume is only for themes that you add.
 
 ### Host paths
 

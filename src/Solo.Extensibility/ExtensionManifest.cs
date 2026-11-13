@@ -21,8 +21,9 @@ public sealed class ExtensionManifest
 
     /// <summary>
     /// Client contract range, checked in the browser against the running client
-    /// build. Separate from <see cref="SoloApiVersion"/> because the Electron
-    /// shell bundles its own client and can be older than the instance.
+    /// build. Separate from <see cref="SoloApiVersion"/> because a client can be
+    /// older than the instance: one cached for offline use, or a desktop app
+    /// from before 1.21, which bundled its own.
     /// </summary>
     public string? SoloClientVersion { get; set; }
 

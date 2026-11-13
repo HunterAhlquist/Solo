@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,10 +12,33 @@ if (process.platform !== 'darwin') {
 }
 
 const desktopDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+// The shell bundles no client, so the stand-in instance serves a published one:
+// the real Blazor client is what initializes the theme provider under test.
+const clientDir = process.env.SOLO_TEST_CLIENT_DIR ??
+    path.resolve(desktopDir, '..', 'Solo.Client', 'bin', 'Release', 'net10.0', 'publish', 'wwwroot');
+if (!existsSync(path.join(clientDir, 'index.html'))) {
+    console.log(`SKIP: no published client at ${clientDir}. ` +
+        'Run `dotnet publish src/Solo.Client -c Release` (or set SOLO_TEST_CLIENT_DIR) first.');
+    process.exit(0);
+}
 const electron = process.env.SOLO_GLASS_APP ?? path.join(desktopDir, 'node_modules', '.bin', 'electron');
 const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'solo-glass-theme-check-'));
 const localPort = await availablePort();
+const types = {
+    '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
+    '.json': 'application/json', '.wasm': 'application/wasm', '.dat': 'application/octet-stream',
+    '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon',
+};
 const fixture = createHttpServer((request, response) => {
+    const pathname = decodeURIComponent(new URL(request.url, 'http://fixture').pathname);
+    if (!pathname.startsWith('/api/') && !pathname.startsWith('/hubs/')) {
+        const requested = path.normalize(path.join(clientDir, pathname));
+        const file = requested.startsWith(clientDir + path.sep) && existsSync(requested) && statSync(requested).isFile()
+            ? requested : path.join(clientDir, 'index.html');
+        response.setHeader('Content-Type', types[path.extname(file)] ?? 'application/octet-stream');
+        response.end(readFileSync(file));
+        return;
+    }
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/config/auth') {
         response.end('{}');

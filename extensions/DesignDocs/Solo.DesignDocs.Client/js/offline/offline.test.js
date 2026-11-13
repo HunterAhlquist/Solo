@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import * as Y from 'yjs';
 import {VaultStore,projectVault,applyCommand,attachmentPath,order} from './store.js';
-import {OfflineSession} from './session.js';
+import {OfflineSession,unsyncedItems} from './session.js';
 import {encode,decode} from '../sync/protocol.js';
 import {sketchStrokes} from '../sketch/objects.js';
 const id=()=>crypto.randomUUID();
@@ -332,4 +332,41 @@ test('download removal and a new write cannot leave an orphaned upload queue',as
         assert.notEqual(removal.status,write.status);
         if(removal.status==='fulfilled'){assert.equal(await store.get('vaults',vaultId),undefined);assert.equal((await store.all('queue')).length,0);}else{assert.ok(await store.get('vaults',vaultId));assert.equal((await store.all('queue')).length,1);}
     }finally{await store.close();}
+});
+
+test('a sketch counts once however many strokes it has, as a note does',async()=>{
+    const scope=id(),store=new VaultStore(scope),vaultId=id(),noteId=id(),sketchId=id(),oldSketch=id();
+    await store.put('vaults',{id:vaultId,ready:true,base:snapshot(vaultId,noteId)});
+    try{
+        // A sketch made offline, then drawn on: every stroke is its own queued update.
+        await store.enqueue({id:id(),vaultId,created:1,command:{entity:'sketch',action:'create',targetId:sketchId,noteId,name:'Map'}});
+        const sketch=new Y.Doc(),strokes=sketch.getArray('ops');
+        for(let i=0;i<6;i++){const before=Y.encodeStateVector(sketch);strokes.push([{id:id(),points:[i,i,i+1,i+1]}]);
+            await store.updateDocument(sketchId,'project',vaultId,[Y.encodeStateAsUpdate(sketch,before)],null,true);}
+        const note=new Y.Doc();note.getText('markdown').insert(0,'Edited');
+        await store.updateDocument(noteId,'project',vaultId,[Y.encodeStateAsUpdate(note)],null,true);
+        const queue=await store.all('queue');
+        assert.equal(queue.length,8);
+        assert.equal(unsyncedItems(queue),2);
+        // Deleting another sketch is one more item.
+        await store.enqueue({id:id(),vaultId,created:2,command:{entity:'sketch',action:'delete',targetId:oldSketch,version:1}});
+        assert.equal(unsyncedItems(await store.all('queue')),3);
+        sketch.destroy();note.destroy();
+    }finally{await store.close();}
+});
+
+test('the pending count is items with unsynced changes, not queued edits',()=>{
+    const vault='v1',note='n1',other='n2',folder='f1';
+    const edits=Array.from({length:250},(_,i)=>({id:`u${i}`,vaultId:vault,documentId:note,data:new Uint8Array([i%255])}));
+    // A note created offline and typed into counts once: its create command targets the same id.
+    const rows=[{id:'c1',vaultId:vault,command:{entity:'note',action:'create',targetId:note}},...edits,
+        {id:'u-other',vaultId:vault,documentId:other,data:new Uint8Array([1])},
+        {id:'c2',vaultId:vault,command:{entity:'folder',action:'rename',targetId:folder,name:'Renamed'}},
+        {id:'c3',vaultId:vault,command:{entity:'folder',action:'rename',targetId:folder,name:'Renamed again'}}];
+    assert.equal(unsyncedItems(rows),3);
+    assert.equal(unsyncedItems([]),0);
+    // The same document id in two vaults is two items.
+    assert.equal(unsyncedItems([{id:'a',vaultId:'v1',documentId:'d'},{id:'b',vaultId:'v2',documentId:'d'}]),2);
+    // A command without a target (none today) still counts, once per row.
+    assert.equal(unsyncedItems([{id:'x',vaultId:vault,command:{entity:'vault',action:'touch'}},{id:'y',vaultId:vault,command:{entity:'vault',action:'touch'}}]),2);
 });

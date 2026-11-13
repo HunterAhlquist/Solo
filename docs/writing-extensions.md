@@ -303,7 +303,7 @@ A Razor Class Library. Its `@page` routes join the app's router automatically, a
 
 **Nav entries** come from the manifest and only render if the assembly actually loaded, so a version mismatch degrades to a missing entry rather than a dead link. A route containing `{projectAlias}` renders **per project** inside that project's group; a route without one is an **instance-level** entry, rendered once in the sidebar footer.
 
-Declare `soloClientVersion` honestly: the client re-checks it against its own build before loading, because the Electron shell bundles a client that can be older than the instance.
+Declare `soloClientVersion` honestly: the client re-checks it against its own build before loading, because a client can be older than the instance — one cached for offline use, or a desktop app from before 1.21, which bundled its own.
 
 ## 10. Advanced: middleware and authentication schemes
 
