@@ -17,9 +17,17 @@ To check this, open the developer tools of your browser and look at the network 
 <p class="generator__noscript">The generator needs JavaScript. Use the template in <a href="{{ '/admin/install/' | relative_url }}#3-write-the-compose-file">Install</a> instead.</p>
 </noscript>
 
-## Instance
+## Settings
 
-<div class="generator">
+<div class="generator" id="cg-settings">
+<div class="tabs" role="tablist" aria-label="Settings" hidden>
+  <button class="tab" type="button" role="tab" id="cg-tab-instance" aria-controls="cg-panel-instance" aria-selected="true">Instance</button>
+  <button class="tab" type="button" role="tab" id="cg-tab-sign-in" aria-controls="cg-panel-sign-in" aria-selected="false" tabindex="-1">Sign-in</button>
+  <button class="tab" type="button" role="tab" id="cg-tab-passwords" aria-controls="cg-panel-passwords" aria-selected="false" tabindex="-1">Passwords</button>
+  <button class="tab" type="button" role="tab" id="cg-tab-storage" aria-controls="cg-panel-storage" aria-selected="false" tabindex="-1">Storage</button>
+  <button class="tab" type="button" role="tab" id="cg-tab-tunnel" aria-controls="cg-panel-tunnel" aria-selected="false" tabindex="-1">Tunnel</button>
+</div>
+<div class="tab-panel" role="tabpanel" id="cg-panel-instance" aria-labelledby="cg-tab-instance">
   <div class="field-grid">
     <div class="field">
       <label class="field__label" for="cg-image">Image</label>
@@ -39,10 +47,7 @@ To check this, open the developer tools of your browser and look at the network 
     <span>Check for updates<span class="field__help">Solo reads a public file on GitHub to find new releases, and sends nothing about the instance. Clear this to make no outbound call.</span></span>
   </label>
 </div>
-
-## Sign-in
-
-<div class="generator">
+<div class="tab-panel" role="tabpanel" id="cg-panel-sign-in" aria-labelledby="cg-tab-sign-in">
   <div class="field-grid">
     <div class="field">
       <label class="field__label" for="cg-provider">Identity provider</label>
@@ -68,10 +73,7 @@ To check this, open the developer tools of your browser and look at the network 
     <span class="field__help" id="cg-client-id-help">From <a href="{{ '/admin/install/' | relative_url }}#1-register-an-oidc-client">step 1 of Install</a>. For Google, use the full ID that ends in <code>.apps.googleusercontent.com</code>.</span>
   </div>
 </div>
-
-## Passwords
-
-<div class="generator">
+<div class="tab-panel" role="tabpanel" id="cg-panel-passwords" aria-labelledby="cg-tab-passwords">
   <div class="field">
     <label class="field__label" for="cg-setup-username">Setup user name</label>
     <input class="input" id="cg-setup-username" type="text" value="setup" autocomplete="off" spellcheck="false" autocapitalize="off" aria-describedby="cg-setup-username-error">
@@ -94,12 +96,8 @@ To check this, open the developer tools of your browser and look at the network 
     <span class="field__help" id="cg-db-password-help">Only the two containers use it. You do not have to keep a copy.</span>
   </div>
 </div>
-
-## Storage
-
-Enter a directory on the host for each type of data. Leave a field empty to keep that data in a Docker volume.
-
-<div class="generator">
+<div class="tab-panel" role="tabpanel" id="cg-panel-storage" aria-labelledby="cg-tab-storage">
+  <p class="tab-panel__intro">Enter a directory on the host for each type of data. Leave a field empty to keep that data in a Docker volume.</p>
   <div class="field">
     <label class="field__label" for="cg-pgdata">Database</label>
     <input class="input" id="cg-pgdata" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="/mnt/tank/apps/solo/pgdata" aria-describedby="cg-pgdata-help cg-pgdata-error">
@@ -119,12 +117,8 @@ Enter a directory on the host for each type of data. Leave a field empty to keep
     <span class="field__error" id="cg-extensions-error" hidden></span>
   </div>
 </div>
-
-## Cloudflare Tunnel
-
-A tunnel publishes Solo at a public address with no open port on your router. Cloudflare gives the address its TLS certificate.
-
-<div class="generator">
+<div class="tab-panel" role="tabpanel" id="cg-panel-tunnel" aria-labelledby="cg-tab-tunnel">
+  <p class="tab-panel__intro">A Cloudflare Tunnel publishes Solo at a public address with no open port on your router. Cloudflare gives the address its TLS certificate.</p>
   <label class="check">
     <input type="checkbox" id="cg-tunnel">
     <span>Add a Cloudflare Tunnel</span>
@@ -146,6 +140,7 @@ A tunnel publishes Solo at a public address with no open port on your router. Cl
       <span>Also publish the host port<span class="field__help">Not necessary for the tunnel. Select this to also open Solo on your network at the host port.</span></span>
     </label>
   </div>
+</div>
 </div>
 
 ## Your Compose file

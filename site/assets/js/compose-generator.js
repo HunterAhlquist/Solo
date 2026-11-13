@@ -83,13 +83,15 @@
     }
 
     function readForm() {
+        // Each issue names the field to fix, so the list can lead to it.
         var issues = [];
-        function required(value, label, placeholder) {
+        function required(id, placeholder) {
+            var value = text(id);
             if (value) {
                 return value;
             }
 
-            issues.push(label);
+            issues.push(id);
             return placeholder;
         }
 
@@ -117,9 +119,9 @@
 
         if (provider === 'microsoft') {
             authority = 'https://login.microsoftonline.com/'
-                + required(text('cg-tenant'), 'The tenant ID', 'CHANGE_ME_TENANT_ID') + '/v2.0';
+                + required('cg-tenant', 'CHANGE_ME_TENANT_ID') + '/v2.0';
         } else if (provider === 'generic') {
-            authority = required(authority, 'The issuer address', 'CHANGE_ME_ISSUER_ADDRESS');
+            authority = required('cg-authority', 'CHANGE_ME_ISSUER_ADDRESS');
         } else {
             authority = 'https://accounts.google.com';
         }
@@ -128,9 +130,9 @@
         var themes = hostPath('cg-themes');
         var extensions = hostPath('cg-extensions');
 
-        if (document.querySelector('.generator [aria-invalid="true"]')) {
-            issues.push('The values marked in red above');
-        }
+        document.querySelectorAll('#cg-settings [aria-invalid="true"]').forEach(function (input) {
+            issues.push(input.id);
+        });
 
         return {
             image: image,
@@ -138,7 +140,7 @@
             updates: $('cg-updates').checked,
             provider: provider,
             authority: authority,
-            clientId: required(text('cg-client-id'), 'The client ID', 'CHANGE_ME_OIDC_CLIENT_ID'),
+            clientId: required('cg-client-id', 'CHANGE_ME_OIDC_CLIENT_ID'),
             setupUsername: text('cg-setup-username'),
             setupPassword: $('cg-setup-password').value,
             dbPassword: $('cg-db-password').value,
@@ -146,7 +148,7 @@
             themes: themes,
             extensions: extensions,
             tunnelToken: tunnel
-                ? required(text('cg-tunnel-token'), 'The tunnel token', 'CHANGE_ME_TUNNEL_TOKEN')
+                ? required('cg-tunnel-token', 'CHANGE_ME_TUNNEL_TOKEN')
                 : null,
             issues: issues
         };
@@ -271,9 +273,23 @@
 
         var list = $('cg-issue-list');
         list.replaceChildren();
-        form.issues.forEach(function (issue) {
+        tabs.forEach(function (tab) { delete tab.dataset.attention; });
+        form.issues.forEach(function (id) {
+            var tab = tabOf(id);
+            tab.dataset.attention = '';
+
+            var link = document.createElement('button');
+            link.type = 'button';
+            link.className = 'link-button';
+            link.textContent = document.querySelector('label[for="' + id + '"]').textContent
+                + ' (' + tab.textContent + ')';
+            link.addEventListener('click', function () {
+                selectTab(tab);
+                $(id).focus();
+            });
+
             var item = document.createElement('li');
-            item.textContent = issue;
+            item.appendChild(link);
             list.appendChild(item);
         });
         $('cg-issues').hidden = !form.issues.length;
@@ -291,6 +307,43 @@
         link.click();
         window.setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
     }
+
+    // Tabs: the WAI-ARIA pattern, with the arrow keys moving between them.
+    // Without this script every panel shows and the tab list stays hidden.
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('#cg-settings [role="tab"]'));
+
+    function tabOf(fieldId) {
+        var panel = $(fieldId).closest('[role="tabpanel"]');
+        return $(panel.getAttribute('aria-labelledby'));
+    }
+
+    function selectTab(selected) {
+        tabs.forEach(function (tab) {
+            var isSelected = tab === selected;
+            tab.setAttribute('aria-selected', String(isSelected));
+            tab.tabIndex = isSelected ? 0 : -1;
+            $(tab.getAttribute('aria-controls')).hidden = !isSelected;
+        });
+    }
+
+    tabs.forEach(function (tab, index) {
+        tab.addEventListener('click', function () { selectTab(tab); });
+        tab.addEventListener('keydown', function (event) {
+            var step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+            var target = event.key === 'Home' ? tabs[0]
+                : event.key === 'End' ? tabs[tabs.length - 1]
+                : step ? tabs[(index + step + tabs.length) % tabs.length]
+                : null;
+            if (target) {
+                event.preventDefault();
+                selectTab(target);
+                target.focus();
+            }
+        });
+    });
+
+    document.querySelector('#cg-settings [role="tablist"]').hidden = false;
+    selectTab(tabs[0]);
 
     $('cg-setup-password').value = newPassword();
     $('cg-db-password').value = newPassword();
