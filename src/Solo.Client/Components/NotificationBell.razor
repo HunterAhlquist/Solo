@@ -21,8 +21,9 @@
                 @if (inbox.UnreadCount > 0)
                 {
                     <MudMenuItem Icon="@Icons.Material.Filled.DoneAll" OnClick="@Store.MarkAllReadAsync">Mark all as read</MudMenuItem>
-                    <MudDivider />
                 }
+                <MudMenuItem Icon="@Icons.Material.Filled.ClearAll" OnClick="@Store.ClearAllAsync">Clear all</MudMenuItem>
+                <MudDivider />
                 @foreach (var item in inbox.Items)
                 {
                     <MudMenuItem @key="item.Id" OnClick="@(() => Store.OpenAsync(item))"

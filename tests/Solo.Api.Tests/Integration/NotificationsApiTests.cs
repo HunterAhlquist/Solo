@@ -249,6 +249,43 @@ public sealed class NotificationsApiTests(PostgresFixture postgres) : IAsyncLife
         Assert.Equal(0, (await InboxAsync(_bob)).UnreadCount);
     }
 
+    [SkippableFact]
+    public async Task Clearing_EmptiesTheInbox_WithoutRaisingTheSameRemindersAgain()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        var task = await _admin.PostJson<TaskDto>($"/api/boards/{_board.Id}/tasks",
+            new { name = "Ship demo", deadlineAt = new DateOnly(2027, 3, 31) });
+        await AssignAsync(task.Id, _bobId);
+        var sweeper = _factory.Services.GetRequiredService<DeadlineReminderService>();
+        await sweeper.SweepAsync(new DateTimeOffset(2027, 3, 17, 16, 0, 0, TimeSpan.Zero), default);
+        Assert.Equal(2, (await InboxAsync(_bob)).Items.Count);
+
+        await using var otherDevice = Connect("bob", "bob@example.com", "Bob");
+        var heard = new System.Collections.Concurrent.ConcurrentQueue<TopicMessage>();
+        otherDevice.On<TopicMessage>(nameof(IBoardClient.TopicMessage), heard.Enqueue);
+        await otherDevice.StartAsync();
+        await otherDevice.InvokeAsync(nameof(IBoardHubServer.SubscribeUserTopic), BoardHubConstants.NotificationsTopic);
+
+        // Clearing is Bob's own: the admin's clear leaves his inbox alone.
+        (await _admin.PostAsync("/api/notifications/clear", null)).EnsureSuccessStatusCode();
+        Assert.Equal(2, (await InboxAsync(_bob)).Items.Count);
+
+        (await _bob.PostAsync("/api/notifications/clear", null)).EnsureSuccessStatusCode();
+        await WaitUntilAsync(() => heard.Any(m => m.Kind == "Read"));
+        var inbox = await InboxAsync(_bob);
+        Assert.Empty(inbox.Items);
+        Assert.Equal(0, inbox.UnreadCount);
+
+        await sweeper.SweepAsync(new DateTimeOffset(2027, 3, 18, 16, 0, 0, TimeSpan.Zero), default);
+        Assert.Empty((await InboxAsync(_bob)).Items);
+
+        // Being handed the task again is still news.
+        await AssignAsync(task.Id);
+        await AssignAsync(task.Id, _bobId);
+        var again = Assert.Single((await InboxAsync(_bob)).Items);
+        Assert.Equal(NotificationKind.Assigned, again.Kind);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
