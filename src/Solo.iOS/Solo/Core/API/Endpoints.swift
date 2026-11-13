@@ -99,6 +99,8 @@ extension APIClient {
 
     // MARK: Epics
 
+    func epics(_ boardId: UUID) async throws -> [Epic] { try await get("api/boards/\(boardId.api)/epics") }
+
     func createEpic(_ boardId: UUID, name: String, groupId: UUID? = nil) async throws -> Epic {
         try await send("POST", "api/boards/\(boardId.api)/epics", body: CreateEpicRequest(groupId: groupId, name: name))
     }
