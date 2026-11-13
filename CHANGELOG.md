@@ -40,6 +40,7 @@ with its version in parentheses).
 - Home Screen widgets on iPhone and iPad (iOS 17 or later), in the Ahlquist Interactive theme, light or dark: **Assigned**, a seven-segment count of your new and in-progress tasks; **Assigned Work**, those tasks and what you recently finished as coloured squares in three columns, filled when a deadline is two days away or past; and **Upcoming Due**, your tasks due within a week, overdue ones first, each with a ring of the days left. Tapping one opens Your Tasks or the task. The pixel smile in each corner refreshes it, and each widget can show any of the app's instances.
 - The dot between a task's project and board on the Your Tasks page is a bullet in the tab's text colour. On iPhone and iPad it showed as a black square emoji.
 - In the iPhone and iPad app, audio and video load through the app's local origin with their length, which the system's media player needs, so Design Docs' explosion sound plays there as it does in a browser. They used to arrive without one and fail to load.
+- In the Glass theme on an iPhone, or an iPad in a narrow window, the task editor's header (its serial number and close button) sits below the status bar again, rather than under it where the editor couldn't be closed.
 - In the iPhone app, dragging is felt: a light tap when a card, an epic, a sub-task or a project is picked up, and a bump when it lands, back in its own place included. A drag that's cancelled plays nothing. An iPad has no haptics, so it plays nothing there, nor does a browser or the desktop app.
 
 ### Desktop
