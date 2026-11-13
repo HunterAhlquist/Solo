@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- A self-hosted instance is often a plain-http address on the LAN (an IP,
+	     a .local name, localhost). This allows those and nothing wider: an
+	     instance on the public internet still has to be https. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Solo connects to the instance you point it at, which may be on your local network.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a picture to use as an icon or to attach to a design doc.</string>
+	<!-- Where the instance's sign-in page returns to. The sign-in sheet claims
+	     this for the length of one sign-in; registering it here as well lets a
+	     cold return through the system still find the app. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.hunterahlquist.solo.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.hunterahlquist.solo</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
