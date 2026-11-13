@@ -59,9 +59,16 @@ struct AssignedCountView: View {
 
     var body: some View {
         WidgetFrame(title: "ASSIGNED", entry: entry) { summary in
-            SevenSegmentNumber(value: summary.unstarted + summary.inProgress, digitWidth: 42)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .padding(.bottom, 10)
+            let count = summary.unstarted + summary.inProgress
+            // The digits as large as fit beside the title's width and above the
+            // smile's line, so neither the plus over 99 nor a small widget on
+            // the smallest iPhone runs them into the smile.
+            GeometryReader { geometry in
+                let across = count > 99 ? SevenSegmentNumber.widthOverNinetyNine : SevenSegmentNumber.width
+                let digit = min(42, geometry.size.width / across, (geometry.size.height - 20) / 1.8)
+                SevenSegmentNumber(value: count, digitWidth: digit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
         }
         .widgetURL(entry.yourWork)
     }
@@ -79,7 +86,7 @@ struct MiniBoardView: View {
                 Column(title: "NEW", color: WidgetTheme.new, total: summary.unstarted,
                        filled: Self.squares(summary.open.filter { !$0.isStarted }, summary.unstarted, today))
                 Divider().overlay(WidgetTheme.divider)
-                Column(title: "PROG", color: WidgetTheme.started, total: summary.inProgress,
+                Column(title: "IN PROGRESS", color: WidgetTheme.started, total: summary.inProgress,
                        filled: Self.squares(summary.open.filter(\.isStarted), summary.inProgress, today))
                 Divider().overlay(WidgetTheme.divider)
                 Column(title: "DONE", color: WidgetTheme.done, total: summary.finished,
@@ -115,9 +122,20 @@ struct MiniBoardView: View {
 
         var body: some View {
             VStack(alignment: .leading, spacing: 5) {
-                Text(title)
+                // A header that has to shrink to fit (IN PROGRESS at the largest
+                // text sizes) keeps a full line's height, so the three rules
+                // under the headers stay level.
+                Text(verbatim: "Ag")
                     .font(WidgetTheme.mono(11, bold: true))
-                    .foregroundStyle(WidgetTheme.muted)
+                    .hidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .overlay(alignment: .leading) {
+                        Text(title)
+                            .font(WidgetTheme.mono(11, bold: true))
+                            .foregroundStyle(WidgetTheme.muted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                    }
                 Rectangle().fill(WidgetTheme.divider).frame(height: 1)
                 GeometryReader { geometry in
                     let perRow = max(1, Int((geometry.size.width + Self.gap) / (Self.side + Self.gap)))
@@ -161,7 +179,14 @@ struct MiniBoardView: View {
 
 struct UpcomingView: View {
     let entry: WorkEntry
-    static let maxRows = 5
+    static let maxRows = 7
+    /// One row, its divider included: a 10pt serial over a 14pt title. Fixed:
+    /// a widget caps its text well short of the largest sizes, while a
+    /// @ScaledMetric scales all the way and left room for two rows there.
+    static let rowHeight: CGFloat = 38
+    /// The bottom line, shared with the smile: the smile's visible pixels
+    /// (`PixelSmile` at scale 2) sit in the bottom 18pt of the content area.
+    static let footerHeight: CGFloat = 18
 
     var body: some View {
         WidgetFrame(title: "UPCOMING DUE", entry: entry) { summary in
@@ -173,17 +198,24 @@ struct UpcomingView: View {
                     .foregroundStyle(WidgetTheme.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             } else {
-                let shown = due.count > Self.maxRows ? Array(due.prefix(Self.maxRows - 1)) : due
-                VStack(alignment: .leading, spacing: 0) {
-                    Rectangle().fill(WidgetTheme.divider).frame(height: 1)
-                    ForEach(shown, id: \.0.id) { task, days in
-                        row(task, days)
+                // As many rows as the widget has room for, up to seven, above
+                // the smile's line, which "+N more" shares when some don't fit.
+                GeometryReader { geometry in
+                    let room = geometry.size.height - 1 - Self.footerHeight
+                    let fits = max(1, min(Self.maxRows, Int(room / Self.rowHeight)))
+                    let shown = Array(due.prefix(fits))
+                    VStack(alignment: .leading, spacing: 0) {
                         Rectangle().fill(WidgetTheme.divider).frame(height: 1)
+                        ForEach(shown, id: \.0.id) { task, days in
+                            row(task, days)
+                                .frame(height: Self.rowHeight - 1)
+                            Rectangle().fill(WidgetTheme.divider).frame(height: 1)
+                        }
+                        Spacer(minLength: 0)
+                        if due.count > shown.count {
+                            moreLink(due.count - shown.count)
+                        }
                     }
-                    if due.count > shown.count {
-                        moreLink(due.count - shown.count)
-                    }
-                    Spacer(minLength: 0)
                 }
             }
         }
@@ -204,7 +236,6 @@ struct UpcomingView: View {
             Spacer(minLength: 0)
             DaysRing(days: days)
         }
-        .padding(.vertical, 7)
         .padding(.trailing, 4)
         if let instance = entry.instance {
             Link(destination: WidgetLink.url(instance: instance, path: task.path)) { content }
@@ -218,7 +249,7 @@ struct UpcomingView: View {
         let label = Text("+\(count) more")
             .font(WidgetTheme.mono(12, bold: true))
             .foregroundStyle(WidgetTheme.primary)
-            .padding(.vertical, 8)
+            .frame(height: Self.footerHeight)
         if let url = entry.yourWork {
             Link(destination: url) { label }
         } else {

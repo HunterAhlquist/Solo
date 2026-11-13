@@ -118,13 +118,15 @@ still runs on 15) with three Home Screen widgets, drawn in the Ahlquist
 Interactive theme whatever theme the instance uses:
 
 - **Assigned** (small): how many of your tasks are new or in progress, on a
-  two-digit seven-segment display. Opens Your Tasks.
+  two-digit seven-segment display, which shows 99 with a plus over 99. Opens
+  Your Tasks.
 - **Assigned Work** (medium): those tasks as coloured squares under New,
   In progress and Done, filled when due within two days or overdue, soonest
   deadline first. Done counts what the Your Tasks board shows. Opens Your Tasks.
-- **Upcoming Due** (large): up to five tasks due within 7 days, overdue first,
-  each with a ring of the days left. A row opens its task; past five, the last
-  row is "+N more", which opens Your Tasks.
+- **Upcoming Due** (large): tasks due within 7 days, overdue first, each with
+  a ring of the days left: as many rows as fit, up to seven (six on the
+  smallest iPhones). A row opens its task; "+N more", on the smile's line,
+  opens Your Tasks.
 
 Each widget shows one instance, picked in its settings and the current one by
 default. All three read `GET api/users/me/work-summary`. The bottom-right
@@ -152,7 +154,10 @@ targets compile:
   session changes.
 
 Taps open the app with `solo-widget://open?instance=…&path=…`, built and
-checked in `Shared/WidgetLink.swift`. The scheme isn't registered, since
+checked in `Shared/WidgetLink.swift`. iOS delivers the link before the app's
+foreground notification, so opening one reopens the local proxy first
+(`open(widgetLink:)`); otherwise the page's first requests find its port closed
+and the client shows itself offline. The scheme isn't registered, since
 WidgetKit hands a widget's links to its own app directly. The app ignores an
 instance it doesn't have and any path that isn't relative to the instance,
 then opens the path in place, or switches instances first.
