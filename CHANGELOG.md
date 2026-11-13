@@ -16,7 +16,7 @@ with its version in parentheses).
 ### Server
 - A bell in the app bar collects your notifications: when someone assigns you to a task or epic, and when a task of yours is due, two weeks before its deadline and again one week before, at 9:00 your time. Clicking one opens the task.
 - With Solo open, a new notification also shows as a notification from your browser or the desktop app once you allow it. Choose which events notify you under **Notifications** in the account menu.
-- Email: a super admin sets up SMTP under **Email** in Admin settings, with a test email before saving. The password is encrypted at rest, or comes from `Email__Smtp__Password`. Email goes through a queue and is retried for about 2.5 hours before it shows as failed.
+- Email: a super admin sets up SMTP under **Email** in Admin settings, with a test email before saving. The password is encrypted at rest, or comes from `Email__Smtp__Password`. Email goes through a queue and is retried for about 2.5 hours before it shows as failed. Emails use the instance theme's colors and fonts, in light or dark to match the mail app.
 - Inviting someone to a project emails them a link to the instance, when email is on. Pending members get a resend button.
 - Each person gets an email digest: daily or weekly at the hour they pick, or as it happens, batched every 15 minutes. It lists overdue work, work due within 2 weeks with the earliest deadline first, and work recently assigned to them. Mail apps can unsubscribe in one click. People can now pick their time zone in **Notifications**.
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.

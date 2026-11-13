@@ -42,6 +42,8 @@ Solo encrypts the password before it stores it, and never shows it again. The fi
 
 To keep the password out of the database, set `Email__Smtp__Password` in the environment. See [Configuration](configuration.md). The field is then disabled.
 
+Emails use the colors and fonts of the instance [theme](#theme), in light or dark to match the mail app of the reader. A font that only the theme package has is replaced with a font that all devices have.
+
 Solo puts each email in a queue before it sends it. If the server refuses an email, Solo tries again after about 1 minute, 5 minutes, 30 minutes and 2 hours. After that, the email shows under **Couldn't send** with the error from the server.
 
 ## Audit retention
