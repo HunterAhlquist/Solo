@@ -1,10 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <EmbeddedResource Include="Email\mark.png" LogicalName="Solo.Api.Email.mark.png" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\Solo.Client\Solo.Client.csproj" />
     <ProjectReference Include="..\Solo.Data\Solo.Data.csproj" />
     <ProjectReference Include="..\Solo.Extensibility\Solo.Extensibility.csproj" />

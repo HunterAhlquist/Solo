@@ -249,7 +249,7 @@ public sealed class ProjectsController(
         var project = await db.Projects.AsNoTracking().Where(p => p.Id == projectId).Select(p => p.Name).FirstAsync(ct);
         var inviter = currentUser.User!.DisplayName ?? currentUser.User.Email;
         EmailOutbox.Queue(db, email, EmailTemplates.Invite(
-            await EmailOutbox.InstanceNameAsync(db, ct), inviter, project, email, EmailOutbox.BaseAddress(settings)), "invite");
+            await outbox.BrandAsync(db, ct), inviter, project, email, EmailOutbox.BaseAddress(settings)), "invite");
         return true;
     }
 

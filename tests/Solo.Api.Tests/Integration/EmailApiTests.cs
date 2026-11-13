@@ -208,8 +208,28 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(2, _factory.Transport.Sent.Count);
         var sent = _factory.Transport.Sent[0].Message;
         Assert.Equal("solo@example.com", sent.From.Mailboxes.Single().Address);
-        Assert.Contains(sent.BodyParts.OfType<MimePart>(), p => p.ContentId == EmailTemplates.MarkContentId);
+        Assert.DoesNotContain(sent.BodyParts.OfType<MimePart>(), p => p.ContentId is not null);
         Assert.All(Db(db => db.EmailMessages.ToList()), m => Assert.NotNull(m.SentAt));
+    }
+
+    [SkippableFact]
+    public async Task Emails_WearTheInstanceTheme_InLightAndDark()
+    {
+        postgres.SkipUnlessDockerAvailable();
+        await EnableEmailAsync();
+        var current = await _admin.GetJson<InstanceSettingsDto>("/api/settings");
+        await _admin.PutJson<InstanceSettingsDto>("/api/settings",
+            new { auditRetentionDays = current.AuditRetentionDays, themeId = "arcade", version = current.Version });
+
+        await _admin.PostJson<ProjectMemberDto>($"/api/projects/{_project.Id}/members", new { email = "dave@example.com", role = "Read" });
+
+        var html = Db(db => db.EmailMessages.Single()).HtmlBody;
+        Assert.Contains("<meta name=\"color-scheme\" content=\"light dark\">", html);
+        // Arcade's light primary inline, its dark primary in the dark block.
+        Assert.Contains("background:#b0186b;", html);
+        Assert.Contains("@media (prefers-color-scheme: dark)", html);
+        Assert.Contains(".e-button{background:#ff2e88 !important;", html);
+        Assert.Contains("Impact", html);
     }
 
     [SkippableFact]

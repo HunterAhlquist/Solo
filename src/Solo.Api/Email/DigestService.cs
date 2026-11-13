@@ -72,14 +72,14 @@ public sealed class DigestService(
             return;
         }
 
-        var instanceName = await EmailOutbox.InstanceNameAsync(db, ct);
+        var brand = await outbox.BrandAsync(db, ct);
         var people = await db.Users.AsNoTracking().Select(u => new { u.Id, u.Email }).ToListAsync(ct);
         var queued = false;
         foreach (var person in people)
         {
             try
             {
-                queued |= await DigestAsync(db, settings, instanceName, person.Id, person.Email, now, ct);
+                queued |= await DigestAsync(db, settings, brand, person.Id, person.Email, now, ct);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -111,7 +111,7 @@ public sealed class DigestService(
     }
 
     private async Task<bool> DigestAsync(
-        SoloDbContext db, EmailSettings settings, string instanceName, Guid userId, string email, DateTimeOffset now, CancellationToken ct)
+        SoloDbContext db, EmailSettings settings, EmailBrand brand, Guid userId, string email, DateTimeOffset now, CancellationToken ct)
     {
         var preferences = await db.NotificationPreferences.FirstOrDefaultAsync(p => p.UserId == userId, ct);
         if (preferences is null)
@@ -143,7 +143,7 @@ public sealed class DigestService(
                 .Where(n => n.Row.Kind == NotificationKind.Assigned ? preferences.EmailOnAssigned : preferences.EmailOnDeadline)
                 .Select(n => n.Note(root))
                 .ToList();
-            content = wanted.Count == 0 ? null : EmailTemplates.AsItHappens(instanceName, root, settingsLink, wanted);
+            content = wanted.Count == 0 ? null : EmailTemplates.AsItHappens(brand, root, settingsLink, wanted);
         }
         else
         {
@@ -154,7 +154,7 @@ public sealed class DigestService(
             var overdue = tasks.Where(t => t.DaysLeft < 0).ToList();
             var dueSoon = tasks.Where(t => t.DaysLeft >= 0).ToList();
             content = overdue.Count + dueSoon.Count + assigned.Count == 0 ? null
-                : EmailTemplates.Digest(instanceName, preferences.DigestFrequency == DigestFrequency.Weekly, today,
+                : EmailTemplates.Digest(brand, preferences.DigestFrequency == DigestFrequency.Weekly, today,
                     root, settingsLink, overdue, dueSoon, assigned);
 
             // Considered, sent or not: a quiet day doesn't get another look an hour later.

@@ -14,7 +14,7 @@ namespace Solo.Api.Controllers;
 [Route("api/settings/email")]
 [Authorize(Policy = AuthConstants.SuperAdminPolicy)]
 public sealed class EmailSettingsController(
-    SoloDbContext db, SmtpPassword password, IEmailTransport transport, CurrentUserAccessor currentUser,
+    SoloDbContext db, SmtpPassword password, IEmailTransport transport, EmailOutbox outbox, CurrentUserAccessor currentUser,
     ILogger<EmailSettingsController> logger) : ApiControllerBase
 {
     private const int RecentFailureCount = 10;
@@ -75,7 +75,7 @@ public sealed class EmailSettingsController(
         var trial = new EmailSettings { ProtectedPassword = stored.ProtectedPassword };
         Apply(trial, request);
         var to = currentUser.User!.Email;
-        var content = EmailTemplates.Test(await EmailOutbox.InstanceNameAsync(db, ct));
+        var content = EmailTemplates.Test(await outbox.BrandAsync(db, ct));
         try
         {
             // Same rule as saving: the stored password goes only to its own server.

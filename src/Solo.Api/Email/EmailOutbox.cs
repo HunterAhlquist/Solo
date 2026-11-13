@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MimeKit;
+using Solo.Api.Theming;
 using Solo.Data;
 using Solo.Data.Entities;
 using Solo.Shared.Dtos;
@@ -11,11 +12,9 @@ namespace Solo.Api.Email;
 /// <see cref="Wake"/> the sender, so an invite goes out in seconds rather than
 /// at the next poll.
 /// </summary>
-public sealed class EmailOutbox
+public sealed class EmailOutbox(ThemeCatalog themes)
 {
     private readonly SemaphoreSlim _wake = new(0, 1);
-
-    private static readonly byte[] Mark = LoadMark();
 
     public static void Queue(SoloDbContext db, string to, EmailContent content, string kind, string? unsubscribeUrl = null) =>
         db.EmailMessages.Add(new EmailMessage
@@ -55,9 +54,12 @@ public sealed class EmailOutbox
         return IsReady(settings) ? settings : null;
     }
 
-    public static async Task<string> InstanceNameAsync(SoloDbContext db, CancellationToken ct) =>
-        await db.InstanceSettings.AsNoTracking().Select(s => s.DisplayName).FirstOrDefaultAsync(ct)
-        ?? InstanceBranding.ProductName;
+    /// <summary>The instance's name and active theme, which every email is dressed in.</summary>
+    public async Task<EmailBrand> BrandAsync(SoloDbContext db, CancellationToken ct)
+    {
+        var instance = await db.InstanceSettings.AsNoTracking().Select(s => new { s.DisplayName, s.ThemeId }).FirstOrDefaultAsync(ct);
+        return new EmailBrand(instance?.DisplayName ?? InstanceBranding.ProductName, themes.Resolve(instance?.ThemeId).Manifest);
+    }
 
     /// <summary>The public address with one trailing slash, ready to have app paths appended.</summary>
     public static string BaseAddress(EmailSettings settings) => settings.PublicAddress!.TrimEnd('/') + "/";
@@ -79,16 +81,7 @@ public sealed class EmailOutbox
         }
 
         var body = new BodyBuilder { TextBody = text, HtmlBody = html };
-        body.LinkedResources.Add("mark.png", Mark, new ContentType("image", "png")).ContentId = EmailTemplates.MarkContentId;
         message.Body = body.ToMessageBody();
         return message;
-    }
-
-    private static byte[] LoadMark()
-    {
-        using var stream = typeof(EmailOutbox).Assembly.GetManifestResourceStream("Solo.Api.Email.mark.png")!;
-        using var copy = new MemoryStream();
-        stream.CopyTo(copy);
-        return copy.ToArray();
     }
 }
