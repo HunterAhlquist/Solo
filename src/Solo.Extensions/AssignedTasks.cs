@@ -25,14 +25,54 @@ public static class AssignedTasks
 
     public static readonly TimeSpan FinishedKeptFor = TimeSpan.FromDays(12);
 
-    public static async Task<AssignedTasksDto> QueryAsync(SoloDbContext db, Guid userId, CancellationToken ct)
+    /// <summary>The tasks both queries start from: the person's, on open boards of projects they're still in.</summary>
+    private static IQueryable<Solo.Data.Entities.TaskItem> Of(SoloDbContext db, Guid userId)
     {
         var finishedSince = DateTime.UtcNow - FinishedKeptFor;
-        var tasks = await db.Tasks.AsNoTracking()
+        return db.Tasks.AsNoTracking()
             .Where(t => t.Board!.IsOpen &&
                         t.Assignments.Any(a => a.UserId == userId) &&
                         t.Board.Project!.Members.Any(m => m.UserId == userId) &&
-                        (t.Status != TaskState.Finished || t.FinishedAt >= finishedSince))
+                        (t.Status != TaskState.Finished || t.FinishedAt >= finishedSince));
+    }
+
+    /// <summary>
+    /// The same work counted and listed for a glance (<c>GET api/users/me/work-summary</c>,
+    /// the iPhone and iPad widgets): how many are in each column as the Your
+    /// Tasks page shows them, and the open tasks by deadline.
+    /// </summary>
+    public static async Task<WorkSummaryDto> SummaryAsync(SoloDbContext db, Guid userId, CancellationToken ct)
+    {
+        var counts = await Of(db, userId)
+            .GroupBy(t => t.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        int Count(TaskState status) => counts.FirstOrDefault(c => c.Status == status)?.Count ?? 0;
+
+        var open = await Of(db, userId)
+            .Where(t => t.Status != TaskState.Finished)
+            .OrderBy(t => t.DeadlineAt == null)
+            .ThenBy(t => t.DeadlineAt)
+            .ThenBy(t => t.Rank)
+            .Take(WorkSummaryLimits.OpenListed)
+            .Select(t => new
+            {
+                t.Id, t.Name, t.Number, t.Status, t.DeadlineAt,
+                BoardAlias = t.Board!.Alias, ProjectAlias = t.Board.Project!.Alias,
+            })
+            .ToListAsync(ct);
+        return new WorkSummaryDto(
+            Count(TaskState.Unstarted),
+            Count(TaskState.InProgress),
+            Math.Min(Count(TaskState.Finished), WorkSummaryLimits.FinishedShown),
+            open.Select(t => new WorkSummaryTaskDto(
+                t.Id, Aliases.Serial(t.ProjectAlias, t.BoardAlias, t.Number), t.Name, t.Status, t.DeadlineAt,
+                $"projects/{t.ProjectAlias}/boards/{t.BoardAlias}?task={t.Number}")).ToList());
+    }
+
+    public static async Task<AssignedTasksDto> QueryAsync(SoloDbContext db, Guid userId, CancellationToken ct)
+    {
+        var tasks = await Of(db, userId)
             .Include(t => t.SubTasks)
             .Include(t => t.Assignments)
             .AsSplitQuery()

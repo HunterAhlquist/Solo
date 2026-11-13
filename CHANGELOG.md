@@ -50,6 +50,7 @@ with its version in parentheses).
 - Contract 1.16.0: the notification and email settings DTOs, `NotificationKind`, `DigestFrequency`, `SmtpSecurity`, `AuthConfigDto.EmailEnabled` and the core user topic `BoardHubConstants.NotificationsTopic`, used by core's own client and API.
 - Contract 1.17.0: `ISoloDeviceActions` delivers controls on the device itself as named actions, starting with `DeviceActions.StylusToolSwap` (`"action_stylus-tool-swap"`), the iPad app's Apple Pencil double-tap.
 - Contract 1.17.0: `extension.json` accepts `updateFeeds`, other release manifests (`id`, `label`, `url`) an administrator can switch the extension's updates to. `updates` stays the default and is what older hosts read.
+- Contract 1.17.0: `WorkSummaryDto` (`GET api/users/me/work-summary`), the signed-in person's work at a glance: counts per column as the Your Tasks page shows them, and the open tasks by deadline, for the iPhone and iPad widgets.
 
 ### Extensions
 
