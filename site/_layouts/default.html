@@ -8,6 +8,13 @@
   <meta name="color-scheme" content="dark light">
   <link rel="icon" href="{{ '/assets/favicon.svg' | relative_url }}" type="image/svg+xml">
   {%- comment -%}
+    A page can tighten what the browser lets it do. GitHub Pages sets no
+    headers, so a meta tag is the only way, and it only counts in the head.
+  {%- endcomment %}
+  {%- if page.csp %}
+  <meta http-equiv="Content-Security-Policy" content="{{ page.csp }}">
+  {%- endif %}
+  {%- comment -%}
     Before the stylesheet, so a reader who chose a scheme never sees the other
     one first. "Match system" stores nothing and leaves the choice to the media
     query in docs.css.
