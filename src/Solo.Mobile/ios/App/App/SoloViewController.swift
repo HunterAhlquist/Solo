@@ -171,6 +171,13 @@ class SoloViewController: CAPBridgeViewController, UIPencilInteractionDelegate, 
               SavedInstances.all.contains(where: { $0.url == link.instance })
         else { return }
         if link.instance == instance, let webView, let pageURL {
+            // iOS delivers a widget's link before the app's foreground
+            // notification, which is what reopens the proxy after the app went
+            // to the background: navigating first sent the page's requests to a
+            // closed port, and the client took the refusals for being offline.
+            // resume() waits until the proxy listens again, and does nothing
+            // when it already is.
+            Self.proxy?.resume()
             // Already open: navigate in place rather than reload the app.
             let target = URL(string: link.path, relativeTo: pageURL)?.absoluteString ?? pageURL.absoluteString
             let literal = (try? JSONSerialization.data(withJSONObject: target, options: .fragmentsAllowed))
