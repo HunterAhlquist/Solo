@@ -110,6 +110,12 @@ public sealed class NotificationStore(
         await RefreshAsync();
     }
 
+    public async Task ClearAllAsync()
+    {
+        await api.ClearNotificationsAsync();
+        await RefreshAsync();
+    }
+
     [JSInvokable]
     public async Task OpenFromNotification(string id)
     {
