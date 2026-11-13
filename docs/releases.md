@@ -14,7 +14,10 @@ git push origin v1.18.0
 
 A stable tag has to be on `main`; both workflows refuse one that isn't.
 `preview-v<version>` is the same train published as a prerelease and may sit on
-an unmerged branch — see [prereleases.md](prereleases.md).
+an unmerged branch — see [prereleases.md](prereleases.md). A preview tag also
+runs [release-ios.yml](../.github/workflows/release-ios.yml), which uploads the
+iPad and iPhone app to TestFlight for internal testers; it attaches nothing to
+the release, and stable tags don't run it yet (see `src/Solo.Mobile/README.md`).
 
 The SDK rides along only when the train moved it. A stable `v*` tag also runs
 [release-sdk.yml](../.github/workflows/release-sdk.yml), which compares the

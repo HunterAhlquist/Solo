@@ -16,6 +16,14 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
     public static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(10);
     public const string LoopbackPath = "/desktop-auth/callback";
 
+    /// <summary>
+    /// Where the iPad app's flow returns: a private-use scheme, because an iOS
+    /// app can't keep a loopback listener open while the sign-in sheet is in
+    /// front (RFC 8252 §7.1). Any app can claim the same scheme; PKCE keeps a
+    /// code it intercepts useless (§8.1).
+    /// </summary>
+    public const string AppCallbackUri = "com.hunterahlquist.solo:/auth/callback";
+
     /// <summary>Anonymous callers can open flows; cap them so they can't grow memory.</summary>
     private const int MaxPending = 100;
 
@@ -38,7 +46,8 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
         public required DateTimeOffset ExpiresAt { get; init; }
         public string? Description { get; init; }
         public required string CodeChallenge { get; init; }
-        public required int LoopbackPort { get; init; }
+        /// <summary>Null for the iPad app, which returns through <see cref="AppCallbackUri"/>.</summary>
+        public required int? LoopbackPort { get; init; }
 
         /// <summary>Which client opened the flow, for the per-client pending cap.</summary>
         public required string ClientKey { get; init; }
@@ -57,7 +66,7 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
     public DesktopAuthFlowDto? Start(
         string? description,
         string codeChallenge,
-        int loopbackPort,
+        int? loopbackPort,
         string clientKey)
     {
         lock (_lock)
@@ -124,13 +133,11 @@ public sealed class DesktopSignInFlows(TimeSpan? ttl = null)
             var authorizationCode = Base64Url(RandomNumberGenerator.GetBytes(32));
             flow.UserId = userId;
             flow.AuthorizationCodeHash = HashAuthorizationCode(authorizationCode);
-            var callback = new UriBuilder(
-                Uri.UriSchemeHttp,
-                "127.0.0.1",
-                flow.LoopbackPort,
-                LoopbackPath,
-                $"?code={authorizationCode}&state={state}");
-            completion = new DesktopAuthCompletionDto(callback.Uri.AbsoluteUri);
+            var query = $"code={authorizationCode}&state={state}";
+            var callback = flow.LoopbackPort is { } port
+                ? new UriBuilder(Uri.UriSchemeHttp, "127.0.0.1", port, LoopbackPath, "?" + query).Uri.AbsoluteUri
+                : $"{AppCallbackUri}?{query}";
+            completion = new DesktopAuthCompletionDto(callback);
             return true;
         }
     }

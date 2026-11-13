@@ -62,6 +62,11 @@
                     <ColorSchemeMenu />
                     <MudDivider />
                     <MudMenuItem Icon="@Icons.Material.Outlined.Notifications" OnClick="@ShowNotificationsAsync">Notifications</MudMenuItem>
+                    @if (_canOpenInstances)
+                    {
+                        @* The desktop and iPad apps keep their own list of instances. *@
+                        <MudMenuItem Icon="@Icons.Material.Filled.Dns" OnClick="@OpenInstancesAsync">Instances</MudMenuItem>
+                    }
                     <MudMenuItem Icon="@Icons.Material.Filled.Devices" OnClick="@ShowDevicesAsync">Signed-in devices</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="@SignOut">Sign out</MudMenuItem>
                 </MudMenu>
@@ -138,6 +143,7 @@
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
     private bool _expiryDialogOpen;
+    private bool _canOpenInstances;
     private bool _signingOut;
 
     protected override void OnInitialized()
@@ -234,6 +240,12 @@
             return;
         }
 
+        if (await Js.InvokeAsync<bool>("solo.desktop.canOpenInstances"))
+        {
+            _canOpenInstances = true;
+            StateHasChanged();
+        }
+
         if (AuthenticationStateTask is not null &&
             (await AuthenticationStateTask).User.Identity?.IsAuthenticated == true)
         {
@@ -269,6 +281,8 @@
 
     private async Task ShowNotificationsAsync() =>
         await Dialogs.ShowAsync<NotificationsDialog>("Notifications");
+    private async Task OpenInstancesAsync() =>
+        await Js.InvokeVoidAsync("solo.desktop.openInstances");
 
     private async Task ShowDevicesAsync() =>
         await Dialogs.ShowAsync<SignedInDevicesDialog>("Signed-in devices");

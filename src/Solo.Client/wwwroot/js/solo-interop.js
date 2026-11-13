@@ -45,10 +45,21 @@ window.solo = {
 
         // data-color-scheme also controls the cached overscroll/boot colors.
         // Keep it current after startup, including Match system changes.
-        setResolvedScheme: isDark => {
+        // theme-color is the app bar's colour: the iPad app paints its status
+        // bar with it (WKWebView.themeColor), and Safari its own bars.
+        setResolvedScheme: (isDark, appBarColor) => {
             const scheme = isDark ? 'dark' : 'light';
             document.documentElement.dataset.colorScheme = scheme;
             document.documentElement.style.colorScheme = scheme;
+            if (appBarColor) {
+                let meta = document.querySelector('meta[name="theme-color"]');
+                if (!meta) {
+                    meta = document.createElement('meta');
+                    meta.name = 'theme-color';
+                    document.head.append(meta);
+                }
+                meta.content = appBarColor;
+            }
         },
 
         // MudBlazor's helper does not consistently deliver Electron-driven
@@ -180,16 +191,26 @@ window.solo = {
     // the instance's own origin; the instance verifies the sign-in, mints a
     // long-lived Solo session (see `session`), and the shell delivers it to
     // `deliverSession` below — no provider credential ever reaches the app.
+    // The iPad app (Solo.Mobile) defines window.soloApp and signs in the same
+    // way, in the system's sign-in sheet.
     // -----------------------------------------------------------------------
     desktop: {
         _dotnet: null,
 
-        available: () => !!window.soloDesktop,
+        available: () => !!(window.soloDesktop || window.soloApp),
 
         // Registers the .NET receiver the shell's delivery notifies.
         init: dotnetRef => { window.solo.desktop._dotnet = dotnetRef; },
 
-        beginSignIn: () => window.soloDesktop.beginSignIn(),
+        // soloApp first: the login shim (dev-desktop.js) can leave a no-op
+        // soloDesktop behind on a device that used it.
+        beginSignIn: () => (window.soloApp ?? window.soloDesktop).beginSignIn(),
+
+        // The shell's own list of instances: the desktop app's settings window,
+        // or the iPad app's native sheet. Checked per member, so a shell built
+        // before it existed just doesn't offer it.
+        canOpenInstances: () => !!(window.soloApp?.openInstances || window.soloDesktop?.openInstances),
+        openInstances: () => (window.soloApp?.openInstances ? window.soloApp : window.soloDesktop).openInstances(),
 
         // The instance this shell is pointed at, or null on the web build where
         // the page origin already is the instance. Defensive about the bridge
@@ -272,6 +293,30 @@ window.solo = {
                 : at < 0 ? 0
                 : (at + step + items.length) % items.length;
             items[next].focus();
+        },
+    },
+
+    // -----------------------------------------------------------------------
+    // Device actions (ISoloDeviceActions). The iPad app turns an Apple Pencil
+    // double-tap into `solo:device-action` with a generic name such as
+    // `action_stylus-tool-swap` and dispatches it on the window from native
+    // code. Nothing here calls back into the app, so the page offers the shell
+    // a way in without being handed any native API of its own.
+    // -----------------------------------------------------------------------
+    deviceActions: {
+        _dotnet: null,
+
+        init(dotnetRef) {
+            const actions = window.solo.deviceActions;
+            if (!actions._dotnet) {
+                window.addEventListener('solo:device-action', e => {
+                    const id = e.detail?.id;
+                    if (typeof id === 'string') {
+                        actions._dotnet?.invokeMethodAsync('Dispatch', id);
+                    }
+                });
+            }
+            actions._dotnet = dotnetRef;
         },
     },
 

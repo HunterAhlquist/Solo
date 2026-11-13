@@ -6,6 +6,7 @@
 @inject NavigationManager Navigation
 @inject GoogleIdentityService Google
 @inject ThemeState Theme
+@inject IJSRuntime Js
 
 <PageTitle>Sign in · @Config.SiteName</PageTitle>
 
@@ -59,11 +60,22 @@
                 Continue with @Config.ProviderName
             </MudButton>
         }
+
+        @if (_canOpenInstances)
+        {
+            @* The desktop and iPad apps keep their own list of instances, and
+               the iPad app has no menu bar to reach it from. *@
+            <MudButton Variant="Variant.Text" Size="MudBlazor.Size.Small" StartIcon="@Icons.Material.Filled.Dns"
+                       OnClick="@OpenInstancesAsync">
+                Use another instance
+            </MudButton>
+        }
     </MudPaper>
 </MudContainer>
 
 @code {
     private bool _staySignedIn = true;
+    private bool _canOpenInstances;
 
     protected override async Task OnInitializedAsync()
     {
@@ -74,6 +86,18 @@
             _staySignedIn = await Google.GetRememberAsync();
         }
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && await Js.InvokeAsync<bool>("solo.desktop.canOpenInstances"))
+        {
+            _canOpenInstances = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenInstancesAsync() =>
+        await Js.InvokeVoidAsync("solo.desktop.openInstances");
 
     private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
 

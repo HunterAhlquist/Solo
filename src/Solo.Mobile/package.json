@@ -1,0 +1,16 @@
+{
+  "name": "solo-mobile",
+  "private": true,
+  "description": "Solo's iPad and iPhone app: a Capacitor shell around one Solo instance",
+  "scripts": {
+    "sync": "node scripts/stage-icons.mjs && cap sync ios",
+    "open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0"
+  }
+}
