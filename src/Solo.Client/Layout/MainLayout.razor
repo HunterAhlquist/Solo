@@ -295,7 +295,7 @@
         if(destination=="signin"&&await Js.InvokeAsync<bool?>("solo.offline.flush")==false){Snackbar.Add("Local saving did not finish. Keep the app open and export your work before signing out.",Severity.Warning);return;}
         Session.Clear();
 
-        if (Config.IsGoogle)
+        if (Config.UsesSessionSignIn)
         {
             await Google.SignOutAsync();
             // forceLoad: a client-side nav would keep the running app — and its cached

@@ -22,7 +22,9 @@ namespace Solo.Api.Updates;
 /// name its own feed in <c>extension.json</c>. The host's manifest wins for a
 /// package it describes, because those two versions are released together and
 /// an entry in the host feed is the one that was tested against this
-/// server.</para>
+/// server — unless an administrator switched the extension to one of the other
+/// feeds its package declares (<c>updateFeeds</c>), in which case that feed is
+/// read alone.</para>
 /// </remarks>
 public sealed class UpdateChecker(
     ReleaseFeedClient feeds,
@@ -39,7 +41,7 @@ public sealed class UpdateChecker(
             return new UpdateStatusDto(Enabled: false, null, null, null, []);
         }
 
-        var host = await feeds.GetAsync(_options.ManifestUrl, force, ct);
+        var host = await feeds.GetAsync(_options.ManifestUrlFor(SoloVersion.Server), force, ct);
         var server = host.Feed is null ? null : ServerUpdate(host.Feed);
         var extensionUpdates = await ExtensionUpdatesAsync(host, force, ct);
 
@@ -83,22 +85,8 @@ public sealed class UpdateChecker(
 
         foreach (var package in extensions.Packages)
         {
-            var entry = Entry(host.Feed, package.Id);
-
-            // Only ask the package's own feed when the host's doesn't describe
-            // it. A first-party extension therefore costs no extra request.
-            if (entry is null && !string.IsNullOrWhiteSpace(package.Manifest.Updates))
-            {
-                var own = await feeds.GetAsync(package.Manifest.Updates!, force, ct);
-                if (own.Error is not null)
-                {
-                    logger.LogInformation(
-                        "Update feed for extension {Id} could not be read: {Error}",
-                        package.Id, own.Error);
-                }
-
-                entry = Entry(own.Feed, package.Id);
-            }
+            var entry = await EntryForAsync(
+                feeds, host, package, extensions.SelectedUpdateFeed(package), force, logger, ct);
 
             if (entry?.Version is null || !SemanticVersion.IsNewer(entry.Version, package.Manifest.Version))
             {
@@ -127,6 +115,45 @@ public sealed class UpdateChecker(
         }
 
         return updates;
+    }
+
+    /// <summary>
+    /// The entry describing what <paramref name="package"/> could update to.
+    /// A <paramref name="selected"/> feed is read alone; otherwise the host
+    /// manifest, then the package's own default feed.
+    /// </summary>
+    /// <param name="host">The host manifest, or null when the caller knows it is not needed.</param>
+    internal static async Task<ReleaseFeedExtension?> EntryForAsync(
+        ReleaseFeedClient feeds,
+        FeedResult? host,
+        ExtensionPackage package,
+        ExtensionUpdateFeed? selected,
+        bool force,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        var url = selected?.Url;
+        if (url is null)
+        {
+            // Only ask the package's own feed when the host's doesn't describe
+            // it. A first-party extension therefore costs no extra request.
+            var entry = Entry(host?.Feed, package.Id);
+            if (entry is not null || string.IsNullOrWhiteSpace(package.Manifest.Updates))
+            {
+                return entry;
+            }
+
+            url = package.Manifest.Updates;
+        }
+
+        var own = await feeds.GetAsync(url, force, ct);
+        if (own.Error is not null)
+        {
+            logger.LogInformation(
+                "Update feed for extension {Id} could not be read: {Error}", package.Id, own.Error);
+        }
+
+        return Entry(own.Feed, package.Id);
     }
 
     private static ReleaseFeedExtension? Entry(ReleaseFeed? feed, string id) =>

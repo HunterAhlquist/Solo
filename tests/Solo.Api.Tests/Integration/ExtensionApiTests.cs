@@ -305,6 +305,69 @@ public sealed class ExtensionApiTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.True(response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized);
     }
 
+    private static HttpRequestMessage PickFeed(string? feedId) =>
+        new(HttpMethod.Put, "/api/extensions/fixture/update-feed")
+        {
+            Content = JsonContent.Create(new { feedId }, options: TestClients.Json),
+        };
+
+    /// <summary>
+    /// Kept on the registration, so the pick outlives the restart an update
+    /// itself ends in — the moment it matters most.
+    /// </summary>
+    [SkippableFact]
+    public async Task UpdateFeed_PickIsStored_AndSurvivesARestart()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var before = await _admin.GetJson<ExtensionAdminDto>("/api/extensions/admin");
+        var fixture = Assert.Single(before.Extensions, e => e.ExtensionId == "fixture");
+        Assert.Null(fixture.UpdateFeed);
+        Assert.Equal([new ExtensionUpdateFeedDto("beta", "Beta")], fixture.UpdateFeeds);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.SendAsync(PickFeed("beta"))).StatusCode);
+
+        _factory.Dispose();
+        _factory = new SoloApiFactory(_connectionString, [SoloApiFactory.FixtureDirectory]);
+        _admin = _factory.As("admin", "admin@example.com", "Admin");
+
+        var after = await _admin.GetJson<ExtensionAdminDto>("/api/extensions/admin");
+        Assert.Equal("beta", Assert.Single(after.Extensions, e => e.ExtensionId == "fixture").UpdateFeed);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _admin.SendAsync(PickFeed(null))).StatusCode);
+        var reset = await _admin.GetJson<ExtensionAdminDto>("/api/extensions/admin");
+        Assert.Null(Assert.Single(reset.Extensions, e => e.ExtensionId == "fixture").UpdateFeed);
+    }
+
+    /// <summary>
+    /// Only a feed the package names. The URL is never taken from the request,
+    /// so this endpoint cannot aim the instance's outbound fetches anywhere.
+    /// </summary>
+    [SkippableFact]
+    public async Task UpdateFeed_RefusesAFeedThePackageDoesNotDeclare()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _admin.SendAsync(PickFeed("nightly"))).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await _admin.SendAsync(new HttpRequestMessage(HttpMethod.Put, "/api/extensions/nope/update-feed")
+            {
+                Content = JsonContent.Create(new { feedId = (string?)null }, options: TestClients.Json),
+            })).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task UpdateFeed_IsSuperAdminOnly()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var stranger = _factory.As("stranger", "stranger@example.com");
+        var response = await stranger.SendAsync(PickFeed("beta"));
+
+        Assert.True(response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized);
+    }
+
     // -----------------------------------------------------------------------
     // Hooks
     // -----------------------------------------------------------------------

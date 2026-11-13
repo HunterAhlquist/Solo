@@ -7,6 +7,10 @@ function identityForVersion(version) {
         preview,
         productName: preview ? 'Solo (Preview)' : 'Solo',
         appId: preview ? 'com.solo.desktop.preview' : 'com.solo.desktop',
+        // The Mac App Store build's, shared with the iOS app so the two are one
+        // App Store Connect app (universal purchase). The downloaded app keeps
+        // com.solo.desktop: changing it would orphan its settings and updates.
+        storeAppId: preview ? 'com.hunterahlquist.solo.preview' : 'com.hunterahlquist.solo',
         executableName: preview ? 'solo-preview' : 'solo-desktop',
         iconSource: preview ? 'Solo Preview.icon' : 'Solo.icon',
         // The installer filenames. Deliberately free of spaces and brackets:

@@ -25,7 +25,9 @@ the web view's storage for its origin, so switching back finds it signed in.
 
 `SOLO_INSTANCE_URL` at build time is optional. When set, that instance joins
 the list the first time a build carries it, and opens. Without it, and with
-nothing saved yet, the app opens on the list.
+nothing saved yet, the app opens on the list as its setup page: "Add your first
+instance", with a link to the install guide, and it can't be dismissed until an
+instance is open. The desktop app's Settings window does the same on first run.
 
 ## Apple Pencil double-tap
 
@@ -51,20 +53,23 @@ platform's control later.
 
 ## Sign-in
 
-Google won't run its sign-in inside an app's web view, so the app signs in the
-way the desktop app does. The page defines nothing native but one fixed
+Whatever the instance's provider, the app signs in the way the desktop app
+does: Google won't run its sign-in inside an app's web view, and the web view
+opens any other provider's host in Safari. The page defines nothing native but one fixed
 message: the sign-in button posts `request_sign-in` to `window.soloApp`, and
 `App/App/AppSignIn.swift` takes it from there:
 
 1. `POST api/auth/desktop/start-app` with a PKCE challenge opens a flow.
-2. The instance's `/desktop-auth` page runs Google's sign-in in the system
+2. The instance's `/desktop-auth` page runs the provider's sign-in (Google's,
+   or the code flow against a Microsoft or generic OIDC provider) in the system
    sign-in sheet (`ASWebAuthenticationSession`) and returns to
    `com.hunterahlquist.solo:/auth/callback` with a one-time code.
 3. `POST api/auth/desktop/redeem` trades the code and the verifier for a
    `solo_` session, which the page stores like the desktop app's.
 
-Google only runs on origins registered for the instance's client id, so this
-needs the instance's real HTTPS address. A plain-HTTP address on the local
+Providers only return to addresses registered for the instance's client id
+(for Microsoft and generic providers, `https://<instance>/desktop-auth`), so
+this needs the instance's real HTTPS address. A plain-HTTP address on the local
 network can't sign in this way; see [Testing against a local
 instance](#testing-against-a-local-instance).
 
@@ -161,6 +166,14 @@ the instance has to run a server with the app's sign-in (`start-app`).
 
 Without the secrets, the run stops at a notice. A Design Docs package preview
 tag (`…-design-docs-<label>.N`) doesn't upload the app.
+
+Nor does a tag that leaves the app as testers already have it, which is most
+preview tags: the app loads its instance, so a server or client change doesn't
+reach it. `build/testflight-gate.sh` diffs the app's inputs against the commit
+of the last run whose Upload step succeeded and, when nothing changed, ends the
+run with a notice in its summary. The Mac TestFlight upload uses the same gate,
+with the client among its inputs, since the desktop app bundles it. A manual
+run always uploads, and so does any run where the gate can't tell.
 
 ## Testing against a local instance
 

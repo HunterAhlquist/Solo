@@ -182,21 +182,15 @@ public sealed class ExtensionUpdateInstaller(
         }
     }
 
-    /// <summary>The feed entry to install, host manifest first — see <see cref="UpdateChecker"/>.</summary>
+    /// <summary>The feed entry to install, resolved as <see cref="UpdateChecker"/> resolves the one it offers.</summary>
     private async Task<ReleaseFeedExtension?> ResolveAsync(ExtensionPackage package, CancellationToken ct)
     {
-        var host = await feeds.GetAsync(_options.ManifestUrl, force: false, ct);
-        var entry = host.Feed?.Extensions.FirstOrDefault(e =>
-            string.Equals(e.Id, package.Id, StringComparison.OrdinalIgnoreCase));
+        var selected = extensions.SelectedUpdateFeed(package);
+        var host = selected is null
+            ? await feeds.GetAsync(_options.ManifestUrlFor(SoloVersion.Server), force: false, ct)
+            : null;
 
-        if (entry is not null || string.IsNullOrWhiteSpace(package.Manifest.Updates))
-        {
-            return entry;
-        }
-
-        var own = await feeds.GetAsync(package.Manifest.Updates!, force: false, ct);
-        return own.Feed?.Extensions.FirstOrDefault(e =>
-            string.Equals(e.Id, package.Id, StringComparison.OrdinalIgnoreCase));
+        return await UpdateChecker.EntryForAsync(feeds, host, package, selected, force: false, logger, ct);
     }
 
     /// <summary>

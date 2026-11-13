@@ -18,6 +18,8 @@ an unmerged branch — see [prereleases.md](prereleases.md). A preview tag also
 runs [release-ios.yml](../.github/workflows/release-ios.yml), which uploads the
 iPad and iPhone app to TestFlight for internal testers; it attaches nothing to
 the release, and stable tags don't run it yet (see `src/Solo.Mobile/README.md`).
+Who can install those builds, and what Apple's reviewer needs before anything
+goes further, is in [app-store-review.md](app-store-review.md).
 
 The SDK rides along only when the train moved it. A stable `v*` tag also runs
 [release-sdk.yml](../.github/workflows/release-sdk.yml), which compares the

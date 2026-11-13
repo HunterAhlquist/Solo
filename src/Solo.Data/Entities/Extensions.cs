@@ -39,6 +39,13 @@ public class ExtensionRegistration
 
     /// <summary>Why the extension is disabled, when it is. Surfaced in Admin settings.</summary>
     public string? FailureReason { get; set; }
+
+    /// <summary>
+    /// Which of the package's <c>updateFeeds</c> an administrator switched it
+    /// to, or null for the default. Kept as the feed's id rather than its URL so
+    /// a newer package can move the feed without losing the choice.
+    /// </summary>
+    public string? UpdateFeed { get; set; }
 }
 
 /// <summary>

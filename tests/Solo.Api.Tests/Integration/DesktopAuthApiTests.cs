@@ -380,6 +380,56 @@ public sealed class DesktopAuthApiTests(PostgresFixture postgres) : IAsyncLifeti
     }
 
     /// <summary>
+    /// A Microsoft or generic provider returns to the page with the code in the
+    /// query, beside the flow's state. The page trades the code itself; the
+    /// server serves it the same static page, never echoing the code, and
+    /// only while the flow is live.
+    /// </summary>
+    [SkippableFact]
+    public async Task SignInPage_ServesACodeFlowProvidersReturn()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var flow = await StartFlowAsync();
+        const string code = "provider-code-0123456789";
+        var back = await _anon.GetAsync(
+            $"/desktop-auth?code={code}&state={flow.State}&session_state=abc");
+        Assert.Equal(HttpStatusCode.OK, back.StatusCode);
+        Assert.Equal("no-store", back.Headers.CacheControl?.ToString());
+        var page = await back.Content.ReadAsStringAsync();
+        Assert.Contains("Continue only if you just started sign-in", page);
+        Assert.DoesNotContain(code, page);
+
+        // A refusal comes back the same way and gets the same page.
+        var refused = await _anon.GetAsync($"/desktop-auth?error=access_denied&state={flow.State}");
+        Assert.Equal(HttpStatusCode.OK, refused.StatusCode);
+
+        var stale = await _anon.GetAsync($"/desktop-auth?code={code}&state=never-minted");
+        Assert.Equal(HttpStatusCode.NotFound, stale.StatusCode);
+    }
+
+    /// <summary>
+    /// The page runs the code flow for any provider but Google, and its copy
+    /// names no provider until it knows which one it is.
+    /// </summary>
+    [SkippableFact]
+    public async Task SignInPage_RunsTheCodeFlowForOtherProviders()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var script = await _anon.GetStringAsync("/desktop-auth.js");
+        Assert.Contains("response_type: 'code'", script);
+        Assert.Contains("code_challenge_method: 'S256'", script);
+        Assert.Contains("grant_type: 'authorization_code'", script);
+        Assert.Contains("nonce: state", script);
+        Assert.DoesNotContain("not configured for Google sign-in", script);
+
+        var flow = await StartFlowAsync();
+        var page = await _anon.GetStringAsync($"/desktop-auth?state={flow.State}");
+        Assert.DoesNotContain("Google", page[page.IndexOf("<body", StringComparison.Ordinal)..]);
+    }
+
+    /// <summary>
     /// The page is nothing but its script — an inline one is dropped by the
     /// instance CSP, which would render the heading and no sign-in button.
     /// </summary>

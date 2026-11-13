@@ -87,6 +87,16 @@ try {
     assert.equal(as('linux', { appImage: '/tmp/Solo.AppImage' }), null,
         'a packaged stable AppImage must be able to check');
 
+    // The Mac App Store build: Electron's MAS build has no autoUpdater, and the
+    // store or TestFlight updates it. Checked first, so a stable store build
+    // with a stray app-update.yml still skips.
+    Object.defineProperty(process, 'mas', { value: true, configurable: true });
+    try {
+        assert.match(as('darwin'), /App Store or TestFlight/);
+    } finally {
+        delete process.mas;
+    }
+
     // A development run has no app-update.yml to read.
     assert.match(as('darwin', { packaged: false }), /installed build/);
 
@@ -182,8 +192,18 @@ try {
         'a preview build must get no update config');
     rmSync(previewOut, { recursive: true, force: true });
 
+    // The store build gets no feed either, whatever its channel.
+    const storeOut = mkdtempSync(path.join(os.tmpdir(), 'solo-afterpack-mas-'));
+    writeUpdateConfig(fakeContext('mas', storeOut, [{ provider: 'generic', url: 'https://example.test/' }]));
+    assert.equal(
+        existsSync(path.join(resourcesDirFor('darwin', storeOut), 'app-update.yml')) ||
+            existsSync(path.join(resourcesDirFor('win32', storeOut), 'app-update.yml')),
+        false,
+        'a Mac App Store build must get no update config');
+    rmSync(storeOut, { recursive: true, force: true });
+
     console.log(
-        'PASS: update checks are skipped exactly for development runs, preview builds, ' +
+        'PASS: update checks are skipped exactly for Mac App Store builds, development runs, preview builds, ' +
         'non-AppImage Linux and builds with no app-update.yml — and afterPack writes ' +
         'that file for every platform, which the --dir/--prepackaged mac flow depends on.');
 } finally {

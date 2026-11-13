@@ -272,11 +272,24 @@ public class NavMenuTests : ComponentTestBase
     }
 
     [Fact]
-    public void Add_board_is_hidden_from_everyone_else_even_an_owner()
+    public void Add_board_is_offered_to_an_owner_only_in_the_project_they_own()
     {
-        // The API reserves board creation for the super admin; don't offer a
-        // button that will 403.
+        // "Solo" is owned, "Side quest" isn't: the button follows the API's
+        // owner policy per project, so neither one offers a click that 403s.
         Route(isSuperAdmin: false, role: ProjectRole.ReadWrite, isOwner: true);
+        var nav = RenderNav();
+
+        Expand(nav, "Solo");
+        Expand(nav, "Side quest");
+
+        nav.WaitForAssertion(() => Assert.Contains(Links(nav), l => l.Contains("Main")));
+        Assert.Single(Links(nav), l => l.Contains("Add board"));
+    }
+
+    [Fact]
+    public void Add_board_is_hidden_from_a_writer_who_is_not_an_owner()
+    {
+        Route(isSuperAdmin: false, role: ProjectRole.ReadWrite);
         var nav = RenderNav();
 
         Expand(nav, "Solo");

@@ -4,11 +4,13 @@ using System.Net.Sockets;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Solo.Api;
 using Solo.Api.Auth;
 using Solo.Api.Controllers;
@@ -103,6 +105,18 @@ if (!string.IsNullOrEmpty(authority))
         // token there lands in proxy access logs. The hub URL carries a ticket.
     });
 }
+
+// The CSP completes itself from the provider's discovery document, read
+// through the bearer scheme's configuration manager (see ContentSecurityPolicies).
+builder.Services.AddSingleton(services => new ContentSecurityPolicies(
+    builder.Configuration["Auth:Provider"],
+    authority,
+    string.IsNullOrEmpty(authority)
+        ? null
+        : ct => services.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
+            .Get(AuthConstants.BearerScheme).ConfigurationManager!.GetConfigurationAsync(ct),
+    services.GetRequiredService<TimeProvider>(),
+    services.GetRequiredService<ILogger<ContentSecurityPolicies>>()));
 
 builder.Services.AddSingleton<SetupAccount>();
 builder.Services.AddScoped<UserProvisioningService>();

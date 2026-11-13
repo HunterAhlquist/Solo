@@ -36,7 +36,30 @@ module.exports = {
         extendInfo: {
             ...build.mac.extendInfo,
             NSLocalNetworkUsageDescription: 'Solo connects to the Solo instances you add on your local network to sign in and sync your projects.',
+            // Only HTTPS, which is exempt, so App Store Connect needn't ask
+            // about export compliance for every upload. electron-builder reads
+            // extendInfo from `mac` alone, so it's here rather than under `mas`,
+            // and the downloaded app carries it unread.
+            ITSAppUsesNonExemptEncryption: false,
         },
+    },
+    // The Mac App Store build (`--mac mas`, release-mac-store.yml), which Apple
+    // treats as another app: the store bundle id, the App Sandbox instead of the
+    // hardened runtime, and updates from the App Store or TestFlight rather than
+    // electron-updater, which Electron's MAS build doesn't include (process.mas
+    // turns it off in main/updater.js). Everything else comes from `mac`.
+    mas: {
+        appId: identity.storeAppId,
+        // Inherited from `mac` otherwise, and the sandbox is what the store wants.
+        hardenedRuntime: false,
+        entitlements: 'build/entitlements.mas.plist',
+        entitlementsInherit: 'build/entitlements.mas.inherit.plist',
+        // From the workflow, which writes the profile out of a secret.
+        provisioningProfile: process.env.SOLO_MAS_PROVISIONING_PROFILE || null,
+        // App Store Connect takes three numbers for the version and wants the
+        // build number to grow with every upload of it.
+        bundleShortVersion: version.split('-')[0],
+        bundleVersion: process.env.SOLO_MAS_BUILD_NUMBER || null,
     },
     // One file per platform, so the arch is redundant in a Windows name.
     nsis: { ...build.nsis, artifactName: `${identity.artifactBase}-\${version}-setup.\${ext}` },

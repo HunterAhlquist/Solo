@@ -313,7 +313,7 @@ async function localRequest(active,method,path,json=null,bytes=null,contentType=
             return {handled:true,value:{canManage:value.canManage,vaults:value.vaults.filter(v=>!ids.has(v.id)).concat(local.filter(v=>!v.view.deleted).map(v=>v.view.tree.vault))}};
         }
         if(method==='POST'&&vaults.some(v=>v.projectId===projectId&&v.ready)){
-            if(!vaults.some(v=>v.projectId===projectId&&v.base.canManage))throw new Error('Only an administrator can create a design doc.');
+            if(!vaults.some(v=>v.projectId===projectId&&v.base.canManage))throw new Error('Only a project owner can create a design doc.');
             const id=crypto.randomUUID(),base=empty();base.tree.vault={id,name:body.name,isClosed:false,closedAt:null,version:0};base.canManage=true;
             const template=vaults.find(v=>v.projectId===projectId);base.canWrite=base.projectWrite=template.base.projectWrite??template.base.canWrite;const vault={id,projectId,projectAlias:template.projectAlias,base,ready:true,list:template.list,color:template.color,colors:template.colors};await active.store.put('vaults',vault);
             await active.enqueue(vault,{entity:'vault',action:'create',targetId:id,name:body.name});return {handled:true,value:base.tree.vault};
@@ -343,7 +343,7 @@ async function localRequest(active,method,path,json=null,bytes=null,contentType=
         const note=vault.base.tree.notes.find(n=>n.id===id);if(note){note.markdown=body.markdown;note.headings=body.headings;}vault.derived??={};vault.derived[id]={markdown:body.markdown,headings:body.headings};await active.store.put('vaults',vault);
         return {handled:true,value:null};
     }
-    if(!kind&&!view.canManage)throw new Error('Only an administrator can manage a design doc.');
+    if(!kind&&!view.canManage)throw new Error('Only a project owner can manage a design doc.');
     if(kind&&(!view.canWrite||vault.unavailable||tree.vault.isClosed))throw new Error('This vault is read-only. Your local changes remain available for export.');
     if(kind==='import'&&id==='notes'&&bytes){
         const imported=JSON.parse(new TextDecoder().decode(bytes)).notes;const root=active.root(vault);

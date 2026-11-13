@@ -1,3 +1,5 @@
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+
 namespace Solo.Api;
 
 /// <summary>
@@ -25,21 +27,27 @@ public static class SecurityHeaders
     /// credential and display an object URL; only script already running on
     /// the page can mint that URL.</para>
     ///
-    /// <para><c>connect-src</c> is <c>'self'</c> only. The SignalR hub's
-    /// WebSocket is same-origin, and CSP Level 3 resolves that through
-    /// <c>'self'</c> — it matches the ws/wss form of the page's own origin.
-    /// Bare <c>ws:</c>/<c>wss:</c> scheme sources are deliberately avoided:
-    /// they permit a socket to <em>any</em> host, which would hand a script
-    /// that slipped past the other controls a ready exfiltration channel.</para>
+    /// <para><c>connect-src</c> is <c>'self'</c> and Google, plus the
+    /// instance's own identity provider when that isn't Google (see
+    /// <see cref="ProviderConnectSources"/>). The SignalR hub's WebSocket is
+    /// same-origin, and CSP Level 3 resolves that through <c>'self'</c> — it
+    /// matches the ws/wss form of the page's own origin. Bare
+    /// <c>ws:</c>/<c>wss:</c> scheme sources are deliberately avoided: they
+    /// permit a socket to <em>any</em> host, which would hand a script that
+    /// slipped past the other controls a ready exfiltration channel.</para>
     /// </summary>
-    private const string ContentSecurityPolicy =
+    private static string ContentSecurityPolicy(
+        IReadOnlyCollection<string> providerConnect, IReadOnlyCollection<string> providerFrames) =>
         "default-src 'self'; " +
         "script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com; " +
         "style-src 'self' 'unsafe-inline' https://accounts.google.com; " +
         "img-src 'self' data: https: blob:; " +
         "font-src 'self' data:; " +
-        "connect-src 'self' https://accounts.google.com; " +
-        "frame-src https://accounts.google.com; " +
+        $"connect-src 'self' https://accounts.google.com{string.Concat(providerConnect.Select(o => " " + o))}; " +
+        // 'self' with a provider's origins: its renewal iframe comes back to
+        // our own callback page, and the embedder's frame-src governs that
+        // redirect as well as the frame's first load.
+        $"frame-src https://accounts.google.com{(providerFrames.Count > 0 ? " 'self'" : "")}{string.Concat(providerFrames.Select(o => " " + o))}; " +
         "worker-src 'self' blob:; " +
         // Nothing here is meant to be framed, submit off-site, or rebase its
         // relative URLs — an injected <base> would repoint every asset.
@@ -62,10 +70,103 @@ public static class SecurityHeaders
     /// </summary>
     public const string IsolationPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
-    public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app) =>
-        app.Use((context, next) =>
+    /// <summary>
+    /// The origins a code + PKCE sign-in calls from the browser, for a provider
+    /// other than Google: its discovery document (at the authority), and the
+    /// token, userinfo and key endpoints the document names. The web client's
+    /// OIDC library calls all of them, the apps' <c>/desktop-auth</c> page the
+    /// first two; without them in <c>connect-src</c> the sign-in ends in a
+    /// network error. They needn't share an origin — Entra ID's userinfo
+    /// endpoint is on graph.microsoft.com — so the endpoints come from the
+    /// document rather than from the authority.
+    /// </summary>
+    /// <remarks>
+    /// Empty for Google, whose sign-in never calls a token endpoint. Anything
+    /// that isn't a plain https origin is left out: these go into a header, so
+    /// each is rebuilt from a parsed URI rather than passed through. Plain http
+    /// is allowed for a loopback host only, for a provider run locally.
+    /// </remarks>
+    public static IReadOnlyCollection<string> ProviderConnectSources(
+        string? provider, string? authority, OpenIdConnectConfiguration? metadata = null) =>
+        ProviderOrigins(provider, authority, metadata?.TokenEndpoint, metadata?.UserInfoEndpoint, metadata?.JwksUri);
+
+    /// <summary>
+    /// The origins the web client's OIDC library frames: the authorization
+    /// endpoint, which renews the sign-in silently in a hidden iframe before
+    /// the ID token runs out, and the provider's session-check page where it
+    /// has one. Without them renewal fails, and the person is sent back to
+    /// sign in about an hour after they did.
+    /// </summary>
+    public static IReadOnlyCollection<string> ProviderFrameSources(
+        string? provider, string? authority, OpenIdConnectConfiguration? metadata = null) =>
+        ProviderOrigins(provider, authority, metadata?.AuthorizationEndpoint, metadata?.CheckSessionIframe);
+
+    private static IReadOnlyCollection<string> ProviderOrigins(
+        string? provider, string? authority, params string?[] endpoints)
+    {
+        if (string.Equals(provider, "google", StringComparison.OrdinalIgnoreCase) ||
+            SafeOrigin(authority) is not { } issuer)
         {
-            context.Response.OnStarting(static state =>
+            return [];
+        }
+
+        var origins = new List<string> { issuer };
+        foreach (var endpoint in endpoints)
+        {
+            if (SafeOrigin(endpoint) is { } origin && !origins.Contains(origin))
+            {
+                origins.Add(origin);
+            }
+        }
+        return origins;
+    }
+
+    private static string? SafeOrigin(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        uri.Scheme is "https" or "http" &&
+        (uri.Scheme == "https" || uri.IsLoopback) &&
+        uri.UserInfo.Length == 0
+            ? uri.GetLeftPart(UriPartial.Authority)
+            : null;
+
+    /// <summary>
+    /// The app's policy for an instance signing in with this provider, from
+    /// its discovery document where that has been read.
+    /// </summary>
+    public static string ContentSecurityPolicyFor(
+        string? provider, string? authority, OpenIdConnectConfiguration? metadata = null) =>
+        ContentSecurityPolicy(
+            ProviderConnectSources(provider, authority, metadata),
+            ProviderFrameSources(provider, authority, metadata));
+
+    /// <summary>
+    /// Where the web client's OIDC library lands after a sign-in, and where its
+    /// silent renewal lands too: Blazor sets no separate silent redirect, so
+    /// the hidden iframe the library renews in comes back to this page.
+    /// </summary>
+    public const string OidcCallbackPath = "/authentication/login-callback";
+
+    /// <summary>
+    /// The policy for the OIDC callback page, which has to load inside the
+    /// app's own renewal iframe: <c>frame-ancestors 'self'</c> instead of
+    /// <c>'none'</c>. Only that page, and only same-origin — nothing else of
+    /// ours is ever framed, and nobody else may frame it.
+    /// </summary>
+    public static string AllowFramingBySelf(string policy) =>
+        policy.Replace("frame-ancestors 'none'", "frame-ancestors 'self'", StringComparison.Ordinal);
+
+    public static IApplicationBuilder UseSoloSecurityHeaders(this IApplicationBuilder app)
+    {
+        var policies = app.ApplicationServices.GetRequiredService<ContentSecurityPolicies>();
+        return app.Use((context, next) =>
+        {
+            // The renewal iframe's landing page, on an instance whose web
+            // client renews that way. Read on the way in: the SPA fallback
+            // rewrites the path to index.html before the response starts.
+            var framedBySelf = policies.RenewsInAFrame &&
+                context.Request.Path.Equals(OidcCallbackPath, StringComparison.OrdinalIgnoreCase);
+
+            context.Response.OnStarting(async state =>
             {
                 var headers = ((HttpContext)state).Response.Headers;
 
@@ -73,7 +174,8 @@ public static class SecurityHeaders
                 // stricter policy (IsolationPolicy); don't overwrite it.
                 if (!headers.ContainsKey("Content-Security-Policy"))
                 {
-                    headers.ContentSecurityPolicy = ContentSecurityPolicy;
+                    var policy = await policies.GetAsync();
+                    headers.ContentSecurityPolicy = framedBySelf ? AllowFramingBySelf(policy) : policy;
                 }
 
                 headers.XContentTypeOptions = "nosniff";
@@ -87,7 +189,7 @@ public static class SecurityHeaders
                 headers["X-Robots-Tag"] = "noindex, nofollow";
                 // frame-ancestors covers this for current browsers; the legacy
                 // header is free and still honoured by some proxies.
-                headers.XFrameOptions = "DENY";
+                headers.XFrameOptions = framedBySelf ? "SAMEORIGIN" : "DENY";
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
                 // Google Identity Services signs in through a popup, which a
                 // plain same-origin COOP would sever.
@@ -107,9 +209,9 @@ public static class SecurityHeaders
                     "accelerometer=(), autoplay=(), camera=(), display-capture=(), " +
                     "encrypted-media=(), geolocation=(), gyroscope=(), magnetometer=(), " +
                     "microphone=(), midi=(), payment=(), usb=()";
-                return Task.CompletedTask;
             }, context);
 
             return next();
         });
+    }
 }

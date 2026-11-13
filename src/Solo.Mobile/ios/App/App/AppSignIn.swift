@@ -2,9 +2,11 @@ import AuthenticationServices
 import CryptoKit
 import UIKit
 
-/// The desktop app's sign-in, for the iPad: Google won't run its sign-in in an
-/// app's web view, so the instance's own `/desktop-auth` page runs in the
-/// system sign-in sheet and returns through the app's URL scheme. The code it
+/// The desktop app's sign-in, for the iPad, whatever the instance's provider:
+/// Google won't run its sign-in in an app's web view, and the web view opens
+/// any other provider's host in Safari, so the instance's own `/desktop-auth`
+/// page runs the provider's flow in the system sign-in sheet and returns
+/// through the app's URL scheme. The code it
 /// returns is redeemed, with the PKCE verifier only this object holds, for a
 /// `solo_` session the page stores like the desktop app's.
 @MainActor

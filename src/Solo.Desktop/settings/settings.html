@@ -315,20 +315,42 @@
       color: var(--accent);
       user-select: text;
     }
+
+    /* First run: with no instance there is nothing to open and nothing to
+       tune yet, so the page is only the way to connect one. */
+    body.setup .settings-only,
+    body:not(.setup) .setup-only {
+      display: none !important;
+    }
+
+    a {
+      color: var(--accent);
+    }
   </style>
 </head>
 <body>
 <main>
-  <h1>Instances</h1>
-  <p class="hint">
+  <section class="setup-only">
+    <h1>Add your first instance</h1>
+    <p class="hint">
+      Solo works with a Solo instance: the server you or your team run. Enter
+      its address to connect, and sign in in your browser.
+    </p>
+    <p class="hint">
+      Don't have one yet? <a href="#" id="install-guide">Set up an instance</a>.
+    </p>
+  </section>
+
+  <h1 class="settings-only">Instances</h1>
+  <p class="hint settings-only">
     The Solo instances this app connects to. Each one opens in a window of its
     own; open them from here or from the <span class="origin">Open Instance</span> menu.
   </p>
 
-  <ul id="instances"></ul>
+  <ul id="instances" class="settings-only"></ul>
 
   <div>
-    <label for="url">Add an instance</label>
+    <label for="url"><span class="settings-only">Add an instance</span><span class="setup-only">Instance address</span></label>
     <div class="add">
       <input id="url" type="text" spellcheck="false" autocomplete="off"
              placeholder="https://solo.example.com" />
@@ -343,7 +365,7 @@
     <button id="sign-in" type="button">Sign in again</button>
   </div>
 
-  <section id="native-effects-setting" class="native-effects" hidden>
+  <section id="native-effects-setting" class="native-effects settings-only" hidden>
     <label for="native-effects">
       <input id="native-effects" type="checkbox" />
       <span>
@@ -353,7 +375,7 @@
     </label>
   </section>
 
-  <section id="background-alpha-setting" class="background-alpha" hidden>
+  <section id="background-alpha-setting" class="background-alpha settings-only" hidden>
     <label for="background-alpha">
       <span>Background opacity</span>
       <span id="background-alpha-value"></span>
@@ -399,6 +421,9 @@
   }
 
   function render() {
+    // Back to setup if the last instance is removed, too.
+    document.body.classList.toggle('setup', instances.length === 0);
+
     list.replaceChildren(...instances.map(instance => {
       const name = element('strong', instance.name);
       if (instance.open) {
@@ -410,8 +435,7 @@
       if (instance.origin) {
         const details = document.createElement('details');
         details.append(element('summary', 'Details'), element('small', 'Local origin'),
-          element('code', instance.origin), element('small', 'OIDC redirect URI'),
-          element('code', `${instance.origin}/authentication/login-callback`));
+          element('code', instance.origin));
         about.append(details);
       }
 
@@ -499,6 +523,11 @@
   backgroundAlphaInput.addEventListener('change', () =>
     window.soloSettings.setBackgroundAlpha(backgroundAlphaInput.value / 100));
 
+  document.getElementById('install-guide').addEventListener('click', e => {
+    e.preventDefault();
+    window.soloSettings.openInstallGuide();
+  });
+
   closeButton.addEventListener('click', () => window.soloSettings.close());
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') window.soloSettings.close();
@@ -521,16 +550,13 @@
   });
 
   window.soloSettings.get().then(({ appName, instances: current, nativeEffects, backgroundAlpha, platform, firstRun }) => {
-    document.title = `${appName || 'Solo'} — Settings`;
+    document.title = firstRun ? `Welcome to ${appName || 'Solo'}` : `${appName || 'Solo'} — Settings`;
     instances = current;
     nativeEffectsInput.checked = nativeEffects;
     nativeEffectsSetting.hidden = platform !== 'darwin';
     backgroundAlphaInput.value = Math.round(backgroundAlpha * 100);
     backgroundAlphaSetting.hidden = platform !== 'darwin';
     syncBackgroundAlpha();
-    if (firstRun) {
-      setStatus('Welcome. Add your Solo instance to get started.');
-    }
     render();
     urlInput.focus();
   });

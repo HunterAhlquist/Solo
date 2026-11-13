@@ -17,7 +17,7 @@ The project sidebar, project home, and Projects page list its design docs.
 3. Optional: select **Import an Obsidian vault (.zip)…**. See [Import and export](design-docs-import-export.md).
 4. Select **Create**.
 
-A super admin can create, rename, close, reopen, or delete a vault.
+A project owner or a super admin can create, rename, close, reopen, or delete a vault.
 Content access still requires project membership.
 Members with Read/write access and project owners can edit notes.
 Members with Read only access can read notes and export the vault.
@@ -190,4 +190,4 @@ Close the vault in other tabs before removing its download.
 Select **Close** in the vault header's **Design doc actions** menu.
 A closed vault remains readable and exportable. Its content cannot change.
 The project's **Closed design docs** section has **Reopen** and **View** actions.
-Delete is available only after a super admin closes the vault.
+Delete is available only after a project owner or a super admin closes the vault.

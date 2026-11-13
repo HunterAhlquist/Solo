@@ -15,12 +15,14 @@ namespace Solo.Extensions;
 /// consulted at request time it would serve traffic against tables that do not
 /// exist.</para>
 ///
-/// <para>Singleton, mutated only during startup and read on every extension
-/// request, hence the concurrent map.</para>
+/// <para>Singleton, mutated during startup (and by an administrator picking an
+/// update feed) and read on every extension request, hence the concurrent
+/// maps.</para>
 /// </remarks>
 public sealed class ExtensionState
 {
     private readonly ConcurrentDictionary<string, string> _disabled = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _updateFeeds = new(StringComparer.OrdinalIgnoreCase);
 
     public ExtensionState(IReadOnlyList<ExtensionPackage> packages, IReadOnlyList<ExtensionLoadFailure> failures)
     {
@@ -56,6 +58,33 @@ public sealed class ExtensionState
         reason = stored ?? string.Empty;
         return found;
     }
+
+    /// <summary>
+    /// Records which of its <c>updateFeeds</c> an extension follows, or null for
+    /// the default. Held here as well as on its registration row so the update
+    /// check, which runs on every Admin settings load, reads no database.
+    /// </summary>
+    public void SelectUpdateFeed(string extensionId, string? feedId)
+    {
+        if (feedId is null)
+        {
+            _updateFeeds.TryRemove(extensionId, out _);
+        }
+        else
+        {
+            _updateFeeds[extensionId] = feedId;
+        }
+    }
+
+    /// <summary>
+    /// The feed an administrator picked for this package, or null for the
+    /// default — which is also the answer when the pick names a feed this
+    /// version of the package no longer declares.
+    /// </summary>
+    public ExtensionUpdateFeed? SelectedUpdateFeed(ExtensionPackage package) =>
+        _updateFeeds.TryGetValue(package.Id, out var id)
+            ? package.Manifest.UpdateFeeds.FirstOrDefault(f => f.Id == id)
+            : null;
 
     /// <summary>Enabled extensions only — what the client is told about and what hooks dispatch for.</summary>
     public IEnumerable<ExtensionPackage> Enabled =>

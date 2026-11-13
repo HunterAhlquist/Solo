@@ -27,7 +27,7 @@ public sealed class IdTokenProvider(
 {
     public async ValueTask<string?> GetTokenAsync()
     {
-        if (config.IsGoogle)
+        if (config.UsesSessionSignIn)
         {
             return await google.GetTokenAsync();
         }
@@ -55,5 +55,5 @@ public sealed class IdTokenProvider(
 
     /// <summary>Whether requests carry the web app's session cookie (see <see cref="GoogleIdentityService"/>).</summary>
     public async ValueTask<bool> HoldsSessionCookieAsync() =>
-        config.IsGoogle && await google.HoldsSessionCookieAsync();
+        config.UsesSessionSignIn && await google.HoldsSessionCookieAsync();
 }

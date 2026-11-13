@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Mac App Store build runs in the App Sandbox, and these are the holes Solo
+  needs in it:
+
+  - network.client: proxying /api and /hubs to the instance.
+  - network.server: the local origin each instance is served from
+    (localhost:41321 and up) and the one-shot 127.0.0.1 sign-in listener.
+  - files.user-selected.read-write: the open and save panels behind file
+    inputs and downloads.
+
+  @electron/osx-sign adds the application identifier, team identifier and the
+  TEAMID.bundle-id application group from the provisioning profile, so they
+  aren't repeated here. No hardened-runtime keys: the store build isn't
+  hardened, and V8's JIT works inside the sandbox without them.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>
