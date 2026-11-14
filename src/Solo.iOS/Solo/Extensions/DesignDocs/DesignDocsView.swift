@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A design doc: its tree of notes beside the note being read. Where there is
 /// room for both they share the page; on a phone the tree is the page and a
@@ -244,8 +245,51 @@ struct DesignDocsView: View {
 
 // MARK: - The tree
 
+extension UTType {
+    /// A note or folder being dragged about its design doc. Declared in Info.plist.
+    static let soloDocNode = UTType(exportedAs: "com.hunterahlquist.solo.doc-node")
+}
+
+/// What a dragged note or folder carries: which one it is, for the tree to move it by — and,
+/// for a note, a link to it as text, which is what a note being written (or any other app)
+/// takes when it is dropped there.
+enum DocDrag {
+    static func provider(_ node: DocNode) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.suggestedName = node.name
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.soloDocNode.identifier, visibility: .ownProcess) { done in
+            done(Data(node.id.uuidString.utf8), nil)
+            return nil
+        }
+        if !node.isFolder {
+            provider.registerObject(link(to: node) as NSString, visibility: .all)
+        }
+        return provider
+    }
+
+    /// A link by address, as the picker writes one: it goes on working when the note is renamed or moved.
+    static func link(to node: DocNode) -> String {
+        let label = node.name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "[", with: "\\[")
+            .replacingOccurrences(of: "]", with: "\\]")
+        return "[\(label)](\(NoteAddress.url(node.id)))"
+    }
+
+    /// Reads which node was dropped and hands it over on the main actor.
+    static func dropped(_ providers: [NSItemProvider], then act: @escaping @MainActor (UUID) -> Void) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.soloDocNode.identifier) })
+        else { return false }
+        _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.soloDocNode.identifier) { data, _ in
+            guard let id = data.flatMap({ String(data: $0, encoding: .utf8) }).flatMap(UUID.init) else { return }
+            Task { @MainActor in act(id) }
+        }
+        return true
+    }
+}
+
 /// A design doc's folders and notes. Folders remember whether they were left
-/// open; a long press on anything renames, moves or deletes it.
+/// open. Anything can be picked up and carried: onto a folder to put it there,
+/// onto the heading to bring it to the top, or — a note — into a note being
+/// written, to link it. A long press also renames and deletes.
 struct DocTreeView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
@@ -256,6 +300,8 @@ struct DocTreeView: View {
 
     @State private var prompt: TextPrompt?
     @State private var confirmation: Confirmation?
+    /// True while something dragged is over the heading, which stands for the top of the design doc.
+    @State private var overTop = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -279,6 +325,19 @@ struct DocTreeView: View {
             .padding(.leading, 18)
             .padding(.trailing, 10)
             .frame(height: 48)
+            .background {
+                if overTop {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.accentWash).padding(.horizontal, 8).padding(.vertical, 4)
+                }
+            }
+            .contentShape(.rect)
+            .onDrop(of: canEdit ? [.soloDocNode] : [], isTargeted: $overTop) { providers in
+                DocDrag.dropped(providers) { id in
+                    guard let node = store.node(id), store.canMove(node, to: nil) else { return }
+                    Task { await store.move(node, to: nil) }
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: overTop)
 
             if store.tree?.notes.isEmpty == true, store.tree?.folders.isEmpty == true {
                 Text("No notes yet.")
@@ -286,13 +345,15 @@ struct DocTreeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .padding(.top, 24)
             } else {
-                List {
-                    DocBranch(store: store, parent: nil, canEdit: canEdit, selected: selected, onOpen: onOpen,
-                              prompt: $prompt, confirmation: $confirmation)
+                // Rows in a stack, not a list: a list keeps drops to itself, and its rows never hear of one.
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        DocBranch(store: store, parent: nil, canEdit: canEdit, selected: selected, onOpen: onOpen,
+                                  prompt: $prompt, confirmation: $confirmation)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 16)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.defaultMinListRowHeight, 40)
             }
         }
         .textPrompt($prompt)
@@ -304,10 +365,73 @@ struct DocTreeView: View {
     }
 }
 
+/// Lets a row be picked up. A note can be carried by anyone who can read it — to link it
+/// elsewhere; moving it is the drop's business, and checked there.
+private struct DocNodeDrag: ViewModifier {
+    var node: DocNode
+    var enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled || !node.isFolder {
+            content.onDrag { DocDrag.provider(node) }
+        } else {
+            content
+        }
+    }
+}
+
+/// A folder's row: a tap opens or closes it, something carried can be dropped on it, and it
+/// can be carried itself.
+private struct DocFolderRow<Menu: View>: View {
+    @Environment(\.theme) private var theme
+    var store: DocVaultStore
+    var node: DocNode
+    var canEdit: Bool
+    @ViewBuilder var menu: Menu
+    @State private var targeted = false
+
+    private var isOpen: Bool { store.openFolders.contains(node.id) }
+
+    var body: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.2)) {
+                if isOpen { store.openFolders.remove(node.id) } else { store.openFolders.insert(node.id) }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Label(node.name, systemImage: targeted || isOpen ? "folder.fill" : "folder")
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(theme.textSecondary)
+                    .rotationEffect(.degrees(isOpen ? 90 : 0))
+            }
+            .padding(.horizontal, 10)
+            .frame(minHeight: 40)
+            .background(targeted ? theme.accentWash : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .contextMenu { menu }
+        .modifier(DocNodeDrag(node: node, enabled: canEdit))
+        .onDrop(of: canEdit ? [.soloDocNode] : [], isTargeted: $targeted) { providers in
+            DocDrag.dropped(providers) { id in
+                guard let dragged = store.node(id), store.canMove(dragged, to: node.id) else { return }
+                Task { await store.move(dragged, to: node.id) }
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: targeted)
+        .accessibilityValue(isOpen ? "Open" : "Closed")
+    }
+}
+
 private struct DocBranch: View {
     @Environment(\.theme) private var theme
     var store: DocVaultStore
     var parent: UUID?
+    /// How many folders deep this branch is, which is how far its rows are set in.
+    var depth = 0
     var canEdit: Bool
     var selected: UUID?
     var onOpen: (UUID) -> Void
@@ -317,19 +441,14 @@ private struct DocBranch: View {
     var body: some View {
         ForEach(store.children(of: parent)) { node in
             if node.isFolder {
-                DisclosureGroup(isExpanded: Binding(
-                    get: { store.openFolders.contains(node.id) },
-                    set: { open in
-                        if open { store.openFolders.insert(node.id) } else { store.openFolders.remove(node.id) }
-                    })) {
-                    DocBranch(store: store, parent: node.id, canEdit: canEdit, selected: selected, onOpen: onOpen,
-                              prompt: $prompt, confirmation: $confirmation)
-                } label: {
-                    Label(node.name, systemImage: "folder")
-                        .lineLimit(1)
-                        .contextMenu { menu(node) }
+                // A row of its own rather than a disclosure group's label: the group's label
+                // doesn't take a drop, and a folder is where things are dropped.
+                DocFolderRow(store: store, node: node, canEdit: canEdit) { menu(node) }
+                    .padding(.leading, CGFloat(depth) * 18)
+                if store.openFolders.contains(node.id) {
+                    DocBranch(store: store, parent: node.id, depth: depth + 1, canEdit: canEdit, selected: selected,
+                              onOpen: onOpen, prompt: $prompt, confirmation: $confirmation)
                 }
-                .listRowBackground(Color.clear)
             } else {
                 Button { onOpen(node.id) } label: {
                     Label {
@@ -340,20 +459,16 @@ private struct DocBranch: View {
                         .lineLimit(1)
                         .fontWeight(node.id == selected ? .semibold : .regular)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 40)
+                        .background(node.id == selected ? theme.accentWash : .clear,
+                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .padding(.leading, CGFloat(depth) * 18)
                 .contextMenu { menu(node) }
-                .swipeActions(edge: .trailing) {
-                    if canEdit {
-                        Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(node) }
-                    }
-                }
-                .listRowBackground(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(node.id == selected ? theme.accentWash : .clear)
-                        .padding(.horizontal, 8)
-                )
+                .modifier(DocNodeDrag(node: node, enabled: canEdit))
             }
         }
     }
@@ -370,17 +485,6 @@ private struct DocBranch: View {
                 }
             }
             Button("Rename", systemImage: "pencil") { rename(node) }
-            let destinations = store.destinations(for: node)
-            if node.parentId != nil || !destinations.isEmpty {
-                Menu("Move to", systemImage: "folder") {
-                    if node.parentId != nil {
-                        Button("Top of the design doc") { Task { await store.move(node, to: nil) } }
-                    }
-                    ForEach(destinations, id: \.id) { destination in
-                        Button(destination.path) { Task { await store.move(node, to: destination.id) } }
-                    }
-                }
-            }
             Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(node) }
         }
     }

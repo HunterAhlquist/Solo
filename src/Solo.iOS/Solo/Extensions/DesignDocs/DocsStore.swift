@@ -192,6 +192,24 @@ final class DocVaultStore {
         return folders.sorted(by: byName) + notes.sorted(by: byName)
     }
 
+    /// A folder or a note by its id, as the tree shows it.
+    func node(_ id: UUID) -> DocNode? {
+        guard let tree else { return nil }
+        if let folder = tree.folders.first(where: { $0.id == id }) {
+            return DocNode(id: folder.id, isFolder: true, parentId: folder.parentId, name: folder.name, version: folder.version)
+        }
+        return tree.notes.first { $0.id == id }
+            .map { DocNode(id: $0.id, isFolder: false, parentId: $0.folderId, name: $0.name, version: $0.version) }
+    }
+
+    /// Whether a node may be put in a folder — or, with nil, at the top. Not where it already
+    /// is, and a folder not into itself or anything inside it.
+    func canMove(_ node: DocNode, to parent: UUID?) -> Bool {
+        guard node.parentId != parent, node.id != parent else { return false }
+        guard let parent else { return true }
+        return !(node.isFolder && ancestors(of: parent).contains(node.id))
+    }
+
     /// The folders above one, nearest first.
     func ancestors(of folder: UUID?) -> [UUID] {
         var result: [UUID] = []
@@ -209,16 +227,6 @@ final class DocVaultStore {
     }
 
     func path(of note: DocNote) -> String { folderPath(note.folderId) + note.name + ".md" }
-
-    /// Folders a thing may be moved into: not itself, and nothing inside itself.
-    func destinations(for node: DocNode) -> [(id: UUID, path: String)] {
-        guard let tree else { return [] }
-        return tree.folders.filter { folder in
-            folder.id != node.id && folder.id != node.parentId && !(node.isFolder && ancestors(of: folder.id).contains(node.id))
-        }
-        .map { (id: $0.id, path: String(folderPath($0.id).dropLast())) }
-        .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
-    }
 
     func reveal(_ note: DocNote) {
         let above = ancestors(of: note.folderId)
@@ -336,6 +344,7 @@ final class DocVaultStore {
     }
 
     func move(_ node: DocNode, to parent: UUID?) async {
+        if let parent { openFolders.insert(parent) }
         _ = await run { try await session.api.changeDocItem(projectId, vaultId, node.kind, node.id, name: node.name,
                                                              parentId: parent, version: node.version) }
     }

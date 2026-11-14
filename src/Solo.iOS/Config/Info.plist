@@ -12,6 +12,21 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Solo connects to the instance you point it at, which may be on your local network.</string>
+	<!-- What a note or folder carries while it is dragged about its design doc. Private to
+	     the app; a dragged note also carries a link to itself as plain text, for everything else. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.hunterahlquist.solo.doc-node</string>
+			<key>UTTypeDescription</key>
+			<string>Solo design doc item</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a picture to use as an icon or to attach to a design doc.</string>
 	<!-- Where the instance's sign-in page returns to. The sign-in sheet claims
