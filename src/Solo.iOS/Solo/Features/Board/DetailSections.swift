@@ -301,7 +301,8 @@ struct CommentsSection: View {
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(theme.divider))
                     Button("Open the full editor", systemImage: "arrow.up.left.and.arrow.down.right") {
                         draft = MarkdownDraft(title: "Comment", text: newBody, limit: FieldLimits.comment,
-                                              saveLabel: "Comment", placeholder: "Leave a comment…") { body in
+                                              saveLabel: "Comment", placeholder: "Leave a comment…",
+                                              projectId: store.board?.projectId) { body in
                             await post(body)
                         }
                     }
@@ -388,7 +389,8 @@ struct CommentsSection: View {
     }
 
     private func edit(_ comment: Comment) {
-        draft = MarkdownDraft(title: "Edit comment", text: comment.body, limit: FieldLimits.comment) { body in
+        draft = MarkdownDraft(title: "Edit comment", text: comment.body, limit: FieldLimits.comment,
+                              projectId: store.board?.projectId) { body in
             guard let body = body.nilIfBlank, body != comment.body else { return }
             await session.save({ try await api.updateComment(comment, body: body) }, refresh: load)
             await load()

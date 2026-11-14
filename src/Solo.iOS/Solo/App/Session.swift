@@ -61,6 +61,8 @@ final class Session {
             let pieces = target.split(separator: ":").map(String.init)
             if pieces.count == 3, pieces[0] == "roadmap", let id = UUID(uuidString: pieces[2]) {
                 navigator.open(.roadmap(project: pieces[1], roadmapId: id))
+            } else if pieces.count >= 3, pieces[0] == "docs", let id = UUID(uuidString: pieces[2]) {
+                navigator.open(.designDocs(project: pieces[1], vaultId: id, noteId: pieces.count > 3 ? UUID(uuidString: pieces[3]) : nil))
             } else if pieces.count == 2, pieces[0] == "route" {
                 switch pieces[1] {
                 case "mcp": navigator.open(.mcpAccess)

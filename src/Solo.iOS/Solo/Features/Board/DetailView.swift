@@ -311,7 +311,7 @@ struct DetailView: View {
     private func editDescription() {
         report(editing: true)
         draft = MarkdownDraft(title: "Description", text: task?.description ?? epic?.description ?? "",
-                              limit: FieldLimits.description) { text in
+                              limit: FieldLimits.description, projectId: store.board?.projectId) { text in
             if let task {
                 if let saved = await session.save({ try await api.updateTask(task, description: .some(text)) },
                                                   refresh: store.refresh) {

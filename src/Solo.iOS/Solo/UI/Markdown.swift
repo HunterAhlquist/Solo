@@ -18,6 +18,8 @@ struct SoloMarkdown: View {
     var navigationLocked = false
     /// Extra rewriting before rendering, for extensions that label their own links.
     var transform: ((String) -> String)?
+    /// Asked first about every link tapped; true means it was dealt with.
+    var linkHandler: ((URL) -> Bool)?
 
     private static let taskScheme = "solo-task"
     private static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
@@ -25,9 +27,11 @@ struct SoloMarkdown: View {
     var body: some View {
         Markdown(rendered, baseURL: session.api.baseURL)
             .markdownTheme(markdownTheme)
-            .markdownImageProvider(.default)
             .environment(\.openURL, OpenURLAction { url in
                 guard !navigationLocked else { return .handled }
+                if linkHandler?(url) == true || ExtensionLinks.open(url, session: session) {
+                    return .handled
+                }
                 if url.scheme == Self.taskScheme, let reference = TaskReference(serial: url.host() ?? "") {
                     navigator.open(reference)
                     return .handled
@@ -153,6 +157,8 @@ struct MarkdownDraft: Identifiable {
     var limit: Int
     var saveLabel = "Save"
     var placeholder = "Write markdown…"
+    /// The project the text belongs to, for the things an extension can link from it.
+    var projectId: UUID?
     var onSave: (String) async -> Void
 }
 
@@ -268,6 +274,7 @@ struct MarkdownEditorSheet: View {
         Button("Heading", systemImage: "number") { prefixLine("## ") }
         Button("Link", systemImage: "link") { wrap("[", "](https://)") }
         Button("Task link", systemImage: "rectangle.stack.badge.plus") { pickingTask = true }
+        MarkdownEditorExtensions(projectId: draft.projectId) { insert($0) }
         Spacer()
         Button("Done", systemImage: "keyboard.chevron.compact.down") { focused = false }
     }

@@ -17,6 +17,9 @@ struct TaskDetailExtensions: View {
         if session.extensions.hasRoadmap {
             RoadmapMembershipsSection(task: task)
         }
+        if session.extensions.hasDesignDocs {
+            LinkedDocsSection(task: task)
+        }
     }
 }
 
@@ -26,6 +29,9 @@ struct SidebarProjectExtensions: View {
     var project: ProjectSummary
 
     var body: some View {
+        if session.extensions.hasDesignDocs {
+            DocsSidebarSection(project: project)
+        }
         if session.extensions.hasRoadmap {
             RoadmapSidebarSection(project: project)
         }
@@ -46,6 +52,9 @@ struct ProjectHomeExtensions: View {
     }
 
     var body: some View {
+        if session.extensions.hasDesignDocs {
+            DocsHomeSection(project: summary)
+        }
         if session.extensions.hasRoadmap {
             RoadmapHomeSection(project: summary, canWrite: canWrite)
         }
@@ -58,6 +67,9 @@ struct ProjectCardExtensions: View {
     var project: ProjectSummary
 
     var body: some View {
+        if session.extensions.hasDesignDocs {
+            DocsCardSection(project: project)
+        }
         if session.extensions.hasRoadmap {
             RoadmapCardSection(project: project)
         }
@@ -108,5 +120,30 @@ struct AdminExtensionSettings: View {
         if session.extensions.hasRoadmap {
             RoadmapSettingsPanel()
         }
+    }
+}
+
+/// Buttons extensions add to the Markdown editor's format row.
+struct MarkdownEditorExtensions: View {
+    @Environment(Session.self) private var session
+    /// The project the text belongs to; without one there is nothing to link from.
+    var projectId: UUID?
+    var insert: (String) -> Void
+
+    var body: some View {
+        if session.extensions.hasDesignDocs, let projectId {
+            DocLinkButton(projectId: projectId, insert: insert)
+        }
+    }
+}
+
+/// Links extensions own, wherever Markdown is shown.
+enum ExtensionLinks {
+    /// True when an installed extension recognised the link and is opening it.
+    static func open(_ url: URL, session: Session) -> Bool {
+        // Only the instance's own addresses: another site's /docs/… is another site's.
+        guard url.host() == session.api.baseURL.host(), url.port == session.api.baseURL.port else { return false }
+        if session.extensions.hasDesignDocs, DocLinks.open(url, session: session) { return true }
+        return false
     }
 }
