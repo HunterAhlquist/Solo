@@ -278,13 +278,15 @@ nonisolated struct LiveMarkdown {
                 let lines = map.lines(in: whole)
                 if let first = lines.first, lines.count > 1 {
                     let opener = source.substring(with: first).trimmingCharacters(in: .whitespaces)
-                    // A fence shows while the caret is on its line, and is a sliver of the block's background otherwise.
+                    // Both fences show while the caret is anywhere in the block — the code
+                    // being worked on is seen whole — and fold to a sliver of its background otherwise.
                     if opener.hasPrefix("```") || opener.hasPrefix("~~~") {
-                        marker(first, shown: touches(first))
+                        let shown = touches(whole)
+                        marker(first, shown: shown)
                         if let last = lines.last, last.location != first.location {
                             let closer = source.substring(with: last).trimmingCharacters(in: .whitespaces)
                             if closer.hasPrefix("```") || closer.hasPrefix("~~~") {
-                                marker(last, shown: touches(last))
+                                marker(last, shown: shown)
                             }
                         }
                     }
