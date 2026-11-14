@@ -20,6 +20,7 @@ final class Session {
     private(set) var serverVersion: InstanceVersion?
     /// True while the instance is restarting to load an extension update.
     private(set) var restarting = false
+    @ObservationIgnored private var subscriptions: [EventSubscription] = []
 
     init(api: APIClient, config: AuthConfig, user: User) {
         self.api = api
@@ -52,6 +53,16 @@ final class Session {
         if let fresh = try? await api.currentUser() {
             user = fresh
         }
+        // The live feed coming back usually means the instance restarted, which is
+        // the one time its extensions can have changed: ask again what it runs.
+        subscriptions = [
+            hub.reconnected.subscribe { [weak self] in
+                Task {
+                    await self?.extensions.load()
+                    await self?.projects.refreshProjects()
+                }
+            },
+        ]
 
         #if DEBUG
         // Simulator verification: start on a given page instead of tapping there.

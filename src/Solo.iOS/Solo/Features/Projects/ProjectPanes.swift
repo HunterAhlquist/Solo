@@ -610,6 +610,7 @@ struct ProjectSettingsSection: View {
                 .buttonStyle(.glass)
                 .tint(theme.error)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .card(padding: 14, outline: theme.error.opacity(0.5))
         }
         .frame(maxWidth: 560, alignment: .leading)

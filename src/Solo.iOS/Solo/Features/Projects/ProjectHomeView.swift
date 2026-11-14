@@ -22,7 +22,7 @@ struct ProjectHomeView: View {
             switch self {
             case .work: "Boards"
             case .members: "Members"
-            case .labels: "Label Defaults"
+            case .labels: "Labels"
             case .audit: "Audit"
             case .settings: "Settings"
             }
@@ -56,6 +56,17 @@ struct ProjectHomeView: View {
     var body: some View {
         Group {
             if let project {
+                // A segmented control rather than a row of scrolling chips: a
+                // sideways scroll view directly under the bar is treated as the
+                // page's own and has its content pushed down out of sight.
+                VStack(spacing: 0) {
+                Picker("Section", selection: $section) {
+                    ForEach(sections) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 560)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         switch section {
@@ -82,9 +93,6 @@ struct ProjectHomeView: View {
                     .frame(maxWidth: 1100, alignment: .leading)
                     .frame(maxWidth: .infinity)
                 }
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    ChipPicker(options: sections, selection: $section) { Label($0.title, systemImage: $0.symbol) }
-                        .padding(.bottom, 6)
                 }
             } else if let failed {
                 ContentUnavailableView("Couldn't load that project", systemImage: "exclamationmark.triangle",
@@ -125,6 +133,7 @@ struct ProjectHomeView: View {
 
 /// A row of choices that scrolls when they don't fit, for the places a
 /// segmented control would crush its labels.
+/// Only for use inside a page that itself scrolls: see the project page's tabs for why.
 struct ChipPicker<Option: Hashable & Identifiable, ChipLabel: View>: View {
     @Environment(\.theme) private var theme
     var options: [Option]

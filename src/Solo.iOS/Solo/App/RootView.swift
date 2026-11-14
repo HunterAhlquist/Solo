@@ -36,7 +36,11 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.session?.hub.resume()
-                Task { await model.session?.notifications.refresh() }
+                Task {
+                    await model.session?.notifications.refresh()
+                    // A theme change isn't announced to anyone, so coming back to the app is when it is noticed.
+                    if let api = model.session?.api { await model.themes.load(from: api) }
+                }
             }
         }
     }
