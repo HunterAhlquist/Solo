@@ -52,6 +52,7 @@ SoloTests         unit tests
 |---|---|
 | [dotnet/signalr-client-swift](https://github.com/dotnet/signalr-client-swift) | The SignalR hub. Microsoft's own client; pinned to an exact preview version. |
 | [gonzalezreal/swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) | Rendering Markdown. |
+| [swiftlang/swift-markdown](https://github.com/swiftlang/swift-markdown) | Parsing Markdown into a syntax tree with source positions, which the live note editor styles from. |
 | [kean/Nuke](https://github.com/kean/Nuke) | Loading and caching avatars and icons with the session's credential. |
 | [swhitty/SwiftDraw](https://github.com/swhitty/SwiftDraw) | Decoding the SVG avatars and icons the instance serves. |
 | [y-crdt/yswift](https://github.com/y-crdt/yswift) | Yjs documents, for Design Docs' live notes and sketches. |
@@ -68,6 +69,11 @@ Core never asks about a particular extension. It names slots — sections of a t
 | **Roadmaps** | The timeline with press-and-hold to move and resize, milestones, sprints, the personal roadmap on Your Tasks, and the project, sidebar, card and task sections. |
 | **Design Docs** | Design docs and their tree; notes read as rendered Markdown and edited live over the extension's Yjs protocol; wiki links, embeds, images and attachments; sketches, drawn with the web editor's rasterizer ported rule for rule so a stroke looks the same on every client; links to notes from task descriptions. |
 
+Two parts of Design Docs follow the web editor closely enough to be worth knowing how:
+
+- **Live formatting.** A note is edited as its exact Markdown in a `UITextView`, which is what keeps it bound to the shared document character for character. `LiveMarkdown` parses the text with swift-markdown — the same CommonMark and GFM grammar the web editor's parser implements — and says what each run is; `NoteStyler` turns that into attributes and applies only the ones that changed. Syntax is folded away by styling it to nothing, never by removing it, and comes back when the caret touches its span (or, for a heading or a quote, its line), as on the web. A custom layout manager draws what attributes can't: a quote's bar and a code block's background.
+- **Pictures.** A line holding nothing but embeds is a row: one print, or several fanned into a stack with the web's own tilt for each path. Tapping opens them full screen with the system zoom transition, to swipe between, edit (a sketch), replace (an image), share, remove from the note or delete. The reader and the editor draw rows with the same view; in the editor it is hosted over a line made exactly as tall as the row.
+
 An extension the instance runs that has no native half is named under About, so its absence reads as a limit of the app rather than of the instance.
 
 ## Where it differs from the web client
@@ -82,7 +88,7 @@ Better here:
 Not here — use the web client for these:
 
 - **First-run setup** of a new instance. The wizard needs the identity provider's ID token, which the app never holds; it sends you to the instance's `/setup` page.
-- **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; the live-formatting editor (notes are edited as Markdown source, with a rendered view); other people's carets in a note; replacing an image in place; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it — the selection, lasso and shape tools, and redo.
+- **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; other people's carets in a note; dragging pictures between rows; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it — the selection, lasso and shape tools, and redo. In the live editor a list marker keeps its own character rather than becoming a bullet, and links are followed from the reading view, not while editing.
 - **Third-party extensions' screens**, for the reason above.
 - **Push notifications.** The inbox is live while the app is open; nothing arrives while it is closed.
 
