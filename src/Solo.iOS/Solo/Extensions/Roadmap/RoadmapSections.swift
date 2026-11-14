@@ -409,6 +409,7 @@ struct RoadmapSettingsPanel: View {
                 Text(readBack)
             }
         }
+        .themedRow()
         .task {
             do {
                 let fetched = try await session.api.roadmapSettings()

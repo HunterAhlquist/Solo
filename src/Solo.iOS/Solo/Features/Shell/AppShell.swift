@@ -71,6 +71,7 @@ struct RouteView: View {
 /// One section's navigation stack.
 private struct SectionStack: View {
     @Environment(Navigator.self) private var navigator
+    @Environment(\.horizontalSizeClass) private var sizeClass
     var tab: AppTab
 
     /// The stack's own path, mirrored to and from the navigator. It is state
@@ -84,6 +85,8 @@ private struct SectionStack: View {
     var body: some View {
         NavigationStack(path: $path) {
             TabRoot(tab: tab)
+                // Beside a sidebar a large title is a blank band above the page; the bar carries it instead.
+                .navigationBarTitleDisplayMode(sizeClass == .regular ? .inline : .automatic)
                 .navigationDestination(for: Route.self) { RouteView(route: $0) }
         }
         .onChange(of: navigator[tab], initial: true) { _, routes in

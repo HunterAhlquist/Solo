@@ -354,6 +354,7 @@ struct MilestoneSheet: View {
                     TextField("Name", text: $name).focused($nameFocused)
                     DatePicker("Day", selection: $date, displayedComponents: .date)
                 }
+                .themedRow()
                 Section("Colour") {
                     HStack(spacing: 10) {
                         ForEach(RoadmapLimits.milestoneSwatches, id: \.self) { swatch in
@@ -375,6 +376,7 @@ struct MilestoneSheet: View {
                         }
                     }
                 }
+                .themedRow()
                 if draft.existing != nil {
                     Section {
                         Button("Delete Milestone", systemImage: "trash", role: .destructive) {
@@ -382,6 +384,7 @@ struct MilestoneSheet: View {
                             Task { await onDelete() }
                         }
                     }
+                    .themedRow()
                 }
             }
             .themedList()

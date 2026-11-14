@@ -365,6 +365,7 @@ struct DocLinkPicker: View {
                         } footer: {
                             Text("Tap a note to link to it, or # to link to one of its headings.")
                         }
+                        .themedRow()
                     }
                 } else {
                     ProgressView()
@@ -446,10 +447,10 @@ struct DocAttachmentsSheet: View {
                         Text("This design doc has no images or sketches yet.").foregroundStyle(theme.textSecondary)
                     }
                     if !here.isEmpty {
-                        Section("In this note") { ForEach(here) { row($0) } }
+                        Section("In this note") { ForEach(here) { row($0) } }.themedRow()
                     }
                     if !elsewhere.isEmpty {
-                        Section("Elsewhere in this design doc") { ForEach(elsewhere) { row($0) } }
+                        Section("Elsewhere in this design doc") { ForEach(elsewhere) { row($0) } }.themedRow()
                     }
                 } else {
                     ProgressView()

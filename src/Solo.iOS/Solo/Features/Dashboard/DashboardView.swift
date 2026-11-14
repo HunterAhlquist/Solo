@@ -86,10 +86,6 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedBackground()
-        .navigationTitle("Your Tasks")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { ConnectionIndicator() }
-        }
         .task {
             do {
                 try await store.load()
@@ -99,6 +95,11 @@ struct DashboardView: View {
         }
         .refreshable { await store.refresh() }
         .taskDetail($openTask)
+        // Outside the detail panel: a title set within an inspector's content never reaches the bar.
+        .navigationTitle("Your Tasks")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { ConnectionIndicator() }
+        }
     }
 
     private var empty: some View {

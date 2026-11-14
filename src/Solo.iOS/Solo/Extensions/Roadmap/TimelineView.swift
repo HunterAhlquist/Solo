@@ -62,7 +62,9 @@ struct TimelineView: View {
     var body: some View {
         let layout = store.layout
         let window = store.window
-        let lineCount = TimelineRules.rows(forLines: layout.lines.count)
+        // A person's own roadmap sits above their tasks, so it only takes the room its bars need.
+        let lineCount = store.isPersonal
+            ? max(3, layout.lines.count + TimelineRules.spareRows) : TimelineRules.rows(forLines: layout.lines.count)
         let height = Self.headHeight + CGFloat(lineCount) * Self.rowHeight
         let width = CGFloat(window.days) * Self.dayWidth
         let first = max(Int(scrollX / Self.dayWidth) - 2, 0)

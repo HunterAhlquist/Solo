@@ -56,8 +56,11 @@ extension View {
         scrollContentBackground(.hidden).background { AppBackground() }
     }
 
-    /// Kept as the one place a list row's look would change; the system's is used as it is.
-    func themedRow() -> some View { self }
+    /// A list row that lets the page's wash through, so a list reads as a
+    /// frosted panel over the background rather than a solid slab on it.
+    func themedRow() -> some View {
+        listRowBackground(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.55))
+    }
 }
 
 /// A small upper-case heading over a block of content.
