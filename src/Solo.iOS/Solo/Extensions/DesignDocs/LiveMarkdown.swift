@@ -21,6 +21,8 @@ nonisolated struct LiveSpan: Equatable, Sendable {
         case codeBlock
         case table
         case link
+        /// Where a link leads, over the same run as its `.link`: an address, or `wiki:` and a note's name.
+        case destination(String)
         /// The lines of a block quote, with how deeply it is nested.
         case quote(Int)
         /// A list item's first line; `prefix` is how far in its text starts, for wrapped lines to hang from.
@@ -221,18 +223,21 @@ nonisolated struct LiveMarkdown {
                 }
                 return
 
-            case is Link:
+            case let link as Link:
                 guard let range = map.range(node), range.length > 0 else { break }
                 let children = node.children.compactMap { map.range($0) }
+                let address = link.destination ?? ""
                 // `[label](address)` shows as its label. A bare address has nothing to fold away.
                 if source.character(at: range.location) == 91, let first = children.first, let last = children.last {
                     let label = NSRange(location: first.location, length: NSMaxRange(last) - first.location)
                     out.append(LiveSpan(range: label, kind: .link))
+                    out.append(LiveSpan(range: label, kind: .destination(address)))
                     let shown = touches(range)
                     marker(NSRange(location: range.location, length: label.location - range.location), shown: shown)
                     marker(NSRange(location: NSMaxRange(label), length: NSMaxRange(range) - NSMaxRange(label)), shown: shown)
                 } else {
                     out.append(LiveSpan(range: range, kind: .link))
+                    out.append(LiveSpan(range: range, kind: .destination(address)))
                 }
 
             case let image as Image:
@@ -273,12 +278,13 @@ nonisolated struct LiveMarkdown {
                 let lines = map.lines(in: whole)
                 if let first = lines.first, lines.count > 1 {
                     let opener = source.substring(with: first).trimmingCharacters(in: .whitespaces)
+                    // A fence shows while the caret is on its line, and is a sliver of the block's background otherwise.
                     if opener.hasPrefix("```") || opener.hasPrefix("~~~") {
-                        out.append(LiveSpan(range: first, kind: .syntax))
+                        marker(first, shown: touches(first))
                         if let last = lines.last, last.location != first.location {
                             let closer = source.substring(with: last).trimmingCharacters(in: .whitespaces)
                             if closer.hasPrefix("```") || closer.hasPrefix("~~~") {
-                                out.append(LiveSpan(range: last, kind: .syntax))
+                                marker(last, shown: touches(last))
                             }
                         }
                     }
@@ -336,19 +342,24 @@ nonisolated struct LiveMarkdown {
 
         for match in Self.wiki.matches(in: string, range: full) where free(match.range) {
             let inner = match.range(at: 1)
-            guard !touches(match.range) else {
-                out.append(LiveSpan(range: match.range, kind: .link))
-                continue
-            }
             // `[[Note|shown as]]` reads as "shown as"; `[[Note]]` as "Note".
             let pipe = source.range(of: "|", options: [], range: inner)
+            let named = pipe.location == NSNotFound ? inner : NSRange(location: inner.location, length: pipe.location - inner.location)
+            let leads = LiveSpan.Kind.destination("wiki:" + source.substring(with: named))
+            guard !touches(match.range) else {
+                out.append(LiveSpan(range: match.range, kind: .link))
+                out.append(LiveSpan(range: match.range, kind: leads))
+                continue
+            }
             let label = pipe.location == NSNotFound
                 ? inner : NSRange(location: NSMaxRange(pipe), length: NSMaxRange(inner) - NSMaxRange(pipe))
             guard label.length > 0 else {
                 out.append(LiveSpan(range: match.range, kind: .link))
+                out.append(LiveSpan(range: match.range, kind: leads))
                 continue
             }
             out.append(LiveSpan(range: label, kind: .link))
+            out.append(LiveSpan(range: label, kind: leads))
             marker(NSRange(location: match.range.location, length: label.location - match.range.location), shown: false)
             marker(NSRange(location: NSMaxRange(label), length: NSMaxRange(match.range) - NSMaxRange(label)), shown: false)
         }

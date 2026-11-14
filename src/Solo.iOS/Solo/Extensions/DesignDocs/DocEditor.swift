@@ -73,6 +73,23 @@ final class NoteEditorProxy {
         view.selectedRange = NSRange(location: range.location + snippet.utf16.count, length: 0)
     }
 
+    /// Brings a line of the note — counted from zero — to the top of the view.
+    func scroll(toLine line: Int) {
+        guard let view = coordinator?.textView else { return }
+        let text = view.textStorage.string as NSString
+        var offset = 0, remaining = line
+        while remaining > 0, offset < text.length {
+            offset = NSMaxRange(text.lineRange(for: NSRange(location: offset, length: 0)))
+            remaining -= 1
+        }
+        guard offset < text.length else { return }
+        view.layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: offset + 1))
+        let row = view.layoutManager.lineFragmentRect(forGlyphAt: view.layoutManager.glyphIndexForCharacter(at: offset), effectiveRange: nil)
+        let highest = max(0, view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height)
+        let top = min(max(row.minY + view.textContainerInset.top - 12, 0), highest)
+        view.setContentOffset(CGPoint(x: 0, y: top), animated: true)
+    }
+
     private func replace(_ range: NSRange, with text: String) {
         guard let view = coordinator?.textView, view.isEditable,
               let start = view.position(from: view.beginningOfDocument, offset: range.location),
@@ -97,10 +114,14 @@ struct SyncedTextEditor: UIViewRepresentable {
     /// Read so the view updates when either changes.
     var revision: Int
     var editable: Bool
+    /// What to show until the shared document arrives: the note's last saved copy.
+    var fallback: String
     var accent: UIColor
     var media: NoteEditorMedia
     /// Changes when what the rows of pictures show may have: an upload, a deletion, who may write.
     var mediaRevision: Int
+    /// A link tapped while the note wasn't being typed in.
+    var onLink: (String) -> Void = { _ in }
     var onFocus: (Bool) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(sync: sync, media: media) }
@@ -126,9 +147,22 @@ struct SyncedTextEditor: UIViewRepresentable {
         view.accessibilityLabel = "Note text"
         view.isEditable = editable
 
+        view.placeholder.font = .preferredFont(forTextStyle: .body)
+        view.placeholder.adjustsFontForContentSizeCategory = true
+        view.placeholder.textColor = .tertiaryLabel
+        view.placeholder.isHidden = true
+        view.addSubview(view.placeholder)
+
         let coordinator = context.coordinator
         coordinator.textView = view
         coordinator.onFocus = onFocus
+        coordinator.onLink = onLink
+        coordinator.fallback = fallback
+        // A note that can't be edited never begins editing, so its links need a tap of their own.
+        let tap = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delegate = coordinator
+        view.addGestureRecognizer(tap)
         coordinator.setAccent(accent)
         coordinator.mediaRevision = mediaRevision
         view.typingAttributes = coordinator.styler.base
@@ -141,30 +175,37 @@ struct SyncedTextEditor: UIViewRepresentable {
     func updateUIView(_ view: NoteTextView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onFocus = onFocus
+        coordinator.onLink = onLink
+        coordinator.fallback = fallback
         coordinator.media = media
         proxy.coordinator = coordinator
         var stale = coordinator.setAccent(accent)
-        if view.isEditable != editable {
-            view.isEditable = editable
-            stale = true
-        }
         if coordinator.mediaRevision != mediaRevision {
             coordinator.mediaRevision = mediaRevision
             coordinator.forgetMedia()
             stale = true
         }
-        if !coordinator.applyRemote(), stale {
+        // The text first, then whether it can be typed in: it only becomes
+        // editable once it is the shared document's own text.
+        let changed = coordinator.applyRemote()
+        if view.isEditable != editable {
+            view.isEditable = editable
+            stale = true
+        }
+        if !changed, stale {
             coordinator.restyle()
         }
     }
 
-    final class Coordinator: NSObject, UITextViewDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         let sync: DocSync
         let styler = NoteStyler()
         var media: NoteEditorMedia
         var mediaRevision = 0
+        var fallback = ""
         weak var textView: NoteTextView?
         var onFocus: (Bool) -> Void = { _ in }
+        var onLink: (String) -> Void = { _ in }
         /// The text as the shared document and the view last agreed on it.
         private var known: [UInt16] = []
         /// The last text parsed, so moving the caret doesn't parse it again.
@@ -195,12 +236,21 @@ struct SyncedTextEditor: UIViewRepresentable {
             return true
         }
 
+        /// What the view should hold: the shared document once it has arrived,
+        /// and until then what the note last read as — its saved copy, or for
+        /// a note nobody able to write has opened yet, the text it was imported with.
+        private var shownText: String {
+            if let imported = sync.unseededMarkdown { return imported }
+            let live = sync.shared.string()
+            return live.isEmpty && !sync.synced ? fallback : live
+        }
+
         /// Brings the view up to the document, changing only what differs and
         /// carrying the selection across the change. True when something changed.
         @discardableResult
         func applyRemote() -> Bool {
             guard let view = textView else { return false }
-            let latest = Array(sync.shared.string().utf16)
+            let latest = Array(shownText.utf16)
             guard let change = TextChange.between(known, latest) else { return false }
             let selection = view.selectedRange
             let inserted = NSAttributedString(string: String(decoding: change.inserted, as: UTF16.self), attributes: styler.base)
@@ -214,7 +264,8 @@ struct SyncedTextEditor: UIViewRepresentable {
 
         /// Writes whatever the view now holds that the document doesn't.
         func changedLocally() {
-            guard let view = textView else { return }
+            // Only text that is the document's own can be written back into it.
+            guard let view = textView, sync.canWrite else { return }
             let latest = Array(view.text.utf16)
             guard let change = TextChange.between(known, latest) else { return }
             sync.shared.replaceText(start: change.start, length: change.removed,
@@ -245,7 +296,50 @@ struct SyncedTextEditor: UIViewRepresentable {
             styler.apply(desired, to: view.textStorage)
             view.typingAttributes = styler.base
             placeMedia()
+
+            let empty = view.textStorage.length == 0
+            view.placeholder.isHidden = !empty
+            if empty {
+                view.placeholder.text = !sync.synced ? "Loading…" : view.isEditable ? "Start writing…" : "This note is empty."
+                view.placeholder.sizeToFit()
+                view.placeholder.frame.origin = CGPoint(x: view.textContainerInset.left + view.textContainer.lineFragmentPadding,
+                                                        y: view.textContainerInset.top)
+            }
         }
+
+        // MARK: Links
+
+        /// Where the text under a point leads, if it is a link.
+        private func link(at point: CGPoint) -> String? {
+            guard let view = textView, view.textStorage.length > 0 else { return nil }
+            let manager = view.layoutManager
+            let spot = CGPoint(x: point.x - view.textContainerInset.left, y: point.y - view.textContainerInset.top)
+            let index = manager.characterIndex(for: spot, in: view.textContainer, fractionOfDistanceBetweenInsertionPoints: nil)
+            guard index < view.textStorage.length,
+                  let address = view.textStorage.attribute(.noteLink, at: index, effectiveRange: nil) as? String else { return nil }
+            // The nearest character to a tap in the margin is still a character; only a tap on the text counts.
+            let glyph = manager.boundingRect(forGlyphRange: NSRange(location: manager.glyphIndexForCharacter(at: index), length: 1),
+                                             in: view.textContainer)
+            return glyph.insetBy(dx: -8, dy: -4).contains(spot) ? address : nil
+        }
+
+        /// A tap in a note that is being read opens the link under it rather
+        /// than putting the caret there. Once typing, a tap is a tap.
+        func textViewShouldBeginEditing(_ textView: UITextView) -> Bool {
+            guard let view = self.textView, let touch = view.lastTouch, Date().timeIntervalSince(touch.at) < 1,
+                  let address = link(at: touch.point) else { return true }
+            view.forgetTouch()
+            onLink(address)
+            return false
+        }
+
+        @objc func tapped(_ gesture: UITapGestureRecognizer) {
+            guard let view = textView, !view.isEditable, let address = link(at: gesture.location(in: view)) else { return }
+            onLink(address)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 
         private func mediaSize(_ row: String) -> CGSize? {
             // Nothing is measured until the view has a width to lay rows out in.
@@ -337,7 +431,6 @@ struct NoteFormatBar: View {
     var onSketch: () -> Void
     var onImage: () -> Void
     var onAttachments: () -> Void
-    var keyboardUp: Bool
 
     var body: some View {
         FormatBar {
@@ -358,10 +451,8 @@ struct NoteFormatBar: View {
             button("New sketch", "scribble.variable") { onSketch() }
             button("Add image", "photo.badge.plus") { onImage() }
             button("Attachments", "paperclip") { onAttachments() }
-            if keyboardUp {
-                Divider().frame(height: 22)
-                button("Hide keyboard", "keyboard.chevron.compact.down") { proxy.dismissKeyboard() }
-            }
+            Divider().frame(height: 22)
+            button("Done", "keyboard.chevron.compact.down") { proxy.dismissKeyboard() }
         }
     }
 

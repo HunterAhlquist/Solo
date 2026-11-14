@@ -317,42 +317,6 @@ nonisolated enum DocMarkdown {
         }
     }
 
-    /// A stretch of a note as it reads: text, or a row of pictures between the text.
-    enum Piece: Equatable, Sendable {
-        case text(String)
-        case media([DocEmbedRef])
-    }
-
-    /// A note cut into text and rows of pictures, in order. Code is never a row.
-    static func pieces(_ markdown: String) -> [Piece] {
-        var result: [Piece] = []
-        var text: [Substring] = []
-        var fence: Substring?
-        func flush() {
-            if !text.joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                result.append(.text(text.joined(separator: "\n")))
-            }
-            text = []
-        }
-        for line in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
-            let trimmed = line.drop { $0 == " " }
-            if let open = fence {
-                if trimmed.hasPrefix(open) { fence = nil }
-                text.append(line)
-            } else if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
-                fence = trimmed.prefix(3)
-                text.append(line)
-            } else if line.contains("!["), let row = mediaRow(String(line)) {
-                flush()
-                result.append(.media(row))
-            } else {
-                text.append(line)
-            }
-        }
-        flush()
-        return result
-    }
-
     /// A raw target as it resolves: the size or alias after `|` dropped, URL-decoded.
     static func target(_ raw: String) -> String {
         let path = String(raw.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
@@ -371,43 +335,9 @@ nonisolated enum DocMarkdown {
         return NoteAddress.decode(String(parts[1]))
     }
 
-    /// Runs `transform` over the parts of a note that aren't code, leaving code as written.
-    static func outsideCode(_ markdown: String, _ transform: (String) -> String) -> String {
-        var result = ""
-        var cursor = markdown.startIndex
-        for match in markdown.matches(of: code) {
-            result += transform(String(markdown[cursor..<match.range.lowerBound]))
-            result += markdown[match.range]
-            cursor = match.range.upperBound
-        }
-        return result + transform(String(markdown[cursor...]))
-    }
-
     /// A note's headings and the slugs links use for them.
     static func headings(_ markdown: String) -> [DocHeading] {
         outline(markdown).map(\.heading)
-    }
-
-    /// A note cut at its headings, each part carrying the heading that opens
-    /// it. What comes before the first heading has none.
-    static func sections(_ markdown: String) -> [(slug: String?, text: String)] {
-        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
-        var result: [(slug: String?, text: String)] = []
-        var start = 0
-        var slug: String?
-        func close(_ end: Int) {
-            let text = lines[start..<end].joined(separator: "\n")
-            if slug != nil || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                result.append((slug, text))
-            }
-        }
-        for entry in outline(markdown) {
-            close(entry.line)
-            start = entry.line
-            slug = entry.heading.slug
-        }
-        close(lines.count)
-        return result
     }
 
     /// Each heading with the line it is on. The slug rule is the web

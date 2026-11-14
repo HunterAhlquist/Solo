@@ -1,11 +1,13 @@
 import PhotosUI
 import SwiftUI
 
-/// One note: read as rendered Markdown, or edited as its source — either way
-/// live, with everyone else's changes arriving as they are made.
+/// One note, live: it reads as what its Markdown means, and a tap in the text
+/// starts typing there — there is no separate mode for editing. Everyone
+/// else's changes arrive as they are made.
 struct NoteView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
+    @Environment(\.openURL) private var openURL
     var store: DocVaultStore
     var note: DocNote
     var mayWrite: Bool
@@ -13,10 +15,9 @@ struct NoteView: View {
     var onOpenNote: (UUID) -> Void
 
     @State private var sync: DocSync?
-    @State private var editing = false
     @State private var proxy = NoteEditorProxy()
-    @State private var keyboardUp = false
-    @State private var anchor: String?
+    /// True while the note is being typed in: from the tap that puts the caret down until the keyboard goes away.
+    @State private var typing = false
     @State private var prompt: TextPrompt?
     @State private var pickingNote = false
     @State private var pickingTask = false
@@ -40,49 +41,48 @@ struct NoteView: View {
 
     var body: some View {
         let text = text
-        Group {
-            if editing, let sync {
-                VStack(spacing: 0) {
-                    statusBar(sync)
-                    SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite,
-                                     accent: UIColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision) {
-                        keyboardUp = $0
-                    }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if sync.canWrite {
-                        NoteFormatBar(proxy: proxy, onLinkNote: { pickingNote = true }, onLinkTask: { pickingTask = true },
-                                      onSketch: newSketchPrompt, onImage: { pickingPhoto = true },
-                                      onAttachments: { showingAttachments = true }, keyboardUp: keyboardUp)
-                    }
+        VStack(spacing: 0) {
+            header
+            if let sync {
+                SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite, fallback: note.markdown,
+                                 accent: UIColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision, onLink: follow) {
+                    typing = $0
                 }
             } else {
-                reading(text)
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: 820)
+        .frame(maxWidth: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // The tools for writing are there while writing, and out of the way of reading.
+            if typing, canWrite {
+                NoteFormatBar(proxy: proxy, onLinkNote: { pickingNote = true }, onLinkTask: { pickingTask = true },
+                              onSketch: newSketchPrompt, onImage: { pickingPhoto = true },
+                              onAttachments: { showingAttachments = true })
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: typing)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                if !editing {
-                    let headings = DocMarkdown.headings(text)
-                    Menu("Note", systemImage: "list.bullet.indent") {
-                        if !headings.isEmpty {
-                            Section("Outline") {
-                                ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
-                                    Button(String(repeating: "   ", count: max(0, heading.level - 1)) + heading.text) {
-                                        anchor = heading.slug
-                                    }
+                let outline = DocMarkdown.outline(text)
+                Menu("Note", systemImage: "list.bullet.indent") {
+                    if !outline.isEmpty {
+                        Section("Outline") {
+                            ForEach(Array(outline.enumerated()), id: \.offset) { _, entry in
+                                Button(String(repeating: "   ", count: max(0, entry.heading.level - 1)) + entry.heading.text) {
+                                    proxy.scroll(toLine: entry.line)
                                 }
                             }
                         }
-                        Button("Attachments", systemImage: "paperclip") { showingAttachments = true }
                     }
+                    Button("Attachments", systemImage: "paperclip") { showingAttachments = true }
                 }
-                if canWrite || editing {
-                    Button(editing ? "Done" : "Edit", systemImage: editing ? "checkmark" : "square.and.pencil") {
-                        setEditing(!editing)
-                    }
-                    .labelStyle(.titleOnly)
-                    .fontWeight(editing ? .semibold : .regular)
+                if typing {
+                    // Also the way out with a hardware keyboard, which has nothing to dismiss.
+                    Button("Done") { proxy.dismissKeyboard() }
+                        .fontWeight(.semibold)
                 }
             }
         }
@@ -102,7 +102,7 @@ struct NoteView: View {
             Task { await leaving?.stop() }
         }
         .onChange(of: sync?.canWrite) { _, writable in
-            if writable == false, editing, sync?.deleted == true { setEditing(false) }
+            if writable == false, typing { proxy.dismissKeyboard() }
         }
         .textPrompt($prompt)
         .sheet(isPresented: $pickingNote) {
@@ -116,7 +116,7 @@ struct NoteView: View {
         }
         .sheet(isPresented: $showingAttachments) {
             DocAttachmentsSheet(store: store, note: note, canWrite: canWrite, liveText: text,
-                                onInsert: editing && canWrite ? { proxy.insert("![[\($0)]]", ownLine: true) } : nil,
+                                onInsert: canWrite ? { proxy.insert("![[\($0)]]", ownLine: true) } : nil,
                                 onDeleted: { targets in removeEmbeds(targets.map { "![[\($0)]]" }) })
         }
         .photosPicker(isPresented: $pickingPhoto, selection: $photo, matching: .images)
@@ -165,39 +165,14 @@ struct NoteView: View {
             })
     }
 
-    // MARK: Reading
-
-    private func reading(_ text: String) -> some View {
-        ScrollViewReader { scroller in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    header
-                    if text.nilIfBlank == nil {
-                        empty
-                    } else {
-                        NoteReader(text: text, note: note, media: mediaContext, mayWrite: mayWrite, anchor: $anchor,
-                                   onOpenNote: onOpenNote)
-                    }
-                }
-                .frame(maxWidth: 760, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 40)
-                .frame(maxWidth: .infinity)
-            }
-            .onChange(of: anchor) { _, slug in
-                guard let slug else { return }
-                withAnimation(.snappy) { scroller.scrollTo(slug, anchor: .top) }
-                anchor = nil
-            }
-        }
-    }
+    // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(note.name)
-                .font(.largeTitle.weight(.bold))
+                .font(.title.weight(.bold))
                 .foregroundStyle(theme.textPrimary)
+                .lineLimit(2)
             HStack(spacing: 8) {
                 if let sync {
                     Label(sync.statusText, systemImage: statusSymbol(sync))
@@ -208,24 +183,19 @@ struct NoteView: View {
                     Text("Edited \(edited.relative)\(author.map { " by \($0)" } ?? "")")
                         .lineLimit(1)
                 }
+                if uploading {
+                    ProgressView().controlSize(.mini)
+                }
                 Spacer(minLength: 0)
                 if let sync { NotePresence(entries: sync.present) }
             }
             .font(.caption)
             .foregroundStyle(theme.textSecondary)
         }
-        .id("solo-doc-header")
-    }
-
-    private var empty: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(sync?.synced == true ? "This note is empty." : "Loading…")
-                .foregroundStyle(theme.textSecondary)
-            if canWrite {
-                Button("Start writing", systemImage: "square.and.pencil") { setEditing(true, typing: true) }
-                    .buttonStyle(.glass)
-            }
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // In line with the text below, which sits this far in.
+        .padding(.horizontal, 19)
+        .padding(.top, 8)
     }
 
     private func statusSymbol(_ sync: DocSync) -> String {
@@ -235,40 +205,56 @@ struct NoteView: View {
         return sync.canWrite ? "checkmark.circle" : "eye"
     }
 
-    // MARK: Editing
+    // MARK: Links
 
-    private func statusBar(_ sync: DocSync) -> some View {
-        HStack(spacing: 8) {
-            Label(sync.statusText, systemImage: statusSymbol(sync))
-            if uploading {
-                ProgressView().controlSize(.mini)
+    /// Follows a link tapped in the note: to another note, a heading of this
+    /// one, a task, somewhere else in the app, or out to the web.
+    private func follow(_ destination: String) {
+        // `[[Note]]`, and a plain link to a note's file, name a note in this design doc.
+        if destination.hasPrefix("wiki:") || destination.wholeMatch(of: /[^:#?]+\.md(?:#.*)?/.ignoresCase()) != nil {
+            var target = destination.hasPrefix("wiki:") ? String(destination.dropFirst(5)) : destination
+            var heading: String?
+            if let hash = target.firstIndex(of: "#") {
+                heading = String(target[target.index(after: hash)...])
+                target = String(target[..<hash])
             }
-            Spacer(minLength: 0)
-            NotePresence(entries: sync.present)
+            guard let found = store.resolveNote(target, from: note) else {
+                session.toasts.show("That note doesn't exist in this design doc.", .info)
+                return
+            }
+            if found.id == note.id {
+                scroll(toHeading: heading)
+            } else {
+                onOpenNote(found.id)
+            }
+            return
         }
-        .font(.caption)
-        .foregroundStyle(theme.textSecondary)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 6)
+        guard let url = URL(string: destination, relativeTo: session.api.baseURL)?.absoluteURL else { return }
+        // A note's own address: stay in this design doc when it is one of its notes.
+        if url.host() == session.api.baseURL.host(), let address = NoteAddress.read(url.path()), store.note(address.id) != nil {
+            if address.id == note.id {
+                scroll(toHeading: url.fragment(percentEncoded: false))
+            } else {
+                onOpenNote(address.id)
+            }
+            return
+        }
+        if ExtensionLinks.open(url, session: session) { return }
+        if let route = SoloLinks.route(for: url, instance: session.api.baseURL) {
+            session.navigator.open(route)
+        } else if let scheme = url.scheme?.lowercased(), ["http", "https", "mailto"].contains(scheme) {
+            openURL(url)
+        }
     }
 
-    /// Opens the note for editing. The keyboard comes up only for a note with
-    /// nothing in it yet: otherwise the note stays fully drawn until a tap
-    /// says where the caret goes, since wherever it lands unfolds that line.
-    private func setEditing(_ value: Bool, typing: Bool = false) {
-        if value {
-            editing = true
-            guard typing else { return }
-            // The text view exists a moment after the state changes.
-            Task {
-                try? await Task.sleep(for: .milliseconds(150))
-                proxy.focus()
-            }
-        } else {
-            proxy.dismissKeyboard()
-            editing = false
-        }
+    private func scroll(toHeading wanted: String?) {
+        guard let wanted, let entry = DocMarkdown.outline(text).first(where: {
+            $0.heading.slug == wanted || $0.heading.text.caseInsensitiveCompare(wanted) == .orderedSame
+        }) else { return }
+        proxy.scroll(toLine: entry.line)
     }
+
+    // MARK: Writing
 
     private func newSketchPrompt() {
         prompt = TextPrompt(title: "New sketch", placeholder: "Name") { name in

@@ -18,8 +18,6 @@ struct SoloMarkdown: View {
     var navigationLocked = false
     /// Extra rewriting before rendering, for extensions that label their own links.
     var transform: ((String) -> String)?
-    /// Asked first about every link tapped; true means it was dealt with.
-    var linkHandler: ((URL) -> Bool)?
 
     private static let taskScheme = "solo-task"
     private static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
@@ -29,7 +27,7 @@ struct SoloMarkdown: View {
             .markdownTheme(markdownTheme)
             .environment(\.openURL, OpenURLAction { url in
                 guard !navigationLocked else { return .handled }
-                if linkHandler?(url) == true || ExtensionLinks.open(url, session: session) {
+                if ExtensionLinks.open(url, session: session) {
                     return .handled
                 }
                 if url.scheme == Self.taskScheme, let reference = TaskReference(serial: url.host() ?? "") {

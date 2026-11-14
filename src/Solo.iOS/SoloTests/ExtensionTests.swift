@@ -98,19 +98,6 @@ import Testing
         #expect(DocMarkdown.owner(ofPath: path) == id)
         #expect(DocMarkdown.owner(ofPath: "imported/photo.png") == nil)
     }
-
-    @Test func sectionsCutAtHeadings() {
-        let sections = DocMarkdown.sections("intro\n# A\ntext\n## B\nmore")
-        #expect(sections.map(\.slug) == [nil, "a", "b"])
-        #expect(sections.map(\.text) == ["intro", "# A\ntext", "## B\nmore"])
-        #expect(DocMarkdown.sections("# Only").map(\.slug) == ["only"])
-        #expect(DocMarkdown.sections("").isEmpty)
-    }
-
-    @Test func codeIsLeftAsWritten() {
-        let result = DocMarkdown.outsideCode("a `b` c\n```\nd\n```\ne") { $0.uppercased() }
-        #expect(result == "A `b` C\n```\nd\n```\nE")
-    }
 }
 
 @Suite struct DocSyncTests {

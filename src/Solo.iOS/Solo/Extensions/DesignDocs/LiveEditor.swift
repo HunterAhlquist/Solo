@@ -9,6 +9,8 @@ import UIKit
 nonisolated extension NSAttributedString.Key {
     /// A decoration the layout manager draws behind a line: a quote's depth, or -1 for a code block.
     static let noteBlock = NSAttributedString.Key("solo.note.block")
+    /// Where a run leads when tapped while the note isn't being typed in.
+    static let noteLink = NSAttributedString.Key("solo.note.link")
     /// A list marker to draw as a bullet, whatever character it is written with.
     static let noteBullet = NSAttributedString.Key("solo.note.bullet")
     /// The raw embed target a line stands in for, where a picture is laid over it.
@@ -197,6 +199,8 @@ final class NoteStyler {
             case .link:
                 result.addAttribute(.foregroundColor, value: accent, range: range)
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            case .destination(let address):
+                result.addAttribute(.noteLink, value: address as NSString, range: range)
             case .bullet:
                 result.addAttribute(.foregroundColor, value: accent, range: range)
             case .dot:
@@ -252,10 +256,24 @@ final class NoteStyler {
     }
 }
 
-/// A text view that says when its width changes, which is when embeds have to be measured again.
+/// A text view that says when its width changes, which is when embeds have
+/// to be measured again, and remembers where it was last touched — which is
+/// how a tap on a link is told from a tap to start typing.
 final class NoteTextView: UITextView {
     var onWidthChange: (() -> Void)?
+    private(set) var lastTouch: (point: CGPoint, at: Date)?
     private var lastWidth: CGFloat = 0
+    let placeholder = UILabel()
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        if hit === self { lastTouch = (point, Date()) }
+        return hit
+    }
+
+    func forgetTouch() {
+        lastTouch = nil
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()

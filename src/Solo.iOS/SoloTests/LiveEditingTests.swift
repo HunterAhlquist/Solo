@@ -60,6 +60,18 @@ import Testing
         #expect(has(spans(text, caret: 8), .link, "[[Other note|shown]]", in: text))
     }
 
+    /// What a tap on a link opens, carried on the same run that is drawn as one.
+    @Test func linksKnowWhereTheyLead() {
+        let text = "[label](https://x.y/z) and [[Folder/Note#Part|shown]] and [[Plain]] and <https://a.b>"
+        let found = spans(text)
+        #expect(has(found, .destination("https://x.y/z"), "label", in: text))
+        #expect(has(found, .destination("wiki:Folder/Note#Part"), "shown", in: text))
+        #expect(has(found, .destination("wiki:Plain"), "Plain", in: text))
+        #expect(has(found, .destination("https://a.b"), "<https://a.b>", in: text))
+        // Touched, the whole of a wiki link is on show, and still leads to the same place.
+        #expect(has(spans(text, caret: 30), .destination("wiki:Folder/Note#Part"), "[[Folder/Note#Part|shown]]", in: text))
+    }
+
     @Test func aLineOfEmbedsIsARowOfPictures() {
         let text = "![[a.png]] ![[b.sketch]]\ntext ![[c.png]] more"
         let away = spans(text)
@@ -133,17 +145,6 @@ import Testing
         #expect(DocMarkdown.mediaRow("see ![[a.png]]") == nil)
         #expect(DocMarkdown.mediaRow("no pictures") == nil)
         #expect(DocMarkdown.mediaRow("") == nil)
-    }
-
-    @Test func aNoteIsCutIntoTextAndRows() {
-        let note = "intro\n![[a.png]] ![[b.sketch]]\nmiddle with ![[c.png]] inline\n```\n![[code.png]]\n```\n![[d.png]]"
-        let pieces = DocMarkdown.pieces(note)
-        #expect(pieces.count == 4)
-        #expect(pieces[0] == .text("intro"))
-        #expect(pieces[1] == .media([DocEmbedRef(source: "![[a.png]]", target: "a.png"), DocEmbedRef(source: "![[b.sketch]]", target: "b.sketch")]))
-        #expect(pieces[2] == .text("middle with ![[c.png]] inline\n```\n![[code.png]]\n```"))
-        #expect(pieces[3] == .media([DocEmbedRef(source: "![[d.png]]", target: "d.png")]))
-        #expect(DocMarkdown.pieces("\n\n").isEmpty)
     }
 
     /// Values from the web's own `imageAngle`: a print leans the same way on every client.
