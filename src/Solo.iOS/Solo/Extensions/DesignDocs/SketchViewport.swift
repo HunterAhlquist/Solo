@@ -450,16 +450,39 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
         }
     }
 
+    // A recognizer reports how far the whole gesture has come. Each step here is the change
+    // since the step before, kept by hand: setting a trackpad pinch's scale back to one does
+    // not start it over, so every step would apply the whole pinch again and the zoom run away.
+    private var lastScale: CGFloat = 1
+    private var lastRotation: CGFloat = 0
+
     @objc private func pinched(_ recognizer: UIPinchGestureRecognizer) {
-        guard recognizer.state == .changed else { return }
-        move(to: view.anchored(at: recognizer.location(in: self), zoom: view.zoom * recognizer.scale))
-        recognizer.scale = 1
+        switch recognizer.state {
+        case .began:
+            lastScale = 1
+            fallthrough
+        case .changed:
+            let scale = recognizer.scale
+            guard scale > 0, lastScale > 0 else { return }
+            move(to: view.anchored(at: recognizer.location(in: self), zoom: view.zoom * scale / lastScale))
+            lastScale = scale
+        default:
+            break
+        }
     }
 
     @objc private func turned(_ recognizer: UIRotationGestureRecognizer) {
-        guard recognizer.state == .changed else { return }
-        move(to: view.anchored(at: recognizer.location(in: self), angle: view.angle + recognizer.rotation))
-        recognizer.rotation = 0
+        switch recognizer.state {
+        case .began:
+            lastRotation = 0
+            fallthrough
+        case .changed:
+            let rotation = recognizer.rotation
+            move(to: view.anchored(at: recognizer.location(in: self), angle: view.angle + rotation - lastRotation))
+            lastRotation = rotation
+        default:
+            break
+        }
     }
 
     // MARK: The Pencil's double-tap
