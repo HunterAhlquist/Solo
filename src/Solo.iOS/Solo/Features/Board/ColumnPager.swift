@@ -115,6 +115,8 @@ final class CardDragWatch {
     func hover(_ over: Bool) {
         idle?.cancel()
         if over {
+            // The first target a card is over is where it was picked up from.
+            if !active { Haptics.shared.play(.pickUp) }
             active = true
         } else {
             // Between two targets there is a moment over neither. A drag given up over nothing
@@ -131,6 +133,7 @@ final class CardDragWatch {
     func ended() {
         idle?.cancel()
         active = false
+        Haptics.shared.play(.drop)
     }
 }
 

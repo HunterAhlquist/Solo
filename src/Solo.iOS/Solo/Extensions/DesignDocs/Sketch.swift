@@ -635,6 +635,8 @@ final class SketchModel: Identifiable {
         guard sync.canWrite, !clearing else { return }
         clearing = true
         effect?.playSound()
+        // Felt with the sound, Reduce Motion or not.
+        Haptics.shared.play(.explosion)
         let frames = effect?.frames ?? []
         Task {
             // With Reduce Motion, or with no picture to show, the page is simply cleared.
@@ -775,7 +777,10 @@ struct SketchEditor: View {
         NavigationStack {
             SketchCanvas(model: model, image: model.image, page: model.page, canDraw: model.sync.canWrite && !model.clearing,
                          tool: tool, ink: ink, level: level, blast: model.blast, pointers: model.pointers,
-                         dark: colorScheme == .dark)
+                         dark: colorScheme == .dark) {
+                // A double-tap on the Pencil: to the eraser, and back to the pen.
+                tool = tool == "pen" ? "eraser" : "pen"
+            }
                 .ignoresSafeArea(edges: .bottom)
                 .themedBackground()
                 .navigationBarTitleDisplayMode(.inline)
@@ -911,6 +916,7 @@ struct SketchCanvas: UIViewRepresentable {
     var blast: SketchBlast?
     var pointers: [SketchPointer] = []
     var dark = false
+    var onPencilTap: () -> Void = {}
 
     func makeUIView(context: Context) -> SketchScrollView {
         let view = SketchScrollView(page: CGSize(width: page.width, height: page.height))
@@ -928,6 +934,7 @@ struct SketchCanvas: UIViewRepresentable {
         page.level = level
         page.play(blast)
         page.show(pointers, dark: dark, zoom: view.zoomScale)
+        page.onPencilTap = onPencilTap
     }
 }
 
@@ -996,8 +1003,28 @@ final class SketchScrollView: UIScrollView, UIScrollViewDelegate {
     }
 }
 
-final class SketchPageView: UIView {
+final class SketchPageView: UIView, UIPencilInteractionDelegate {
     weak var model: SketchModel?
+    var onPencilTap: () -> Void = {}
+
+    // iPadOS 17.5 and later call this one and skip the older method below.
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
+        pencilTapped()
+    }
+
+    func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+        pencilTapped()
+    }
+
+    /// The Pencil's double-tap does what Settings says it does. Either of its tool-switching
+    /// choices swaps pen and eraser, the two tools there are; anything else is left to the system.
+    private func pencilTapped() {
+        guard canDraw else { return }
+        switch UIPencilInteraction.preferredTapAction {
+        case .switchEraser, .switchPrevious: onPencilTap()
+        default: break
+        }
+    }
     var canDraw = false
     var tool = "pen"
     var ink: SketchInk = .theme
@@ -1076,6 +1103,9 @@ final class SketchPageView: UIView {
         isMultipleTouchEnabled = true
         isAccessibilityElement = true
         accessibilityLabel = "Sketch page"
+        let pencil = UIPencilInteraction()
+        pencil.delegate = self
+        addInteraction(pencil)
     }
 
     @available(*, unavailable)
