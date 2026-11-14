@@ -84,5 +84,32 @@ struct ThemedRoot<Content: View>: View {
         content
             .environment(\.theme, theme)
             .tint(theme.primary)
+            // A switch's knob is white whatever its track is, so the track is the fill white reads on.
+            .toggleStyle(AccentSwitchStyle(fill: theme.fill))
+    }
+}
+
+/// The system's switch, on a track its knob shows up against.
+private struct AccentSwitchStyle: ToggleStyle {
+    var fill: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Toggle(configuration).toggleStyle(.switch).tint(fill)
+    }
+}
+
+extension View {
+    /// For the label of a button filled with the accent: a prominent button anywhere, a toolbar's
+    /// confirming action. The colour has to be set here, on the label — set on the button, the
+    /// prominent style lays its own white over it, which is unreadable on a light accent.
+    func onAccent() -> some View { modifier(OnAccent()) }
+}
+
+private struct OnAccent: ViewModifier {
+    @Environment(\.theme) private var theme
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        content.foregroundStyle(theme.onPrimary.opacity(isEnabled ? 1 : 0.45))
     }
 }

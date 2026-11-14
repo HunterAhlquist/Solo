@@ -536,7 +536,7 @@ struct DocAttachmentsSheet: View {
                     onInsert(item.path)
                     dismiss()
                 }
-                .tint(theme.primary)
+                .tint(theme.fill)
             }
         }
         .contextMenu {

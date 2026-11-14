@@ -24,6 +24,8 @@ struct RootView: View {
                     SignInView()
                 case .unreachable(let message):
                     UnreachableView(message: message)
+                case .localNetworkDenied:
+                    LocalNetworkDeniedView()
                 case .signedIn:
                     if let session = model.session {
                         AppShell()

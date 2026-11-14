@@ -14,6 +14,8 @@ final class AppModel {
         case signedIn
         /// The instance didn't answer and nothing is cached to show instead.
         case unreachable(String)
+        /// The instance is on the local network, and Solo has been refused the local network.
+        case localNetworkDenied
     }
 
     private static let instanceKey = "solo.instance.url"
@@ -76,6 +78,12 @@ final class AppModel {
 
     /// Reads the instance's bootstrap config, then resumes a stored session if there is one.
     func connect(to url: URL) async {
+        await connect(to: url, askedAlready: false)
+    }
+
+    /// `askedAlready` is true for the second try, made once the system's question about the local
+    /// network has been answered: that one's failure is the answer, not another question.
+    private func connect(to url: URL, askedAlready: Bool) async {
         phase = .launching
         let api = APIClient(baseURL: url)
         do {
@@ -101,15 +109,29 @@ final class AppModel {
                     api.token = nil
                     notice = "Your session ended. Sign in again."
                 } catch {
-                    phase = .unreachable((error as? LocalizedError)?.errorDescription ?? "Couldn't reach the instance.")
+                    await failed(url, (error as? LocalizedError)?.errorDescription ?? "Couldn't reach the instance.",
+                                 askedAlready: askedAlready)
                     return
                 }
             }
             phase = .signedOut
         } catch {
             instanceURL = url
-            phase = .unreachable((error as? LocalizedError)?.errorDescription ?? "Couldn't reach \(url.host() ?? "the instance").")
+            await failed(url, (error as? LocalizedError)?.errorDescription ?? "Couldn't reach \(url.host() ?? "the instance").",
+                         askedAlready: askedAlready)
         }
+    }
+
+    /// The instance couldn't be reached. Before saying so: the first connection to an address on
+    /// the local network fails by design, while the system asks whether Solo may use the local
+    /// network at all. That failure isn't shown — the answer is waited for, and the connection
+    /// made again. Only a refusal, or a failure that had nothing to do with the question, is.
+    private func failed(_ url: URL, _ message: String, askedAlready: Bool) async {
+        if !askedAlready, await LocalNetworkAccess.alertCameAndWent() {
+            await connect(to: url, askedAlready: true)
+            return
+        }
+        phase = await LocalNetworkAccess.isDenied(for: url) ? .localNetworkDenied : .unreachable(message)
     }
 
     func retry() async {

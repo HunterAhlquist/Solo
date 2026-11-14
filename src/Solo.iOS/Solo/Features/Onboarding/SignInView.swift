@@ -52,12 +52,15 @@ struct SignInView: View {
                         }
                         Text("Sign in with \(model.config?.providerName ?? "single sign-on")")
                             .fontWeight(.semibold)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                            .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
+                    .onAccent()
                 }
                 .buttonStyle(.glassProminent)
-                .foregroundStyle(theme.onPrimary)
                 .disabled(signingIn)
 
                 if let problem {
@@ -73,7 +76,9 @@ struct SignInView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "server.rack")
                         Text(model.instanceURL?.host() ?? "")
-                        Text("· Change")
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                        Text("· Change").fixedSize()
                     }
                     .font(.footnote)
                     .foregroundStyle(theme.textSecondary)
@@ -91,6 +96,11 @@ struct SignInView: View {
             .font(.system(.largeTitle, weight: theme.headingWeight))
             .foregroundStyle(theme.textPrimary)
             .multilineTextAlignment(.center)
+            // A name is shown whole. One long word — an address used as a name — can't wrap, so it
+            // is set smaller until it fits rather than cut off.
+            .lineLimit(4)
+            .minimumScaleFactor(0.4)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var logoURL: URL? {

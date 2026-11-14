@@ -14,6 +14,10 @@ nonisolated struct Theme: Equatable, Sendable {
     var secondary: Color
     /// Text on a filled accent surface: black or white, whichever reads.
     var onPrimary: Color
+    /// The accent as a fill the system puts white on and gives no say over: a switch that is on,
+    /// a swipe action. The accent itself where white reads on it, and a deeper shade of it where
+    /// it would not — a bright yellow accent is no ground for a white knob.
+    var fill: Color
     var isDark: Bool
 
     // Everything else is the system's, named for what it is used for.
@@ -34,13 +38,14 @@ nonisolated struct Theme: Equatable, Sendable {
     var accentWash: Color { primary.opacity(isDark ? 0.24 : 0.16) }
 
     static func fallback(dark: Bool) -> Theme {
-        Theme(primary: .accentColor, secondary: .secondary, onPrimary: .white, isDark: dark)
+        Theme(primary: .accentColor, secondary: .secondary, onPrimary: .white, fill: .accentColor, isDark: dark)
     }
 
-    init(primary: Color, secondary: Color, onPrimary: Color, isDark: Bool) {
+    init(primary: Color, secondary: Color, onPrimary: Color, fill: Color, isDark: Bool) {
         self.primary = primary
         self.secondary = secondary
         self.onPrimary = onPrimary
+        self.fill = fill
         self.isDark = isDark
     }
 
@@ -52,9 +57,10 @@ nonisolated struct Theme: Equatable, Sendable {
         self.init(
             primary: primary.color,
             secondary: CSSColor(palette.secondary ?? "")?.color ?? primary.color,
-            // Left out by most themes on purpose: derived from the fill, so a
-            // light accent gets dark labels.
-            onPrimary: CSSColor(palette.primaryContrastText ?? "")?.color ?? (primary.luminance > 0.45 ? .black : .white),
+            // Worked out from the accent rather than read from the theme: a theme written for
+            // the web may name a contrast colour that its own accent doesn't carry.
+            onPrimary: primary.readable,
+            fill: primary.carryingWhite.color,
             isDark: dark)
     }
 
@@ -161,6 +167,33 @@ nonisolated struct CSSColor: Equatable, Sendable {
 
     var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha) }
 
+    /// How strongly this stands out from another colour, as WCAG measures it: 1 for none, 21 for black on white.
+    func contrast(with other: CSSColor) -> Double {
+        let lighter = max(luminance, other.luminance), darker = min(luminance, other.luminance)
+        return (lighter + 0.05) / (darker + 0.05)
+    }
+
+    static let white = CSSColor(red: 1, green: 1, blue: 1)
+    static let black = CSSColor(red: 0, green: 0, blue: 0)
+
+    /// Black or white, whichever stands out more on this as a fill.
+    var readable: Color {
+        contrast(with: .black) >= contrast(with: .white) ? .black : .white
+    }
+
+    /// This colour, or the nearest darker shade of it that white reads on (3:1, what WCAG asks
+    /// of a control's parts). The hue is kept: only its channels are scaled down.
+    var carryingWhite: CSSColor {
+        guard contrast(with: .white) < 3 else { return self }
+        var low = 0.0, high = 1.0
+        for _ in 0..<16 {
+            let middle = (low + high) / 2
+            let shade = CSSColor(red: red * middle, green: green * middle, blue: blue * middle, alpha: alpha)
+            if shade.contrast(with: .white) >= 3 { low = middle } else { high = middle }
+        }
+        return CSSColor(red: red * low, green: green * low, blue: blue * low, alpha: alpha)
+    }
+
     /// `#rrggbb`, the only form a label's colour is stored in.
     var hex: String {
         String(format: "#%02x%02x%02x", Int((red * 255).rounded()), Int((green * 255).rounded()), Int((blue * 255).rounded()))
@@ -175,7 +208,7 @@ nonisolated extension Color {
 
     /// Black or white, whichever reads on this fill.
     static func readable(on hex: String) -> Color {
-        (CSSColor(hex)?.luminance ?? 0) > 0.45 ? .black : .white
+        CSSColor(hex)?.readable ?? .white
     }
 }
 

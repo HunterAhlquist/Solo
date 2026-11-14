@@ -65,9 +65,9 @@ struct InstanceEntryView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
+                            .onAccent()
                         }
                         .buttonStyle(.glassProminent)
-                        .foregroundStyle(theme.onPrimary)
                         .disabled(connecting || address.nilIfBlank == nil)
                     }
 
@@ -145,16 +145,62 @@ struct UnreachableView: View {
                     Text(host).font(.footnote.monospaced())
                 }
             } actions: {
-                Button("Try Again") {
+                Button {
                     Task { await model.retry() }
+                } label: {
+                    Text("Try Again").onAccent()
                 }
                 .buttonStyle(.glassProminent)
-                .foregroundStyle(theme.onPrimary)
                 Button("Use a Different Instance") {
                     Task { await model.changeInstance() }
                 }
                 .buttonStyle(.glass)
             }
+        }
+    }
+}
+
+/// The instance is on the local network and Solo isn't allowed on it. Only the person can
+/// change that, and only in Settings, so that is where the button goes; coming back tries again.
+struct LocalNetworkDeniedView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var wentToSettings = false
+
+    var body: some View {
+        ZStack {
+            AppBackground()
+            ContentUnavailableView {
+                Label("Local network access is off", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text("Solo tried to connect to an instance on your local network, but it hasn't been allowed to use the local network. Turn on Local Network for Solo in Settings to connect.")
+                if let host = model.instanceURL?.host() {
+                    Text(host).font(.footnote.monospaced())
+                }
+            } actions: {
+                Button {
+                    wentToSettings = true
+                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                } label: {
+                    Text("Open Settings").onAccent()
+                }
+                .buttonStyle(.glassProminent)
+                Button("Try Again") {
+                    Task { await model.retry() }
+                }
+                .buttonStyle(.glass)
+                Button("Use a Different Instance") {
+                    Task { await model.changeInstance() }
+                }
+                .buttonStyle(.glass)
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Back from Settings: whatever was changed there, find out.
+            guard phase == .active, wentToSettings else { return }
+            wentToSettings = false
+            Task { await model.retry() }
         }
     }
 }
@@ -177,11 +223,12 @@ struct SetupRequiredView: View {
                 Text("Finish first-run setup in a browser, then come back and sign in.")
             } actions: {
                 if let url = model.instanceURL {
-                    Button("Open Setup in Safari") {
+                    Button {
                         openURL(url.appending(path: "setup"))
+                    } label: {
+                        Text("Open Setup in Safari").onAccent()
                     }
                     .buttonStyle(.glassProminent)
-                    .foregroundStyle(theme.onPrimary)
                 }
                 Button("Check Again") {
                     Task { await model.retry() }
