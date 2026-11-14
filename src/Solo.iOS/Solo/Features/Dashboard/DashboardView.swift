@@ -10,6 +10,7 @@ struct DashboardView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var column: TaskState = .unstarted
+    @State private var watch = CardDragWatch()
     /// A card that has just changed column, for a phone to follow there. It matters most here:
     /// this page keeps no order of its own, so a card that changes column lands wherever its
     /// board's rank puts it — usually far from where it was let go.
@@ -89,6 +90,13 @@ struct DashboardView: View {
                         .padding(.bottom, 24)
                     }
                     .columnPaging($column)
+                    // A card held at either side is carried to the column that way.
+                    .overlay {
+                        ColumnEdgeSensors(selection: $column, watch: watch) { payloads, status in
+                            drop(payloads, status, cards)
+                        }
+                    }
+                    .environment(watch)
                     .followsLanding(landed?.token) {
                         if let landed { session.assigned.pulse(landed.taskId) }
                         landed = nil
@@ -223,6 +231,7 @@ private struct DashboardZone<Content: View>: View {
     var status: TaskState
     var onDrop: ([String]) -> Bool
     @ViewBuilder var content: Content
+    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
 
     var body: some View {
@@ -233,7 +242,13 @@ private struct DashboardZone<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .top)
         .padding(6)
         .glassEffect(targeted ? .regular.tint(theme.accentWash) : .regular, in: theme.cardShape)
-        .dropDestination(for: String.self) { payloads, _ in onDrop(payloads) } isTargeted: { targeted = $0 }
+        .dropDestination(for: String.self) { payloads, _ in
+            watch?.ended()
+            return onDrop(payloads)
+        } isTargeted: {
+            targeted = $0
+            watch?.hover($0)
+        }
         .animation(.easeOut(duration: 0.15), value: targeted)
     }
 }

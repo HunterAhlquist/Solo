@@ -102,6 +102,123 @@ extension View {
     }
 }
 
+// MARK: - Carrying a card to the next column
+
+/// Whether a card is being dragged. Nothing says so directly, but every place
+/// a card can be let go says when one is over it, and a drag starts over one.
+@Observable
+final class CardDragWatch {
+    private(set) var active = false
+    @ObservationIgnored private var idle: Task<Void, Never>?
+
+    /// A drop target reports a card arriving over it, or leaving.
+    func hover(_ over: Bool) {
+        idle?.cancel()
+        if over {
+            active = true
+        } else {
+            // Between two targets there is a moment over neither. A drag given up over nothing
+            // ends without a word, so after a while of that it is taken to be over.
+            idle = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                self?.active = false
+            }
+        }
+    }
+
+    /// The card was let go.
+    func ended() {
+        idle?.cancel()
+        active = false
+    }
+}
+
+/// The page's two side edges, while a card is in hand: holding it at one turns
+/// to the column on that side, and goes on turning while it is held there.
+///
+/// The columns used to be pages of a scroll view, which scrolls by itself when
+/// a drag nears its edge. They are rows that slide now, with no scroll view to
+/// do that, so the edges are made to.
+struct ColumnEdgeSensors: View {
+    @Binding var selection: TaskState
+    var watch: CardDragWatch
+    /// A card let go on an edge lands in the column showing.
+    var onDrop: ([String], TaskState) -> Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            EdgeSensor(selection: $selection, step: -1, watch: watch, onDrop: onDrop)
+            Spacer(minLength: 0)
+            EdgeSensor(selection: $selection, step: 1, watch: watch, onDrop: onDrop)
+        }
+        // Only there while a card is: an edge that took touches the rest of the time would be a
+        // strip of the page that can't be scrolled from.
+        .allowsHitTesting(watch.active)
+    }
+}
+
+private struct EdgeSensor: View {
+    @Environment(\.theme) private var theme
+    @Binding var selection: TaskState
+    var step: Int
+    var watch: CardDragWatch
+    var onDrop: ([String], TaskState) -> Bool
+
+    @State private var targeted = false
+    @State private var turning: Task<Void, Never>?
+
+    private var neighbour: TaskState? {
+        let all = TaskState.allCases
+        guard let index = all.firstIndex(of: selection), all.indices.contains(index + step) else { return nil }
+        return all[index + step]
+    }
+
+    var body: some View {
+        Color.clear
+            .frame(width: 30)
+            .frame(maxHeight: .infinity)
+            .contentShape(.rect)
+            .dropDestination(for: String.self) { payloads, _ in
+                watch.ended()
+                return onDrop(payloads, selection)
+            } isTargeted: { over in
+                targeted = over
+                watch.hover(over)
+                turning?.cancel()
+                guard over else { return }
+                turning = Task {
+                    // A beat before the first turn, so that passing the edge is not holding at it;
+                    // longer between the rest, so that each column can be seen before the next.
+                    var pause = Duration.milliseconds(550)
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: pause)
+                        guard !Task.isCancelled, let neighbour else { return }
+                        withAnimation(.snappy(duration: 0.32)) { selection = neighbour }
+                        pause = .milliseconds(1000)
+                    }
+                }
+            }
+            .overlay {
+                // Says the edge is somewhere to go, while there is a column that way.
+                if watch.active, neighbour != nil {
+                    Image(systemName: step < 0 ? "chevron.compact.left" : "chevron.compact.right")
+                        .font(.title.weight(.semibold))
+                        .foregroundStyle(targeted ? theme.primary : theme.textSecondary)
+                        .frame(width: 26, height: 64)
+                        .glassEffect(targeted ? .regular.tint(theme.accentWash) : .regular, in: .capsule)
+                        .scaleEffect(targeted ? 1.12 : 1)
+                        .opacity(targeted ? 1 : 0.7)
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.snappy(duration: 0.2), value: targeted)
+            .animation(.snappy(duration: 0.2), value: watch.active)
+            .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Following a moved card
 
 /// Where the card the page should go to is, in the scroll view's own frame.

@@ -202,6 +202,7 @@ private struct Zone: View {
     @Bindable var model: BoardModel
     var epicId: UUID?
     var status: TaskState
+    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
 
     var body: some View {
@@ -228,8 +229,12 @@ private struct Zone: View {
             }
         }
         .dropDestination(for: String.self) { payloads, _ in
-            model.drop(payloads, epicId: epicId, status: status, index: nil)
-        } isTargeted: { targeted = $0 }
+            watch?.ended()
+            return model.drop(payloads, epicId: epicId, status: status, index: nil)
+        } isTargeted: {
+            targeted = $0
+            watch?.hover($0)
+        }
         .animation(.easeOut(duration: 0.15), value: targeted)
     }
 }
@@ -243,6 +248,7 @@ private struct BoardCard: View {
     var epicId: UUID?
     var status: TaskState
     var index: Int
+    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
 
     var body: some View {
@@ -278,8 +284,12 @@ private struct BoardCard: View {
             }
             .modifier(CardDrag(enabled: model.canWrite, payload: store.serial(task), preview: card))
             .dropDestination(for: String.self) { payloads, _ in
-                model.drop(payloads, epicId: epicId, status: status, index: index)
-            } isTargeted: { targeted = $0 }
+                watch?.ended()
+                return model.drop(payloads, epicId: epicId, status: status, index: index)
+            } isTargeted: {
+                targeted = $0
+                watch?.hover($0)
+            }
             .animation(.easeOut(duration: 0.12), value: targeted)
     }
 }
@@ -515,6 +525,7 @@ private struct EmptyBoard: View {
 private struct BoardPager: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
+    @State private var watch = CardDragWatch()
 
     var body: some View {
         ScrollView {
@@ -541,6 +552,14 @@ private struct BoardPager: View {
             .padding(.bottom, 24)
         }
         .columnPaging($model.column)
+        // A card held at either side is carried to the column that way.
+        .overlay {
+            ColumnEdgeSensors(selection: $model.column, watch: watch) { payloads, status in
+                // Let go on the edge itself, it joins the column showing — unless that is where it already is.
+                guard let task = model.task(dropped: payloads.first ?? ""), task.status != status else { return false }
+                return model.drop(payloads, epicId: task.epicId, status: status, index: nil)
+            }
+        }
         // A moved card is followed: to its column, then down the page to the card itself.
         .followsLanding(model.landed?.token) { model.landingFollowed() }
         .onChange(of: model.landed) { _, landing in
@@ -553,6 +572,7 @@ private struct BoardPager: View {
             }
             .padding(.horizontal, 14)
         }
+        .environment(watch)
     }
 }
 
@@ -616,6 +636,7 @@ private struct ColumnSwitcherSegment: View {
     var count: Int
     @Binding var selection: TaskState
     var onDrop: ([String], TaskState) -> Bool
+    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
     @State private var springLoad: Task<Void, Never>?
 
@@ -641,9 +662,11 @@ private struct ColumnSwitcherSegment: View {
         }
         .buttonStyle(.plain)
         .dropDestination(for: String.self) { payloads, _ in
-            onDrop(payloads, status)
+            watch?.ended()
+            return onDrop(payloads, status)
         } isTargeted: { isTargeted in
             targeted = isTargeted
+            watch?.hover(isTargeted)
             springLoad?.cancel()
             guard isTargeted, selection != status else { return }
             springLoad = Task {

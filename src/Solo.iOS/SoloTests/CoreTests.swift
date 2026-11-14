@@ -144,3 +144,19 @@ import UIKit
         }
     }
 }
+
+@Suite @MainActor struct CardDragWatchTests {
+    /// The edges of a phone's board only take touches while a card is in hand.
+    @Test func aDragIsOnFromTheFirstTargetToTheDrop() {
+        let watch = CardDragWatch()
+        #expect(!watch.active)
+        watch.hover(true)
+        #expect(watch.active)
+        // Leaving one target for the next is not the end of the drag.
+        watch.hover(false)
+        #expect(watch.active)
+        watch.hover(true)
+        watch.ended()
+        #expect(!watch.active)
+    }
+}
