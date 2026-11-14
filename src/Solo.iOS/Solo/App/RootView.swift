@@ -4,6 +4,11 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    /// Pages read "today" when they draw — a deadline ring's days left, the
+    /// roadmap's today column — so one left open overnight shows yesterday's.
+    /// When the day changes the app is rebuilt in place: the navigator keeps
+    /// where the person was, and every page loads again and reads the date.
+    @State private var day = Day.today
 
     var body: some View {
         ThemedRoot {
@@ -27,14 +32,18 @@ struct RootView: View {
                             .environment(session.navigator)
                             .overlay { RestartOverlay(session: session) }
                             .overlay { ToastOverlay().environment(session.toasts) }
-                            .id(ObjectIdentifier(session))
+                            .id([AnyHashable(ObjectIdentifier(session)), AnyHashable(day)])
                     }
                 }
             }
             .animation(.smooth(duration: 0.3), value: model.phase)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
+            day = .today
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                if day != .today { day = .today }
                 model.session?.hub.resume()
                 Task {
                     await model.session?.notifications.refresh()

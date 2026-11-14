@@ -233,7 +233,8 @@ struct SidebarView: View {
                     navigator.popToRoot(.account)
                 }
                 if session.user.isSuperAdmin {
-                    SidebarRow(title: "Admin Settings", symbol: "gearshape", selected: isAdminRoute) {
+                    SidebarRow(title: "Admin Settings", symbol: "gearshape", badge: session.serverUpdate == nil ? 0 : 1,
+                               selected: isAdminRoute) {
                         navigator.open(.admin)
                     }
                 }

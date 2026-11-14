@@ -46,8 +46,16 @@ struct AccountView: View {
             .themedRow()
 
             if session.user.isSuperAdmin {
-                Section("Instance") {
+                Section {
                     link("Admin Settings", "gearshape.2", .admin)
+                } header: {
+                    Text("Instance")
+                } footer: {
+                    if let update = session.serverUpdate {
+                        // A development build's version carries its commit after a plus; only the release number matters here.
+                        Text("Solo \(update.availableVersion) is available (running "
+                            + "\(update.runningVersion.split(separator: "+").first.map(String.init) ?? update.runningVersion)).")
+                    }
                 }
                 .themedRow()
             }

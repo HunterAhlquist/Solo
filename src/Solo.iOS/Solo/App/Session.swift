@@ -18,6 +18,8 @@ final class Session {
     /// True while requests are failing to reach the instance.
     private(set) var isOffline = false
     private(set) var serverVersion: InstanceVersion?
+    /// A newer server release, when there is one and this person is the one who could install it.
+    private(set) var serverUpdate: ServerUpdate?
     /// True while the instance is restarting to load an extension update.
     private(set) var restarting = false
     @ObservationIgnored private var subscriptions: [EventSubscription] = []
@@ -52,6 +54,11 @@ final class Session {
         await notifications.start()
         if let fresh = try? await api.currentUser() {
             user = fresh
+        }
+        // Advisory, and only for a super admin: updating the server is theirs to do.
+        // Cached on the instance for hours, so this is a local round trip.
+        if user.isSuperAdmin {
+            serverUpdate = (try? await api.updates())?.server
         }
         // The live feed coming back usually means the instance restarted, which is
         // the one time its extensions can have changed: ask again what it runs.
