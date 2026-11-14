@@ -232,7 +232,8 @@ struct NoteView: View {
             }) else { return }
             proxy.insert("![[\(sketch.path)]]", ownLine: true)
             await store.load()
-            newSketch = SketchModel(session: session, projectId: store.projectId, sketch: sketch, mayWrite: mayWrite)
+            newSketch = SketchModel(session: session, projectId: store.projectId, vaultId: store.vaultId, sketch: sketch,
+                                    mayWrite: mayWrite)
         }
     }
 
@@ -478,7 +479,8 @@ struct DocAttachmentsSheet: View {
             if let image = item.image {
                 viewing = image
             } else if let sketch = item.sketch {
-                drawing = SketchModel(session: session, projectId: store.projectId, sketch: sketch, mayWrite: canWrite)
+                drawing = SketchModel(session: session, projectId: store.projectId, vaultId: store.vaultId, sketch: sketch,
+                                      mayWrite: canWrite)
             }
         } label: {
             HStack(spacing: 12) {

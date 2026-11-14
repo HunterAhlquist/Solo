@@ -247,6 +247,41 @@ import Testing
         #expect(raster.pixels.count == page.width * page.height)
     }
 
+    /// The Yjs binding traps when a value won't decode, and a sketch holds
+    /// whatever any client wrote: nothing in it may be able to fail.
+    @Test func nothingInASketchCanFailToDecode() throws {
+        let decoder = JSONDecoder()
+        for json in ["42", "\"text\"", "null", "{}", "[1,2]", "{\"id\":7,\"points\":\"nope\"}", "{\"points\":[[\"a\"]]}"] {
+            let op = try decoder.decode(SketchOp.self, from: Data(json.utf8))
+            var raster = SketchRaster(page: page)
+            raster.paint(op)
+            #expect(raster.pixels.allSatisfy { $0 == 0 }, "\(json)")
+            _ = try decoder.decode(SketchCut.self, from: Data(json.utf8))
+            _ = try decoder.decode(LooseString.self, from: Data(json.utf8))
+        }
+        let odd = try decoder.decode(SketchOp.self, from: Data(
+            "{\"id\":\"a\",\"points\":[[1,2,null],[3,4]],\"seed\":1.5e3,\"level\":\"thick\",\"shift\":true}".utf8))
+        #expect(odd.points == [[1, 2, 0], [3, 4]])
+        #expect(odd.seed == 1500 && odd.level == nil)
+        let cut = try decoder.decode(SketchCut.self, from: Data("[{\"id\":\"piece\"}]".utf8))
+        #expect(cut.stationary.map(\.id) == ["piece"] && cut.moved.isEmpty)
+    }
+
+    @Test func aSketchCarriesItsOwnPage() {
+        let first = SharedDoc(), second = SharedDoc()
+        first.setSketchMeta(["pageSize": "A3", "orientation": "landscape", "pattern": "grid"])
+        second.apply([first.fullState()])
+        let sketch = DocSketch(id: UUID(), noteId: UUID(), name: "Test", pageSize: "A5", orientation: "portrait", pattern: "empty",
+                               lastEditedBy: nil, lastEditedAt: nil, version: 1, path: "attachments/x/Test.sketch")
+        let carried = SketchPage(sketch, meta: second.sketchMeta())
+        #expect(carried.size == "A3" && carried.width == 1191 && carried.height == 842 && carried.pattern == "grid")
+        // What it doesn't say comes from the instance's record; what it says wrongly is ignored.
+        let partial = SketchPage(sketch, meta: ["pattern": "dots"])
+        #expect(partial.size == "A5" && partial.orientation == "portrait" && partial.pattern == "dots")
+        let nonsense = SketchPage(sketch, meta: ["pageSize": "B5", "orientation": "sideways", "pattern": "plaid"])
+        #expect(nonsense.size == "A4" && nonsense.orientation == "portrait" && nonsense.pattern == "empty")
+    }
+
     @Test func strokesSurviveTheSharedDocument() {
         let first = SharedDoc(), second = SharedDoc()
         let stroke = SketchOp(id: "one", tool: "pen", ink: "blue", level: 1, seed: 99, pointerType: "pen", points: [[1, 2, 0.5]])

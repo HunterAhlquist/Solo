@@ -8,6 +8,11 @@ import YSwift
 // drawn on one device has to look the same on every other.
 
 /// One operation in a sketch's history: a stroke, or a marker that a cut piece was moved.
+///
+/// Decoding one never fails. The document is whatever any client with write
+/// access put in it, and the Yjs binding traps on a value it can't decode —
+/// so a stroke with something unexpected in it has to come out as a stroke
+/// with that part missing, not as a crash for everyone who opens the sketch.
 nonisolated struct SketchOp: Codable, Sendable, Equatable {
     var id: String
     var tool: String?
@@ -18,25 +23,75 @@ nonisolated struct SketchOp: Codable, Sendable, Equatable {
     var points: [[Double]]?
     /// Set on a marker op: the id of the stroke whose cut pieces it places.
     var relocates: String?
+
+    init(id: String, tool: String? = nil, ink: String? = nil, level: Int? = nil, seed: Int? = nil,
+         pointerType: String? = nil, points: [[Double]]? = nil, relocates: String? = nil) {
+        self.id = id
+        self.tool = tool
+        self.ink = ink
+        self.level = level
+        self.seed = seed
+        self.pointerType = pointerType
+        self.points = points
+        self.relocates = relocates
+    }
+
+    init(from decoder: Decoder) throws {
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
+            id = ""
+            return
+        }
+        func whole(_ key: CodingKeys) -> Int? {
+            if let value = try? container.decode(Int.self, forKey: key) { return value }
+            guard let value = try? container.decode(Double.self, forKey: key), value.isFinite, abs(value) < 9e15 else { return nil }
+            return Int(value)
+        }
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        tool = try? container.decode(String.self, forKey: .tool)
+        ink = try? container.decode(String.self, forKey: .ink)
+        level = whole(.level)
+        seed = whole(.seed)
+        pointerType = try? container.decode(String.self, forKey: .pointerType)
+        relocates = try? container.decode(String.self, forKey: .relocates)
+        // A point's pressure is absent for hardware that reports none.
+        points = (try? container.decode([[Double?]].self, forKey: .points))?.map { $0.map { $0 ?? 0 } }
+    }
 }
 
 /// What a selection-move leaves behind for a stroke: the pieces that stayed and the pieces that moved.
 nonisolated struct SketchCut: Codable, Sendable {
-    var stationary: [SketchOp]
-    var moved: [SketchOp]
+    var stationary: [SketchOp] = []
+    var moved: [SketchOp] = []
     var placement: String?
 
     init(from decoder: Decoder) throws {
         // Older documents store just the list of pieces.
         if let pieces = try? decoder.singleValueContainer().decode([SketchOp].self) {
             stationary = pieces
-            moved = []
             return
         }
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        stationary = try container.decodeIfPresent([SketchOp].self, forKey: .stationary) ?? []
-        moved = try container.decodeIfPresent([SketchOp].self, forKey: .moved) ?? []
-        placement = try container.decodeIfPresent(String.self, forKey: .placement)
+        guard let container = try? decoder.container(keyedBy: CodingKeys.self) else { return }
+        stationary = (try? container.decode([SketchOp].self, forKey: .stationary)) ?? []
+        moved = (try? container.decode([SketchOp].self, forKey: .moved)) ?? []
+        placement = try? container.decode(String.self, forKey: .placement)
+    }
+}
+
+/// A text where a document should hold one, and nothing where it holds something else.
+nonisolated struct LooseString: Codable, Sendable {
+    var value: String?
+
+    init(_ value: String) {
+        self.value = value
+    }
+
+    init(from decoder: Decoder) throws {
+        value = try? decoder.singleValueContainer().decode(String.self)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
     }
 }
 
@@ -64,6 +119,21 @@ nonisolated extension SharedDoc {
         }
         all.forEach { append($0, []) }
         return result
+    }
+
+    /// The page settings the sketch carries with it, which win over the instance's copy of them.
+    func sketchMeta() -> [String: String] {
+        let map: YMap<LooseString> = document.getOrCreateMap(named: "meta")
+        return document.transactSync { map.toMap(transaction: $0) }.compactMapValues(\.value)
+    }
+
+    func setSketchMeta(_ values: [String: String]) {
+        let map: YMap<LooseString> = document.getOrCreateMap(named: "meta")
+        document.transactSync { transaction in
+            for (key, value) in values {
+                map.updateValue(LooseString(value), forKey: key, transaction: transaction)
+            }
+        }
     }
 
     func appendSketchOp(_ op: SketchOp) {
@@ -101,19 +171,25 @@ nonisolated enum SketchInk: String, CaseIterable, Identifiable, Sendable {
 }
 
 nonisolated struct SketchPage: Equatable, Sendable {
-    var width: Int
-    var height: Int
+    var size: String
+    var orientation: String
     var pattern: String
 
-    private static let sizes: [String: (Int, Int)] = ["A4": (595, 842), "A5": (420, 595), "A3": (842, 1191), "Letter": (612, 792)]
+    static let sizes = ["A3", "A4", "A5", "Letter"]
+    static let patterns: [(id: String, title: String)] = [("empty", "Blank"), ("grid", "Grid"), ("notebook", "Lined"), ("dots", "Dots")]
+    private static let points: [String: (Int, Int)] = ["A4": (595, 842), "A5": (420, 595), "A3": (842, 1191), "Letter": (612, 792)]
 
-    init(_ sketch: DocSketch) {
-        let size = Self.sizes[sketch.pageSize] ?? Self.sizes["A4"]!
-        let landscape = sketch.orientation == "landscape"
-        width = landscape ? size.1 : size.0
-        height = landscape ? size.0 : size.1
-        pattern = sketch.pattern
+    /// The instance's record of the page, overridden by what the sketch itself says.
+    init(_ sketch: DocSketch, meta: [String: String] = [:]) {
+        let wanted = meta["pageSize"] ?? sketch.pageSize
+        size = Self.points[wanted] == nil ? "A4" : wanted
+        orientation = (meta["orientation"] ?? sketch.orientation) == "landscape" ? "landscape" : "portrait"
+        let paper = meta["pattern"] ?? sketch.pattern
+        pattern = Self.patterns.contains { $0.id == paper } ? paper : "empty"
     }
+
+    var width: Int { orientation == "landscape" ? Self.points[size]!.1 : Self.points[size]!.0 }
+    var height: Int { orientation == "landscape" ? Self.points[size]!.0 : Self.points[size]!.1 }
 }
 
 /// The page's ink, one byte a pixel: 0 for none, else an ink's index.
@@ -244,10 +320,13 @@ nonisolated struct SketchRaster: Sendable {
 final class SketchModel: Identifiable {
     let sketch: DocSketch
     let sync: DocSync
-    let page: SketchPage
+    private(set) var page: SketchPage
     private(set) var image: CGImage?
     private(set) var strokeCount = 0
 
+    @ObservationIgnored private let session: Session
+    @ObservationIgnored private let projectId: UUID
+    @ObservationIgnored private let vaultId: UUID
     @ObservationIgnored private var committed: SketchRaster
     @ObservationIgnored private var mine: [String] = []
     @ObservationIgnored private var renderTask: Task<Void, Never>?
@@ -258,9 +337,13 @@ final class SketchModel: Identifiable {
         }
     }
 
-    init(session: Session, projectId: UUID, sketch: DocSketch, mayWrite: Bool) {
+    init(session: Session, projectId: UUID, vaultId: UUID, sketch: DocSketch, mayWrite: Bool) {
+        self.session = session
+        self.projectId = projectId
+        self.vaultId = vaultId
         self.sketch = sketch
-        page = SketchPage(sketch)
+        let page = SketchPage(sketch)
+        self.page = page
         committed = SketchRaster(page: page)
         sync = DocSync(session: session, projectId: projectId, documentId: sketch.id, mayWrite: mayWrite)
     }
@@ -270,7 +353,10 @@ final class SketchModel: Identifiable {
     /// Replays the whole history. Run when the document changes underneath: at load, and when someone else draws.
     func rebuild() {
         let strokes = sync.shared.sketchStrokes()
-        let page = page
+        let page = SketchPage(sketch, meta: sync.shared.sketchMeta())
+        if page != self.page {
+            self.page = page
+        }
         renderTask?.cancel()
         renderTask = Task { [weak self] in
             let raster = await SketchRaster.render(strokes, page: page)
@@ -307,6 +393,25 @@ final class SketchModel: Identifiable {
         sync.changedLocally()
         rebuild()
     }
+
+    /// Changes the paper. The sketch carries the setting, so everyone drawing
+    /// on it sees the page change; the instance keeps a copy for the previews
+    /// and the attachment list, as the web editor's does.
+    func setPage(size: String? = nil, orientation: String? = nil, pattern: String? = nil) {
+        guard sync.canWrite else { return }
+        let wanted = ["pageSize": size ?? page.size, "orientation": orientation ?? page.orientation, "pattern": pattern ?? page.pattern]
+        sync.shared.setSketchMeta(wanted)
+        sync.changedLocally()
+        rebuild()
+        Task {
+            await session.perform {
+                guard let current = try await session.api.docSketches(projectId, vaultId).first(where: { $0.id == sketch.id })
+                else { return }
+                _ = try await session.api.changeDocSketch(projectId, vaultId, current, pageSize: wanted["pageSize"]!,
+                                                         orientation: wanted["orientation"]!, pattern: wanted["pattern"]!)
+            }
+        }
+    }
 }
 
 nonisolated struct SketchColors: Equatable, Sendable {
@@ -319,14 +424,19 @@ nonisolated struct SketchColors: Equatable, Sendable {
     static func of(_ scheme: ColorScheme) -> SketchColors { scheme == .dark ? dark : light }
 }
 
-extension SketchRaster {
-    /// A sketch's page from its stored updates, for a preview that never joins the sketch's live topic.
-    @concurrent static func load(_ updates: [String], page: SketchPage) async -> SketchRaster {
+/// A sketch as it was last stored: its page, and the ink on it.
+nonisolated struct SketchSnapshot: Sendable {
+    var page: SketchPage
+    var raster: SketchRaster
+
+    /// Built from a sketch's stored updates, for a preview that never joins the sketch's live topic.
+    @concurrent static func load(_ updates: [String], sketch: DocSketch) async -> SketchSnapshot {
         let shared = SharedDoc()
         shared.apply(updates.compactMap { Data(base64Encoded: $0).map { [UInt8]($0) } })
+        let page = SketchPage(sketch, meta: shared.sketchMeta())
         var raster = SketchRaster(page: page)
         shared.sketchStrokes().forEach { raster.paint($0) }
-        return raster
+        return SketchSnapshot(page: page, raster: raster)
     }
 }
 
@@ -336,25 +446,26 @@ struct SketchPreview: View {
     @Environment(\.theme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     var projectId: UUID
+    var vaultId: UUID
     var sketch: DocSketch
     var mayWrite: Bool
     /// Bumped by the vault when a sketch in it was drawn on elsewhere.
     var revision = 0
 
-    @State private var raster: SketchRaster?
+    @State private var snapshot: SketchSnapshot?
     @State private var failed = false
     @State private var editing: SketchModel?
     @State private var reloads = 0
 
-    private var page: SketchPage { SketchPage(sketch) }
+    private var page: SketchPage { snapshot?.page ?? SketchPage(sketch) }
 
     var body: some View {
         Button {
-            editing = SketchModel(session: session, projectId: projectId, sketch: sketch, mayWrite: mayWrite)
+            editing = SketchModel(session: session, projectId: projectId, vaultId: vaultId, sketch: sketch, mayWrite: mayWrite)
         } label: {
             ZStack {
                 let colors = SketchColors.of(colorScheme)
-                if let image = raster?.image(page: page, paper: colors.paper, themeInk: colors.ink) {
+                if let image = snapshot?.raster.image(page: page, paper: colors.paper, themeInk: colors.ink) {
                     Image(decorative: image, scale: 1).interpolation(.none).resizable().scaledToFit()
                 } else {
                     Rectangle().fill(colors.paper.color)
@@ -384,10 +495,10 @@ struct SketchPreview: View {
         .accessibilityHint(mayWrite ? "Opens the sketch to draw on" : "Opens the sketch")
         .task(id: "\(sketch.id.compact):\(revision):\(reloads)") {
             guard let state = try? await session.api.docState(projectId, sketch.id) else {
-                failed = raster == nil
+                failed = snapshot == nil
                 return
             }
-            raster = await SketchRaster.load(state.updates.map(\.data), page: page)
+            snapshot = await SketchSnapshot.load(state.updates.map(\.data), sketch: sketch)
             failed = false
         }
         .fullScreenCover(item: $editing, onDismiss: { reloads += 1 }) { model in
@@ -410,7 +521,8 @@ struct SketchEditor: View {
 
     var body: some View {
         NavigationStack {
-            SketchCanvas(model: model, image: model.image, canDraw: model.sync.canWrite, tool: tool, ink: ink, level: level)
+            SketchCanvas(model: model, image: model.image, page: model.page, canDraw: model.sync.canWrite, tool: tool, ink: ink,
+                         level: level)
                 .ignoresSafeArea(edges: .bottom)
                 .themedBackground()
                 .navigationBarTitleDisplayMode(.inline)
@@ -425,7 +537,20 @@ struct SketchEditor: View {
                         }
                     }
                     if model.sync.canWrite {
-                        ToolbarItem(placement: .primaryAction) {
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            Menu("Page", systemImage: "doc.badge.gearshape") {
+                                Picker("Paper", selection: Binding(get: { model.page.pattern }, set: { model.setPage(pattern: $0) })) {
+                                    ForEach(SketchPage.patterns, id: \.id) { Text($0.title).tag($0.id) }
+                                }
+                                Picker("Size", selection: Binding(get: { model.page.size }, set: { model.setPage(size: $0) })) {
+                                    ForEach(SketchPage.sizes, id: \.self) { Text($0).tag($0) }
+                                }
+                                Picker("Orientation", selection: Binding(get: { model.page.orientation },
+                                                                         set: { model.setPage(orientation: $0) })) {
+                                    Label("Portrait", systemImage: "rectangle.portrait").tag("portrait")
+                                    Label("Landscape", systemImage: "rectangle").tag("landscape")
+                                }
+                            }
                             Button("Undo", systemImage: "arrow.uturn.backward") { model.undo() }
                                 .disabled(!model.canUndo)
                         }
@@ -499,18 +624,20 @@ struct SketchEditor: View {
 struct SketchCanvas: UIViewRepresentable {
     var model: SketchModel
     var image: CGImage?
+    var page: SketchPage
     var canDraw: Bool
     var tool: String
     var ink: SketchInk
     var level: Int
 
     func makeUIView(context: Context) -> SketchScrollView {
-        let view = SketchScrollView(page: CGSize(width: model.page.width, height: model.page.height))
+        let view = SketchScrollView(page: CGSize(width: page.width, height: page.height))
         view.pageView.model = model
         return view
     }
 
     func updateUIView(_ view: SketchScrollView, context: Context) {
+        view.setPage(CGSize(width: self.page.width, height: self.page.height))
         let page = view.pageView
         page.layer.contents = image
         page.canDraw = canDraw
@@ -540,6 +667,16 @@ final class SketchScrollView: UIScrollView, UIScrollViewDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// The paper changed size or turned: lay the new page out and fit it afresh.
+    func setPage(_ size: CGSize) {
+        guard pageView.bounds.size != size else { return }
+        zoomScale = 1
+        pageView.frame = CGRect(origin: .zero, size: size)
+        contentSize = size
+        fitted = .zero
+        setNeedsLayout()
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()

@@ -103,7 +103,8 @@ private struct DocEmbed: View {
             if url.host() == "image", let image = store.images.first(where: { $0.id == id }) {
                 DocPicture(image: image, store: store)
             } else if url.host() == "sketch", let sketch = store.sketches.first(where: { $0.id == id }) {
-                SketchPreview(projectId: store.projectId, sketch: sketch, mayWrite: mayWrite, revision: store.sketchRevision)
+                SketchPreview(projectId: store.projectId, vaultId: store.vaultId, sketch: sketch, mayWrite: mayWrite,
+                              revision: store.sketchRevision)
             } else {
                 Label("\(url.lastPathComponent.removingPercentEncoding ?? "Attachment") isn't in this design doc",
                       systemImage: "photo.badge.exclamationmark")

@@ -112,6 +112,14 @@ nonisolated private struct VaultChange: Encodable, Sendable {
     var version: UInt32
 }
 
+nonisolated private struct SketchChange: Encodable, Sendable {
+    var name: String
+    var pageSize: String
+    var orientation: String
+    var pattern: String
+    var version: UInt32
+}
+
 nonisolated private struct CopyRequest: Encodable, Sendable {
     var markdown: String
     var headings: [DocHeading]
@@ -209,6 +217,14 @@ extension APIClient {
 
     func createDocSketch(_ projectId: UUID, _ vaultId: UUID, noteId: UUID, name: String) async throws -> DocSketch {
         try await send("POST", "\(docs(projectId))/vaults/\(vaultId.api)/sketches/notes/\(noteId.api)", body: ["name": name])
+    }
+
+    /// A sketch's name and paper. The page settings also live in the sketch itself; this is the instance's copy.
+    func changeDocSketch(_ projectId: UUID, _ vaultId: UUID, _ sketch: DocSketch, name: String? = nil, pageSize: String,
+                         orientation: String, pattern: String) async throws -> DocSketch {
+        try await send("PUT", "\(docs(projectId))/vaults/\(vaultId.api)/sketches/\(sketch.id.api)",
+                       body: SketchChange(name: name ?? sketch.name, pageSize: pageSize, orientation: orientation, pattern: pattern,
+                                          version: sketch.version))
     }
 
     func deleteDocSketch(_ projectId: UUID, _ vaultId: UUID, _ sketch: DocSketch) async throws {
