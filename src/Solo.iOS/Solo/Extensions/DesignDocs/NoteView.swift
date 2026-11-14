@@ -41,19 +41,20 @@ struct NoteView: View {
 
     var body: some View {
         let text = text
-        VStack(spacing: 0) {
-            header
+        GeometryReader { geometry in
             if let sync {
+                // Edge to edge, under the bars: the note is one sheet that passes behind their glass.
                 SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite, fallback: note.markdown,
-                                 accent: UIColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision, onLink: follow) {
+                                 accent: UIColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision,
+                                 header: AnyView(header.environment(\.theme, theme).environment(session)), insets: geometry.safeAreaInsets,
+                                 onLink: follow) {
                     typing = $0
                 }
+                .ignoresSafeArea()
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(maxWidth: 820)
-        .frame(maxWidth: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // The tools for writing are there while writing, and out of the way of reading.
             if typing, canWrite {

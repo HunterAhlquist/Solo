@@ -99,6 +99,65 @@ nonisolated struct SourceMap {
         return end >= start ? NSRange(location: start, length: end - start) : nil
     }
 
+    /// The correction for where the parser says a paragraph's inline nodes are.
+    ///
+    /// On every line after a paragraph's first the parser counts columns from
+    /// where that line's own text begins — past any quote marks and indent —
+    /// and then adds how far in the *first* line's text began. The two agree
+    /// when every line is indented alike, and not otherwise: most often on a
+    /// line that continues a list item or a quote without its indent or its
+    /// `>`, where everything is reported that much to the right of where it is.
+    final class InlineFix {
+        let firstLine: Int
+        /// How far in the paragraph's first line its text begins.
+        let columnOffset: Int
+        /// How many block quotes the paragraph is inside.
+        let quotes: Int
+        fileprivate var prefixes: [Int: Int] = [:]
+
+        init?(_ block: Markup, quotes: Int) {
+            guard let start = block.range?.lowerBound else { return nil }
+            firstLine = start.line
+            columnOffset = start.column - 1
+            self.quotes = quotes
+        }
+    }
+
+    /// How many characters of a line come before the paragraph's own text on
+    /// it: the marks of the quotes it is in, and the white space it is indented by.
+    private func prefix(ofLine number: Int, fix: InlineFix) -> Int {
+        if let known = fix.prefixes[number] { return known }
+        let line = lines[number - 1]
+        var cursor = line.start
+        func skipSpace() {
+            while cursor < line.end, [32, 9].contains(text.character(at: cursor)) { cursor += 1 }
+        }
+        // A line may leave off the marks of the quotes it continues, but only from the inside out.
+        for _ in 0..<fix.quotes {
+            skipSpace()
+            guard cursor < line.end, text.character(at: cursor) == 62 else { break }
+            cursor += 1
+        }
+        skipSpace()
+        fix.prefixes[number] = cursor - line.start
+        return cursor - line.start
+    }
+
+    private func corrected(_ location: SourceLocation, fix: InlineFix) -> SourceLocation {
+        guard location.line > fix.firstLine, location.line <= lines.count else { return location }
+        var moved = location
+        moved.column = max(location.column - fix.columnOffset + prefix(ofLine: location.line, fix: fix), 1)
+        return moved
+    }
+
+    /// An inline node's range, corrected for the block it is in.
+    func range(_ node: Markup, fix: InlineFix?) -> NSRange? {
+        guard let fix else { return range(node) }
+        guard let range = node.range else { return nil }
+        let start = offset(corrected(range.lowerBound, fix: fix)), end = offset(corrected(range.upperBound, fix: fix))
+        return end >= start ? NSRange(location: start, length: end - start) : nil
+    }
+
     private func index(at offset: Int) -> Int {
         var low = 0, high = lines.count - 1
         while low < high {
@@ -168,9 +227,14 @@ nonisolated struct LiveMarkdown {
             guard range.length > 0 else { return }
             out.append(LiveSpan(range: range, kind: shown ? .syntax : .hidden))
         }
+        // The correction for the paragraph the walk is in.
+        var fix: SourceMap.InlineFix?
+        /// An inline node's place in the source.
+        func inline(_ node: Markup) -> NSRange? { map.range(node, fix: fix) }
+
         /// The markers either side of an inline span, measured from where its contents begin and end.
         func delimiters(of node: Markup, _ range: NSRange, fallback: Int) {
-            let children = node.children.compactMap { map.range($0) }
+            let children = node.children.compactMap { inline($0) }
             let open = (children.first?.location ?? range.location + fallback) - range.location
             let close = NSMaxRange(range) - (children.last.map(NSMaxRange) ?? NSMaxRange(range) - fallback)
             guard open > 0, close > 0, open + close <= range.length else { return }
@@ -198,22 +262,22 @@ nonisolated struct LiveMarkdown {
                 }
 
             case is Strong:
-                guard let range = map.range(node) else { break }
+                guard let range = inline(node) else { break }
                 out.append(LiveSpan(range: range, kind: .strong))
                 delimiters(of: node, range, fallback: 2)
 
             case is Emphasis:
-                guard let range = map.range(node) else { break }
+                guard let range = inline(node) else { break }
                 out.append(LiveSpan(range: range, kind: .emphasis))
                 delimiters(of: node, range, fallback: 1)
 
             case is Strikethrough:
-                guard let range = map.range(node) else { break }
+                guard let range = inline(node) else { break }
                 out.append(LiveSpan(range: range, kind: .strike))
                 delimiters(of: node, range, fallback: 2)
 
             case is InlineCode:
-                guard let range = map.range(node), range.length > 1 else { break }
+                guard let range = inline(node), range.length > 1 else { break }
                 out.append(LiveSpan(range: range, kind: .code))
                 code.append(range)
                 var ticks = 0
@@ -226,8 +290,8 @@ nonisolated struct LiveMarkdown {
                 return
 
             case let link as Link:
-                guard let range = map.range(node), range.length > 0 else { break }
-                let children = node.children.compactMap { map.range($0) }
+                guard let range = inline(node), range.length > 0 else { break }
+                let children = node.children.compactMap { inline($0) }
                 let address = link.destination ?? ""
                 // `[label](address)` shows as its label. A bare address has nothing to fold away.
                 if source.character(at: range.location) == 91, let first = children.first, let last = children.last {
@@ -243,7 +307,7 @@ nonisolated struct LiveMarkdown {
                 }
 
             case let image as Image:
-                if let range = map.range(image) {
+                if let range = inline(image) {
                     embeds.append((range, image.source ?? ""))
                 }
                 return
@@ -308,13 +372,19 @@ nonisolated struct LiveMarkdown {
                 return
 
             case is HTMLBlock, is InlineHTML:
-                if let range = map.range(node) { code.append(range) }
+                if let range = inline(node) { code.append(range) }
                 return
 
             default:
                 break
             }
+
+            let outer = fix
+            if node is Paragraph || node is Heading {
+                fix = SourceMap.InlineFix(node, quotes: depth)
+            }
             for child in node.children { walk(child, quoteDepth: depth) }
+            fix = outer
         }
         walk(document, quoteDepth: 0)
 

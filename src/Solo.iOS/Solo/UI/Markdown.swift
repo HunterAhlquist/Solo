@@ -236,7 +236,8 @@ struct MarkdownEditorSheet: View {
                         .disabled(saving || text.count > draft.limit)
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // A bar, so what is written scrolls behind it instead of stopping short at its edge.
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
                     if !previewing {
                         FormatBar { formatButtons }

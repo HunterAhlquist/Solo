@@ -62,9 +62,10 @@ struct TimelineView: View {
     var body: some View {
         let layout = store.layout
         let window = store.window
-        // A person's own roadmap sits above their tasks, so it only takes the room its bars need.
+        // A person's own roadmap sits above their tasks, so it takes less room than a project's — but
+        // enough that a handful of overlapping tasks show without scrolling the page to find them.
         let lineCount = store.isPersonal
-            ? max(3, layout.lines.count + TimelineRules.spareRows) : TimelineRules.rows(forLines: layout.lines.count)
+            ? max(6, layout.lines.count + TimelineRules.spareRows) : TimelineRules.rows(forLines: layout.lines.count)
         let height = Self.headHeight + CGFloat(lineCount) * Self.rowHeight
         let width = CGFloat(window.days) * Self.dayWidth
         let first = max(Int(scrollX / Self.dayWidth) - 2, 0)
@@ -106,13 +107,11 @@ struct TimelineView: View {
                         .allowsHitTesting(false)
                 }
 
-                if let dayMenu {
-                    Color.clear.frame(width: 1, height: 1)
-                        .position(dayMenu.point)
-                        .popover(item: $dayMenu) { target in dayMenuContent(target) }
-                }
             }
             .frame(width: width, height: height, alignment: .topLeading)
+            // Anchored to the pressed day itself. Hung on a view of its own the anchor was that view's
+            // frame, and a positioned view's frame is the whole grid — years of days wide.
+            .popover(item: $dayMenu, attachmentAnchor: .rect(.rect(dayMenuAnchor))) { target in dayMenuContent(target) }
         }
         .scrollPosition($position)
         .onScrollGeometryChange(for: [CGFloat].self) { [$0.contentOffset.x, $0.containerSize.width] } action: { _, new in
@@ -457,6 +456,14 @@ struct TimelineView: View {
                                     beside: layout.lines.indices.contains(line) ? layout.lines[line].entries.first?.id : nil,
                                     point: CGPoint(x: press.startLocation.x, y: press.startLocation.y + Self.headHeight))
             }
+    }
+
+    private var dayMenuAnchor: CGRect {
+        guard let point = dayMenu?.point else { return .zero }
+        // The pressed day's column on the pressed row, so the arrow points at the cell.
+        let column = (point.x / Self.dayWidth).rounded(.down) * Self.dayWidth
+        let row = ((point.y - Self.headHeight) / Self.rowHeight).rounded(.down) * Self.rowHeight + Self.headHeight
+        return CGRect(x: column, y: row, width: Self.dayWidth, height: Self.rowHeight)
     }
 
     private func dayMenuContent(_ target: DayTarget) -> some View {

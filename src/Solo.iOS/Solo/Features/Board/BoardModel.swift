@@ -40,6 +40,21 @@ final class BoardModel {
     var confirmation: Confirmation?
     /// The column a phone is showing.
     var column: TaskState = .unstarted
+    /// A card that has just changed column, for a phone to follow there.
+    private(set) var landed: Landing?
+
+    struct Landing: Equatable {
+        var taskId: UUID
+        var status: TaskState
+        var token = UUID()
+    }
+
+    /// The page has gone to the card: it flashes once to say which it was.
+    func landingFollowed() {
+        guard let landed else { return }
+        self.landed = nil
+        store.pulse(landed.taskId)
+    }
 
     private(set) var collapsedEpics: Set<UUID> = []
     private var groupCollapsed: [UUID: Bool] = [:]
@@ -328,6 +343,11 @@ final class BoardModel {
         moved.rank = Self.rank(between: slot > 0 ? others[slot - 1].rank : nil,
                                and: slot < others.count ? others[slot].rank : nil)
         withAnimation(.snappy(duration: 0.25)) { store.apply(moved) }
+        if task.status != status {
+            // A card dropped past the fold of a long Finished zone would land out of sight.
+            if status == .finished, slot >= BoardDrag.finishedVisibleLimit { expandFinished(epicId) }
+            landed = Landing(taskId: task.id, status: status)
+        }
 
         let (preceding, following) = RankNeighbors.compute(others.map(\.id), index: slot)
         Task {

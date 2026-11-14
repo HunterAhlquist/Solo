@@ -85,8 +85,10 @@ final class NoteEditorProxy {
         guard offset < text.length else { return }
         view.layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: offset + 1))
         let row = view.layoutManager.lineFragmentRect(forGlyphAt: view.layoutManager.glyphIndexForCharacter(at: offset), effectiveRange: nil)
-        let highest = max(0, view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height)
-        let top = min(max(row.minY + view.textContainerInset.top - 12, 0), highest)
+        // Offsets count from the view's own top edge, which is under the bar: the bar's height is the inset.
+        let lowest = -view.adjustedContentInset.top
+        let highest = max(lowest, view.contentSize.height + view.adjustedContentInset.bottom - view.bounds.height)
+        let top = min(max(row.minY + view.textContainerInset.top - 12 + lowest, lowest), highest)
         view.setContentOffset(CGPoint(x: 0, y: top), animated: true)
     }
 
@@ -120,6 +122,12 @@ struct SyncedTextEditor: UIViewRepresentable {
     var media: NoteEditorMedia
     /// Changes when what the rows of pictures show may have: an upload, a deletion, who may write.
     var mediaRevision: Int
+    /// What stands above the text and scrolls away with it: the note's name and state.
+    var header: AnyView
+    /// What the bars, the format strip and the keyboard cover. The view runs under all of them,
+    /// so the text passes behind their glass rather than stopping at their edges, and is inset
+    /// by this much so that it can still be scrolled clear of them.
+    var insets: EdgeInsets
     /// A link tapped while the note wasn't being typed in.
     var onLink: (String) -> Void = { _ in }
     var onFocus: (Bool) -> Void = { _ in }
@@ -139,6 +147,8 @@ struct SyncedTextEditor: UIViewRepresentable {
         view.delegate = context.coordinator
         view.backgroundColor = .clear
         view.textContainerInset = UIEdgeInsets(top: 16, left: 14, bottom: 96, right: 14)
+        // The insets are handed in; left to itself the view would add its own on top.
+        view.contentInsetAdjustmentBehavior = .never
         view.alwaysBounceVertical = true
         view.keyboardDismissMode = .interactive
         // Markdown is punctuation: `--` and straight quotes have to stay what was typed.
@@ -166,8 +176,13 @@ struct SyncedTextEditor: UIViewRepresentable {
         coordinator.setAccent(accent)
         coordinator.mediaRevision = mediaRevision
         view.typingAttributes = coordinator.styler.base
-        view.onWidthChange = { [weak coordinator] in coordinator?.restyle() }
+        view.onWidthChange = { [weak coordinator] in
+            coordinator?.layoutChrome()
+            coordinator?.restyle()
+        }
         proxy.coordinator = coordinator
+        coordinator.setInsets(insets)
+        coordinator.setHeader(header)
         coordinator.applyRemote()
         return view
     }
@@ -179,7 +194,9 @@ struct SyncedTextEditor: UIViewRepresentable {
         coordinator.fallback = fallback
         coordinator.media = media
         proxy.coordinator = coordinator
+        coordinator.setInsets(insets)
         var stale = coordinator.setAccent(accent)
+        if coordinator.setHeader(header) { stale = true }
         if coordinator.mediaRevision != mediaRevision {
             coordinator.mediaRevision = mediaRevision
             coordinator.forgetMedia()
@@ -211,7 +228,10 @@ struct SyncedTextEditor: UIViewRepresentable {
         /// The last text parsed, so moving the caret doesn't parse it again.
         private var parsed: (text: String, markdown: LiveMarkdown)?
         private var mediaHosts: [String: UIHostingController<AnyView>] = [:]
+        private var headerHost: UIHostingController<AnyView>?
         private var restyling = false
+        /// The widest a line of the note runs; past it the text keeps to the middle of the view.
+        private static let measure: CGFloat = 820
 
         init(sync: DocSync, media: NoteEditorMedia) {
             self.sync = sync
@@ -233,6 +253,53 @@ struct SyncedTextEditor: UIViewRepresentable {
             styler.accent = accent
             (textView?.layoutManager as? NoteLayoutManager)?.accent = accent
             textView?.tintColor = accent
+            return true
+        }
+
+        // MARK: Chrome
+
+        /// Takes the room the bars cover out of what the text can be scrolled to rest in.
+        func setInsets(_ insets: EdgeInsets) {
+            guard let view = textView else { return }
+            let wanted = UIEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: 0)
+            guard view.contentInset != wanted else { return }
+            // A view resting at its top stays there when the top moves — as it does when it first learns the bar's height.
+            let atTop = view.contentOffset.y <= -view.contentInset.top + 1
+            view.contentInset = wanted
+            view.verticalScrollIndicatorInsets = wanted
+            if atTop { view.contentOffset.y = -wanted.top }
+        }
+
+        /// Puts the header at the head of the text. True when the text moved to make room.
+        @discardableResult
+        func setHeader(_ header: AnyView) -> Bool {
+            guard let view = textView else { return false }
+            if let headerHost {
+                headerHost.rootView = header
+            } else {
+                let host = UIHostingController(rootView: header)
+                attach(host, to: view)
+                headerHost = host
+            }
+            return layoutChrome()
+        }
+
+        /// Sizes the header and the margins for the view's width. True when the text's place changed.
+        @discardableResult
+        func layoutChrome() -> Bool {
+            guard let view = textView, view.bounds.width > 0 else { return false }
+            let margin = max((view.bounds.width - Self.measure) / 2, 0)
+            var top: CGFloat = 16
+            if let headerHost {
+                let width = view.bounds.width - margin * 2
+                let height = headerHost.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+                let frame = CGRect(x: margin, y: 0, width: width, height: height)
+                if headerHost.view.frame != frame { headerHost.view.frame = frame }
+                top = height + 12
+            }
+            let wanted = UIEdgeInsets(top: top, left: margin + 14, bottom: 96, right: margin + 14)
+            guard view.textContainerInset != wanted else { return false }
+            view.textContainerInset = wanted
             return true
         }
 
@@ -378,6 +445,12 @@ struct SyncedTextEditor: UIViewRepresentable {
         private func makeHost(key: String, row: String) -> UIHostingController<AnyView>? {
             guard let view = textView, let content = media.row(row) else { return nil }
             let host = UIHostingController(rootView: content)
+            attach(host, to: view)
+            mediaHosts[key] = host
+            return host
+        }
+
+        private func attach(_ host: UIHostingController<AnyView>, to view: UITextView) {
             host.view.backgroundColor = .clear
             host.safeAreaRegions = []
             var responder: UIResponder? = view
@@ -386,8 +459,6 @@ struct SyncedTextEditor: UIViewRepresentable {
             parent?.addChild(host)
             view.addSubview(host.view)
             host.didMove(toParent: parent)
-            mediaHosts[key] = host
-            return host
         }
 
         private func remove(_ host: UIHostingController<AnyView>) {
@@ -411,7 +482,11 @@ struct SyncedTextEditor: UIViewRepresentable {
         func textViewDidBeginEditing(_ textView: UITextView) {
             sync.report(editing: true)
             onFocus(true)
-            restyle()
+            // Not yet: the tap that began this has still to put the caret down, and it does so
+            // against the text as it is laid out now. Unfolding the old caret's line first — a
+            // row of pictures becoming a line of syntax, say — would move every line under the
+            // finger before the tap is read.
+            DispatchQueue.main.async { [weak self] in self?.restyle() }
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {

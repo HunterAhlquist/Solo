@@ -206,8 +206,9 @@ final class BoardStore {
         }
     }
 
-    /// Remote changes apply silently; the card flashes its outline once.
-    private func pulse(_ id: UUID) {
+    /// Remote changes apply silently; the card flashes its outline once. So does a card the
+    /// page has just scrolled to, to say which one it was.
+    func pulse(_ id: UUID) {
         pulsing.insert(id)
         Task {
             try? await Task.sleep(for: .milliseconds(650))

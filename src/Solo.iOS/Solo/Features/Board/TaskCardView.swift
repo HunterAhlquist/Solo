@@ -24,6 +24,8 @@ struct TaskCardView: View {
     var pulse = false
     var origin: TaskOrigin?
     var canWrite = false
+    /// The origin tab's measured size, which the card's outline is cut around.
+    @State private var tab = CGSize.zero
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -39,15 +41,13 @@ struct TaskCardView: View {
                     }
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(theme.textSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(theme.surface, in: UnevenRoundedRectangle(
-                        topLeadingRadius: 8, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8))
-                    .overlay(UnevenRoundedRectangle(
-                        topLeadingRadius: 8, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8)
-                        .strokeBorder(outline, lineWidth: 1))
+                    .padding(.horizontal, 10)
+                    .padding(.top, 5)
+                    .padding(.bottom, 3)
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { tab = $0 }
                 .accessibilityLabel("Open \(origin.boardName) in \(origin.projectName)")
             }
 
@@ -98,20 +98,20 @@ struct TaskCardView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(theme.surface, in: cardShape)
-            .overlay(cardShape.strokeBorder(outline, lineWidth: pulse || showDeadline ? 1.5 : 1))
-            .opacity(isFinished ? 0.75 : 1)
         }
+        // One outline around the tab and the card together: drawn apart, the card's top edge ran
+        // under the tab and split the two.
+        .background(theme.surface, in: cardShape)
+        .overlay(cardShape.strokeBorder(outline, lineWidth: pulse || showDeadline ? 1.5 : 1))
+        .opacity(isFinished ? 0.75 : 1)
         .contentShape(.dragPreview, cardShape)
         .animation(.easeOut(duration: 0.6), value: pulse)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
     }
 
-    private var cardShape: UnevenRoundedRectangle {
-        let radius: CGFloat = 12
-        return UnevenRoundedRectangle(topLeadingRadius: origin == nil ? radius : 0, bottomLeadingRadius: radius,
-                                      bottomTrailingRadius: radius, topTrailingRadius: radius)
+    private var cardShape: TabbedCardShape {
+        TabbedCardShape(tab: origin == nil ? .zero : tab)
     }
 
     private var outline: Color {
@@ -173,6 +173,47 @@ struct TaskCardView: View {
         }
         let due = "Due \(deadline.formatted) — \(when)"
         return task.startAt.map { "Starts \($0.formatted). \(due)" } ?? due
+    }
+}
+
+/// A card's outline: a rounded rectangle, with a tab standing on its top leading corner when the
+/// card says where it came from. The tab and the card are one path, so one fill and one stroke
+/// cover both and no edge runs between them.
+nonisolated struct TabbedCardShape: InsettableShape {
+    var tab: CGSize
+    var radius: CGFloat = 12
+    var tabRadius: CGFloat = 9
+    var inset: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let rect = rect.insetBy(dx: inset, dy: inset)
+        let radius = max(radius - inset, 0)
+        // No tab, or one as wide as the card: a plain rounded rectangle.
+        guard tab.height > 0, tab.width > 0, tab.width + radius * 2 < rect.width else {
+            return Path(roundedRect: rect, cornerRadius: radius, style: .continuous)
+        }
+        let top = rect.minY, shoulder = rect.minY + tab.height
+        let tabRight = rect.minX + tab.width - inset * 2
+        let corner = min(max(tabRadius - inset, 0), tab.height / 2)
+        // Where the tab's side meets the card's top, the corner turns the other way.
+        let fillet = min(6, tab.height / 2)
+
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: top + corner))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: top), tangent2End: CGPoint(x: rect.minX + corner, y: top), radius: corner)
+        path.addArc(tangent1End: CGPoint(x: tabRight, y: top), tangent2End: CGPoint(x: tabRight, y: top + corner), radius: corner)
+        path.addArc(tangent1End: CGPoint(x: tabRight, y: shoulder), tangent2End: CGPoint(x: tabRight + fillet, y: shoulder), radius: fillet)
+        path.addArc(tangent1End: CGPoint(x: rect.maxX, y: shoulder), tangent2End: CGPoint(x: rect.maxX, y: shoulder + radius), radius: radius)
+        path.addArc(tangent1End: CGPoint(x: rect.maxX, y: rect.maxY), tangent2End: CGPoint(x: rect.maxX - radius, y: rect.maxY), radius: radius)
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY), tangent2End: CGPoint(x: rect.minX, y: rect.maxY - radius), radius: radius)
+        path.closeSubpath()
+        return path
+    }
+
+    func inset(by amount: CGFloat) -> TabbedCardShape {
+        var shape = self
+        shape.inset += amount
+        return shape
     }
 }
 

@@ -26,6 +26,28 @@ import Testing
         #expect(has(spans(text, caret: 10), .hidden, "# ", in: text))
     }
 
+    /// A line can carry on a list item, a quote or an indented paragraph without that block's
+    /// indent or mark. The parser places what is on such a line too far right; the spans must not.
+    @Test(arguments: [
+        "Line one\n**bold** before [DMD-PW26-30](/docs/task/0123abcd)",
+        "- item\n**bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        "- item\n  **bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        "1. item\n**bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        "- a\n  - b\n**bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        "> quoted\n**bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        "> quoted\n> **bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        "> - a\n**bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        " lead\n   **bold** [DMD-PW26-30](/docs/task/0123abcd)",
+        "- é item\n**bold** ü [DMD-PW26-30](/docs/task/0123abcd)",
+    ])
+    func aLineContinuingABlockIsFormattedWhereItIs(text: String) {
+        let away = spans(text)
+        #expect(has(away, .strong, "**bold**", in: text))
+        #expect(has(away, .link, "DMD-PW26-30", in: text))
+        #expect(has(away, .destination("/docs/task/0123abcd"), "DMD-PW26-30", in: text))
+        #expect(has(away, .hidden, "](/docs/task/0123abcd)", in: text))
+    }
+
     @Test func inlineFormattingShowsItsMarkersOnlyWhenTouched() {
         let text = "a **bold** and *em* and `code` and ~~gone~~ and ==mark=="
         let away = spans(text)

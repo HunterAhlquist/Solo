@@ -97,7 +97,7 @@ final class AssignedTasksStore {
         } catch {}
     }
 
-    private func pulse(_ id: UUID) {
+    func pulse(_ id: UUID) {
         pulsing.insert(id)
         Task {
             try? await Task.sleep(for: .milliseconds(650))

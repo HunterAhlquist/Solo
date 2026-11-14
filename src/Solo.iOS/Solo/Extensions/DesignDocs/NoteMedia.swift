@@ -285,7 +285,7 @@ struct NoteMediaViewer: View {
                                           sketch: sketch, mayWrite: context.canWrite)
                 }
             } else if context.canWrite {
-                Button("Replace Image", systemImage: "photo.badge.arrow.down") { replacing = true }
+                Button("Replace Image", systemImage: "arrow.trianglehead.2.clockwise.rotate.90") { replacing = true }
                     .disabled(busy)
             }
             if let picture = pictures[entry.id] {

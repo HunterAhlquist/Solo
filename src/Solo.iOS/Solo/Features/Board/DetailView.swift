@@ -46,9 +46,9 @@ struct DetailView: View {
     var body: some View {
         Group {
             if inInspector {
-                // An inspector column sits inside the page's own navigation
-                // stack. A second stack in there takes the first one's
-                // pushes with it, so the column gets a header of its own.
+                // The shell's column is a pane of glass outside any navigation
+                // stack, so it has no bar: the panel brings its own header, and
+                // no background, which would only flatten the glass.
                 VStack(spacing: 0) {
                     HStack(spacing: 10) {
                         Text(title).font(.headline)
@@ -63,7 +63,6 @@ struct DetailView: View {
                     panel
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .themedBackground()
             } else {
                 NavigationStack {
                     panel

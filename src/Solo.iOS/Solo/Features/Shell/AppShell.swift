@@ -85,8 +85,10 @@ private struct SectionStack: View {
     var body: some View {
         NavigationStack(path: $path) {
             TabRoot(tab: tab)
-                // Beside a sidebar a large title is a blank band above the page; the bar carries it instead.
-                .navigationBarTitleDisplayMode(sizeClass == .regular ? .inline : .automatic)
+                // Beside a sidebar a large title is a blank band above the page; the bar carries it
+                // instead. On a phone the title stays large but shares its row with the bar's buttons,
+                // which gives the page a row back.
+                .toolbarTitleDisplayMode(sizeClass == .regular ? .inline : .inlineLarge)
                 .navigationDestination(for: Route.self) { RouteView(route: $0) }
         }
         .onChange(of: navigator[tab], initial: true) { _, routes in
@@ -161,6 +163,7 @@ private struct TabShell: View {
 private struct SplitShell: View {
     @Environment(Navigator.self) private var navigator
     @State private var columns: NavigationSplitViewVisibility = .automatic
+    @State private var panels = DetailPanelCenter()
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
@@ -171,6 +174,43 @@ private struct SplitShell: View {
                 .id(navigator.tab)
         }
         .navigationSplitViewStyle(.balanced)
+        // Over the whole split view rather than the detail column: the panel stands above the
+        // column's navigation bar, which nothing inside the column can do.
+        .overlay { DetailPanelColumn() }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            // Never more than two fifths of the screen: beside an open sidebar there is little to share.
+            panels.width = min(448, max(320, width * 0.4))
+        }
+        // A swipe in from the screen's edge brings the sidebar back, as the system's own sidebars
+        // do — instead of going back a page, which is what a stack in the detail column would
+        // otherwise make of it. With the sidebar showing, the edge is the sidebar's and this does nothing.
+        .gesture(SidebarEdgeSwipe {
+            withAnimation { columns = .all }
+        })
+        .environment(panels)
+    }
+}
+
+/// A pan in from the screen's leading edge. Every other pan — the stack's
+/// swipe back among them — waits for it to fail, so the screen's edge is its
+/// alone. A pan that starts anywhere else fails it at once and is unaffected.
+private struct SidebarEdgeSwipe: UIGestureRecognizerRepresentable {
+    var action: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> Recognizer {
+        let recognizer = Recognizer()
+        recognizer.edges = .left
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: Recognizer, context: Context) {
+        if recognizer.state == .began { action() }
+    }
+
+    final class Recognizer: UIScreenEdgePanGestureRecognizer {
+        override func shouldBeRequiredToFail(by other: UIGestureRecognizer) -> Bool {
+            other is UIPanGestureRecognizer
+        }
     }
 }
 
@@ -226,7 +266,12 @@ struct SidebarView: View {
                 }
             }
 
-            Section {
+        }
+        .listStyle(.sidebar)
+        // What is always wanted stays put at the foot of the column, as the title does at its
+        // head; the projects scroll between the two.
+        .safeAreaBar(edge: .bottom, spacing: 0) {
+            VStack(spacing: 2) {
                 InstanceExtensionLinks(inSidebar: true)
                 SidebarRow(title: session.user.name, symbol: "person.crop.circle",
                            selected: navigator.tab == .account && navigator.current == nil) {
@@ -239,8 +284,12 @@ struct SidebarView: View {
                     }
                 }
             }
+            .environment(\.sidebarRowStandsAlone, true)
+            // Lines the footer's icons and selection up with the list's.
+            .padding(.horizontal, 20)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
         }
-        .listStyle(.sidebar)
         .navigationTitle(session.siteName)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -361,6 +410,7 @@ struct SidebarRow<Icon: View>: View {
     var selected: Bool
     var action: () -> Void
     @ViewBuilder var icon: Icon
+    @Environment(\.sidebarRowStandsAlone) private var standsAlone
 
     var body: some View {
         Button(action: action) {
@@ -382,6 +432,13 @@ struct SidebarRow<Icon: View>: View {
                         .background(theme.accentWash, in: .capsule)
                 }
             }
+            .padding(.horizontal, standsAlone ? 12 : 0)
+            .frame(minHeight: standsAlone ? 44 : nil)
+            .background {
+                if standsAlone, selected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.accentWash)
+                }
+            }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -399,4 +456,9 @@ extension SidebarRow where Icon == Image {
             Image(systemName: symbol)
         }
     }
+}
+
+extension EnvironmentValues {
+    /// True for sidebar rows outside the list — the footer — which have to draw their own selection.
+    @Entry var sidebarRowStandsAlone = false
 }

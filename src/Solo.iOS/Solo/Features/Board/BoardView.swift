@@ -3,9 +3,10 @@ import SwiftUI
 /// The Kanban board: three fixed columns, with epics as lanes spanning them.
 ///
 /// On an iPad the three columns sit side by side, as on the web. On an iPhone
-/// one column fills the screen and the others are a swipe away, with the
-/// column switcher doubling as a drop target so a card can still be carried
-/// across.
+/// one column fills the screen and the others are a swipe away — the same
+/// rows, slid sideways, so an epic stays where it is on the page whichever
+/// column is showing. The column switcher doubles as a drop target so a card
+/// can still be carried across, and the page follows the card there.
 struct BoardView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
@@ -65,8 +66,6 @@ private struct BoardContent: View {
                 BoardPager(model: model)
             }
         }
-        // Inside the panel modifier below: an inspector lays its own backing
-        // under the page it sits beside.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedBackground()
         .navigationTitle(board.name)
@@ -102,7 +101,8 @@ private struct BoardContent: View {
                 }
             }
         }
-        .detailPanel(isPresented: Binding(get: { selection != nil }, set: { if !$0 { model.closeDetail() } })) {
+        .detailPanel(isPresented: Binding(get: { selection != nil }, set: { if !$0 { model.closeDetail() } }),
+                     id: selection) {
             if let selection {
                 DetailView(store: model.store, selection: selection) { model.closeDetail() }
                     .id(selection)
@@ -258,6 +258,7 @@ private struct BoardCard: View {
 
         Button { model.open(task) } label: { card }
             .buttonStyle(.plain)
+            .landingTarget(model.landed?.taskId == task.id)
             .overlay(alignment: .top) {
                 if targeted {
                     Capsule().fill(theme.primary).frame(height: 3).offset(y: -5)
@@ -516,36 +517,37 @@ private struct BoardPager: View {
     @Bindable var model: BoardModel
 
     var body: some View {
-        TabView(selection: $model.column) {
-            ForEach(TaskState.allCases) { status in
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        if !model.store.isOpen {
-                            InfoBanner(text: "You cannot make changes to a board that is closed, reopen the board to enable editing.")
-                        }
-                        ForEach(model.topLevel) { item in
-                            switch item {
-                            case .group(let group):
-                                GroupContainer(model: model, group: group) { epic in
-                                    PagerLane(model: model, epic: epic, status: status)
-                                }
-                            case .epic(let epic):
-                                PagerLane(model: model, epic: epic, status: status)
-                            }
-                        }
-                        PagerLane(model: model, epic: nil, status: status)
-                        if model.isEmpty {
-                            EmptyBoard(model: model)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 24)
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if !model.store.isOpen {
+                    InfoBanner(text: "You cannot make changes to a board that is closed, reopen the board to enable editing.")
                 }
-                .tag(status)
+                ForEach(model.topLevel) { item in
+                    switch item {
+                    case .group(let group):
+                        GroupContainer(model: model, group: group) { epic in
+                            PagerLane(model: model, epic: epic)
+                        }
+                    case .epic(let epic):
+                        PagerLane(model: model, epic: epic)
+                    }
+                }
+                PagerLane(model: model, epic: nil)
+                if model.isEmpty {
+                    EmptyBoard(model: model)
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 24)
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .safeAreaInset(edge: .top, spacing: 8) {
+        .columnPaging($model.column)
+        // A moved card is followed: to its column, then down the page to the card itself.
+        .followsLanding(model.landed?.token) { model.landingFollowed() }
+        .onChange(of: model.landed) { _, landing in
+            guard let landing else { return }
+            withAnimation(.snappy(duration: 0.32)) { model.column = landing.status }
+        }
+        .safeAreaBar(edge: .top, spacing: 8) {
             ColumnSwitcher(selection: $model.column, count: model.count) { payloads, status in
                 model.drop(payloads, epicId: model.task(dropped: payloads.first ?? "")?.epicId, status: status, index: nil)
             }
@@ -554,22 +556,28 @@ private struct BoardPager: View {
     }
 }
 
+/// A row of the phone's board: an epic's header, which stays put, over its
+/// three zones, of which the page's column is the one in view.
 private struct PagerLane: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
     var epic: Epic?
-    var status: TaskState
 
     var body: some View {
         VStack(spacing: 8) {
-            LaneHeader(model: model, epic: epic, count: model.tasks(epicId: epic?.id, status: status).count)
+            LaneHeader(model: model, epic: epic, count: model.tasks(epicId: epic?.id).count)
             if let epic, model.isCollapsed(epic) {
                 Text("\(model.tasks(epicId: epic.id).count) task(s) hidden")
                     .font(.caption)
                     .foregroundStyle(theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Zone(model: model, epicId: epic?.id, status: status)
+                ColumnPages {
+                    ForEach(TaskState.allCases) { status in
+                        Zone(model: model, epicId: epic?.id, status: status)
+                            .accessibilityHidden(status != model.column)
+                    }
+                }
             }
         }
         .padding(10)

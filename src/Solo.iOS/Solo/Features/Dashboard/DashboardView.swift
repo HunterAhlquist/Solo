@@ -10,6 +10,16 @@ struct DashboardView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var column: TaskState = .unstarted
+    /// A card that has just changed column, for a phone to follow there. It matters most here:
+    /// this page keeps no order of its own, so a card that changes column lands wherever its
+    /// board's rank puts it — usually far from where it was let go.
+    @State private var landed: Landing?
+
+    private struct Landing: Equatable {
+        var taskId: UUID
+        var status: TaskState
+        var token = UUID()
+    }
     @State private var finishedExpanded = false
     @State private var openTask: UUID?
     @State private var failed: String?
@@ -54,27 +64,38 @@ struct DashboardView: View {
                         .padding(16)
                     }
                 } else {
-                    TabView(selection: $column) {
-                        ForEach(TaskState.allCases) { status in
-                            ScrollView {
-                                VStack(spacing: 14) {
-                                    DashboardExtensions(openTask: $openTask)
-                                    zone(cards, status, work)
-                                    if cards.isEmpty { empty }
+                    ScrollView {
+                        LazyVStack(spacing: 12, pinnedViews: .sectionHeaders) {
+                            // Once, above the columns: it is the same roadmap whichever one is showing.
+                            DashboardExtensions(openTask: $openTask)
+                            Section {
+                                // Here a column is only as tall as its own cards: there are no rows to keep in line.
+                                ColumnPages(height: .showing) {
+                                    ForEach(TaskState.allCases) { status in
+                                        zone(cards, status, work)
+                                            .accessibilityHidden(status != column)
+                                    }
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.bottom, 24)
+                                if cards.isEmpty { empty }
+                            } header: {
+                                ColumnSwitcher(selection: $column, count: { status in cards.count { $0.task.status == status } }) {
+                                    payloads, status in
+                                    drop(payloads, status, cards)
+                                }
+                                .padding(.bottom, 2)
                             }
-                            .tag(status)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .safeAreaInset(edge: .top, spacing: 8) {
-                        ColumnSwitcher(selection: $column, count: { status in cards.count { $0.task.status == status } }) {
-                            payloads, status in
-                            drop(payloads, status, cards)
                         }
                         .padding(.horizontal, 14)
+                        .padding(.bottom, 24)
+                    }
+                    .columnPaging($column)
+                    .followsLanding(landed?.token) {
+                        if let landed { session.assigned.pulse(landed.taskId) }
+                        landed = nil
+                    }
+                    .onChange(of: landed) { _, landing in
+                        guard let landing else { return }
+                        withAnimation(.snappy(duration: 0.32)) { column = landing.status }
                     }
                 }
             } else if let failed {
@@ -142,6 +163,7 @@ struct DashboardView: View {
                     origin: card.origin, canWrite: card.project.canWrite)
                 Button { openTask = card.task.id } label: { view }
                     .buttonStyle(.plain)
+                    .landingTarget(landed?.taskId == card.task.id)
                     .contextMenu {
                         Button("Open", systemImage: "arrow.up.forward.app") { openTask = card.task.id }
                         Button("Go to Board", systemImage: "rectangle.split.3x1") {
@@ -179,6 +201,12 @@ struct DashboardView: View {
         var moved = card.task
         moved.status = status
         withAnimation(.snappy(duration: 0.25)) { session.assigned.apply(moved) }
+        // A card that lands past the fold of a long Finished column would be out of sight.
+        if status == .finished,
+           (session.assigned.work?.tasks.count { $0.status == .finished } ?? 0) > BoardDrag.finishedVisibleLimit {
+            finishedExpanded = true
+        }
+        landed = Landing(taskId: card.task.id, status: status)
         Task {
             if let saved = await session.save({ try await session.api.setTaskStatus(card.task.id, status) },
                                               refresh: session.assigned.refresh) {

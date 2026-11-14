@@ -56,17 +56,6 @@ struct ProjectHomeView: View {
     var body: some View {
         Group {
             if let project {
-                // A segmented control rather than a row of scrolling chips: a
-                // sideways scroll view directly under the bar is treated as the
-                // page's own and has its content pushed down out of sight.
-                VStack(spacing: 0) {
-                Picker("Section", selection: $section) {
-                    ForEach(sections) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 560)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         switch section {
@@ -93,6 +82,17 @@ struct ProjectHomeView: View {
                     .frame(maxWidth: 1100, alignment: .leading)
                     .frame(maxWidth: .infinity)
                 }
+                // The page's sections, as a bar the page scrolls under rather than a band above it. A
+                // segmented control, not a row of scrolling chips: a sideways scroll view directly under
+                // the navigation bar is treated as the page's own and has its content pushed out of sight.
+                .safeAreaBar(edge: .top, spacing: 0) {
+                    Picker("Section", selection: $section) {
+                        ForEach(sections) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 560)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
                 }
             } else if let failed {
                 ContentUnavailableView("Couldn't load that project", systemImage: "exclamationmark.triangle",
