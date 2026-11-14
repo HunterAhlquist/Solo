@@ -342,7 +342,7 @@ struct RoadmapMembershipsSection: View {
     @State private var roadmaps: [TaskRoadmap] = []
 
     var body: some View {
-        Group {
+        ExtensionSection(shown: !roadmaps.isEmpty) {
             if !roadmaps.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {

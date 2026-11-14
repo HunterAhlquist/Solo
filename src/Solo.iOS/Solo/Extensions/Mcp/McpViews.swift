@@ -458,7 +458,7 @@ struct LlmWorkSection: View {
     @State private var saving = false
 
     var body: some View {
-        Group {
+        ExtensionSection(shown: state?.eligible == true || failed) {
             if let state, state.eligible {
                 Toggle(isOn: Binding(get: { state.llmWork }, set: { save($0) })) {
                     Label("Work for an LLM", systemImage: "cpu")

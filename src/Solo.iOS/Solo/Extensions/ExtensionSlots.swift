@@ -4,7 +4,24 @@ import SwiftUI
 // fills it depends on which extensions the instance reports (ExtensionCatalog),
 // so core never asks about a particular extension itself.
 
-/// Sections an extension adds to a task's detail, under its fields.
+/// A section an extension adds between a page's own. It is always in the view
+/// tree, so its loading runs, and takes no room until it has something to
+/// show — a `.task` hung on an empty `Group` would never start.
+struct ExtensionSection<Content: View>: View {
+    var shown: Bool
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if shown {
+                content.padding(.top, 18)
+            }
+        }
+    }
+}
+
+/// Sections an extension adds to a task's detail, under its fields. They sit
+/// in a stack without spacing of its own: each brings its gap when it shows.
 struct TaskDetailExtensions: View {
     @Environment(Session.self) private var session
     var task: TaskItem

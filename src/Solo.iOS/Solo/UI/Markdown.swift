@@ -237,21 +237,23 @@ struct MarkdownEditorSheet: View {
                         .fontWeight(.semibold)
                         .disabled(saving || text.count > draft.limit)
                 }
-                ToolbarItemGroup(placement: .keyboard) {
-                    formatButtons
-                }
             }
-            .safeAreaInset(edge: .bottom) {
-                HStack {
-                    Button("Markdown") { showingCheatsheet = true }
-                        .font(.footnote)
-                    Spacer()
-                    Text("\(text.count.formatted()) / \(draft.limit.formatted())")
-                        .font(.footnote.monospacedDigit())
-                        .foregroundStyle(text.count > draft.limit ? theme.error : theme.textSecondary)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    if !previewing {
+                        FormatBar { formatButtons }
+                    }
+                    HStack {
+                        Button("Markdown") { showingCheatsheet = true }
+                            .font(.footnote)
+                        Spacer()
+                        Text("\(text.count.formatted()) / \(draft.limit.formatted())")
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(text.count > draft.limit ? theme.error : theme.textSecondary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
             }
             .sheet(isPresented: $showingCheatsheet) { MarkdownCheatsheet() }
             .sheet(isPresented: $pickingTask) {
@@ -275,8 +277,10 @@ struct MarkdownEditorSheet: View {
         Button("Link", systemImage: "link") { wrap("[", "](https://)") }
         Button("Task link", systemImage: "rectangle.stack.badge.plus") { pickingTask = true }
         MarkdownEditorExtensions(projectId: draft.projectId) { insert($0) }
-        Spacer()
-        Button("Done", systemImage: "keyboard.chevron.compact.down") { focused = false }
+        if focused {
+            Divider().frame(height: 22)
+            Button("Hide keyboard", systemImage: "keyboard.chevron.compact.down") { focused = false }
+        }
     }
 
     private var selectedRange: Range<String.Index> {
@@ -316,6 +320,39 @@ struct MarkdownEditorSheet: View {
             await draft.onSave(text)
             dismiss()
         }
+    }
+}
+
+/// A row of formatting buttons that rides above the keyboard as its own glass
+/// bar. Its own bar rather than the keyboard's accessory row, which a sheet
+/// doesn't reliably show.
+struct FormatBar<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 4) { content }
+                .labelStyle(.iconOnly)
+                .buttonStyle(FormatButtonStyle())
+                .padding(.horizontal, 10)
+        }
+        .scrollIndicators(.hidden)
+        .frame(height: 46)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
+}
+
+private struct FormatButtonStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(theme.primary)
+            .frame(width: 38, height: 38)
+            .contentShape(.rect)
+            .opacity(configuration.isPressed ? 0.5 : 1)
     }
 }
 

@@ -74,7 +74,8 @@ struct DetailView: View {
                             ToolbarItem(placement: .topBarLeading) {
                                 PresenceCluster(entries: store.presence(on: entityType, entityId), max: 4)
                             }
-                            ToolbarItem(placement: .confirmationAction) {
+                            // Closing isn't confirming anything, so it doesn't get the filled accent button.
+                            ToolbarItem(placement: .topBarTrailing) {
                                 Button("Close", systemImage: "xmark", action: onClose)
                             }
                         }
@@ -135,8 +136,10 @@ struct DetailView: View {
                     .card()
 
                 if let task {
-                    taskFields(task)
-                    TaskDetailExtensions(task: task, store: store)
+                    VStack(alignment: .leading, spacing: 0) {
+                        taskFields(task)
+                        TaskDetailExtensions(task: task, store: store)
+                    }
                 } else if let epic {
                     AssigneeField(store: store, assigneeIds: epic.assigneeIds, canWrite: canWrite) { ids in
                         if let saved = await session.save({ try await api.setEpicAssignees(epic.id, ids) },

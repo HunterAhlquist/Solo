@@ -192,43 +192,32 @@ struct NoteFormatBar: View {
     var keyboardUp: Bool
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 4) {
-                button("Bold", "bold") { proxy.wrap("**", "**") }
-                button("Italic", "italic") { proxy.wrap("*", "*") }
-                button("Highlight", "highlighter") { proxy.wrap("==", "==") }
-                button("Code", "chevron.left.forwardslash.chevron.right") { proxy.wrap("`", "`") }
+        FormatBar {
+            button("Bold", "bold") { proxy.wrap("**", "**") }
+            button("Italic", "italic") { proxy.wrap("*", "*") }
+            button("Highlight", "highlighter") { proxy.wrap("==", "==") }
+            button("Code", "chevron.left.forwardslash.chevron.right") { proxy.wrap("`", "`") }
+            Divider().frame(height: 22)
+            button("Heading", "number") { proxy.prefixLine("## ") }
+            button("List", "list.bullet") { proxy.prefixLine("- ") }
+            button("Checklist", "checklist") { proxy.prefixLine("- [ ] ") }
+            button("Quote", "text.quote") { proxy.prefixLine("> ") }
+            Divider().frame(height: 22)
+            button("Link", "link") { proxy.wrap("[", "](https://)") }
+            button("Link a note", "doc.text") { onLinkNote() }
+            button("Link a task", "rectangle.stack.badge.plus") { onLinkTask() }
+            Divider().frame(height: 22)
+            button("New sketch", "scribble.variable") { onSketch() }
+            button("Add image", "photo.badge.plus") { onImage() }
+            button("Attachments", "paperclip") { onAttachments() }
+            if keyboardUp {
                 Divider().frame(height: 22)
-                button("Heading", "number") { proxy.prefixLine("## ") }
-                button("List", "list.bullet") { proxy.prefixLine("- ") }
-                button("Checklist", "checklist") { proxy.prefixLine("- [ ] ") }
-                button("Quote", "text.quote") { proxy.prefixLine("> ") }
-                Divider().frame(height: 22)
-                button("Link", "link") { proxy.wrap("[", "](https://)") }
-                button("Link a note", "doc.text") { onLinkNote() }
-                button("Link a task", "rectangle.stack.badge.plus") { onLinkTask() }
-                Divider().frame(height: 22)
-                button("New sketch", "scribble.variable") { onSketch() }
-                button("Add image", "photo.badge.plus") { onImage() }
-                button("Attachments", "paperclip") { onAttachments() }
-                if keyboardUp {
-                    Divider().frame(height: 22)
-                    button("Hide keyboard", "keyboard.chevron.compact.down") { proxy.dismissKeyboard() }
-                }
+                button("Hide keyboard", "keyboard.chevron.compact.down") { proxy.dismissKeyboard() }
             }
-            .padding(.horizontal, 10)
         }
-        .scrollIndicators(.hidden)
-        .frame(height: 46)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
     }
 
     private func button(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
         Button(title, systemImage: symbol, action: action)
-            .labelStyle(.iconOnly)
-            .frame(width: 38, height: 38)
-            .contentShape(.rect)
     }
 }

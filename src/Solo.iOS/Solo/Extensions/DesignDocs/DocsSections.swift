@@ -236,7 +236,7 @@ struct LinkedDocsSection: View {
     @State private var links: [(url: String, name: String)] = []
 
     var body: some View {
-        Group {
+        ExtensionSection(shown: !links.isEmpty) {
             if !links.isEmpty {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {

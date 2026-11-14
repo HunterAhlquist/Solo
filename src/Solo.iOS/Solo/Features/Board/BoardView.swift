@@ -186,6 +186,9 @@ private struct GridLane: View {
                         Zone(model: model, epicId: epic?.id, status: status)
                     }
                 }
+                // Every zone is as tall as the tallest, so a card can be let go
+                // anywhere under a short column and still land in it.
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(10)
@@ -216,7 +219,8 @@ private struct Zone: View {
             }
         }
         .padding(6)
-        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .contentShape(.rect)
         .background(targeted ? theme.accentWash : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             if targeted {
@@ -281,6 +285,7 @@ private struct BoardCard: View {
 
 private struct CardDrag<Preview: View>: ViewModifier {
     @Environment(\.theme) private var theme
+    @Environment(Session.self) private var session
     var enabled: Bool
     var payload: String
     var preview: Preview
@@ -288,7 +293,10 @@ private struct CardDrag<Preview: View>: ViewModifier {
     func body(content: Content) -> some View {
         if enabled {
             content.draggable(payload) {
-                preview.frame(width: 240).environment(\.theme, theme)
+                // A drag preview is drawn outside the view tree, so it has none of
+                // the environment: everything a card reads has to be handed to it.
+                preview.frame(width: 240).environment(\.theme, theme).environment(session)
+                    .environment(session.navigator)
             }
         } else {
             content
