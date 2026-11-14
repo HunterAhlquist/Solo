@@ -239,13 +239,19 @@ struct NoteMediaViewer: View {
 
     var body: some View {
         NavigationStack {
-            TabView(selection: $current) {
-                ForEach(entries) { entry in
-                    NoteMediaPage(embed: entry.embed, store: context.store) { pictures[entry.id] = $0 }
+            GeometryReader { proxy in
+                TabView(selection: $current) {
+                    ForEach(entries) { entry in
+                        NoteMediaPage(embed: entry.embed, store: context.store, bars: proxy.safeAreaInsets) {
+                            pictures[entry.id] = $0
+                        }
                         .tag(entry.id)
+                    }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                // Pictures run under the bars, which are glass; each is fitted clear of them.
+                .ignoresSafeArea()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -372,42 +378,25 @@ struct NoteMediaViewer: View {
 
 /// One picture in the viewer, as large as it fits, with pinch and double tap to look closer.
 private struct NoteMediaPage: View {
-    @Environment(\.theme) private var theme
     var embed: NoteEmbed
     var store: DocVaultStore
+    var bars: EdgeInsets
     var onLoad: (UIImage) -> Void
-
-    @State private var scale: CGFloat = 1
-    @GestureState private var pinch: CGFloat = 1
 
     var body: some View {
         NoteMediaPicture(embed: embed, store: store, onLoad: onLoad) { picture, failed in
-            GeometryReader { proxy in
-                ZStack {
-                    if let picture {
-                        ScrollView([.horizontal, .vertical]) {
-                            Image(uiImage: picture)
-                                .interpolation(embed.isSketch ? .none : .high)
-                                .resizable()
-                                .scaledToFit()
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
-                                .padding(24)
-                                .frame(width: proxy.size.width * scale * pinch, height: proxy.size.height * scale * pinch)
-                        }
-                        .scrollIndicators(.hidden)
-                        .scrollDisabled(scale * pinch <= 1.01)
-                        .simultaneousGesture(MagnifyGesture().updating($pinch) { value, state, _ in state = value.magnification }
-                            .onEnded { scale = min(max(scale * $0.magnification, 1), 6) })
-                        .onTapGesture(count: 2) { withAnimation(.snappy) { scale = scale > 1 ? 1 : 2.5 } }
-                    } else if failed {
-                        ContentUnavailableView("This attachment couldn't load", systemImage: "photo.badge.exclamationmark")
-                    } else {
-                        ProgressView().controlSize(.large)
-                    }
+            ZStack {
+                if let picture {
+                    ZoomablePicture(picture: picture, pixelated: embed.isSketch, margin: 24, cornerRadius: 6, shadow: true,
+                                    bars: bars)
+                        .ignoresSafeArea()
+                } else if failed {
+                    ContentUnavailableView("This attachment couldn't load", systemImage: "photo.badge.exclamationmark")
+                } else {
+                    ProgressView().controlSize(.large)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

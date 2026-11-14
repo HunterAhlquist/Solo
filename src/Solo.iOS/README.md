@@ -85,6 +85,8 @@ Two parts of Design Docs follow the web editor closely enough to be worth knowin
 - **Pictures.** A line holding nothing but embeds is a row: one print, or several fanned into a stack with the web's own tilt for each path. Tapping opens them full screen with the system zoom transition, to swipe between, edit (a sketch), replace (an image), share, remove from the note or delete. The reader and the editor draw rows with the same view; in the editor it is hosted over a line made exactly as tall as the row.
 
 - **Carets and pens.** Who is where travels over Yjs's awareness protocol, as on the web (`Awareness.swift`): a caret in a note, a pen and the stroke it is in the middle of on a sketch, each in the colour the instance gave that person. A caret is sent as the identity of the character it stands before, so that it holds its place while text is typed around it — and YSwift does not expose the document structure that turns that into an offset. `YjsStructure.swift` reads it out of the document's own update encoding and orders it with Yjs's rule for concurrent insertions. It is used for carets and nothing else, and it checks the text it reconstructs against the document's before placing one.
+- **Moving a sketch's page** is the web editor's arithmetic (`SketchViewport.swift`, from `js/sketch/viewport.js`): a pan, a zoom and an angle, worked out from the raw touches so that what was under two fingers when they landed is under them still — they carry the page, zoom it and turn it, with no recognizer's threshold in between. A button puts it back, upright and fitted. Two fingers tapped together undo and three redo, as on the web; a finger draws unless Settings keeps drawing for the Pencil (or the Page menu says otherwise), and then one finger moves the page, as on the web. A trackpad scrolls, pinches and turns it too, and with Command or Option held its scroll zooms or turns.
+- **Looking closer at a picture** is a scroll view's zoom (`ZoomablePicture.swift`), which keeps the place between the fingers where it is; a double tap zooms in on the place tapped.
 - **Undo in a sketch** is Yjs's undo manager over the same parts of the document the web editor's watches, so it takes back a stroke, a change of paper or a cleared page, and never anybody else's work. Clearing plays the web's explosion, which the app fetches from the extension's content on the instance rather than carrying a copy.
 
 An extension the instance runs that has no native half is named under About, so its absence reads as a limit of the app rather than of the instance.
@@ -96,7 +98,7 @@ Better here:
 - Opens and reads offline from the last loaded data.
 - A task's detail sits beside its board on an iPad instead of over it.
 - On a phone, a board's epics stay lined up across its columns, and a moved card is followed to where it lands.
-- Sketches take Apple Pencil pressure, and a double-tap on the Pencil swaps pen and eraser; two fingers move and zoom the page.
+- Sketches take Apple Pencil pressure, and a double-tap on the Pencil swaps pen and eraser.
 - Notes and folders are moved by dragging them about the tree, and a note dragged into a note being written becomes a link to it.
 - Home Screen widgets, and haptics for picking a card up, putting it down and clearing a sketch.
 - The theme is picked up on returning to the app, without a reload.

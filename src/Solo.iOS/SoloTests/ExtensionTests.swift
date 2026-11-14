@@ -556,3 +556,97 @@ import Testing
         #expect(first.sketchStrokes().isEmpty)
     }
 }
+
+/// The web editor's own cases (js/sketch/viewport.test.js, touch-tap.test.js), in its numbers.
+@Suite struct SketchViewTests {
+    private let view = SketchView(pan: CGPoint(x: 35, y: -20), zoom: 1.2, angle: 13 * .pi / 180)
+    private let anchor = CGPoint(x: 245, y: 180)
+
+    private func close(_ a: CGPoint, _ b: CGPoint) -> Bool {
+        abs(a.x - b.x) < 1e-8 && abs(a.y - b.y) < 1e-8
+    }
+
+    @Test func aPointOfThePageIsFoundAgainInTheView() {
+        #expect(close(view.viewPoint(view.pagePoint(anchor)), anchor))
+    }
+
+    @Test func zoomingAndTurningKeepThePagePointUnderTheAnchor() {
+        let next = view.anchored(at: anchor, zoom: 1.37, angle: 27.25 * .pi / 180)
+        #expect(close(view.pagePoint(anchor), next.pagePoint(anchor)))
+        #expect(next.zoom == 1.37)
+        #expect(abs(next.angle - 27.25 * .pi / 180) < 1e-12)
+    }
+
+    @Test func twoFingersPanScaleAndTurnAboutWhereTheyBegan() {
+        let pinch = SketchView.Pinch(view: view, CGPoint(x: 50, y: 100), CGPoint(x: 150, y: 100))
+        let next = pinch.view(CGPoint(x: 125, y: 100), CGPoint(x: 125, y: 225))
+        #expect(abs(next.zoom - 1.5) < 1e-12)
+        #expect(abs(next.angle - 103 * .pi / 180) < 1e-12)
+        #expect(close(view.pagePoint(CGPoint(x: 100, y: 100)), next.pagePoint(CGPoint(x: 125, y: 162.5))))
+    }
+
+    @Test func eachFingerStaysOnItsOwnPointOfThePage() {
+        let a = CGPoint(x: 80, y: 300), b = CGPoint(x: 260, y: 340)
+        let pinch = SketchView.Pinch(view: view, a, b)
+        let movedA = CGPoint(x: 40, y: 190), movedB = CGPoint(x: 310, y: 420)
+        let next = pinch.view(movedA, movedB)
+        #expect(abs(view.pagePoint(a).x - next.pagePoint(movedA).x) < 1e-6)
+        #expect(abs(view.pagePoint(a).y - next.pagePoint(movedA).y) < 1e-6)
+        #expect(abs(view.pagePoint(b).x - next.pagePoint(movedB).x) < 1e-6)
+        #expect(abs(view.pagePoint(b).y - next.pagePoint(movedB).y) < 1e-6)
+    }
+
+    @Test func theZoomStopsAtItsLimitsAndTheAngleWraps() {
+        #expect(view.anchored(at: anchor, zoom: 400).zoom == 16)
+        #expect(view.anchored(at: anchor, zoom: 0.001).zoom == 0.1)
+        #expect(abs(view.anchored(at: anchor, angle: 3 * .pi).angle - .pi) < 1e-9)
+    }
+
+    @Test func aFittedPageIsUprightAndInTheMiddle() {
+        let room = CGRect(x: 16, y: 80, width: 400, height: 600)
+        let fitted = SketchView.fitting(page: CGSize(width: 420, height: 595), in: room)
+        #expect(fitted.angle == 0)
+        #expect(abs(fitted.zoom - 400.0 / 420) < 1e-12)
+        #expect(close(fitted.viewPoint(CGPoint(x: 210, y: 297.5)), CGPoint(x: room.midX, y: room.midY)))
+    }
+
+    @Test func twoFingersTappedTogetherUndoAndThreeRedo() {
+        final class Finger {}
+        let one = Finger(), two = Finger(), three = Finger()
+        var tap = SketchTouchTap()
+        let first = tap.down(ObjectIdentifier(one), at: CGPoint(x: 300, y: 300), time: 1.000)
+        let second = tap.down(ObjectIdentifier(two), at: CGPoint(x: 500, y: 300), time: 1.030)
+        #expect(first)
+        #expect(!second)
+        let early = tap.up(ObjectIdentifier(one), at: CGPoint(x: 304, y: 306), time: 1.100)
+        let undo = tap.up(ObjectIdentifier(two), at: CGPoint(x: 493, y: 296), time: 1.110)
+        #expect(early == nil)
+        #expect(undo == .undo)
+
+        for (index, finger) in [one, two, three].enumerated() {
+            _ = tap.down(ObjectIdentifier(finger), at: CGPoint(x: 300 + index * 100, y: 300), time: 2 + Double(index) / 1000)
+        }
+        let lifts = [one, two, three].enumerated().map { index, finger in
+            tap.up(ObjectIdentifier(finger), at: CGPoint(x: 300 + index * 100, y: 300), time: 2.1)
+        }
+        #expect(lifts == [nil, nil, .redo])
+    }
+
+    @Test func aPinchOrALongHoldIsNotATap() {
+        final class Finger {}
+        let one = Finger(), two = Finger()
+        var tap = SketchTouchTap()
+        _ = tap.down(ObjectIdentifier(one), at: CGPoint(x: 300, y: 300), time: 1)
+        _ = tap.down(ObjectIdentifier(two), at: CGPoint(x: 500, y: 300), time: 1.01)
+        tap.move(ObjectIdentifier(two), to: CGPoint(x: 600, y: 300))
+        let pinched = [tap.up(ObjectIdentifier(one), at: CGPoint(x: 300, y: 300), time: 1.06),
+                       tap.up(ObjectIdentifier(two), at: CGPoint(x: 600, y: 300), time: 1.07)]
+        #expect(pinched == [nil, nil])
+
+        _ = tap.down(ObjectIdentifier(one), at: CGPoint(x: 300, y: 300), time: 3)
+        _ = tap.down(ObjectIdentifier(two), at: CGPoint(x: 500, y: 300), time: 3.01)
+        let held = [tap.up(ObjectIdentifier(one), at: CGPoint(x: 300, y: 300), time: 3.5),
+                    tap.up(ObjectIdentifier(two), at: CGPoint(x: 500, y: 300), time: 3.6)]
+        #expect(held == [nil, nil])
+    }
+}

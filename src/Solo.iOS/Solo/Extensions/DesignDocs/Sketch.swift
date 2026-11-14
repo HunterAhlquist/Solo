@@ -772,16 +772,41 @@ struct SketchEditor: View {
     @State private var ink: SketchInk = .theme
     @State private var level = 1
     @State private var confirmingClear = false
+    /// Whether a finger draws or moves the page. Until someone chooses, it is what the system
+    /// says of the Pencil: fingers draw unless Settings keeps drawing for the Pencil alone.
+    @AppStorage("sketch.fingerDraws") private var fingerChoice: Bool?
+    @State private var moved = false
+    @State private var fitRequest = 0
+
+    private var fingerDraws: Bool { fingerChoice ?? !UIPencilInteraction.prefersPencilOnlyDrawing }
 
     var body: some View {
         NavigationStack {
-            SketchCanvas(model: model, image: model.image, page: model.page, canDraw: model.sync.canWrite && !model.clearing,
-                         tool: tool, ink: ink, level: level, blast: model.blast, pointers: model.pointers,
-                         dark: colorScheme == .dark) {
-                // A double-tap on the Pencil: to the eraser, and back to the pen.
-                tool = tool == "pen" ? "eraser" : "pen"
+            ZStack(alignment: .bottomTrailing) {
+                GeometryReader { proxy in
+                    SketchCanvas(model: model, image: model.image, page: model.page,
+                                 canDraw: model.sync.canWrite && !model.clearing, tool: tool, ink: ink, level: level,
+                                 blast: model.blast, pointers: model.pointers, dark: colorScheme == .dark,
+                                 fingerDraws: fingerDraws, bars: proxy.safeAreaInsets, fitRequest: fitRequest) {
+                        // A double-tap on the Pencil: to the eraser, and back to the pen.
+                        tool = tool == "pen" ? "eraser" : "pen"
+                    } onMoved: { moved = $0 }
+                        // The page goes under the bars, which are glass; it is fitted clear of them.
+                        .ignoresSafeArea()
+                }
+                if moved {
+                    // Once the page has been moved, zoomed or turned: the way back.
+                    Button("Fit Page", systemImage: "arrow.down.right.and.arrow.up.left") { fitRequest += 1 }
+                        .labelStyle(.iconOnly)
+                        .font(.body.weight(.medium))
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 10)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                }
             }
-                .ignoresSafeArea(edges: .bottom)
+                .animation(.snappy, value: moved)
                 .themedBackground()
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -812,6 +837,10 @@ struct SketchEditor: View {
                                     Label("Portrait", systemImage: "rectangle.portrait").tag("portrait")
                                     Label("Landscape", systemImage: "rectangle").tag("landscape")
                                 }
+                                Divider()
+                                // Off, one finger moves the page and only the Pencil draws, as on the web.
+                                Toggle("Draw with Finger", systemImage: "hand.draw",
+                                       isOn: Binding(get: { fingerDraws }, set: { fingerChoice = $0 }))
                                 Divider()
                                 Button("Clear Sketch…", systemImage: "trash", role: .destructive) { confirmingClear = true }
                                     .disabled(model.clearing)
@@ -902,150 +931,33 @@ struct SketchEditor: View {
     }
 }
 
-/// The page under the hand. One finger or the Pencil draws; two fingers move
-/// and zoom the page, which is the scroll view's job, so a stroke in progress
-/// is dropped the moment a second finger lands.
-struct SketchCanvas: UIViewRepresentable {
-    var model: SketchModel
-    var image: CGImage?
-    var page: SketchPage
-    var canDraw: Bool
-    var tool: String
-    var ink: SketchInk
-    var level: Int
-    var blast: SketchBlast?
-    var pointers: [SketchPointer] = []
-    var dark = false
-    var onPencilTap: () -> Void = {}
-
-    func makeUIView(context: Context) -> SketchScrollView {
-        let view = SketchScrollView(page: CGSize(width: page.width, height: page.height))
-        view.pageView.model = model
-        return view
-    }
-
-    func updateUIView(_ view: SketchScrollView, context: Context) {
-        view.setPage(CGSize(width: self.page.width, height: self.page.height))
-        let page = view.pageView
-        page.layer.contents = image
-        page.canDraw = canDraw
-        page.tool = tool
-        page.ink = ink
-        page.level = level
-        page.play(blast)
-        page.show(pointers, dark: dark, zoom: view.zoomScale)
-        page.onPencilTap = onPencilTap
-    }
-}
-
-final class SketchScrollView: UIScrollView, UIScrollViewDelegate {
-    let pageView: SketchPageView
-    private var fitted: CGSize = .zero
-
-    init(page: CGSize) {
-        pageView = SketchPageView(frame: CGRect(origin: .zero, size: page))
-        super.init(frame: .zero)
-        delegate = self
-        addSubview(pageView)
-        contentSize = page
-        // One finger belongs to the pen.
-        panGestureRecognizer.minimumNumberOfTouches = 2
-        delaysContentTouches = false
-        showsVerticalScrollIndicator = false
-        showsHorizontalScrollIndicator = false
-        backgroundColor = .clear
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    /// The paper changed size or turned: lay the new page out and fit it afresh.
-    func setPage(_ size: CGSize) {
-        guard pageView.bounds.size != size else { return }
-        zoomScale = 1
-        pageView.frame = CGRect(origin: .zero, size: size)
-        contentSize = size
-        fitted = .zero
-        setNeedsLayout()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        guard bounds.width > 0, bounds.height > 0 else { return }
-        if fitted != bounds.size {
-            // Fit the whole page when first shown and whenever the space changes while it is still fitted.
-            let page = pageView.bounds.size
-            let inset: CGFloat = 16
-            let fit = min((bounds.width - inset * 2) / page.width, (bounds.height - adjustedContentInset.top
-                - adjustedContentInset.bottom - inset * 2) / page.height)
-            let wasFitted = fitted == .zero || abs(zoomScale - minimumZoomScale) < 0.001
-            minimumZoomScale = max(fit, 0.05)
-            maximumZoomScale = max(fit * 8, 4)
-            if wasFitted { zoomScale = minimumZoomScale }
-            fitted = bounds.size
-        }
-        center()
-    }
-
-    func viewForZooming(in scrollView: UIScrollView) -> UIView? { pageView }
-
-    func scrollViewDidZoom(_ scrollView: UIScrollView) {
-        center()
-        pageView.zoomChanged(zoomScale)
-    }
-
-    /// A page smaller than the view sits in the middle of it rather than in a corner.
-    private func center() {
-        let visible = bounds.inset(by: adjustedContentInset).size
-        let horizontal = max(0, (visible.width - contentSize.width) / 2)
-        let vertical = max(0, (visible.height - contentSize.height) / 2)
-        contentInset = UIEdgeInsets(top: vertical, left: horizontal, bottom: vertical, right: horizontal)
-    }
-}
-
-final class SketchPageView: UIView, UIPencilInteractionDelegate {
+/// The page itself: the picture of it, everyone else's pens over it, and the stroke being
+/// drawn. It takes no touches — the viewport around it does, and says which of them draw.
+final class SketchPageView: UIView {
     weak var model: SketchModel?
-    var onPencilTap: () -> Void = {}
-
-    // iPadOS 17.5 and later call this one and skip the older method below.
-    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveTap tap: UIPencilInteraction.Tap) {
-        pencilTapped()
-    }
-
-    func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
-        pencilTapped()
-    }
-
-    /// The Pencil's double-tap does what Settings says it does. Either of its tool-switching
-    /// choices swaps pen and eraser, the two tools there are; anything else is left to the system.
-    private func pencilTapped() {
-        guard canDraw else { return }
-        switch UIPencilInteraction.preferredTapAction {
-        case .switchEraser, .switchPrevious: onPencilTap()
-        default: break
-        }
-    }
     var canDraw = false
     var tool = "pen"
     var ink: SketchInk = .theme
     var level = 1
 
     private var active: SketchOp?
-    private weak var drawing: UITouch?
+    /// The touch that is drawing, while one is.
+    private(set) weak var drawing: UITouch?
+    var drawingWithPencil: Bool { drawing?.type == .pencil }
     private var blastView: UIImageView?
     private var playing: UUID?
     private var markers: [UInt64: SketchPointerView] = [:]
     private var zoom: CGFloat = 1
+    private var angle: CGFloat = 0
 
     /// Draws everyone else's pens where they are on the page.
-    func show(_ pointers: [SketchPointer], dark: Bool, zoom: CGFloat) {
-        self.zoom = zoom
+    func show(_ pointers: [SketchPointer], dark: Bool) {
         var shown = Set<UInt64>()
         for entry in pointers {
             let spot = CGPoint(x: entry.pointer.x, y: entry.pointer.y)
             let color = PresenceColor.color(entry.user.color, dark: dark)
             let marker = markers[entry.client] ?? SketchPointerView()
-            marker.show(entry, color: color, zoom: zoom)
+            marker.show(entry, color: color, zoom: zoom, angle: angle)
             if marker.superview == nil {
                 marker.center = spot
                 addSubview(marker)
@@ -1064,10 +976,12 @@ final class SketchPageView: UIView, UIPencilInteractionDelegate {
         }
     }
 
-    /// Cursors keep their size on screen however far in the page is zoomed.
-    func zoomChanged(_ zoom: CGFloat) {
+    /// Cursors keep their size on screen, and stay upright, however the page is zoomed and turned.
+    func viewChanged(zoom: CGFloat, angle: CGFloat) {
+        guard zoom != self.zoom || angle != self.angle else { return }
         self.zoom = zoom
-        markers.values.forEach { $0.zoomChanged(zoom) }
+        self.angle = angle
+        markers.values.forEach { $0.viewChanged(zoom: zoom, angle: angle) }
     }
 
     /// Plays the explosion over the page — stretched to it, as on the web, and so zoomed and
@@ -1100,12 +1014,8 @@ final class SketchPageView: UIView, UIPencilInteractionDelegate {
         layer.shadowOpacity = 0.18
         layer.shadowRadius = 10
         layer.shadowOffset = CGSize(width: 0, height: 2)
-        isMultipleTouchEnabled = true
         isAccessibilityElement = true
         accessibilityLabel = "Sketch page"
-        let pencil = UIPencilInteraction()
-        pencil.delegate = self
-        addInteraction(pencil)
     }
 
     @available(*, unavailable)
@@ -1120,42 +1030,41 @@ final class SketchPageView: UIView, UIPencilInteractionDelegate {
         return [Double(location.x), Double(location.y), pressure]
     }
 
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard canDraw, let model else { return }
-        if (event?.allTouches?.count ?? 1) > 1 {
-            abandon()
-            return
-        }
-        guard active == nil, let touch = touches.first else { return }
+    /// A touch starts a stroke.
+    func begin(_ touch: UITouch) {
+        guard canDraw, active == nil, let model else { return }
         drawing = touch
+        let kind = switch touch.type {
+        case .pencil: "pen"
+        case .indirectPointer: "mouse"
+        default: "touch"
+        }
         active = SketchOp(id: UUID().uuidString.lowercased(), tool: tool, ink: ink.rawValue, level: level,
-                          seed: Int.random(in: 0..<2_147_483_647), pointerType: touch.type == .pencil ? "pen" : "touch",
-                          points: [point(touch)])
+                          seed: Int.random(in: 0..<2_147_483_647), pointerType: kind, points: [point(touch)])
         model.sync.report(editing: true)
         if let active { model.preview(active) }
     }
 
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = drawing, touches.contains(touch), active != nil, let model else { return }
+    /// The stroke follows its touch, through every sample taken since the last frame.
+    func extend(_ touch: UITouch, with event: UIEvent?) {
+        guard touch === drawing, active != nil, let model else { return }
         for sample in event?.coalescedTouches(for: touch) ?? [touch] {
             active?.points?.append(point(sample))
         }
         if let active { model.preview(active) }
     }
 
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = drawing, touches.contains(touch), let stroke = active, let model else { return }
+    /// The touch lifted: the stroke is on the page.
+    func finish() {
+        guard let stroke = active, let model else { return }
         active = nil
         drawing = nil
         model.commit(stroke)
         model.sync.report(editing: false)
     }
 
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        abandon()
-    }
-
-    private func abandon() {
+    /// The stroke was not one after all — a second finger landed, or the system took the touch.
+    func abandon() {
         guard active != nil else { return }
         active = nil
         drawing = nil
@@ -1221,19 +1130,21 @@ final class SketchPointerView: UIView {
         return path
     }
 
-    func show(_ entry: SketchPointer, color: UIColor, zoom: CGFloat) {
+    func show(_ entry: SketchPointer, color: UIColor, zoom: CGFloat, angle: CGFloat) {
         arrow.fillColor = color.cgColor
         ring.strokeColor = color.cgColor
         label.text = entry.user.initials
         accessibilityLabel = "\(entry.user.name)'s pen"
         ring.isHidden = !["pen", "eraser"].contains(entry.pointer.tool)
         width = max(CGFloat(entry.pointer.width), 1)
-        zoomChanged(zoom)
+        viewChanged(zoom: zoom, angle: angle)
     }
 
-    func zoomChanged(_ zoom: CGFloat) {
+    /// Undoes the page's zoom and turn for the arrow, about its tip, so that it reads the same
+    /// wherever the page has been taken; the ring is on the page, and goes with it.
+    func viewChanged(zoom: CGFloat, angle: CGFloat) {
         let scale = 1 / max(zoom, 0.01)
-        cursor.transform = CGAffineTransform(scaleX: scale, y: scale)
+        cursor.transform = CGAffineTransform(rotationAngle: -angle).scaledBy(x: scale, y: scale)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         ring.lineWidth = scale

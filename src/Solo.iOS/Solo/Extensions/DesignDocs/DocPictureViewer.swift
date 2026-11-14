@@ -6,22 +6,11 @@ struct DocPictureViewer: View {
     var picture: UIImage
     var name: String
 
-    @State private var zoom: CGFloat = 1
-    @GestureState private var pinch: CGFloat = 1
-
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                ScrollView([.horizontal, .vertical]) {
-                    Image(uiImage: picture)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: proxy.size.width * zoom * pinch, height: proxy.size.height * zoom * pinch)
-                }
-                .scrollIndicators(.hidden)
-                .gesture(MagnifyGesture().updating($pinch) { value, state, _ in state = value.magnification }
-                    .onEnded { zoom = min(max(zoom * $0.magnification, 1), 6) })
-                .onTapGesture(count: 2) { withAnimation(.snappy) { zoom = zoom > 1 ? 1 : 2.5 } }
+                ZoomablePicture(picture: picture, bars: proxy.safeAreaInsets)
+                    .ignoresSafeArea()
             }
             .background(.black)
             .navigationTitle(name)
