@@ -184,6 +184,205 @@ import Testing
     }
 }
 
+/// The structure read back out of a Yjs document, checked against the document itself.
+@Suite struct YjsStructureTests {
+    private func structure(_ doc: SharedDoc) -> YjsTextStructure? {
+        YjsTextStructure(update: doc.fullState())
+    }
+
+    @Test func aTypedTextReadsBackAsItself() throws {
+        let doc = SharedDoc()
+        doc.replaceText(start: 0, length: 0, with: "Hello world")
+        doc.replaceText(start: 5, length: 0, with: ",")
+        doc.replaceText(start: 0, length: 5, with: "Goodbye")
+        let read = try #require(structure(doc))
+        #expect(read.text == doc.string())
+        #expect(read.length == doc.string().utf16.count)
+    }
+
+    @Test func anEmptyDocumentHasNoCharacters() throws {
+        let read = try #require(structure(SharedDoc()))
+        #expect(read.text.isEmpty)
+        #expect(read.id(at: 0) == nil)
+    }
+
+    /// Two people typing at once, at the same places, exchanging their edits now and then:
+    /// the order Yjs settles on is the order read back, every time.
+    @Test func concurrentEditsSettleInTheSameOrder() throws {
+        var generator = SystemRandomNumberGenerator()
+        for round in 0..<40 {
+            let docs = [SharedDoc(), SharedDoc(), SharedDoc()]
+            for step in 0..<60 {
+                let doc = docs[Int.random(in: 0..<docs.count, using: &generator)]
+                let length = doc.string().utf16.count
+                if length > 0, Int.random(in: 0..<4, using: &generator) == 0 {
+                    let start = Int.random(in: 0..<length, using: &generator)
+                    doc.replaceText(start: start, length: Int.random(in: 1...min(4, length - start), using: &generator), with: "")
+                } else {
+                    let piece = ["a", "bc", "déf", "\n", "- x", "**y**"][Int.random(in: 0..<6, using: &generator)]
+                    doc.replaceText(start: Int.random(in: 0...length, using: &generator), length: 0, with: piece + "\(step % 10)")
+                }
+                if step % 7 == 6 {
+                    // Everyone catches up with everyone.
+                    let states = docs.map { $0.fullState() }
+                    for doc in docs { doc.apply(states) }
+                }
+            }
+            let states = docs.map { $0.fullState() }
+            for doc in docs { doc.apply(states) }
+            let expected = docs[0].string()
+            for doc in docs {
+                #expect(doc.string() == expected)
+                let read = try #require(structure(doc), "round \(round)")
+                #expect(read.text == expected, "round \(round)")
+            }
+        }
+    }
+
+    @Test func aCharacterKeepsItsIdentityWhileTextMovesAroundIt() throws {
+        let doc = SharedDoc(), other = SharedDoc()
+        doc.replaceText(start: 0, length: 0, with: "one two three")
+        other.apply([doc.fullState()])
+        // The "t" of "two".
+        let marked = try #require(structure(doc)?.id(at: 4))
+
+        other.replaceText(start: 0, length: 0, with: "zero ")
+        doc.replaceText(start: 13, length: 0, with: " four")
+        let states = [doc.fullState(), other.fullState()]
+        doc.apply(states)
+        other.apply(states)
+        #expect(doc.string() == "zero one two three four")
+
+        for copy in [doc, other] {
+            let read = try #require(structure(copy))
+            #expect(read.index(of: marked) == 9)
+            #expect(read.id(at: 9) == marked)
+        }
+        // Deleted, it is where it was: the cursor before it is now before what followed it.
+        doc.replaceText(start: 9, length: 4, with: "")
+        #expect(doc.string() == "zero one three four")
+        #expect(structure(doc)?.index(of: marked) == 9)
+    }
+
+    @Test func aRelativePositionRoundTripsThroughJSON() throws {
+        let id = YjsID(client: 3_000_000_001, clock: 42)
+        let data = try JSONSerialization.data(withJSONObject: YjsRelativePosition(item: id).json)
+        let back = YjsRelativePosition(json: try JSONSerialization.jsonObject(with: data))
+        #expect(back?.item == id)
+        let end = try JSONSerialization.data(withJSONObject: YjsRelativePosition(item: nil).json)
+        #expect(YjsRelativePosition(json: try JSONSerialization.jsonObject(with: end)) == YjsRelativePosition(item: nil))
+        #expect(YjsRelativePosition(json: ["nonsense": 1]) == nil)
+    }
+
+    /// A sketch's document holds arrays and maps of other things; reading it must not trip.
+    @Test func aDocumentOfOtherThingsStillReads() throws {
+        let doc = SharedDoc()
+        doc.appendSketchOp(SketchOp(id: "a", tool: "pen", ink: "blue", level: 1, seed: 1, pointerType: "pen", points: [[1, 2, 0.5]]))
+        doc.setSketchMeta(["pageSize": "A4"])
+        doc.replaceText(start: 0, length: 0, with: "text too")
+        #expect(structure(doc)?.text == "text too")
+    }
+}
+
+/// The presence channel: who is where, as Yjs's awareness protocol carries it.
+@Suite(.serialized) @MainActor struct AwarenessTests {
+    private func state(_ fields: [String: Any]) -> String {
+        var object = fields
+        object["user"] = ["userId": "0190a000-0000-7000-8000-000000000001", "name": "Ada Lovelace", "color": "#ff0000"]
+        return String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+    }
+
+    @Test func aMessageRoundTrips() {
+        let bytes = AwarenessCodec.encode(client: 3_000_000_123, clock: 300, state: #"{"a":"é"}"#)
+        let back = AwarenessCodec.decode(bytes)
+        #expect(back.count == 1)
+        #expect(back.first?.client == 3_000_000_123)
+        #expect(back.first?.clock == 300)
+        #expect(back.first?.state == #"{"a":"é"}"#)
+        // Cut short, it is nothing rather than half of something.
+        #expect(AwarenessCodec.decode(Array(bytes.dropLast(3))).isEmpty)
+    }
+
+    @Test func aNewerStateReplacesAnOlderOneAndNotTheReverse() {
+        let awareness = Awareness()
+        awareness.apply(AwarenessCodec.encode(client: 7, clock: 2, state: state(["pointer": ["x": 10, "y": 20, "tool": "pen", "width": 3]])))
+        #expect(awareness.peers[7]?.pointer?.x == 10)
+        #expect(awareness.peers[7]?.user.initials == "AL")
+
+        awareness.apply(AwarenessCodec.encode(client: 7, clock: 1, state: state(["pointer": ["x": 99, "y": 99, "tool": "pen", "width": 3]])))
+        #expect(awareness.peers[7]?.pointer?.x == 10)
+
+        awareness.apply(AwarenessCodec.encode(client: 7, clock: 3, state: state(["pointer": NSNull()])))
+        #expect(awareness.peers[7] != nil && awareness.peers[7]?.pointer == nil)
+
+        // Leaving is the same number again, with no state.
+        awareness.apply(AwarenessCodec.encode(client: 7, clock: 3, state: "null"))
+        #expect(awareness.peers[7] == nil)
+    }
+
+    @Test func thisClientsOwnMessagesAreNotItsPeers() {
+        let awareness = Awareness()
+        awareness.setUser(["userId": "x", "name": "Me"])
+        awareness.apply(awareness.message())
+        #expect(awareness.peers.isEmpty)
+        // And what it sends is what another client hears.
+        let other = Awareness()
+        other.apply(awareness.message())
+        #expect(other.peers[awareness.client]?.user.name == "Me")
+        awareness.setUser(nil)
+        other.apply(awareness.message())
+        #expect(other.peers.isEmpty)
+    }
+
+    /// A stroke in progress arrives a piece at a time; the pieces are fitted together by where they start.
+    @Test func aStrokeInProgressIsPutTogetherFromItsPieces() {
+        let awareness = Awareness()
+        func piece(_ clock: UInt64, id: String, base: Int, _ points: [[Double]]) {
+            let stroke: [String: Any] = ["id": id, "tool": "pen", "ink": "red", "level": 1, "seed": 5, "base": base, "points": points]
+            awareness.apply(AwarenessCodec.encode(client: 9, clock: clock, state: state(["stroke": stroke])))
+        }
+        piece(1, id: "s", base: 0, [[1, 1, 0], [2, 2, 0]])
+        piece(2, id: "s", base: 2, [[3, 3, 0]])
+        #expect(awareness.peers[9]?.stroke?.op.points?.count == 3)
+        #expect(awareness.peers[9]?.stroke?.op.ink == "red")
+        // A piece from further on leaves a gap: only what is whole so far is drawn.
+        piece(3, id: "s", base: 6, [[7, 7, 0]])
+        #expect(awareness.peers[9]?.stroke?.op.points?.count == 3)
+        // A new stroke starts afresh; one joined part-way has nothing to draw until its start arrives.
+        piece(4, id: "t", base: 4, [[5, 5, 0]])
+        #expect(awareness.peers[9]?.stroke?.op.points?.isEmpty == true)
+        piece(5, id: "t", base: 0, [[1, 1, 0], [2, 2, 0], [3, 3, 0], [4, 4, 0]])
+        #expect(awareness.peers[9]?.stroke?.op.points?.count == 5)
+    }
+
+    @Test func someoneWhoLeftTheDocumentIsForgotten() {
+        let awareness = Awareness()
+        awareness.apply(AwarenessCodec.encode(client: 7, clock: 1, state: state([:])))
+        let present = UUID(uuidString: "0190a000-0000-7000-8000-000000000001")!
+        awareness.keep(userIds: [present])
+        #expect(awareness.peers[7] != nil)
+        awareness.keep(userIds: [])
+        #expect(awareness.peers.isEmpty)
+    }
+
+    @Test func aColourIsReadBackFromWhatTheWebSends() {
+        #expect(PresenceColor.css(slot: 2).hasPrefix("oklch(var(--design-docs-presence-lightness,65%) .15 275."))
+        let red = PresenceColor.components("#ff0000", dark: false)
+        #expect(red.red == 1 && red.green == 0 && red.blue == 0)
+        // Hue 0 at this chroma is a pink; on a dark page it is the lighter of the two.
+        let light = PresenceColor.components(PresenceColor.css(slot: 0), dark: false)
+        let dark = PresenceColor.components(PresenceColor.css(slot: 0), dark: true)
+        #expect(light.red > light.green && light.red > light.blue)
+        #expect(dark.red > light.red && dark.green > light.green)
+        for value in [light.red, light.green, light.blue, dark.red, dark.green, dark.blue] {
+            #expect((0...1).contains(value))
+        }
+        // Nonsense falls back to the web's default rather than to black.
+        let fallback = PresenceColor.components("tomato-ish", dark: true)
+        #expect(fallback.blue > fallback.green)
+    }
+}
+
 @Suite struct SketchHistoryTests {
     private func stroke(_ id: String) -> SketchOp {
         SketchOp(id: id, tool: "pen", ink: "blue", level: 1, seed: 1, pointerType: "pen", points: [[1, 2, 0.5]])

@@ -46,7 +46,7 @@ struct NoteView: View {
                 // Edge to edge, under the bars: the note is one sheet that passes behind their glass.
                 SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite, fallback: note.markdown,
                                  accent: UIColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision,
-                                 header: AnyView(header.environment(\.theme, theme).environment(session)), insets: geometry.safeAreaInsets,
+                                 presence: sync.awareness.revision, header: AnyView(header.environment(\.theme, theme).environment(session)), insets: geometry.safeAreaInsets,
                                  onLink: follow) {
                     typing = $0
                 }

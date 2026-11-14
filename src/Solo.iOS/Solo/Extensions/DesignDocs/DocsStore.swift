@@ -394,6 +394,13 @@ extension APIClient {
         return impact.references
     }
 
+    /// This person's colour among the project's collaborators: a slot the instance hands out
+    /// once and keeps, so they are the same colour in every note and to every client.
+    func docColorSlot(_ projectId: UUID) async throws -> Int {
+        let claimed: ClaimedColor = try await send("POST", "api/ext/design-docs/projects/\(projectId.api)/colors", body: [String: String]())
+        return claimed.slot
+    }
+
     /// A document's stored updates, for showing it without joining its live topic.
     func docState(_ projectId: UUID, _ documentId: UUID) async throws -> DocState {
         try await get("api/ext/design-docs/projects/\(projectId.api)/documents/\(documentId.api)")
@@ -441,4 +448,9 @@ enum DocLinks {
         }
         session.navigator.open(.board(project: board.projectAlias, board: board.alias, task: task.number))
     }
+}
+
+/// The colour slot the instance gave this person in a project.
+nonisolated struct ClaimedColor: Decodable, Sendable {
+    var slot: Int
 }

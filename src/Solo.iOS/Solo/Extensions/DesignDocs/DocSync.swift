@@ -59,6 +59,14 @@ nonisolated final class SharedDoc: @unchecked Sendable {
     }
 }
 
+/// Someone else's caret in a note: who, and where their selection starts and ends.
+struct NoteCaret: Equatable {
+    var client: UInt64
+    var user: AwarenessUser
+    var anchor: Int
+    var head: Int
+}
+
 /// Keeps one note or sketch in step with the instance over its live topic.
 ///
 /// The server stores the document as a log of Yjs updates and relays each new
@@ -79,6 +87,12 @@ final class DocSync {
     private(set) var present: [TopicPresenceEntry] = []
 
     @ObservationIgnored let shared = SharedDoc()
+    /// Who else is in the document and where: their carets in a note, their pens on a sketch.
+    @ObservationIgnored let awareness = Awareness()
+    /// Called with the stroke-in-progress this client's state carried, once that state has gone out.
+    @ObservationIgnored var onAwarenessSent: (([String: Any]?) -> Void)?
+    /// Called when someone new arrives, who has seen none of what was sent before.
+    @ObservationIgnored var onPeerJoined: (() -> Void)?
     @ObservationIgnored private let session: Session
     @ObservationIgnored private let projectId: UUID
     @ObservationIgnored let documentId: UUID
@@ -103,6 +117,13 @@ final class DocSync {
     @ObservationIgnored private var copyWanted = false
     @ObservationIgnored private var edited = false
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var awarenessTask: Task<Void, Never>?
+    @ObservationIgnored private var heartbeat: Task<Void, Never>?
+    @ObservationIgnored private var presentIds: Set<UUID> = []
+    @ObservationIgnored private var color: String?
+    /// The text's structure, read out of the document the last time it was asked for after a change.
+    @ObservationIgnored private var structure: (version: Int, value: YjsTextStructure?)?
+    @ObservationIgnored private var documentVersion = 0
 
     private struct Packet {
         var id = UUID()
@@ -136,12 +157,115 @@ final class DocSync {
             hub.topicPresenceChanged.subscribe { [weak self] snapshot in
                 guard let self, snapshot.topic == self.topic, snapshot.projectId == self.projectId else { return }
                 self.present = snapshot.entries.filter { $0.userId != self.session.user.id }
+                self.presenceChanged(Set(snapshot.entries.map(\.userId)))
             },
             hub.reconnected.subscribe { [weak self] in self?.connect() },
         ]
+        awareness.onLocalChange = { [weak self] in self?.scheduleAwareness() }
         await hub.subscribe(projectId: projectId, topic: topic)
         await hub.setTopicPresence(projectId: projectId, topic: topic, .viewing)
         connect()
+        if mayWrite {
+            // The same colour the web shows this person in. Without it they are still shown, in the default.
+            color = (try? await session.api.docColorSlot(projectId)).map(PresenceColor.css)
+            if canWrite { announce() }
+        }
+        heartbeat = Task { [weak self] in
+            // A state lasts thirty seconds unheard; said again every fifteen, it lasts.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard let self, !Task.isCancelled else { return }
+                self.awareness.keep(userIds: self.presentIds)
+                if self.awareness.hasLocalState {
+                    self.awareness.renew()
+                    await self.sendAwareness()
+                }
+            }
+        }
+    }
+
+    // MARK: Awareness
+
+    /// This person, as the others' cursors describe them.
+    private func announce() {
+        let user = session.user
+        var description: [String: Any] = ["userId": user.id.api, "name": user.name]
+        if let color { description["color"] = color }
+        awareness.setUser(description)
+    }
+
+    private func presenceChanged(_ ids: Set<UUID>) {
+        let joined = !ids.subtracting(presentIds).subtracting([session.user.id]).isEmpty
+        presentIds = ids
+        awareness.keep(userIds: ids)
+        // Someone new has heard nothing yet: say it all again.
+        if joined, canWrite {
+            onPeerJoined?()
+            awareness.renew()
+            scheduleAwareness()
+        }
+    }
+
+    /// Gathers changes for a moment, so a pen moving sends a few states a second rather than hundreds.
+    private func scheduleAwareness() {
+        guard awarenessTask == nil else { return }
+        awarenessTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(60))
+            guard let self else { return }
+            self.awarenessTask = nil
+            await self.sendAwareness()
+        }
+    }
+
+    private func sendAwareness() async {
+        guard started, session.hub.isConnected else { return }
+        let stroke = awareness.field("stroke") as? [String: Any]
+        let body = ["data": Data(awareness.message()).base64EncodedString()]
+        let data = (try? JSONSerialization.data(withJSONObject: body)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        // Presence is disposable: one that doesn't get through is simply superseded by the next.
+        let result = await session.hub.sendTopicMessage(projectId: projectId, topic: topic, kind: "awareness", data: data)
+        if result == .accepted { onAwarenessSent?(stroke) }
+    }
+
+    // MARK: Carets
+
+    /// The note's text as Yjs holds it: every character with its identity. Nil when it can't be
+    /// read, or doesn't read back as the text the document says it is — then no caret is placed.
+    private func textStructure() -> YjsTextStructure? {
+        if let structure, structure.version == documentVersion { return structure.value }
+        var value = YjsTextStructure(update: shared.fullState())
+        if value?.text != shared.string() { value = nil }
+        structure = (documentVersion, value)
+        return value
+    }
+
+    /// Where everyone else's carets and selections are in the note's text, as UTF-16 offsets.
+    func carets() -> [NoteCaret] {
+        _ = awareness.revision
+        let candidates = awareness.peers.values.filter { $0.head != nil }
+        guard !candidates.isEmpty, let structure = textStructure() else { return [] }
+        return candidates.compactMap { peer in
+            func offset(_ position: YjsRelativePosition?) -> Int? {
+                guard let position else { return nil }
+                guard let item = position.item else { return structure.length }
+                return structure.index(of: item)
+            }
+            guard let head = offset(peer.head) else { return nil }
+            return NoteCaret(client: peer.client, user: peer.user, anchor: offset(peer.anchor) ?? head, head: head)
+        }
+        .sorted { $0.client < $1.client }
+    }
+
+    /// Tells the others where this caret is; nil when the note isn't being typed in.
+    func publishCaret(_ selection: NSRange?) {
+        guard canWrite, awareness.hasLocalState else { return }
+        guard let selection, let structure = textStructure(), NSMaxRange(selection) <= structure.length else {
+            awareness.set("cursor", nil)
+            return
+        }
+        let anchor = YjsRelativePosition(item: structure.id(at: selection.location))
+        let head = YjsRelativePosition(item: structure.id(at: NSMaxRange(selection)))
+        awareness.set("cursor", ["anchor": anchor.json, "head": head.json])
     }
 
     func stop() async {
@@ -165,8 +289,14 @@ final class DocSync {
         if edited, session.hub.isConnected {
             await send("closed", [:])
         }
+        // Leaving takes this caret off everyone's page at once rather than when it times out.
+        if awareness.hasLocalState {
+            awareness.setUser(nil)
+            await sendAwareness()
+        }
         subscriptions = []
-        [flushTask, resendTask, copyTask, retryTask].forEach { $0?.cancel() }
+        [flushTask, resendTask, copyTask, retryTask, awarenessTask, heartbeat].forEach { $0?.cancel() }
+        awarenessTask = nil
         await session.hub.setTopicPresence(projectId: projectId, topic: topic, .none)
         await session.hub.unsubscribe(projectId: projectId, topic: topic)
     }
@@ -189,19 +319,29 @@ final class DocSync {
 
     private func setWritable(_ value: Bool) {
         canWrite = value && !deleted && mayWrite
+        // Only someone who can change the document is shown in it.
+        if canWrite {
+            if !awareness.hasLocalState { announce() }
+        } else {
+            awareness.setUser(nil)
+        }
     }
 
     // MARK: Local changes
 
     /// Call after changing the document here. Edits are gathered for a moment
     /// and sent as one update, so typing is a few messages rather than one per key.
-    func changedLocally() {
+    ///
+    /// `promptly` is for a change that is already whole — a finished stroke — which the others
+    /// should have at once rather than after a pause that only typing needs.
+    func changedLocally(promptly: Bool = false) {
+        documentVersion += 1
         dirty = true
         edited = true
         copyWanted = true
         flushTask?.cancel()
         flushTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await Task.sleep(for: .milliseconds(promptly ? 20 : 250))
             guard !Task.isCancelled else { return }
             self?.flushNow()
         }
@@ -344,6 +484,7 @@ final class DocSync {
             synced = true
             if shared.string().isEmpty, let markdown = payload["markdown"] as? String, !markdown.isEmpty {
                 shared.replaceText(start: 0, length: 0, with: markdown)
+                documentVersion += 1
                 remoteRevision += 1
             }
             let packet = Packet(data: Data(shared.fullState()).base64EncodedString(), seedToken: seedToken)
@@ -374,12 +515,18 @@ final class DocSync {
         case "deleted":
             markDeleted()
 
+        case "awareness":
+            if let data = (payload["data"] as? String).flatMap({ Data(base64Encoded: $0) }) {
+                awareness.apply([UInt8](data))
+            }
+
         default:
             break
         }
     }
 
     private func apply(_ updates: [[UInt8]]) {
+        documentVersion += 1
         guard shared.apply(updates) else { return }
         if !dirty, pending == nil {
             sentVector = shared.stateVector()

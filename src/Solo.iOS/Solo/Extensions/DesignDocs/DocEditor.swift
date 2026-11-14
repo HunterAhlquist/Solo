@@ -122,6 +122,8 @@ struct SyncedTextEditor: UIViewRepresentable {
     var media: NoteEditorMedia
     /// Changes when what the rows of pictures show may have: an upload, a deletion, who may write.
     var mediaRevision: Int
+    /// Read so the view updates when anyone else's caret moves.
+    var presence: Int = 0
     /// What stands above the text and scrolls away with it: the note's name and state.
     var header: AnyView
     /// What the bars, the format strip and the keyboard cover. The view runs under all of them,
@@ -211,6 +213,9 @@ struct SyncedTextEditor: UIViewRepresentable {
         }
         if !changed, stale {
             coordinator.restyle()
+        } else if !changed {
+            // Nothing of the note's own changed: this pass is for somebody's caret.
+            coordinator.placeCarets()
         }
     }
 
@@ -229,6 +234,9 @@ struct SyncedTextEditor: UIViewRepresentable {
         private var parsed: (text: String, markdown: LiveMarkdown)?
         private var mediaHosts: [String: UIHostingController<AnyView>] = [:]
         private var headerHost: UIHostingController<AnyView>?
+        private var caretViews: [UInt64: PeerCaretView] = [:]
+        private var selectionViews: [UIView] = []
+        private var caretTask: Task<Void, Never>?
         private var restyling = false
         /// The widest a line of the note runs; past it the text keeps to the middle of the view.
         private static let measure: CGFloat = 820
@@ -340,6 +348,78 @@ struct SyncedTextEditor: UIViewRepresentable {
             known = latest
             sync.changedLocally()
             restyle()
+            publishCaret()
+        }
+
+        // MARK: Carets
+
+        /// Tells the others where this caret is — a moment after it stops moving, since naming a
+        /// place in the text means reading the whole document's structure.
+        func publishCaret() {
+            caretTask?.cancel()
+            caretTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(90))
+                guard !Task.isCancelled, let self, let view = self.textView else { return }
+                let typing = view.isFirstResponder && view.isEditable
+                // An offset in the view names a place in the document only while the two hold the same text.
+                let agreed = view.textStorage.length == self.known.count
+                self.sync.publishCaret(typing && agreed ? view.selectedRange : nil)
+            }
+        }
+
+        /// Draws everyone else's carets and selections over the text, in their colours.
+        func placeCarets() {
+            guard let view = textView else { return }
+            selectionViews.forEach { $0.removeFromSuperview() }
+            selectionViews = []
+            let carets = sync.carets()
+            let dark = view.traitCollection.userInterfaceStyle == .dark
+            let manager = view.layoutManager, length = view.textStorage.length
+            var shown = Set<UInt64>()
+
+            for caret in carets where caret.head <= length && caret.anchor <= length && length > 0 {
+                guard let position = view.position(from: view.beginningOfDocument, offset: caret.head) else { continue }
+                let spot = view.caretRect(for: position)
+                guard spot.minX.isFinite, spot.minY.isFinite else { continue }
+                // The height of the line it is on, not of the character it is at: folded syntax is a sliver.
+                let glyph = manager.glyphIndexForCharacter(at: min(caret.head, length - 1))
+                var line = manager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: nil)
+                line.origin.y += view.textContainerInset.top
+                // A row of pictures is one tall line; a caret there stands at its foot.
+                let height = min(line.height, 30)
+                let frame = CGRect(x: spot.midX - 1, y: line.maxY - height, width: 2, height: height)
+                let color = PresenceColor.color(caret.user.color, dark: dark)
+
+                let marker = caretViews[caret.client] ?? PeerCaretView()
+                marker.show(caret.user, color: color)
+                if marker.superview == nil {
+                    marker.frame = frame
+                    view.addSubview(marker)
+                    caretViews[caret.client] = marker
+                } else if marker.frame != frame {
+                    UIView.animate(withDuration: 0.08, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+                        marker.frame = frame
+                    }
+                }
+                shown.insert(caret.client)
+
+                guard caret.anchor != caret.head,
+                      let from = view.position(from: view.beginningOfDocument, offset: min(caret.anchor, caret.head)),
+                      let to = view.position(from: view.beginningOfDocument, offset: max(caret.anchor, caret.head)),
+                      let range = view.textRange(from: from, to: to) else { continue }
+                for selection in view.selectionRects(for: range) where selection.rect.width > 0.5 && selection.rect.height > 0.5 {
+                    let wash = UIView(frame: selection.rect)
+                    wash.backgroundColor = color.withAlphaComponent(0.22)
+                    wash.isUserInteractionEnabled = false
+                    // Under the text, as a selection is.
+                    view.insertSubview(wash, at: 0)
+                    selectionViews.append(wash)
+                }
+            }
+            for (client, marker) in caretViews where !shown.contains(client) {
+                marker.removeFromSuperview()
+                caretViews[client] = nil
+            }
         }
 
         // MARK: Live formatting
@@ -363,6 +443,7 @@ struct SyncedTextEditor: UIViewRepresentable {
             styler.apply(desired, to: view.textStorage)
             view.typingAttributes = styler.base
             placeMedia()
+            placeCarets()
 
             let empty = view.textStorage.length == 0
             view.placeholder.isHidden = !empty
@@ -477,7 +558,10 @@ struct SyncedTextEditor: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) { changedLocally() }
 
-        func textViewDidChangeSelection(_ textView: UITextView) { restyle() }
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            restyle()
+            publishCaret()
+        }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
             sync.report(editing: true)
@@ -487,13 +571,54 @@ struct SyncedTextEditor: UIViewRepresentable {
             // row of pictures becoming a line of syntax, say — would move every line under the
             // finger before the tap is read.
             DispatchQueue.main.async { [weak self] in self?.restyle() }
+            publishCaret()
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
             sync.report(editing: false)
             onFocus(false)
             restyle()
+            publishCaret()
         }
+    }
+}
+
+/// Somebody else's caret: a bar in their colour, with their initials on a tag at its head.
+final class PeerCaretView: UIView {
+    private let flag = UILabel()
+    private var shown: (AwarenessUser, UIColor)?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        layer.cornerRadius = 1
+        flag.font = .systemFont(ofSize: 9, weight: .bold)
+        flag.textAlignment = .center
+        flag.textColor = .white
+        flag.layer.cornerRadius = 7
+        flag.layer.masksToBounds = true
+        addSubview(flag)
+        isAccessibilityElement = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func show(_ user: AwarenessUser, color: UIColor) {
+        if let shown, shown.0 == user, shown.1 == color { return }
+        shown = (user, color)
+        backgroundColor = color
+        flag.backgroundColor = color
+        flag.text = user.initials
+        accessibilityLabel = "\(user.name)'s cursor"
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Above the bar and a little to its right, clear of the text it is in.
+        let width = max(14, flag.intrinsicContentSize.width + 8)
+        flag.frame = CGRect(x: 0, y: -13, width: width, height: 14)
     }
 }
 

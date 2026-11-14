@@ -369,6 +369,15 @@ final class SketchModel: Identifiable {
     private var undoDepth = 0
     private var redoDepth = 0
     @ObservationIgnored private var renderTask: Task<Void, Never>?
+    /// The stroke in hand, and the ones other people are in the middle of.
+    @ObservationIgnored private var held: SketchOp?
+    @ObservationIgnored private var othersStrokes: [SketchOp] = []
+    /// Strokes someone has just finished, shown until they arrive as part of the sketch.
+    @ObservationIgnored private var lingering: [SketchOp] = []
+    /// The strokes the page as rendered already has.
+    @ObservationIgnored private var drawn: Set<String> = []
+    /// How much of the stroke in hand the others have been sent.
+    @ObservationIgnored private var delivered: (id: String?, count: Int) = (nil, 0)
     /// The page being cleared: nothing is drawn until it has gone.
     private(set) var clearing = false
     /// The explosion that takes a cleared page with it, while it plays.
@@ -377,7 +386,7 @@ final class SketchModel: Identifiable {
     /// The page and its default ink follow the appearance, as they follow the theme on the web.
     @ObservationIgnored var colors = SketchColors.light {
         didSet {
-            if colors != oldValue { image = committed.image(page: page, paper: colors.paper, themeInk: colors.ink) }
+            if colors != oldValue { compose() }
         }
     }
 
@@ -391,6 +400,7 @@ final class SketchModel: Identifiable {
         committed = SketchRaster(page: page)
         sync = DocSync(session: session, projectId: projectId, documentId: sketch.id, mayWrite: mayWrite)
         history = sync.shared.sketchHistory()
+        watchPresence()
     }
 
     var canUndo: Bool { undoDepth > 0 && !clearing }
@@ -401,7 +411,7 @@ final class SketchModel: Identifiable {
         history.closeStep()
         undoDepth += 1
         redoDepth = 0
-        sync.changedLocally()
+        sync.changedLocally(promptly: true)
     }
 
     /// Replays the whole history. Run when the document changes underneath: at load, and when someone else draws.
@@ -417,28 +427,139 @@ final class SketchModel: Identifiable {
             guard !Task.isCancelled, let self else { return }
             self.committed = raster
             self.strokeCount = strokes.count
-            self.image = raster.image(page: page, paper: self.colors.paper, themeInk: self.colors.ink)
+            self.drawn = Set(strokes.map(\.id))
+            self.lingering.removeAll { self.drawn.contains($0.id) }
+            self.compose()
         }
+    }
+
+    /// The page as it is shown: what has been drawn, with every stroke still in the air over it —
+    /// the one in hand here, and the ones other people are in the middle of.
+    private func compose() {
+        let floating = ([held] + othersStrokes + lingering).compactMap { $0 }
+        guard !floating.isEmpty else {
+            image = committed.image(page: page, paper: colors.paper, themeInk: colors.ink)
+            return
+        }
+        var raster = committed
+        floating.forEach { raster.paint($0) }
+        image = raster.image(page: page, paper: colors.paper, themeInk: colors.ink)
     }
 
     /// The stroke in hand, drawn over a copy of the page; nothing is saved until it is lifted.
     func preview(_ stroke: SketchOp) {
-        var raster = committed
-        raster.paint(stroke)
-        image = raster.image(page: page, paper: colors.paper, themeInk: colors.ink)
+        held = stroke
+        compose()
+        publish(stroke)
     }
 
     /// Puts the page back as it was before a stroke that was given up.
     func discardPreview() {
-        image = committed.image(page: page, paper: colors.paper, themeInk: colors.ink)
+        held = nil
+        compose()
+        publish(nil)
     }
 
     func commit(_ stroke: SketchOp) {
+        held = nil
         committed.paint(stroke)
-        image = committed.image(page: page, paper: colors.paper, themeInk: colors.ink)
+        compose()
         sync.shared.appendSketchOp(stroke)
         strokeCount += 1
         recorded()
+        publish(nil)
+    }
+
+    // MARK: Everyone else's pens
+
+    /// Other people's pens on the page, for drawing their cursors.
+    var pointers: [SketchPointer] {
+        _ = sync.awareness.revision
+        return sync.awareness.peers.values.compactMap { peer in
+            peer.pointer.map { SketchPointer(client: peer.client, user: peer.user, pointer: $0) }
+        }
+        .sorted { $0.client < $1.client }
+    }
+
+    /// Someone's pen moved, or their stroke grew: the page is put together again with it.
+    func othersChanged() {
+        let strokes = sync.awareness.peers.values.sorted { $0.client < $1.client }
+            .compactMap { $0.stroke?.op }.filter { !($0.points ?? []).isEmpty }
+        guard strokes != othersStrokes else { return }
+        // A stroke stops being "in progress" a moment before it arrives as part of the sketch.
+        // It stays on the page across that gap rather than blinking out and back.
+        let finished = othersStrokes.filter { old in !strokes.contains { $0.id == old.id } && !drawn.contains(old.id) }
+        othersStrokes = strokes
+        if !finished.isEmpty {
+            lingering.append(contentsOf: finished)
+            let ids = Set(finished.map(\.id))
+            Task { [weak self] in
+                // One that was given up instead never arrives: it goes after a beat.
+                try? await Task.sleep(for: .milliseconds(700))
+                guard let self, self.lingering.contains(where: { ids.contains($0.id) }) else { return }
+                self.lingering.removeAll { ids.contains($0.id) }
+                self.compose()
+            }
+        }
+        compose()
+    }
+
+    /// Tells the others where this pen is and what it has drawn so far of the stroke in hand.
+    /// A stroke is sent a piece at a time — the samples not yet delivered, oldest first, at most
+    /// as many as one message may carry — so that someone arriving mid-stroke is caught up.
+    private func publish(_ stroke: SketchOp?) {
+        guard sync.canWrite else { return }
+        let awareness = sync.awareness
+        guard let stroke, let last = stroke.points?.last, last.count >= 2 else {
+            awareness.set("stroke", nil)
+            awareness.set("pointer", nil)
+            return
+        }
+        let width = SketchRaster.pressureWidth(level: stroke.level ?? 0, pressure: last.count > 2 ? last[2] : 0,
+                                               pointerType: stroke.pointerType)
+        awareness.set("pointer", ["x": last[0], "y": last[1], "tool": stroke.tool ?? "pen", "width": width])
+        awareness.set("stroke", presence(of: stroke))
+    }
+
+    private func presence(of stroke: SketchOp) -> [String: Any] {
+        let points = stroke.points ?? []
+        let base = min(max(delivered.id == stroke.id ? delivered.count : 0, 0), points.count)
+        func round(_ value: Double, _ scale: Double) -> Double { value.isFinite ? (value * scale).rounded() / scale : 0 }
+        var message: [String: Any] = ["id": stroke.id, "base": base]
+        message["tool"] = stroke.tool
+        message["ink"] = stroke.ink
+        message["level"] = stroke.level
+        message["seed"] = stroke.seed
+        message["pointerType"] = stroke.pointerType
+        // Whole pixels are what is drawn; hundredths keep the shape and halve the message.
+        message["points"] = points[base..<min(base + Self.presenceLimit, points.count)].map { point in
+            [round(point[0], 100), round(point[1], 100), round(point.count > 2 ? point[2] : 0, 1000)]
+        }
+        return message
+    }
+
+    /// The most samples of a stroke one presence message carries, as on the web.
+    private static let presenceLimit = 512
+
+    /// Starts listening for what the presence channel says back.
+    private func watchPresence() {
+        sync.onAwarenessSent = { [weak self] sent in
+            guard let self, let sent, let id = sent["id"] as? String, id == self.held?.id,
+                  let base = sent["base"] as? Int, let points = sent["points"] as? [Any] else { return }
+            self.delivered = (id, max(self.delivered.id == id ? self.delivered.count : 0, base + points.count))
+            // More was drawn while that was on its way: send the next piece.
+            if let held = self.held, self.delivered.count < (held.points?.count ?? 0), self.sync.canWrite {
+                self.sync.awareness.set("stroke", self.presence(of: held))
+            }
+        }
+        sync.onPeerJoined = { [weak self] in
+            // Someone new has none of the stroke in hand: start it again for them.
+            guard let self else { return }
+            self.delivered = (nil, 0)
+            if let held = self.held, self.sync.canWrite {
+                self.sync.awareness.set("stroke", self.presence(of: held))
+            }
+        }
     }
 
     func undo() {
@@ -530,6 +651,13 @@ final class SketchModel: Identifiable {
     }
 }
 
+/// Someone else's pen on the page.
+struct SketchPointer: Equatable {
+    var client: UInt64
+    var user: AwarenessUser
+    var pointer: AwarenessPeer.Pointer
+}
+
 /// One playing of the explosion over the page.
 struct SketchBlast: Equatable {
     var token = UUID()
@@ -615,7 +743,8 @@ struct SketchEditor: View {
     var body: some View {
         NavigationStack {
             SketchCanvas(model: model, image: model.image, page: model.page, canDraw: model.sync.canWrite && !model.clearing,
-                         tool: tool, ink: ink, level: level, blast: model.blast)
+                         tool: tool, ink: ink, level: level, blast: model.blast, pointers: model.pointers,
+                         dark: colorScheme == .dark)
                 .ignoresSafeArea(edges: .bottom)
                 .themedBackground()
                 .navigationBarTitleDisplayMode(.inline)
@@ -674,6 +803,7 @@ struct SketchEditor: View {
         }
         .onChange(of: colorScheme) { _, scheme in model.colors = .of(scheme) }
         .onChange(of: model.sync.remoteRevision) { _, _ in model.rebuild() }
+        .onChange(of: model.sync.awareness.revision) { _, _ in model.othersChanged() }
         .onChange(of: model.sync.synced) { _, synced in
             if synced { model.rebuild() }
         }
@@ -736,6 +866,8 @@ struct SketchCanvas: UIViewRepresentable {
     var ink: SketchInk
     var level: Int
     var blast: SketchBlast?
+    var pointers: [SketchPointer] = []
+    var dark = false
 
     func makeUIView(context: Context) -> SketchScrollView {
         let view = SketchScrollView(page: CGSize(width: page.width, height: page.height))
@@ -752,6 +884,7 @@ struct SketchCanvas: UIViewRepresentable {
         page.ink = ink
         page.level = level
         page.play(blast)
+        page.show(pointers, dark: dark, zoom: view.zoomScale)
     }
 }
 
@@ -806,7 +939,10 @@ final class SketchScrollView: UIScrollView, UIScrollViewDelegate {
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { pageView }
 
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { center() }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        center()
+        pageView.zoomChanged(zoomScale)
+    }
 
     /// A page smaller than the view sits in the middle of it rather than in a corner.
     private func center() {
@@ -828,6 +964,41 @@ final class SketchPageView: UIView {
     private weak var drawing: UITouch?
     private var blastView: UIImageView?
     private var playing: UUID?
+    private var markers: [UInt64: SketchPointerView] = [:]
+    private var zoom: CGFloat = 1
+
+    /// Draws everyone else's pens where they are on the page.
+    func show(_ pointers: [SketchPointer], dark: Bool, zoom: CGFloat) {
+        self.zoom = zoom
+        var shown = Set<UInt64>()
+        for entry in pointers {
+            let spot = CGPoint(x: entry.pointer.x, y: entry.pointer.y)
+            let color = PresenceColor.color(entry.user.color, dark: dark)
+            let marker = markers[entry.client] ?? SketchPointerView()
+            marker.show(entry, color: color, zoom: zoom)
+            if marker.superview == nil {
+                marker.center = spot
+                addSubview(marker)
+                markers[entry.client] = marker
+            } else if marker.center != spot {
+                // A short glide between the places it is heard from, as the web draws it.
+                UIView.animate(withDuration: 0.08, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+                    marker.center = spot
+                }
+            }
+            shown.insert(entry.client)
+        }
+        for (client, marker) in markers where !shown.contains(client) {
+            marker.removeFromSuperview()
+            markers[client] = nil
+        }
+    }
+
+    /// Cursors keep their size on screen however far in the page is zoomed.
+    func zoomChanged(_ zoom: CGFloat) {
+        self.zoom = zoom
+        markers.values.forEach { $0.zoomChanged(zoom) }
+    }
 
     /// Plays the explosion over the page — stretched to it, as on the web, and so zoomed and
     /// moved with it — or takes it away once it is over.
@@ -917,5 +1088,83 @@ final class SketchPageView: UIView {
         drawing = nil
         model?.discardPreview()
         model?.sync.report(editing: false)
+    }
+}
+
+/// Someone else's pen: an arrow with their initials in its tail, in their colour, and a ring
+/// the size of the mark their pen or eraser would leave.
+final class SketchPointerView: UIView {
+    private let ring = CAShapeLayer()
+    private let arrow = CAShapeLayer()
+    private let label = UILabel()
+    private let cursor = UIView(frame: CGRect(x: 0, y: 0, width: 36, height: 40))
+    private var width: CGFloat = 1
+
+    // The web's cursor: a 36 by 40 shape whose tip is at (2, 2) and whose tail is a circle about (23, 27).
+    private static let tip = CGPoint(x: 2, y: 2)
+    private static let middle = CGPoint(x: 23, y: 27)
+    private static let radius: CGFloat = 11
+
+    init() {
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        ring.fillColor = UIColor.clear.cgColor
+        layer.addSublayer(ring)
+
+        arrow.path = Self.outline()
+        arrow.strokeColor = UIColor.white.withAlphaComponent(0.9).cgColor
+        arrow.lineWidth = 1
+        arrow.lineJoin = .round
+        cursor.layer.addSublayer(arrow)
+        label.frame = CGRect(x: Self.middle.x - Self.radius, y: Self.middle.y - Self.radius, width: Self.radius * 2, height: Self.radius * 2)
+        label.font = .systemFont(ofSize: 9, weight: .bold)
+        label.textColor = .white
+        label.textAlignment = .center
+        cursor.addSubview(label)
+        // Scaled about its tip, which is the point it marks.
+        cursor.layer.anchorPoint = CGPoint(x: Self.tip.x / 36, y: Self.tip.y / 40)
+        cursor.layer.position = .zero
+        addSubview(cursor)
+        isAccessibilityElement = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// The arrow's two edges leave its tip and meet the circle where they touch it.
+    private static func outline() -> CGPath {
+        let vx = tip.x - middle.x, vy = tip.y - middle.y
+        let distance = vx * vx + vy * vy
+        let along = radius * radius / distance, across = radius * sqrt(distance - radius * radius) / distance
+        let first = CGPoint(x: middle.x + along * vx - across * vy, y: middle.y + along * vy + across * vx)
+        let second = CGPoint(x: middle.x + along * vx + across * vy, y: middle.y + along * vy - across * vx)
+        let path = CGMutablePath()
+        path.move(to: tip)
+        path.addLine(to: first)
+        let start = atan2(first.y - middle.y, first.x - middle.x), end = atan2(second.y - middle.y, second.x - middle.x)
+        // The long way round, away from the tip.
+        path.addArc(center: middle, radius: radius, startAngle: start, endAngle: end, clockwise: true)
+        path.closeSubpath()
+        return path
+    }
+
+    func show(_ entry: SketchPointer, color: UIColor, zoom: CGFloat) {
+        arrow.fillColor = color.cgColor
+        ring.strokeColor = color.cgColor
+        label.text = entry.user.initials
+        accessibilityLabel = "\(entry.user.name)'s pen"
+        ring.isHidden = !["pen", "eraser"].contains(entry.pointer.tool)
+        width = max(CGFloat(entry.pointer.width), 1)
+        zoomChanged(zoom)
+    }
+
+    func zoomChanged(_ zoom: CGFloat) {
+        let scale = 1 / max(zoom, 0.01)
+        cursor.transform = CGAffineTransform(scaleX: scale, y: scale)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ring.lineWidth = scale
+        ring.path = CGPath(ellipseIn: CGRect(x: -width / 2, y: -width / 2, width: width, height: width), transform: nil)
+        CATransaction.commit()
     }
 }
