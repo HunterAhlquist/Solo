@@ -119,7 +119,7 @@ final class NoteStyler {
     private func rank(_ kind: LiveSpan.Kind) -> Int {
         switch kind {
         case .heading, .codeBlock, .table, .quote, .listItem: 0
-        case .hidden, .media: 2
+        case .hidden, .foldedFence, .media: 2
         default: 1
         }
     }
@@ -215,6 +215,13 @@ final class NoteStyler {
                 result.removeAttribute(.strikethroughStyle, range: range)
                 result.removeAttribute(.backgroundColor, range: range)
                 result.addAttributes(hidden, range: range)
+            case .foldedFence:
+                // Folded, the fence's line is the padding at the block's top or bottom edge.
+                result.addAttributes(hidden, range: range)
+                paragraphs(range) {
+                    $0.minimumLineHeight = 8
+                    $0.maximumLineHeight = 8
+                }
             case .media(let target):
                 guard let size = mediaSize(target) else {
                     monospaced(range, scale: 0.85)

@@ -34,6 +34,8 @@ nonisolated struct LiveSpan: Equatable, Sendable {
         case syntax
         /// Syntax not shown while the caret is elsewhere.
         case hidden
+        /// A code block's fence while the caret is outside the block: not shown, but its line stays as the block's edge.
+        case foldedFence
         /// An embed's own text.
         case embed
         /// A line that is nothing but embeds, which can be drawn in its place: the line's own text.
@@ -281,12 +283,12 @@ nonisolated struct LiveMarkdown {
                     // Both fences show while the caret is anywhere in the block — the code
                     // being worked on is seen whole — and fold to a sliver of its background otherwise.
                     if opener.hasPrefix("```") || opener.hasPrefix("~~~") {
-                        let shown = touches(whole)
-                        marker(first, shown: shown)
+                        let kind: LiveSpan.Kind = touches(whole) ? .syntax : .foldedFence
+                        out.append(LiveSpan(range: first, kind: kind))
                         if let last = lines.last, last.location != first.location {
                             let closer = source.substring(with: last).trimmingCharacters(in: .whitespaces)
                             if closer.hasPrefix("```") || closer.hasPrefix("~~~") {
-                                marker(last, shown: shown)
+                                out.append(LiveSpan(range: last, kind: kind))
                             }
                         }
                     }

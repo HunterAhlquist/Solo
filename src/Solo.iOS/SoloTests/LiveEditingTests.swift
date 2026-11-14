@@ -96,13 +96,13 @@ import Testing
         let text = "before\n```swift\nlet x = 1\nlet y = 2\n```\nafter"
         let open = NSRange(location: 7, length: 8), close = NSRange(location: 36, length: 3)
         let away = spans(text, caret: 2)
-        #expect(away.contains { $0.kind == .hidden && $0.range == open })
-        #expect(away.contains { $0.kind == .hidden && $0.range == close })
+        #expect(away.contains { $0.kind == .foldedFence && $0.range == open })
+        #expect(away.contains { $0.kind == .foldedFence && $0.range == close })
         // On a line of code, not on either fence: both are on show.
         let inside = spans(text, caret: 20)
         #expect(inside.contains { $0.kind == .syntax && $0.range == open })
         #expect(inside.contains { $0.kind == .syntax && $0.range == close })
-        #expect(!inside.contains { $0.kind == .hidden })
+        #expect(!inside.contains { $0.kind == .foldedFence })
         // And on a fence itself.
         #expect(spans(text, caret: 37).contains { $0.kind == .syntax && $0.range == open })
     }
