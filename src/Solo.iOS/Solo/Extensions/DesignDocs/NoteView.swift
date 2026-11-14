@@ -44,7 +44,8 @@ struct NoteView: View {
             if editing, let sync {
                 VStack(spacing: 0) {
                     statusBar(sync)
-                    SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite) {
+                    SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite,
+                                     accent: UIColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision) {
                         keyboardUp = $0
                     }
                 }
@@ -88,8 +89,10 @@ struct NoteView: View {
         .task {
             let fresh = DocSync(session: session, projectId: store.projectId, documentId: note.id, mayWrite: mayWrite)
             let api = session.api, projectId = store.projectId, vaultId = store.vaultId, noteId = note.id
-            fresh.onSavedCopy = { markdown, seq in
+            fresh.onSavedCopy = { [store] markdown, seq in
                 try? await api.saveDocCopy(projectId, vaultId, noteId, markdown: markdown, seq: seq)
+                // The instance tells everyone else the tree changed, not the one who changed it.
+                await store.load()
             }
             sync = fresh
             await fresh.start()
@@ -114,7 +117,7 @@ struct NoteView: View {
         .sheet(isPresented: $showingAttachments) {
             DocAttachmentsSheet(store: store, note: note, canWrite: canWrite, liveText: text,
                                 onInsert: editing && canWrite ? { proxy.insert("![[\($0)]]", ownLine: true) } : nil,
-                                onDeleted: removeEmbeds)
+                                onDeleted: { targets in removeEmbeds(targets.map { "![[\($0)]]" }) })
         }
         .photosPicker(isPresented: $pickingPhoto, selection: $photo, matching: .images)
         .onChange(of: photo) { _, item in
@@ -122,7 +125,44 @@ struct NoteView: View {
             photo = nil
             Task { await upload(item) }
         }
-        .fullScreenCover(item: $newSketch) { SketchEditor(model: $0) }
+        .fullScreenCover(item: $newSketch, onDismiss: { store.sketchChanged() }) { SketchEditor(model: $0) }
+    }
+
+    // MARK: Pictures
+
+    /// What a row of this note's pictures needs: the vault, and the ways it changes the note.
+    private var mediaContext: NoteMediaContext {
+        NoteMediaContext(store: store, note: note, canWrite: canWrite, removeEmbeds: removeEmbeds, openNote: onOpenNote)
+    }
+
+    /// Everything that changes what the editor's rows show.
+    private var mediaRevision: Int {
+        var hasher = Hasher()
+        hasher.combine(store.images.map(\.id))
+        hasher.combine(store.sketches.map(\.id))
+        hasher.combine(canWrite)
+        hasher.combine(theme.primary)
+        return hasher.finalize()
+    }
+
+    /// The editor is UIKit, so its rows are handed to it ready-made, with the
+    /// environment a view of this app expects.
+    private var editorMedia: NoteEditorMedia {
+        let context = mediaContext, session = session, theme = theme
+        return NoteEditorMedia(
+            size: { row in
+                guard let refs = DocMarkdown.mediaRow(row), let entries = context.entries(refs) else { return nil }
+                return NoteMediaStack.size(count: entries.count)
+            },
+            row: { row in
+                guard let refs = DocMarkdown.mediaRow(row), let entries = context.entries(refs) else { return nil }
+                return AnyView(NoteMediaStack(entries: entries, context: context)
+                    .environment(session)
+                    .environment(session.navigator)
+                    .environment(session.toasts)
+                    .environment(\.theme, theme)
+                    .tint(theme.primary))
+            })
     }
 
     // MARK: Reading
@@ -135,7 +175,8 @@ struct NoteView: View {
                     if text.nilIfBlank == nil {
                         empty
                     } else {
-                        NoteReader(text: text, note: note, store: store, mayWrite: mayWrite, anchor: $anchor, onOpenNote: onOpenNote)
+                        NoteReader(text: text, note: note, media: mediaContext, mayWrite: mayWrite, anchor: $anchor,
+                                   onOpenNote: onOpenNote)
                     }
                 }
                 .frame(maxWidth: 760, alignment: .leading)
@@ -242,20 +283,10 @@ struct NoteView: View {
     private func upload(_ item: PhotosPickerItem) async {
         uploading = true
         defer { uploading = false }
-        guard let data = try? await item.loadTransferable(type: Data.self), let picture = UIImage(data: data) else {
+        guard let data = try? await item.loadTransferable(type: Data.self), let encoded = DocImageEncoder.jpeg(from: data) else {
             session.toasts.show("That image couldn't be read.", .warning)
             return
         }
-        let longest = max(picture.size.width, picture.size.height) * picture.scale
-        let scale = min(1, 2560 / max(longest, 1))
-        let size = CGSize(width: (picture.size.width * picture.scale * scale).rounded(.down),
-                          height: (picture.size.height * picture.scale * scale).rounded(.down))
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        let redrawn = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            picture.draw(in: CGRect(origin: .zero, size: size))
-        }
-        guard let encoded = redrawn.jpegData(compressionQuality: 0.85) else { return }
         guard let stored = await session.save({
             try await session.api.uploadDocImage(store.projectId, store.vaultId, noteId: note.id, path: "Photo.jpg",
                                                  data: encoded, contentType: "image/jpeg")
@@ -264,17 +295,16 @@ struct NoteView: View {
         proxy.insert("![[\(stored.path)]]", ownLine: true)
     }
 
-    /// Takes the embeds of something just deleted out of the note, so it doesn't keep a hole where it was.
-    private func removeEmbeds(_ targets: [String]) {
-        guard let sync, sync.canWrite, !targets.isEmpty else { return }
+    /// Takes embeds out of the note, each given as the exact text the note wrote for it.
+    private func removeEmbeds(_ sources: [String]) {
+        guard let sync, sync.canWrite, !sources.isEmpty else { return }
         var changed = false
-        for raw in Set(targets) {
-            let embed = "![[\(raw)]]"
+        for source in Set(sources) where !source.isEmpty {
             while true {
                 let current = sync.shared.string()
-                guard let range = current.range(of: embed) else { break }
+                guard let range = current.range(of: source) else { break }
                 let start = current.utf16.distance(from: current.utf16.startIndex, to: range.lowerBound)
-                sync.shared.replaceText(start: start, length: embed.utf16.count, with: "")
+                sync.shared.replaceText(start: start, length: source.utf16.count, with: "")
                 changed = true
             }
         }

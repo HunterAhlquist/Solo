@@ -13,6 +13,7 @@
 		5010000000000000000000B4 /* NukeUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5010000000000000000000D4 /* NukeUI */; };
 		5010000000000000000000B5 /* SwiftDraw in Frameworks */ = {isa = PBXBuildFile; productRef = 5010000000000000000000D5 /* SwiftDraw */; };
 		5010000000000000000000B6 /* YSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 5010000000000000000000D6 /* YSwift */; };
+		5010000000000000000000B7 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 5010000000000000000000D7 /* Markdown */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +56,7 @@
 				5010000000000000000000B4 /* NukeUI in Frameworks */,
 				5010000000000000000000B5 /* SwiftDraw in Frameworks */,
 				5010000000000000000000B6 /* YSwift in Frameworks */,
+				5010000000000000000000B7 /* Markdown in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -121,6 +123,7 @@
 				5010000000000000000000D4 /* NukeUI */,
 				5010000000000000000000D5 /* SwiftDraw */,
 				5010000000000000000000D6 /* YSwift */,
+				5010000000000000000000D7 /* Markdown */,
 			);
 			productName = Solo;
 			productReference = 501000000000000000000011 /* Solo.app */;
@@ -183,6 +186,7 @@
 				5010000000000000000000C3 /* XCRemoteSwiftPackageReference "Nuke" */,
 				5010000000000000000000C5 /* XCRemoteSwiftPackageReference "SwiftDraw" */,
 				5010000000000000000000C6 /* XCRemoteSwiftPackageReference "yswift" */,
+				5010000000000000000000C7 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 501000000000000000000003 /* Products */;
@@ -474,6 +478,14 @@
 				minimumVersion = 0.2.1;
 			};
 		};
+		5010000000000000000000C7 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swiftlang/swift-markdown";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.7.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -506,6 +518,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5010000000000000000000C6 /* XCRemoteSwiftPackageReference "yswift" */;
 			productName = YSwift;
+		};
+		5010000000000000000000D7 /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5010000000000000000000C7 /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

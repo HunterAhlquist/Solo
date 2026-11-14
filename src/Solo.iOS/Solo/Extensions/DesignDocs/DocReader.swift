@@ -207,29 +207,50 @@ struct DocPictureViewer: View {
 }
 
 /// A note as it reads: rendered, live, and cut at its headings so a link or
-/// the outline can jump to one.
+/// the outline can jump to one. A line of embeds is a row of pictures, as it
+/// is in the editor.
 struct NoteReader: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
     var text: String
     var note: DocNote
-    var store: DocVaultStore
+    var media: NoteMediaContext
     var mayWrite: Bool
     /// The heading to bring into view; set by the outline and by links within the note.
     @Binding var anchor: String?
     var onOpenNote: (UUID) -> Void
 
+    private var store: DocVaultStore { media.store }
+
     var body: some View {
         let sections = DocMarkdown.sections(text)
         LazyVStack(alignment: .leading, spacing: 14) {
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                SoloMarkdown(text: DocRenderer.prepare(section.text, note: note, store: store), linkHandler: follow)
-                    .markdownImageProvider(DocEmbedProvider(store: store, mayWrite: mayWrite))
-                    .markdownInlineImageProvider(DocInlineEmbedProvider(store: store))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .id(section.slug ?? "solo-doc-top")
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(DocMarkdown.pieces(section.text).enumerated()), id: \.offset) { _, piece in
+                        switch piece {
+                        case .text(let markdown):
+                            prose(markdown)
+                        case .media(let refs):
+                            if let entries = media.entries(refs) {
+                                NoteMediaStack(entries: entries, context: media)
+                            } else {
+                                // Something on the row isn't a picture this vault holds: let the text say so.
+                                prose(refs.map(\.source).joined(separator: " "))
+                            }
+                        }
+                    }
+                }
+                .id(section.slug ?? "solo-doc-top")
             }
         }
+    }
+
+    private func prose(_ markdown: String) -> some View {
+        SoloMarkdown(text: DocRenderer.prepare(markdown, note: note, store: store), linkHandler: follow)
+            .markdownImageProvider(DocEmbedProvider(store: store, mayWrite: mayWrite))
+            .markdownInlineImageProvider(DocInlineEmbedProvider(store: store))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func follow(_ url: URL) -> Bool {

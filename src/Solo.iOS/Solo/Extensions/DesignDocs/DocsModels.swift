@@ -211,6 +211,12 @@ extension APIClient {
                                 data: data, contentType: contentType)
     }
 
+    /// Puts a new picture in an image's place; every embed of it shows the new one.
+    func replaceDocImage(_ projectId: UUID, _ vaultId: UUID, _ image: DocImage, data: Data, contentType: String) async throws -> DocImage {
+        try await upload("PUT", "\(docs(projectId))/vaults/\(vaultId.api)/images/\(image.id.api)?version=\(image.version)",
+                         data: data, contentType: contentType)
+    }
+
     func deleteDocImage(_ projectId: UUID, _ vaultId: UUID, _ image: DocImage) async throws {
         try await send("DELETE", "\(docs(projectId))/vaults/\(vaultId.api)/images/\(image.id.api)?version=\(image.version)")
     }
@@ -280,6 +286,12 @@ nonisolated enum NoteAddress {
     }
 }
 
+/// One embed as a note writes it: the whole of its syntax, and the target inside.
+nonisolated struct DocEmbedRef: Hashable, Sendable {
+    var source: String
+    var target: String
+}
+
 nonisolated enum DocMarkdown {
     nonisolated(unsafe) private static let code = /(?m)^(```|~~~)[^\n]*\n[\s\S]*?(^\1[^\n]*$|\z)|`[^`\n]*`/
     nonisolated(unsafe) private static let embed = /!\[\[([^\]]+)\]\]|!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/
@@ -290,6 +302,55 @@ nonisolated enum DocMarkdown {
         return blanked.matches(of: embed).map { match in
             String(match.output.1 ?? match.output.2 ?? match.output.3 ?? "")
         }
+    }
+
+    /// The embeds on a line that holds nothing else — which is what makes it a
+    /// row of pictures rather than text with pictures in it. Nil for any other line.
+    static func mediaRow(_ line: String) -> [DocEmbedRef]? {
+        let matches = line.matches(of: embed)
+        guard !matches.isEmpty else { return nil }
+        var rest = line
+        for match in matches.reversed() { rest.removeSubrange(match.range) }
+        guard rest.allSatisfy(\.isWhitespace) else { return nil }
+        return matches.map { match in
+            DocEmbedRef(source: String(match.output.0), target: String(match.output.1 ?? match.output.2 ?? match.output.3 ?? ""))
+        }
+    }
+
+    /// A stretch of a note as it reads: text, or a row of pictures between the text.
+    enum Piece: Equatable, Sendable {
+        case text(String)
+        case media([DocEmbedRef])
+    }
+
+    /// A note cut into text and rows of pictures, in order. Code is never a row.
+    static func pieces(_ markdown: String) -> [Piece] {
+        var result: [Piece] = []
+        var text: [Substring] = []
+        var fence: Substring?
+        func flush() {
+            if !text.joined().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                result.append(.text(text.joined(separator: "\n")))
+            }
+            text = []
+        }
+        for line in markdown.split(separator: "\n", omittingEmptySubsequences: false) {
+            let trimmed = line.drop { $0 == " " }
+            if let open = fence {
+                if trimmed.hasPrefix(open) { fence = nil }
+                text.append(line)
+            } else if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                fence = trimmed.prefix(3)
+                text.append(line)
+            } else if line.contains("!["), let row = mediaRow(String(line)) {
+                flush()
+                result.append(.media(row))
+            } else {
+                text.append(line)
+            }
+        }
+        flush()
+        return result
     }
 
     /// A raw target as it resolves: the size or alias after `|` dropped, URL-decoded.

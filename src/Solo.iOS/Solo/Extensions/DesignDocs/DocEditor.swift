@@ -84,26 +84,39 @@ final class NoteEditorProxy {
     }
 }
 
-/// A plain-text editor whose text is a shared document. What is typed here is
+/// A Markdown editor whose text is a shared document. What is typed here is
 /// written into the document as it is typed; what others type is patched into
 /// the view around the caret, so two people in one paragraph don't fight.
+///
+/// It formats as it goes: the text is always the note's exact Markdown, drawn
+/// as what it means, with each piece of syntax folding away until the caret
+/// comes back to it.
 struct SyncedTextEditor: UIViewRepresentable {
     var sync: DocSync
     var proxy: NoteEditorProxy
     /// Read so the view updates when either changes.
     var revision: Int
     var editable: Bool
+    var accent: UIColor
+    var media: NoteEditorMedia
+    /// Changes when what the rows of pictures show may have: an upload, a deletion, who may write.
+    var mediaRevision: Int
     var onFocus: (Bool) -> Void = { _ in }
 
-    func makeCoordinator() -> Coordinator { Coordinator(sync: sync) }
+    func makeCoordinator() -> Coordinator { Coordinator(sync: sync, media: media) }
 
-    func makeUIView(context: Context) -> UITextView {
-        let view = UITextView()
+    func makeUIView(context: Context) -> NoteTextView {
+        // TextKit 1, for a layout manager that can draw behind lines.
+        let storage = NSTextStorage()
+        let manager = NoteLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+
+        let view = NoteTextView(frame: .zero, textContainer: container)
         view.delegate = context.coordinator
         view.backgroundColor = .clear
-        view.font = .preferredFont(forTextStyle: .body)
-        view.textColor = .label
-        view.adjustsFontForContentSizeCategory = true
         view.textContainerInset = UIEdgeInsets(top: 16, left: 14, bottom: 96, right: 14)
         view.alwaysBounceVertical = true
         view.keyboardDismissMode = .interactive
@@ -111,48 +124,92 @@ struct SyncedTextEditor: UIViewRepresentable {
         view.smartDashesType = .no
         view.smartQuotesType = .no
         view.accessibilityLabel = "Note text"
-        context.coordinator.textView = view
-        context.coordinator.onFocus = onFocus
-        proxy.coordinator = context.coordinator
-        context.coordinator.applyRemote()
+        view.isEditable = editable
+
+        let coordinator = context.coordinator
+        coordinator.textView = view
+        coordinator.onFocus = onFocus
+        coordinator.setAccent(accent)
+        coordinator.mediaRevision = mediaRevision
+        view.typingAttributes = coordinator.styler.base
+        view.onWidthChange = { [weak coordinator] in coordinator?.restyle() }
+        proxy.coordinator = coordinator
+        coordinator.applyRemote()
         return view
     }
 
-    func updateUIView(_ view: UITextView, context: Context) {
-        context.coordinator.onFocus = onFocus
-        proxy.coordinator = context.coordinator
+    func updateUIView(_ view: NoteTextView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onFocus = onFocus
+        coordinator.media = media
+        proxy.coordinator = coordinator
+        var stale = coordinator.setAccent(accent)
         if view.isEditable != editable {
             view.isEditable = editable
+            stale = true
         }
-        context.coordinator.applyRemote()
+        if coordinator.mediaRevision != mediaRevision {
+            coordinator.mediaRevision = mediaRevision
+            coordinator.forgetMedia()
+            stale = true
+        }
+        if !coordinator.applyRemote(), stale {
+            coordinator.restyle()
+        }
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
         let sync: DocSync
-        weak var textView: UITextView?
+        let styler = NoteStyler()
+        var media: NoteEditorMedia
+        var mediaRevision = 0
+        weak var textView: NoteTextView?
         var onFocus: (Bool) -> Void = { _ in }
         /// The text as the shared document and the view last agreed on it.
         private var known: [UInt16] = []
+        /// The last text parsed, so moving the caret doesn't parse it again.
+        private var parsed: (text: String, markdown: LiveMarkdown)?
+        private var mediaHosts: [String: UIHostingController<AnyView>] = [:]
+        private var restyling = false
 
-        init(sync: DocSync) {
+        init(sync: DocSync, media: NoteEditorMedia) {
             self.sync = sync
+            self.media = media
+            super.init()
+            NotificationCenter.default.addObserver(self, selector: #selector(textSizeChanged),
+                                                   name: UIContentSizeCategory.didChangeNotification, object: nil)
+        }
+
+        @objc private func textSizeChanged() {
+            styler.refreshFonts()
+            restyle()
+        }
+
+        /// True when the colour changed and the text needs styling again.
+        @discardableResult
+        func setAccent(_ accent: UIColor) -> Bool {
+            guard styler.accent != accent else { return false }
+            styler.accent = accent
+            (textView?.layoutManager as? NoteLayoutManager)?.accent = accent
+            textView?.tintColor = accent
+            return true
         }
 
         /// Brings the view up to the document, changing only what differs and
-        /// carrying the selection across the change.
-        func applyRemote() {
-            guard let view = textView else { return }
+        /// carrying the selection across the change. True when something changed.
+        @discardableResult
+        func applyRemote() -> Bool {
+            guard let view = textView else { return false }
             let latest = Array(sync.shared.string().utf16)
-            guard let change = TextChange.between(known, latest) else { return }
+            guard let change = TextChange.between(known, latest) else { return false }
             let selection = view.selectedRange
-            // Attributed, because text put straight into the storage would otherwise arrive without the view's font.
-            let inserted = NSAttributedString(string: String(decoding: change.inserted, as: UTF16.self), attributes: [
-                .font: view.font ?? UIFont.preferredFont(forTextStyle: .body), .foregroundColor: UIColor.label,
-            ])
+            let inserted = NSAttributedString(string: String(decoding: change.inserted, as: UTF16.self), attributes: styler.base)
             view.textStorage.replaceCharacters(in: NSRange(location: change.start, length: change.removed), with: inserted)
             known = latest
             let from = change.shift(selection.location), to = change.shift(NSMaxRange(selection))
             view.selectedRange = NSRange(location: from, length: max(0, to - from))
+            restyle()
+            return true
         }
 
         /// Writes whatever the view now holds that the document doesn't.
@@ -164,18 +221,109 @@ struct SyncedTextEditor: UIViewRepresentable {
                                     with: String(decoding: change.inserted, as: UTF16.self))
             known = latest
             sync.changedLocally()
+            restyle()
         }
 
+        // MARK: Live formatting
+
+        /// Styles the note for where the caret is now. Cheap to call: the text
+        /// is parsed again only when it changed, and only runs whose look
+        /// changed are touched.
+        func restyle() {
+            // Restyling under an input method's marked text would end its composition.
+            guard let view = textView, view.markedTextRange == nil, !restyling else { return }
+            restyling = true
+            defer { restyling = false }
+            let text = view.textStorage.string
+            if parsed?.text != text {
+                parsed = (text, LiveMarkdown(text))
+            }
+            guard let markdown = parsed?.markdown else { return }
+            // Away from the keyboard nothing is being edited, so nothing is revealed.
+            let selection = view.isFirstResponder && view.isEditable ? view.selectedRange : nil
+            let desired = styler.styled(text, spans: markdown.spans(selection: selection), mediaSize: mediaSize)
+            styler.apply(desired, to: view.textStorage)
+            view.typingAttributes = styler.base
+            placeMedia()
+        }
+
+        private func mediaSize(_ row: String) -> CGSize? {
+            // Nothing is measured until the view has a width to lay rows out in.
+            guard let view = textView, view.bounds.width > 120 else { return nil }
+            return media.size(row)
+        }
+
+        /// Lays each row of pictures over the line that was made room for it.
+        private func placeMedia() {
+            guard let view = textView else { return }
+            let manager = view.layoutManager, storage = view.textStorage
+            var occurrences: [String: Int] = [:]
+            var placed = Set<String>()
+            storage.enumerateAttribute(.noteMedia, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+                guard let row = value as? String, let size = mediaSize(row) else { return }
+                let count = occurrences[row, default: 0]
+                occurrences[row] = count + 1
+                let key = "\(row)#\(count)"
+                guard let host = mediaHosts[key] ?? makeHost(key: key, row: row) else { return }
+                manager.ensureLayout(forCharacterRange: range)
+                let line = manager.lineFragmentRect(forGlyphAt: manager.glyphIndexForCharacter(at: range.location), effectiveRange: nil)
+                let frame = CGRect(x: view.textContainerInset.left + view.textContainer.lineFragmentPadding,
+                                   y: view.textContainerInset.top + line.minY + (line.height - size.height) / 2,
+                                   width: size.width, height: size.height)
+                if host.view.frame != frame { host.view.frame = frame }
+                placed.insert(key)
+            }
+            for (key, host) in mediaHosts where !placed.contains(key) {
+                remove(host)
+                mediaHosts[key] = nil
+            }
+        }
+
+        /// A row is SwiftUI, hosted as a child of whatever controller holds
+        /// the text view — a child so that it can present its viewer.
+        private func makeHost(key: String, row: String) -> UIHostingController<AnyView>? {
+            guard let view = textView, let content = media.row(row) else { return nil }
+            let host = UIHostingController(rootView: content)
+            host.view.backgroundColor = .clear
+            host.safeAreaRegions = []
+            var responder: UIResponder? = view
+            while let next = responder?.next, !(next is UIViewController) { responder = next }
+            let parent = responder?.next as? UIViewController
+            parent?.addChild(host)
+            view.addSubview(host.view)
+            host.didMove(toParent: parent)
+            mediaHosts[key] = host
+            return host
+        }
+
+        private func remove(_ host: UIHostingController<AnyView>) {
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+        }
+
+        /// Drops the rows on show, so the next pass builds them afresh.
+        func forgetMedia() {
+            mediaHosts.values.forEach(remove)
+            mediaHosts = [:]
+        }
+
+        // MARK: UITextViewDelegate
+
         func textViewDidChange(_ textView: UITextView) { changedLocally() }
+
+        func textViewDidChangeSelection(_ textView: UITextView) { restyle() }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
             sync.report(editing: true)
             onFocus(true)
+            restyle()
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
             sync.report(editing: false)
             onFocus(false)
+            restyle()
         }
     }
 }

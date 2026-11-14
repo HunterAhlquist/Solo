@@ -291,6 +291,24 @@ final class DocVaultStore {
         return decoded
     }
 
+    /// A sketch as a picture: its page, replayed from its stored strokes.
+    func sketchPicture(_ sketch: DocSketch, dark: Bool) async -> UIImage? {
+        let key = "\(sketch.id.compact):\(sketch.version):\(sketchRevision):\(dark)"
+        if let cached = pictures[key] { return cached }
+        guard let state = try? await session.api.docState(projectId, sketch.id) else { return nil }
+        let snapshot = await SketchSnapshot.load(state.updates.map(\.data), sketch: sketch)
+        let colors = dark ? SketchColors.dark : SketchColors.light
+        guard let drawn = snapshot.raster.image(page: snapshot.page, paper: colors.paper, themeInk: colors.ink) else { return nil }
+        let picture = UIImage(cgImage: drawn)
+        pictures[key] = picture
+        return picture
+    }
+
+    /// A sketch was drawn on from this device: its pictures are stale.
+    func sketchChanged() {
+        sketchRevision += 1
+    }
+
     // MARK: Changes
 
     private func run(_ operation: () async throws -> Void) async -> Bool {
