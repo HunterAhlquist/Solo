@@ -144,7 +144,11 @@ struct NoteMediaStack: View {
     /// The same few degrees of tilt the web gives a print, worked out from its path so it never changes.
     static func angle(_ path: String) -> Double {
         var seed: Int32 = 0
-        for unit in path.utf16 { seed = seed &* 31 &+ Int32(unit) }
+        // Per character, by its first UTF-16 unit, which is how the web's loop counts.
+        for scalar in path.unicodeScalars {
+            let unit = scalar.value > 0xFFFF ? UInt32(UTF16.leadSurrogate(scalar)) : scalar.value
+            seed = seed &* 31 &+ Int32(unit)
+        }
         return Double(abs(Int(seed)) % 701) / 100 - 3.5
     }
 
