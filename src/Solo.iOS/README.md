@@ -1,0 +1,93 @@
+# Solo for iPhone and iPad — native client (experiment)
+
+A SwiftUI client for a Solo instance. It talks to the same REST API and the same SignalR hub as the Blazor client in `src/Solo.Client`, so nothing on the server changes for it: point it at an instance and sign in.
+
+It is an experiment and lives on its own branch. It is not part of `Solo.slnx`, of the release train, or of any workflow — it builds and runs locally, from Xcode or `xcodebuild`.
+
+## Running it
+
+Requires Xcode 26 and an iOS 26 simulator or device (the deployment target is iOS 26, for Liquid Glass).
+
+```bash
+open src/Solo.iOS/Solo.xcodeproj
+```
+
+Choose the `Solo` scheme and an iPhone or iPad destination, and run. The packages resolve on the first build.
+
+On first launch the app asks for the instance's address, then signs in through the instance's own sign-in page in a system sheet. It keeps the session token in the Keychain and the instance in its settings, so later launches go straight in.
+
+The tests are in the `SoloTests` target (`⌘U`, or `xcodebuild test`). They cover the rules the app has to share with the server and the web client — dates, serial numbers, rank neighbours, the roadmap's sprint arithmetic, note addresses and heading slugs, the Design Docs sync batch format, and the sketch rasterizer against values taken from the web one.
+
+### Debug hooks
+
+Debug builds read three environment variables, which is how the app was driven on simulators without typing a Google password into one:
+
+| Variable | Effect |
+|---|---|
+| `SOLO_INSTANCE_URL` | The instance to use, skipping the address screen. |
+| `SOLO_SESSION_TOKEN` | A `solo_…` session token to resume with, skipping sign-in. |
+| `SOLO_OPEN` | Where to start: a tab (`work`, `projects`, `inbox`, `account`), a project (`DMD`), a board (`DMD-PW26`), a task (`DMD-PW26-2`), `roadmap:DMD:<id>`, `docs:DMD:<vault id>[:<note id>]`, or `route:<mcp\|admin\|devices\|notifications\|extensions\|themes\|users\|email\|updates\|about>`. |
+
+With `simctl`, prefix each with `SIMCTL_CHILD_`. None of this is compiled into a release build.
+
+## How it is put together
+
+```
+Solo/App          app entry, launch states, the signed-in Session, the Navigator
+Solo/Core         API client and endpoints, models, auth, the live hub, theme, stores
+Solo/UI           shared pieces: markdown, images and icons, cards, prompts
+Solo/Features     one folder per area of core: board, dashboard, projects, inbox, account, admin
+Solo/Extensions   the first-party extensions' clients, and the slots they fill
+SoloTests         unit tests
+```
+
+- **One navigation model, two shells.** `Navigator` holds a tab and a stack of routes per tab. An iPhone shows it as a tab bar; an iPad as a sidebar beside the selected stack, with a task's detail in an inspector — three panes in landscape. Routes are aliases, as the web app's URLs are, so a link means the same thing on every client.
+- **Live by default.** `HubClient` joins the board, user and extension topics the web client joins; stores apply what arrives. Saves send the row's `version`, and a 409 refreshes and says so.
+- **Offline is read-only.** The last good response to every GET is kept on disk, so the app opens and reads without a connection and shows that it is offline. It does not queue writes; the one exception is a note or sketch that is open, which keeps unsent edits and sends them when the connection returns.
+- **Theme.** The system's materials, backgrounds and type throughout, with Liquid Glass for panels and bars. The instance's theme contributes its primary and secondary colours — as the tint, and as a faint wash behind the page — and nothing else.
+
+### Libraries
+
+| Package | For |
+|---|---|
+| [dotnet/signalr-client-swift](https://github.com/dotnet/signalr-client-swift) | The SignalR hub. Microsoft's own client; pinned to an exact preview version. |
+| [gonzalezreal/swift-markdown-ui](https://github.com/gonzalezreal/swift-markdown-ui) | Rendering Markdown. |
+| [kean/Nuke](https://github.com/kean/Nuke) | Loading and caching avatars and icons with the session's credential. |
+| [swhitty/SwiftDraw](https://github.com/swhitty/SwiftDraw) | Decoding the SVG avatars and icons the instance serves. |
+| [y-crdt/yswift](https://github.com/y-crdt/yswift) | Yjs documents, for Design Docs' live notes and sketches. |
+
+## Extensions
+
+On the web an extension ships its client as an assembly the browser downloads. An app can't load code, so the three first-party extensions' clients are compiled in, under `Solo/Extensions`, and each is switched on only when the instance reports that extension (`GET /api/extensions`). An instance without Roadmaps shows no roadmap anywhere, exactly as its web app does; the catalog is read again whenever the live feed reconnects, since a restart is when it can change.
+
+Core never asks about a particular extension. It names slots — sections of a task's detail, of a project's page and card, of the sidebar, of Your Tasks, of the Markdown editor, of admin settings — and `ExtensionSlots.swift` fills them.
+
+| Extension | What is here |
+|---|---|
+| **MCP** | The MCP Access page (token, client snippets, tool list, usage) and a task's "Work for an LLM" switch. |
+| **Roadmaps** | The timeline with press-and-hold to move and resize, milestones, sprints, the personal roadmap on Your Tasks, and the project, sidebar, card and task sections. |
+| **Design Docs** | Design docs and their tree; notes read as rendered Markdown and edited live over the extension's Yjs protocol; wiki links, embeds, images and attachments; sketches, drawn with the web editor's rasterizer ported rule for rule so a stroke looks the same on every client; links to notes from task descriptions. |
+
+An extension the instance runs that has no native half is named under About, so its absence reads as a limit of the app rather than of the instance.
+
+## Where it differs from the web client
+
+Better here:
+
+- Opens and reads offline from the last loaded data.
+- A task's detail sits beside its board on an iPad instead of over it.
+- Sketches take Apple Pencil pressure; two fingers move and zoom the page.
+- The theme is picked up on returning to the app, without a reload.
+
+Not here — use the web client for these:
+
+- **First-run setup** of a new instance. The wizard needs the identity provider's ID token, which the app never holds; it sends you to the instance's `/setup` page.
+- **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; the live-formatting editor (notes are edited as Markdown source, with a rendered view); other people's carets in a note; replacing an image in place; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it — the selection, lasso and shape tools, and redo.
+- **Third-party extensions' screens**, for the reason above.
+- **Push notifications.** The inbox is live while the app is open; nothing arrives while it is closed.
+
+## Signing in
+
+The app uses the same handshake as the desktop shell: it asks the instance to start a sign-in (`POST api/auth/desktop/start`), opens the instance's `/desktop-auth` page in an `ASWebAuthenticationSession`, and redeems the code that comes back for a session token, with PKCE throughout. The redirect lands on a loopback listener the app opens for the duration.
+
+It first tries `POST api/auth/desktop/start-app`, the endpoint the Capacitor app's branch adds for returning to an app by its own URL scheme (`com.hunterahlquist.solo`), and falls back to the loopback flow when the instance doesn't have it — so it works against `main` today and will use the better path once that lands.
