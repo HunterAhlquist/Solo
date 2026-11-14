@@ -146,6 +146,11 @@ struct SyncedTextEditor: UIViewRepresentable {
         storage.addLayoutManager(manager)
 
         let view = NoteTextView(frame: .zero, textContainer: container)
+        // Every line's place is worked out from the top, never guessed. A scrolling text view is
+        // otherwise allowed to lay out only what is showing and estimate the rest — and a row of
+        // pictures is a view placed over its line, which an estimate puts in the wrong place.
+        manager.allowsNonContiguousLayout = false
+        manager.delegate = context.coordinator
         view.delegate = context.coordinator
         view.backgroundColor = .clear
         view.textContainerInset = UIEdgeInsets(top: 16, left: 14, bottom: 96, right: 14)
@@ -219,7 +224,7 @@ struct SyncedTextEditor: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate, NSLayoutManagerDelegate {
         let sync: DocSync
         let styler = NoteStyler()
         var media: NoteEditorMedia
@@ -238,6 +243,8 @@ struct SyncedTextEditor: UIViewRepresentable {
         private var selectionViews: [UIView] = []
         private var caretTask: Task<Void, Never>?
         private var restyling = false
+        private var placing = false
+        private var placementPending = false
         /// The widest a line of the note runs; past it the text keeps to the middle of the view.
         private static let measure: CGFloat = 820
 
@@ -247,6 +254,31 @@ struct SyncedTextEditor: UIViewRepresentable {
             super.init()
             NotificationCenter.default.addObserver(self, selector: #selector(textSizeChanged),
                                                    name: UIContentSizeCategory.didChangeNotification, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(cameBack),
+                                                   name: UIApplication.didBecomeActiveNotification, object: nil)
+        }
+
+        /// Back from the Home Screen: whatever the system did to the view while the app was away,
+        /// everything laid over the text is put where the text now is.
+        @objc private func cameBack() {
+            restyle()
+        }
+
+        /// The text has been laid out again — after an edit, a change of width, or because the
+        /// system threw the old layout away. Lines may be somewhere else now, so what sits on
+        /// them is moved: once, after the pass, however many times it reports in.
+        nonisolated func layoutManager(_ layoutManager: NSLayoutManager, didCompleteLayoutFor textContainer: NSTextContainer?,
+                                       atEnd layoutFinishedFlag: Bool) {
+            MainActor.assumeIsolated {
+                guard !placing, !placementPending else { return }
+                placementPending = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.placementPending = false
+                    self.placeMedia()
+                    self.placeCarets()
+                }
+            }
         }
 
         @objc private func textSizeChanged() {
@@ -497,7 +529,10 @@ struct SyncedTextEditor: UIViewRepresentable {
 
         /// Lays each row of pictures over the line that was made room for it.
         private func placeMedia() {
-            guard let view = textView else { return }
+            guard let view = textView, !placing else { return }
+            // Asking where a line is can lay text out, which reports in above: not while this is the one asking.
+            placing = true
+            defer { placing = false }
             let manager = view.layoutManager, storage = view.textStorage
             var occurrences: [String: Int] = [:]
             var placed = Set<String>()
@@ -507,7 +542,8 @@ struct SyncedTextEditor: UIViewRepresentable {
                 occurrences[row] = count + 1
                 let key = "\(row)#\(count)"
                 guard let host = mediaHosts[key] ?? makeHost(key: key, row: row) else { return }
-                manager.ensureLayout(forCharacterRange: range)
+                // From the top down to this row, so its place is the real one and not an estimate.
+                manager.ensureLayout(forCharacterRange: NSRange(location: 0, length: NSMaxRange(range)))
                 let line = manager.lineFragmentRect(forGlyphAt: manager.glyphIndexForCharacter(at: range.location), effectiveRange: nil)
                 let frame = CGRect(x: view.textContainerInset.left + view.textContainer.lineFragmentPadding,
                                    y: view.textContainerInset.top + line.minY + (line.height - size.height) / 2,
