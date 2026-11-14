@@ -14,6 +14,7 @@
 		5010000000000000000000B5 /* SwiftDraw in Frameworks */ = {isa = PBXBuildFile; productRef = 5010000000000000000000D5 /* SwiftDraw */; };
 		5010000000000000000000B6 /* YSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 5010000000000000000000D6 /* YSwift */; };
 		5010000000000000000000B7 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = 5010000000000000000000D7 /* Markdown */; };
+		5010000000000000000000B8 /* SoloWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 501000000000000000000014 /* SoloWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -24,12 +25,34 @@
 			remoteGlobalIDString = 501000000000000000000021;
 			remoteInfo = Solo;
 		};
+		501000000000000000000093 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 501000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 501000000000000000000023;
+			remoteInfo = SoloWidgets;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5010000000000000000000A1 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				5010000000000000000000B8 /* SoloWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		501000000000000000000011 /* Solo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Solo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		501000000000000000000012 /* SoloTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SoloTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		501000000000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		501000000000000000000014 /* SoloWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SoloWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -41,6 +64,16 @@
 		501000000000000000000032 /* SoloTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SoloTests;
+			sourceTree = "<group>";
+		};
+		501000000000000000000033 /* SoloWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SoloWidgets;
+			sourceTree = "<group>";
+		};
+		501000000000000000000034 /* SoloShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SoloShared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -67,6 +100,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		501000000000000000000043 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -75,6 +115,8 @@
 			children = (
 				501000000000000000000031 /* Solo */,
 				501000000000000000000032 /* SoloTests */,
+				501000000000000000000033 /* SoloWidgets */,
+				501000000000000000000034 /* SoloShared */,
 				501000000000000000000004 /* Config */,
 				501000000000000000000003 /* Products */,
 			);
@@ -85,6 +127,7 @@
 			children = (
 				501000000000000000000011 /* Solo.app */,
 				501000000000000000000012 /* SoloTests.xctest */,
+				501000000000000000000014 /* SoloWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -107,13 +150,16 @@
 				501000000000000000000051 /* Sources */,
 				501000000000000000000041 /* Frameworks */,
 				501000000000000000000061 /* Resources */,
+				5010000000000000000000A1 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				501000000000000000000094 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				501000000000000000000031 /* Solo */,
+				501000000000000000000034 /* SoloShared */,
 			);
 			name = Solo;
 			packageProductDependencies = (
@@ -152,6 +198,29 @@
 			productReference = 501000000000000000000012 /* SoloTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		501000000000000000000023 /* SoloWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 501000000000000000000073 /* Build configuration list for PBXNativeTarget "SoloWidgets" */;
+			buildPhases = (
+				501000000000000000000053 /* Sources */,
+				501000000000000000000043 /* Frameworks */,
+				501000000000000000000063 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				501000000000000000000033 /* SoloWidgets */,
+				501000000000000000000034 /* SoloShared */,
+			);
+			name = SoloWidgets;
+			packageProductDependencies = (
+			);
+			productName = SoloWidgets;
+			productReference = 501000000000000000000014 /* SoloWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -168,6 +237,9 @@
 					501000000000000000000022 = {
 						CreatedOnToolsVersion = 26.1;
 						TestTargetID = 501000000000000000000021;
+					};
+					501000000000000000000023 = {
+						CreatedOnToolsVersion = 26.1;
 					};
 				};
 			};
@@ -195,6 +267,7 @@
 			targets = (
 				501000000000000000000021 /* Solo */,
 				501000000000000000000022 /* SoloTests */,
+				501000000000000000000023 /* SoloWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -208,6 +281,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		501000000000000000000062 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		501000000000000000000063 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -231,6 +311,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		501000000000000000000053 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -238,6 +325,11 @@
 			isa = PBXTargetDependency;
 			target = 501000000000000000000021 /* Solo */;
 			targetProxy = 501000000000000000000091 /* PBXContainerItemProxy */;
+		};
+		501000000000000000000094 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 501000000000000000000023 /* SoloWidgets */;
+			targetProxy = 501000000000000000000093 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -302,6 +394,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Solo;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Solo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -336,6 +429,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Solo;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Config/Solo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -405,6 +499,62 @@
 			};
 			name = Release;
 		};
+		501000000000000000000087 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/Widgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Widgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Solo;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hunterahlquist.solo.native.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		501000000000000000000088 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/Widgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Widgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Solo;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hunterahlquist.solo.native.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -431,6 +581,15 @@
 			buildConfigurations = (
 				501000000000000000000085 /* Debug */,
 				501000000000000000000086 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		501000000000000000000073 /* Build configuration list for PBXNativeTarget "SoloWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				501000000000000000000087 /* Debug */,
+				501000000000000000000088 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

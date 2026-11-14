@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 /// Chooses between the launch states and, once signed in, the app itself.
 struct RootView: View {
@@ -50,10 +51,17 @@ struct RootView: View {
                 Task {
                     await model.session?.notifications.refresh()
                     // A theme change isn't announced to anyone, so coming back to the app is when it is noticed.
-                    if let api = model.session?.api { await model.themes.load(from: api) }
+                    if let api = model.session?.api {
+                        await model.themes.load(from: api)
+                        model.publishToWidgets()
+                    }
                 }
+            } else if phase == .background {
+                // Whatever was done here, the widgets should say so by the time the Home Screen shows them.
+                WidgetCenter.shared.reloadAllTimelines()
             }
         }
+        .onOpenURL { model.open($0) }
     }
 }
 

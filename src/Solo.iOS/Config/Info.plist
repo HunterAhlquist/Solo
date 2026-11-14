@@ -10,6 +10,9 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- The keychain group the app shares with its widgets, with the team's prefix filled in. -->
+	<key>SoloKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)com.hunterahlquist.solo.native.shared</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Solo connects to the instance you point it at, which may be on your local network.</string>
 	<!-- What a note or folder carries while it is dragged about its design doc. Private to
@@ -40,6 +43,15 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.hunterahlquist.solo</string>
+			</array>
+		</dict>
+		<!-- How a widget opens the app at a page. -->
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.hunterahlquist.solo.native.widget</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.hunterahlquist.solo.native</string>
 			</array>
 		</dict>
 	</array>

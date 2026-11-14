@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 
 /// Where the app is between launch and a signed-in session. One instance at a
 /// time, as on the desktop: changing instance means signing out of this one.
@@ -29,6 +30,8 @@ final class AppModel {
     /// Why the last session ended, shown once on the sign-in screen.
     var notice: String?
     private(set) var recentInstances: [String]
+    /// Where a widget asked to go before there was a session to take it there.
+    private var pendingLink: WidgetLink.Destination?
 
     let themes = ThemeStore()
 
@@ -161,7 +164,49 @@ final class AppModel {
         }
         self.session = session
         phase = .signedIn
+        publishToWidgets()
+        if let pendingLink {
+            self.pendingLink = nil
+            follow(pendingLink)
+        }
         await session.start()
+    }
+
+    // MARK: Widgets
+
+    /// Tells the widgets which instance to show and hands them a copy of the session to ask it
+    /// with — or, signed out, takes both away. Called whenever either changes, and when the
+    /// theme does, since the widgets wear its accent.
+    func publishToWidgets() {
+        if let instanceURL, let token = api?.token, session != nil {
+            let palette = themes.document
+            WidgetStore.instance = WidgetInstance(
+                url: instanceURL, name: config?.siteName ?? instanceURL.host() ?? "Solo",
+                accentLight: CSSColor(palette?.light?.primary ?? "")?.hex,
+                accentDark: CSSColor(palette?.dark?.primary ?? "")?.hex)
+            if WidgetStore.token != token { WidgetStore.token = token }
+        } else {
+            WidgetStore.token = nil
+            if instanceURL == nil { WidgetStore.instance = nil }
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// A widget was tapped. Before sign-in has finished there is nowhere to go yet, so the
+    /// link is kept until there is.
+    func open(_ url: URL) {
+        guard let destination = WidgetLink.parse(url) else { return }
+        if session != nil { follow(destination) } else { pendingLink = destination }
+    }
+
+    private func follow(_ destination: WidgetLink.Destination) {
+        guard let navigator = session?.navigator else { return }
+        switch destination {
+        case .yourTasks:
+            navigator.popToRoot(.work)
+        case .task(let serial):
+            if let reference = TaskReference(serial: serial) { navigator.open(reference) }
+        }
     }
 
     /// Signing out revokes the session on the instance, then forgets it here regardless.
@@ -187,6 +232,7 @@ final class AppModel {
         api.token = nil
         api.onUnauthorized = nil
         session = nil
+        publishToWidgets()
         // The cache holds what this person could see; the next one starts clean.
         await api.clearCache()
     }
@@ -201,6 +247,7 @@ final class AppModel {
         config = nil
         instanceURL = nil
         themes.apply(nil)
+        publishToWidgets()
         phase = .needsInstance
     }
 
