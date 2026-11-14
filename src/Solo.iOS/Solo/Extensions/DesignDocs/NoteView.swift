@@ -222,7 +222,7 @@ struct NoteView: View {
             Text(sync?.synced == true ? "This note is empty." : "Loading…")
                 .foregroundStyle(theme.textSecondary)
             if canWrite {
-                Button("Start writing", systemImage: "square.and.pencil") { setEditing(true) }
+                Button("Start writing", systemImage: "square.and.pencil") { setEditing(true, typing: true) }
                     .buttonStyle(.glass)
             }
         }
@@ -252,9 +252,13 @@ struct NoteView: View {
         .padding(.vertical, 6)
     }
 
-    private func setEditing(_ value: Bool) {
+    /// Opens the note for editing. The keyboard comes up only for a note with
+    /// nothing in it yet: otherwise the note stays fully drawn until a tap
+    /// says where the caret goes, since wherever it lands unfolds that line.
+    private func setEditing(_ value: Bool, typing: Bool = false) {
         if value {
             editing = true
+            guard typing else { return }
             // The text view exists a moment after the state changes.
             Task {
                 try? await Task.sleep(for: .milliseconds(150))

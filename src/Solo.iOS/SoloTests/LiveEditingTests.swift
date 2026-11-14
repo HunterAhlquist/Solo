@@ -91,6 +91,14 @@ import Testing
         #expect(found.filter { $0.kind == .hidden }.count == 2)
     }
 
+    @Test func anUnorderedMarkerIsDrawnAsABulletAwayFromTheCaret() {
+        let text = "- one\n* two\n1. three"
+        let away = spans(text)
+        #expect(away.filter { $0.kind == .dot }.map(\.range) == [NSRange(location: 0, length: 1), NSRange(location: 6, length: 1)])
+        // Next to the caret it is the character that was typed, so it can be changed.
+        #expect(spans(text, caret: 1).filter { $0.kind == .dot }.map(\.range) == [NSRange(location: 6, length: 1)])
+    }
+
     /// The tree counts columns in UTF-8 bytes; the text view counts UTF-16 units.
     @Test func positionsSurviveNonASCIIText() {
         let text = "é **b** 😀 *c* – ==d=="

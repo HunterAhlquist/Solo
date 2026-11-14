@@ -26,6 +26,8 @@ nonisolated struct LiveSpan: Equatable, Sendable {
         /// A list item's first line; `prefix` is how far in its text starts, for wrapped lines to hang from.
         case listItem(prefix: Int)
         case bullet
+        /// An unordered item's `-`, `*` or `+`, drawn as a bullet while the caret is elsewhere.
+        case dot
         /// Syntax left on show, dimmed.
         case syntax
         /// Syntax not shown while the caret is elsewhere.
@@ -247,6 +249,10 @@ nonisolated struct LiveMarkdown {
                 if text > NSMaxRange(line) || text <= range.location { text = NSMaxRange(line) }
                 out.append(LiveSpan(range: line, kind: .listItem(prefix: text - line.location)))
                 out.append(LiveSpan(range: NSRange(location: range.location, length: text - range.location), kind: .bullet))
+                let mark = NSRange(location: range.location, length: 1)
+                if [45, 42, 43].contains(source.character(at: range.location)), !touches(mark) {
+                    out.append(LiveSpan(range: mark, kind: .dot))
+                }
 
             case is BlockQuote:
                 guard let whole = map.range(node).map(trimmed), whole.length > 0 else { break }

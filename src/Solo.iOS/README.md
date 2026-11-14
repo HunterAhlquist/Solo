@@ -71,7 +71,7 @@ Core never asks about a particular extension. It names slots — sections of a t
 
 Two parts of Design Docs follow the web editor closely enough to be worth knowing how:
 
-- **Live formatting.** A note is edited as its exact Markdown in a `UITextView`, which is what keeps it bound to the shared document character for character. `LiveMarkdown` parses the text with swift-markdown — the same CommonMark and GFM grammar the web editor's parser implements — and says what each run is; `NoteStyler` turns that into attributes and applies only the ones that changed. Syntax is folded away by styling it to nothing, never by removing it, and comes back when the caret touches its span (or, for a heading or a quote, its line), as on the web. A custom layout manager draws what attributes can't: a quote's bar and a code block's background.
+- **Live formatting.** A note is edited as its exact Markdown in a `UITextView`, which is what keeps it bound to the shared document character for character. `LiveMarkdown` parses the text with swift-markdown — the same CommonMark and GFM grammar the web editor's parser implements — and says what each run is; `NoteStyler` turns that into attributes and applies only the ones that changed. Syntax is folded away by styling it to nothing, never by removing it, and comes back when the caret touches its span (or, for a heading or a quote, its line), as on the web. A custom layout manager draws what attributes can't: a quote's bar, a code block's background, and a bullet in place of a list marker's glyph.
 - **Pictures.** A line holding nothing but embeds is a row: one print, or several fanned into a stack with the web's own tilt for each path. Tapping opens them full screen with the system zoom transition, to swipe between, edit (a sketch), replace (an image), share, remove from the note or delete. The reader and the editor draw rows with the same view; in the editor it is hosted over a line made exactly as tall as the row.
 
 An extension the instance runs that has no native half is named under About, so its absence reads as a limit of the app rather than of the instance.
@@ -88,7 +88,7 @@ Better here:
 Not here — use the web client for these:
 
 - **First-run setup** of a new instance. The wizard needs the identity provider's ID token, which the app never holds; it sends you to the instance's `/setup` page.
-- **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; other people's carets in a note; dragging pictures between rows; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it — the selection, lasso and shape tools, and redo. In the live editor a list marker keeps its own character rather than becoming a bullet, and links are followed from the reading view, not while editing.
+- **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; other people's carets in a note; dragging pictures between rows; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it — the selection, lasso and shape tools, and redo. In the live editor links are followed from the reading view, not while editing.
 - **Third-party extensions' screens**, for the reason above.
 - **Push notifications.** The inbox is live while the app is open; nothing arrives while it is closed.
 

@@ -9,15 +9,50 @@ import UIKit
 nonisolated extension NSAttributedString.Key {
     /// A decoration the layout manager draws behind a line: a quote's depth, or -1 for a code block.
     static let noteBlock = NSAttributedString.Key("solo.note.block")
+    /// A list marker to draw as a bullet, whatever character it is written with.
+    static let noteBullet = NSAttributedString.Key("solo.note.bullet")
     /// The raw embed target a line stands in for, where a picture is laid over it.
     static let noteMedia = NSAttributedString.Key("solo.note.media")
 }
 
 /// Draws what attributes can't: the bar down the side of a quote, and a code
 /// block's background across the whole line rather than behind its glyphs.
-nonisolated final class NoteLayoutManager: NSLayoutManager {
+nonisolated final class NoteLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     /// Set and read on the main thread only, which is where a text view lays out and draws.
     nonisolated(unsafe) var accent: UIColor = .tintColor
+
+    override init() {
+        super.init()
+        delegate = self
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// Swaps the glyph of a list marker for a bullet's. The character stays
+    /// what was typed — only what is drawn for it changes — so the text, the
+    /// caret and the shared document are untouched.
+    func layoutManager(_ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+                       properties: UnsafePointer<NSLayoutManager.GlyphProperty>, characterIndexes: UnsafePointer<Int>,
+                       font: UIFont, forGlyphRange glyphRange: NSRange) -> Int {
+        guard let storage = textStorage else { return 0 }
+        var swapped: [CGGlyph]?
+        for index in 0..<glyphRange.length {
+            let character = characterIndexes[index]
+            guard character < storage.length, storage.attribute(.noteBullet, at: character, effectiveRange: nil) != nil else { continue }
+            var bullet: [UniChar] = [0x2022], glyph: [CGGlyph] = [0]
+            guard CTFontGetGlyphsForCharacters(font as CTFont, &bullet, &glyph, 1) else { continue }
+            if swapped == nil { swapped = Array(UnsafeBufferPointer(start: glyphs, count: glyphRange.length)) }
+            swapped?[index] = glyph[0]
+        }
+        // Zero leaves the glyphs as they were generated.
+        guard let swapped else { return 0 }
+        swapped.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            setGlyphs(base, properties: properties, characterIndexes: characterIndexes, font: font, forGlyphRange: glyphRange)
+        }
+        return glyphRange.length
+    }
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
@@ -164,6 +199,8 @@ final class NoteStyler {
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
             case .bullet:
                 result.addAttribute(.foregroundColor, value: accent, range: range)
+            case .dot:
+                result.addAttribute(.noteBullet, value: true, range: range)
             case .syntax:
                 result.addAttribute(.foregroundColor, value: UIColor.tertiaryLabel, range: range)
             case .embed:
