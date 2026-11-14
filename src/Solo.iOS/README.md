@@ -41,7 +41,9 @@ Solo/Extensions   the first-party extensions' clients, and the slots they fill
 SoloTests         unit tests
 ```
 
-- **One navigation model, two shells.** `Navigator` holds a tab and a stack of routes per tab. An iPhone shows it as a tab bar; an iPad as a sidebar beside the selected stack, with a task's detail in an inspector — three panes in landscape. Routes are aliases, as the web app's URLs are, so a link means the same thing on every client.
+- **One navigation model, two shells.** `Navigator` holds a tab and a stack of routes per tab. An iPhone shows it as a tab bar; an iPad as a sidebar beside the selected stack, with a task's detail in a panel down the trailing edge — three panes in landscape. Routes are aliases, as the web app's URLs are, so a link means the same thing on every client.
+- **The task panel is the shell's.** On an iPad it is not the system inspector, which sits inside the page's navigation stack — under the bar, with the page beside it snapping to its new width. `DetailPanelCenter` lets a page hand its panel to the shell, which draws it as a pane of glass over the bar's trailing end; the page makes room through its safe area, which animates.
+- **A phone's board is one page.** The three columns are not three scroll views. Every row — an epic — holds its three zones side by side and shows the one the page's column names (`PagedColumns`), so a row is at the same height and under the same header whichever column is showing, and a sideways drag anywhere turns all of them together. A card that changes column is followed there and centred.
 - **Live by default.** `HubClient` joins the board, user and extension topics the web client joins; stores apply what arrives. Saves send the row's `version`, and a 409 refreshes and says so.
 - **Offline is read-only.** The last good response to every GET is kept on disk, so the app opens and reads without a connection and shows that it is offline. It does not queue writes; the one exception is a note or sketch that is open, which keeps unsent edits and sends them when the connection returns.
 - **Theme.** The system's materials, backgrounds and type throughout, with Liquid Glass for panels and bars. The instance's theme contributes its primary and secondary colours — as the tint, and as a faint wash behind the page — and nothing else.
@@ -55,7 +57,9 @@ SoloTests         unit tests
 | [swiftlang/swift-markdown](https://github.com/swiftlang/swift-markdown) | Parsing Markdown into a syntax tree with source positions, which the live note editor styles from. |
 | [kean/Nuke](https://github.com/kean/Nuke) | Loading and caching avatars and icons with the session's credential. |
 | [swhitty/SwiftDraw](https://github.com/swhitty/SwiftDraw) | Decoding the SVG avatars and icons the instance serves. |
-| [y-crdt/yswift](https://github.com/y-crdt/yswift) | Yjs documents, for Design Docs' live notes and sketches. |
+| [y-crdt/yswift](https://github.com/y-crdt/yswift) | Yjs documents, for Design Docs' live notes and sketches, and their undo history. |
+
+Three things are written here because nothing maintained covers them, each as small as it could be made: Yjs's awareness protocol (a varint-framed JSON state per client), a reader for the structure of a Yjs text (below), and the transition between tabs.
 
 ## Extensions
 
@@ -74,6 +78,9 @@ Two parts of Design Docs follow the web editor closely enough to be worth knowin
 - **Live formatting.** A note is one surface, as on the web: it reads as what its Markdown means, a tap in the text starts typing there, and putting the keyboard away ends it — there is no edit mode. Underneath it is the note's exact Markdown in a `UITextView`, which is what keeps it bound to the shared document character for character. `LiveMarkdown` parses the text with swift-markdown — the same CommonMark and GFM grammar the web editor's parser implements — and says what each run is; `NoteStyler` turns that into attributes and applies only the ones that changed. Syntax is folded away by styling it to nothing, never by removing it, and comes back when the caret touches its span (for a heading or a quote, its line; for a code block's fences, anywhere in the block). A custom layout manager draws what attributes can't: a quote's bar, a code block's background, and a bullet in place of a list marker's glyph. While the note isn't being typed in, a tap on a link follows it.
 - **Pictures.** A line holding nothing but embeds is a row: one print, or several fanned into a stack with the web's own tilt for each path. Tapping opens them full screen with the system zoom transition, to swipe between, edit (a sketch), replace (an image), share, remove from the note or delete. The reader and the editor draw rows with the same view; in the editor it is hosted over a line made exactly as tall as the row.
 
+- **Carets and pens.** Who is where travels over Yjs's awareness protocol, as on the web (`Awareness.swift`): a caret in a note, a pen and the stroke it is in the middle of on a sketch, each in the colour the instance gave that person. A caret is sent as the identity of the character it stands before, so that it holds its place while text is typed around it — and YSwift does not expose the document structure that turns that into an offset. `YjsStructure.swift` reads it out of the document's own update encoding and orders it with Yjs's rule for concurrent insertions. It is used for carets and nothing else, and it checks the text it reconstructs against the document's before placing one.
+- **Undo in a sketch** is Yjs's undo manager over the same parts of the document the web editor's watches, so it takes back a stroke, a change of paper or a cleared page, and never anybody else's work. Clearing plays the web's explosion, which the app fetches from the extension's content on the instance rather than carrying a copy.
+
 An extension the instance runs that has no native half is named under About, so its absence reads as a limit of the app rather than of the instance.
 
 ## Where it differs from the web client
@@ -82,15 +89,16 @@ Better here:
 
 - Opens and reads offline from the last loaded data.
 - A task's detail sits beside its board on an iPad instead of over it.
+- On a phone, a board's epics stay lined up across its columns, and a moved card is followed to where it lands.
 - Sketches take Apple Pencil pressure; two fingers move and zoom the page.
 - The theme is picked up on returning to the app, without a reload.
 
 Not here — use the web client for these:
 
 - **First-run setup** of a new instance. The wizard needs the identity provider's ID token, which the app never holds; it sends you to the instance's `/setup` page.
-- **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; other people's carets in a note; dragging pictures between rows; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it — the selection, lasso and shape tools, and redo. Tables and inline pictures are shown as their Markdown rather than drawn.
+- **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; dragging pictures between rows; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it, though clearing the sketch removes them and Undo brings them back — and the selection, lasso and shape tools. Tables and inline pictures are shown as their Markdown rather than drawn.
 - **Third-party extensions' screens**, for the reason above.
-- **Push notifications.** The inbox is live while the app is open; nothing arrives while it is closed.
+- **Push notifications.** There are none: nothing is registered with Apple and the instance has nothing to send through. The inbox is live while the app is running, and "Allow Notifications" only lets the app raise a banner itself, on the device, for a notification that arrives over the live connection in the moments after it is put in the background. Once the system suspends it, nothing arrives until it is opened again.
 
 ## Signing in
 

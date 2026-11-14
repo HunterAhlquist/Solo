@@ -124,7 +124,7 @@ struct NotificationSettingsView: View {
 
     var body: some View {
         Form {
-            Section("On this device") {
+            Section {
                 switch permission {
                 case .authorized, .provisional, .ephemeral:
                     Label("Notifications are allowed on this device.", systemImage: "bell.badge")
@@ -143,6 +143,13 @@ struct NotificationSettingsView: View {
                         }
                     }
                 }
+            } header: {
+                Text("On this device")
+            } footer: {
+                // Said outright, because the switch above looks like the one that turns push on.
+                Text("Solo shows these itself, for what arrives while it is open or has only just been put away. "
+                    + "It has no push notifications: an instance you host has no way to send them, so nothing arrives "
+                    + "once the app has been closed for a while.")
             }
             .themedRow()
 

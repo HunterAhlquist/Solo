@@ -450,11 +450,13 @@ struct TimelineView: View {
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onEnded { value in
                 guard store.canWrite, case .second(true, let press?) = value else { return }
+                // The pressed place is measured from the top of the grid, head included: an offset
+                // moves what is drawn, not where a gesture on it counts from.
                 let index = Int(press.startLocation.x / Self.dayWidth)
-                let line = Int(press.startLocation.y / Self.rowHeight)
+                let line = Int((press.startLocation.y - Self.headHeight) / Self.rowHeight)
                 dayMenu = DayTarget(day: store.window.day(at: min(max(index, 0), store.window.days - 1)),
                                     beside: layout.lines.indices.contains(line) ? layout.lines[line].entries.first?.id : nil,
-                                    point: CGPoint(x: press.startLocation.x, y: press.startLocation.y + Self.headHeight))
+                                    point: press.startLocation)
             }
     }
 
