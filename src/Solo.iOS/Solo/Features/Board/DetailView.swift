@@ -365,22 +365,34 @@ struct DetailView: View {
 
 struct FieldRow<Value: View>: View {
     @Environment(\.theme) private var theme
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// The icon's column grows with the text, or at the largest sizes the two collide.
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth: CGFloat = 22
     var title: String
     var symbol: String
     @ViewBuilder var value: Value
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .foregroundStyle(theme.textSecondary)
-                .frame(width: 22)
-            Text(title)
-                .foregroundStyle(theme.textSecondary)
-            Spacer(minLength: 12)
+        // At accessibility sizes a name and its value no longer share a line.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4)) : AnyLayout(HStackLayout(spacing: 10))
+        layout {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(width: iconWidth)
+                Text(title)
+                    .foregroundStyle(theme.textSecondary)
+            }
+            if !typeSize.isAccessibilitySize {
+                Spacer(minLength: 12)
+            }
             value
+                .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil, alignment: .trailing)
         }
         .font(.subheadline)
         .padding(.horizontal, 12)
+        .padding(.vertical, typeSize.isAccessibilitySize ? 8 : 0)
         .frame(minHeight: 46)
     }
 }

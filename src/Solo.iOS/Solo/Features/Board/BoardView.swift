@@ -597,6 +597,8 @@ struct ColumnSwitcher: View {
             .padding(4)
             .glassEffect(.regular, in: .capsule)
         }
+        // Three names share one line, as a tab bar's do: past this size they would only truncate.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
@@ -615,7 +617,7 @@ private struct ColumnSwitcherSegment: View {
             withAnimation(.snappy) { selection = status }
         } label: {
             HStack(spacing: 5) {
-                Text(status.title).lineLimit(1).minimumScaleFactor(0.8)
+                Text(status.title).lineLimit(1).minimumScaleFactor(0.7)
                 Text("\(count)").monospacedDigit().opacity(0.7)
             }
             .font(.footnote.weight(.semibold))
