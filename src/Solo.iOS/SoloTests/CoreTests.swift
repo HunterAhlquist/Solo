@@ -160,3 +160,90 @@ import UIKit
         #expect(!watch.active)
     }
 }
+
+@Suite struct ThemeContrastTests {
+    private let yellow = CSSColor("#fff600")!
+    private let navy = CSSColor("#102a6b")!
+
+    @Test func aLabelOnAnAccentIsWhicheverOfBlackAndWhiteReads() {
+        #expect(yellow.readable == .black)
+        #expect(navy.readable == .white)
+    }
+
+    /// A switch's knob and a swipe action's icon are white whatever is under them.
+    @Test func aFillTheSystemPutsWhiteOnIsDarkEnoughToCarryIt() {
+        let fill = yellow.carryingWhite
+        #expect(fill.contrast(with: .white) >= 3)
+        // Only as much darker as it has to be, and still the same hue: no blue has crept in.
+        #expect(fill.contrast(with: .white) < 3.2)
+        #expect(fill.blue == 0 && fill.red > fill.blue && abs(fill.red / fill.green - yellow.red / yellow.green) < 0.001)
+        // A colour that already carries white is left alone.
+        #expect(navy.carryingWhite == navy)
+    }
+}
+
+@Suite struct WidgetSummaryTests {
+    private func source(_ serial: String, _ status: String, _ deadline: String? = nil) -> WorkSummary.Source {
+        WorkSummary.Source(id: UUID(), serial: serial, name: serial, status: status, deadline: deadline)
+    }
+
+    @Test func aSummaryCountsColumnsAndListsOpenWorkSoonestFirst() {
+        let summary = WorkSummary(tasks: [
+            source("A-B-3", "Unstarted"), source("A-B-1", "InProgress", "2026-12-01"), source("A-B-2", "Unstarted", "2026-11-20"),
+            source("A-B-4", "Finished", "2026-11-01"), source("A-B-10", "Unstarted"),
+        ])
+        #expect(summary.unstarted == 3 && summary.inProgress == 1 && summary.finished == 1)
+        // Dated before undated, sooner first; undated in serial order, 3 before 10.
+        #expect(summary.open.map(\.serial) == ["A-B-2", "A-B-1", "A-B-3", "A-B-10"])
+        #expect(summary.open.map(\.started) == [false, true, false, false])
+    }
+
+    @Test func aSummaryIsReadFromTheAssignedTasksPayload() throws {
+        let project = UUID(), board = UUID()
+        let json = """
+        {"projects":[{"id":"\(project)","name":"Demo","alias":"DMD"}],
+         "boards":[{"id":"\(board)","projectId":"\(project)","name":"Work","alias":"PW26"}],
+         "labels":[],"members":[],
+         "tasks":[{"id":"\(UUID())","boardId":"\(board)","number":7,"name":"Ship it","status":"InProgress","deadlineAt":"2026-11-15"},
+                  {"id":"\(UUID())","boardId":"\(UUID())","number":8,"name":"Orphan","status":"Unstarted","deadlineAt":null}]}
+        """
+        let summary = try WorkSummary(assignedTasks: Data(json.utf8))
+        // A task whose board isn't in the payload has no serial to open it by, and is left out.
+        #expect(summary.open.map(\.serial) == ["DMD-PW26-7"])
+        #expect(summary.inProgress == 1 && summary.unstarted == 0)
+    }
+
+    @Test func daysLeftCountsWholeDaysInTheDevicesCalendar() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        let today = try #require(calendar.date(from: DateComponents(year: 2026, month: 11, day: 13, hour: 23, minute: 30)))
+        func item(_ deadline: String?) -> WorkSummary.Item {
+            WorkSummary.Item(id: UUID(), serial: "A-B-1", name: "x", started: false, deadline: deadline)
+        }
+        #expect(item("2026-11-13").daysLeft(from: today, calendar: calendar) == 0)
+        #expect(item("2026-11-14").daysLeft(from: today, calendar: calendar) == 1)
+        #expect(item("2026-11-10").daysLeft(from: today, calendar: calendar) == -3)
+        #expect(item(nil).daysLeft(from: today, calendar: calendar) == nil)
+        #expect(item("soon").daysLeft(from: today, calendar: calendar) == nil)
+    }
+
+    @Test func aWidgetLinkNamesAPageAndNothingElse() {
+        #expect(WidgetLink.parse(WidgetLink.yourTasks) == .yourTasks)
+        #expect(WidgetLink.parse(WidgetLink.task("DMD-PW26-7")) == .task("DMD-PW26-7"))
+        #expect(WidgetLink.parse(URL(string: "https://example.com/task/DMD-PW26-7")!) == nil)
+        #expect(WidgetLink.parse(URL(string: "\(WidgetLink.scheme)://task/..%2F..%2Fadmin")!) == nil)
+        #expect(WidgetLink.parse(URL(string: "\(WidgetLink.scheme)://admin")!) == nil)
+    }
+}
+
+@Suite @MainActor struct DocDragTests {
+    @Test func aDraggedNoteCarriesALinkToItself() {
+        let id = UUID()
+        let node = DocNode(id: id, isFolder: false, parentId: nil, name: "Bosses [draft]", version: 1)
+        let link = DocDrag.link(to: node)
+        #expect(link == "[Bosses \\[draft\\]](\(NoteAddress.url(id)))")
+        // Parsed back, it is a link to that note with the name as its text.
+        let spans = LiveMarkdown(link).spans(selection: nil)
+        #expect(spans.contains { $0.kind == .destination(NoteAddress.url(id)) })
+    }
+}

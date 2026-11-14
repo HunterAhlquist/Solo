@@ -86,12 +86,19 @@ struct DesignDocsView: View {
                     if treeShown {
                         tree(store, editable: editable, selected: note?.id)
                             .frame(width: 300)
+                            // The panel's shape cuts what scrolls inside it too: without this a row's
+                            // highlight shows past the rounded corners as it scrolls out.
+                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                             .padding(.leading, 14)
                             .padding(.vertical, 10)
                             .transition(.move(edge: .leading).combined(with: .opacity))
                     }
                     page(store, note, editable: editable)
+                        // The note takes its new width at once while the tree slides. Animated, its
+                        // text is laid out again at every width on the way, and the page jitters
+                        // for as long as that takes.
+                        .animation(nil, value: treeShown)
                 }
             } else if noteId != nil {
                 page(store, note, editable: editable)

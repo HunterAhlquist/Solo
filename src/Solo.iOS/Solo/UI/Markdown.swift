@@ -329,17 +329,28 @@ struct FormatBar<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 4) { content }
-                .labelStyle(.iconOnly)
-                .buttonStyle(FormatButtonStyle())
-                .padding(.horizontal, 10)
+        // As wide as its buttons where there is room for them all — a pill in the middle of the
+        // page, as on an iPad — and the width of the page, scrolling, where there isn't.
+        ViewThatFits(in: .horizontal) {
+            row
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(height: 46)
+                .glassEffect(.regular.interactive(), in: .capsule)
+            ScrollView(.horizontal) { row }
+                .scrollIndicators(.hidden)
+                .frame(height: 46)
+                .glassEffect(.regular.interactive(), in: .capsule)
         }
-        .scrollIndicators(.hidden)
-        .frame(height: 46)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
+    }
+
+    private var row: some View {
+        HStack(spacing: 4) { content }
+            .labelStyle(.iconOnly)
+            .buttonStyle(FormatButtonStyle())
+            .padding(.horizontal, 10)
     }
 }
 

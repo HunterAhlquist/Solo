@@ -38,6 +38,8 @@ Solo/Core         API client and endpoints, models, auth, the live hub, theme, s
 Solo/UI           shared pieces: markdown, images and icons, cards, prompts
 Solo/Features     one folder per area of core: board, dashboard, projects, inbox, account, admin
 Solo/Extensions   the first-party extensions' clients, and the slots they fill
+SoloWidgets       the Home Screen widgets, an extension of the app
+SoloShared        the little the app and its widgets both compile: what they share, and its shape
 SoloTests         unit tests
 ```
 
@@ -47,6 +49,10 @@ SoloTests         unit tests
 - **Live by default.** `HubClient` joins the board, user and extension topics the web client joins; stores apply what arrives. Saves send the row's `version`, and a 409 refreshes and says so.
 - **Offline is read-only.** The last good response to every GET is kept on disk, so the app opens and reads without a connection and shows that it is offline. It does not queue writes; the one exception is a note or sketch that is open, which keeps unsent edits and sends them when the connection returns.
 - **Theme.** The system's materials, backgrounds and type throughout, with Liquid Glass for panels and bars. The instance's theme contributes its primary and secondary colours — as the tint, and as a faint wash behind the page — and nothing else.
+
+- **Widgets.** Three, one of each size, showing what the Capacitor app's show: how much is assigned to you, the same as a small board, and what is due this week. A widget runs in its own process, so the app and the extension share one keychain access group (it needs nothing registered, unlike an app group): the app leaves the instance, a copy of the session and the theme's accent there, and a widget keeps the last summary it drew for when the instance can't be reached. The summary is worked out from `GET api/users/me/tasks`, which every instance serves. A tap opens the app at Your Tasks or at a task, by the app's own URL scheme.
+- **Local network.** The first connection to an instance on the LAN fails while iOS asks whether Solo may use the local network. The app waits for the answer and tries again rather than showing that failure; a refusal has its own screen, with the way to Settings.
+- **Accent as a fill.** The instance's accent is whatever the theme says, and may be a bright yellow. Where the app draws on it, the label is black or white by contrast — set on the label, since a prominent button's style overrides one set on the button. Where the system draws white on it and gives no say (a switch's knob, a swipe action's icon), the fill is the nearest shade of the accent that white reads on.
 
 ### Libraries
 
@@ -90,7 +96,9 @@ Better here:
 - Opens and reads offline from the last loaded data.
 - A task's detail sits beside its board on an iPad instead of over it.
 - On a phone, a board's epics stay lined up across its columns, and a moved card is followed to where it lands.
-- Sketches take Apple Pencil pressure; two fingers move and zoom the page.
+- Sketches take Apple Pencil pressure, and a double-tap on the Pencil swaps pen and eraser; two fingers move and zoom the page.
+- Notes and folders are moved by dragging them about the tree, and a note dragged into a note being written becomes a link to it.
+- Home Screen widgets, and haptics for picking a card up, putting it down and clearing a sketch.
 - The theme is picked up on returning to the app, without a reload.
 
 Not here — use the web client for these:

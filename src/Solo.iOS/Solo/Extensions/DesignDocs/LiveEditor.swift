@@ -287,7 +287,52 @@ final class NoteTextView: UITextView {
         if abs(bounds.width - lastWidth) > 0.5 {
             lastWidth = bounds.width
             onWidthChange?()
+            restoreAnchor()
         }
+    }
+
+    // MARK: Keeping the place
+
+    // A change of width wraps every line differently, so the same scroll offset shows
+    // somewhere else in the note. What the reader was looking at is remembered as the
+    // character at the top of the view, and put back there once the text has been laid out
+    // at the new width.
+
+    /// The character whose line is at the top of what shows, and how far into that line the top is.
+    private var anchor: (character: Int, into: CGFloat)?
+    private var restoring = false
+
+    override var contentOffset: CGPoint {
+        didSet {
+            // Only while the layout is for the width the view has: in between, an offset says
+            // nothing about which line is where.
+            if !restoring, abs(bounds.width - lastWidth) <= 0.5 { noteAnchor() }
+        }
+    }
+
+    private func noteAnchor() {
+        let top = contentOffset.y + adjustedContentInset.top - textContainerInset.top
+        // At the head of the note, where its name is, there is nothing to hold on to: it stays at the top.
+        guard textStorage.length > 0, top > 0 else {
+            anchor = nil
+            return
+        }
+        let character = layoutManager.characterIndex(for: CGPoint(x: 4, y: top), in: textContainer,
+                                                     fractionOfDistanceBetweenInsertionPoints: nil)
+        let line = layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: character), effectiveRange: nil)
+        anchor = (character, max(top - line.minY, 0))
+    }
+
+    private func restoreAnchor() {
+        guard let anchor, anchor.character < textStorage.length else { return }
+        layoutManager.ensureLayout(forCharacterRange: NSRange(location: 0, length: anchor.character + 1))
+        let line = layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: anchor.character), effectiveRange: nil)
+        let lowest = -adjustedContentInset.top
+        let highest = max(lowest, contentSize.height + adjustedContentInset.bottom - bounds.height)
+        let wanted = line.minY + min(anchor.into, line.height) + textContainerInset.top - adjustedContentInset.top
+        restoring = true
+        contentOffset.y = min(max(wanted, lowest), highest)
+        restoring = false
     }
 }
 
