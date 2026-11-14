@@ -85,6 +85,8 @@ final class DocSync {
     /// Bumped whenever someone else's change lands, for whatever is showing the document.
     private(set) var remoteRevision = 0
     private(set) var present: [TopicPresenceEntry] = []
+    /// Each collaborator's colour slot in the project: the colour of their caret, and of the ring round their face.
+    private(set) var colorSlots: [UUID: Int] = [:]
 
     @ObservationIgnored let shared = SharedDoc()
     /// Who else is in the document and where: their carets in a note, their pens on a sketch.
@@ -170,6 +172,7 @@ final class DocSync {
             color = (try? await session.api.docColorSlot(projectId)).map(PresenceColor.css)
             if canWrite { announce() }
         }
+        await loadColorSlots()
         heartbeat = Task { [weak self] in
             // A state lasts thirty seconds unheard; said again every fifteen, it lasts.
             while !Task.isCancelled {
@@ -194,10 +197,19 @@ final class DocSync {
         awareness.setUser(description)
     }
 
+    private func loadColorSlots() async {
+        guard let slots = try? await session.api.docColorSlots(projectId) else { return }
+        colorSlots = Dictionary(slots.compactMap { slot in slot.userId.map { ($0, slot.slot) } }) { first, _ in first }
+    }
+
     private func presenceChanged(_ ids: Set<UUID>) {
         let joined = !ids.subtracting(presentIds).subtracting([session.user.id]).isEmpty
         presentIds = ids
         awareness.keep(userIds: ids)
+        // Someone whose colour isn't known yet has only just been given one.
+        if ids.contains(where: { colorSlots[$0] == nil }) {
+            Task { await loadColorSlots() }
+        }
         // Someone new has heard nothing yet: say it all again.
         if joined, canWrite {
             onPeerJoined?()

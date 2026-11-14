@@ -401,6 +401,11 @@ extension APIClient {
         return claimed.slot
     }
 
+    /// Everyone's colour slot in a project, for outlining who is present in the colour of their caret.
+    func docColorSlots(_ projectId: UUID) async throws -> [ClaimedColor] {
+        try await get("api/ext/design-docs/projects/\(projectId.api)/colors")
+    }
+
     /// A document's stored updates, for showing it without joining its live topic.
     func docState(_ projectId: UUID, _ documentId: UUID) async throws -> DocState {
         try await get("api/ext/design-docs/projects/\(projectId.api)/documents/\(documentId.api)")
@@ -452,5 +457,6 @@ enum DocLinks {
 
 /// The colour slot the instance gave this person in a project.
 nonisolated struct ClaimedColor: Decodable, Sendable {
+    var userId: UUID?
     var slot: Int
 }

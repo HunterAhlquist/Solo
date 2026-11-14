@@ -188,7 +188,7 @@ struct NoteView: View {
                     ProgressView().controlSize(.mini)
                 }
                 Spacer(minLength: 0)
-                if let sync { NotePresence(entries: sync.present) }
+                if let sync { NotePresence(entries: sync.present, slots: sync.colorSlots) }
             }
             .font(.caption)
             .foregroundStyle(theme.textSecondary)
@@ -304,22 +304,33 @@ struct NoteView: View {
 }
 
 /// Who else has the note open; a ring marks someone typing in it.
-private struct NotePresence: View {
+struct NotePresence: View {
     @Environment(\.theme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     var entries: [TopicPresenceEntry]
+    /// Each person's colour slot, where it is known.
+    var slots: [UUID: Int] = [:]
 
     var body: some View {
         if !entries.isEmpty {
-            HStack(spacing: -6) {
+            HStack(spacing: 4) {
                 ForEach(entries.prefix(4), id: \.userId) { entry in
+                    // Ringed in the colour their caret and their pen are drawn in, as on the web:
+                    // the ring is what says whose a cursor is.
                     UserAvatar(userId: entry.userId, name: entry.displayName, hasPicture: true, size: 22)
-                        .overlay(Circle().strokeBorder(entry.mode == .editing ? theme.warning : .clear, lineWidth: 2))
+                        .padding(2.5)
+                        .overlay(Circle().strokeBorder(ring(entry.userId), lineWidth: 2.5))
                 }
             }
             .accessibilityElement()
             .accessibilityLabel("\(entries.count) other \(entries.count == 1 ? "person" : "people") here: "
                 + entries.map { ($0.displayName ?? "Someone") + ($0.mode == .editing ? ", editing" : "") }.joined(separator: "; "))
         }
+    }
+
+    private func ring(_ userId: UUID) -> Color {
+        guard let slot = slots[userId] else { return theme.textSecondary }
+        return Color(uiColor: PresenceColor.color(PresenceColor.css(slot: slot), dark: colorScheme == .dark))
     }
 }
 

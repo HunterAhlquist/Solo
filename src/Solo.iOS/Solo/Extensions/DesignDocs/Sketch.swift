@@ -276,7 +276,10 @@ nonisolated struct SketchRaster: Sendable {
         }
     }
 
-    mutating func paint(_ stroke: SketchOp) {
+    /// `frame` picks which of the line's three wobbles is drawn: every sample is nudged by a
+    /// pixel one way or another, differently in each, and showing them in turn is what makes a
+    /// line shiver in the editor.
+    mutating func paint(_ stroke: SketchOp, frame: Int = 0) {
         guard let points = stroke.points else { return }
         let ink: UInt8 = stroke.tool == "eraser" ? 0 : (SketchInk(rawValue: stroke.ink ?? "theme")?.index ?? 1)
         let seed = stroke.seed ?? 0
@@ -294,7 +297,7 @@ nonisolated struct SketchRaster: Sendable {
                 budget -= 1
                 let t = Double(n) / Double(steps)
                 let x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t, pressure = a[2] + (b[2] - a[2]) * t
-                let (jx, jy) = Self.jitter(seed: seed, index: index)
+                let (jx, jy) = Self.jitter(seed: seed, index: index, frame: frame)
                 index += 1
                 let size = Self.pressureWidth(level: level, pressure: pressure, pointerType: stroke.pointerType)
                 let target = (x + Double(jx), y + Double(jy))
@@ -343,11 +346,15 @@ nonisolated struct SketchRaster: Sendable {
                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
 
-    @concurrent static func render(_ strokes: [SketchOp], page: SketchPage) async -> SketchRaster {
+    @concurrent static func render(_ strokes: [SketchOp], page: SketchPage, frame: Int = 0) async -> SketchRaster {
         var raster = SketchRaster(page: page)
-        strokes.forEach { raster.paint($0) }
+        strokes.forEach { raster.paint($0, frame: frame) }
         return raster
     }
+
+    /// How many wobbles a line has, and how long each is shown: the web editor's "boil".
+    static let boilFrames = 3
+    static let boilInterval: Duration = .milliseconds(250)
 }
 
 /// A sketch, kept live: its strokes, the page drawn from them, and drawing on it.
@@ -362,7 +369,15 @@ final class SketchModel: Identifiable {
     @ObservationIgnored private let session: Session
     @ObservationIgnored private let projectId: UUID
     @ObservationIgnored private let vaultId: UUID
-    @ObservationIgnored private var committed: SketchRaster
+    /// The page as drawn so far: once, or once per wobble of the line when it is shown shivering.
+    @ObservationIgnored private var frames: [SketchRaster]
+    @ObservationIgnored private var frame = 0
+    /// Whether lines shiver, as they do in the web editor. Off for Reduce Motion.
+    @ObservationIgnored var boils = false {
+        didSet {
+            if boils != oldValue { rebuild() }
+        }
+    }
     @ObservationIgnored private let history: SketchHistory
     /// How many steps there are to take back and to put back. The history itself only says
     /// whether an undo did anything, so the count is kept alongside it.
@@ -397,7 +412,7 @@ final class SketchModel: Identifiable {
         self.sketch = sketch
         let page = SketchPage(sketch)
         self.page = page
-        committed = SketchRaster(page: page)
+        frames = [SketchRaster(page: page)]
         sync = DocSync(session: session, projectId: projectId, documentId: sketch.id, mayWrite: mayWrite)
         history = sync.shared.sketchHistory()
         watchPresence()
@@ -422,10 +437,18 @@ final class SketchModel: Identifiable {
             self.page = page
         }
         renderTask?.cancel()
+        let count = boils ? SketchRaster.boilFrames : 1
         renderTask = Task { [weak self] in
-            let raster = await SketchRaster.render(strokes, page: page)
-            guard !Task.isCancelled, let self else { return }
-            self.committed = raster
+            let rasters = await withTaskGroup(of: (Int, SketchRaster).self) { group in
+                for number in 0..<count {
+                    group.addTask { (number, await SketchRaster.render(strokes, page: page, frame: number)) }
+                }
+                var rendered: [Int: SketchRaster] = [:]
+                for await (number, raster) in group { rendered[number] = raster }
+                return (0..<count).compactMap { rendered[$0] }
+            }
+            guard !Task.isCancelled, let self, rasters.count == count else { return }
+            self.frames = rasters
             self.strokeCount = strokes.count
             self.drawn = Set(strokes.map(\.id))
             self.lingering.removeAll { self.drawn.contains($0.id) }
@@ -437,13 +460,21 @@ final class SketchModel: Identifiable {
     /// the one in hand here, and the ones other people are in the middle of.
     private func compose() {
         let floating = ([held] + othersStrokes + lingering).compactMap { $0 }
+        let number = frame % frames.count
         guard !floating.isEmpty else {
-            image = committed.image(page: page, paper: colors.paper, themeInk: colors.ink)
+            image = frames[number].image(page: page, paper: colors.paper, themeInk: colors.ink)
             return
         }
-        var raster = committed
-        floating.forEach { raster.paint($0) }
+        var raster = frames[number]
+        floating.forEach { raster.paint($0, frame: number) }
         image = raster.image(page: page, paper: colors.paper, themeInk: colors.ink)
+    }
+
+    /// Shows the line's next wobble. Called on a timer while the editor is open.
+    func boil() {
+        guard frames.count > 1, strokeCount > 0 || held != nil || !othersStrokes.isEmpty else { return }
+        frame = (frame + 1) % frames.count
+        compose()
     }
 
     /// The stroke in hand, drawn over a copy of the page; nothing is saved until it is lifted.
@@ -462,7 +493,7 @@ final class SketchModel: Identifiable {
 
     func commit(_ stroke: SketchOp) {
         held = nil
-        committed.paint(stroke)
+        for number in frames.indices { frames[number].paint(stroke, frame: number) }
         compose()
         sync.shared.appendSketchOp(stroke)
         strokeCount += 1
@@ -753,9 +784,13 @@ struct SketchEditor: View {
                         Button("Done") { dismiss() }
                     }
                     ToolbarItem(placement: .principal) {
-                        VStack(spacing: 0) {
-                            Text(model.sketch.name).font(.headline).lineLimit(1)
-                            Text(model.sync.statusText).font(.caption2).foregroundStyle(theme.textSecondary)
+                        HStack(spacing: 10) {
+                            VStack(spacing: 0) {
+                                Text(model.sketch.name).font(.headline).lineLimit(1)
+                                Text(model.sync.statusText).font(.caption2).foregroundStyle(theme.textSecondary)
+                            }
+                            // Who else is drawing, each ringed in the colour of their pen.
+                            NotePresence(entries: model.sync.present, slots: model.sync.colorSlots)
                         }
                     }
                     if model.sync.canWrite {
@@ -796,6 +831,14 @@ struct SketchEditor: View {
         }
         .task(id: model.sync.canWrite) {
             if model.sync.canWrite { await model.prepareEffects() }
+        }
+        .task(id: reduceMotion) {
+            // Lines shiver here as they do in the web editor: three wobbles of the same line, in turn.
+            model.boils = !reduceMotion
+            while !Task.isCancelled, !reduceMotion {
+                try? await Task.sleep(for: SketchRaster.boilInterval)
+                model.boil()
+            }
         }
         .task {
             model.colors = .of(colorScheme)

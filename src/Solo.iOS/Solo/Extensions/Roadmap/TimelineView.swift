@@ -84,6 +84,11 @@ struct TimelineView: View {
                     .offset(y: Self.headHeight)
                     .onTapGesture { store.selected = [] }
                     .gesture(emptyPress(layout: layout))
+                    // With a pointer, the secondary button asks for the same thing a press and hold does.
+                    .gesture(SecondaryClick { point in
+                        guard store.canWrite else { return }
+                        showDayMenu(at: point, layout: layout)
+                    })
 
                 rowIndicator(layout: layout, width: width)
 
@@ -450,14 +455,19 @@ struct TimelineView: View {
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onEnded { value in
                 guard store.canWrite, case .second(true, let press?) = value else { return }
-                // The pressed place is measured from the top of the grid, head included: an offset
-                // moves what is drawn, not where a gesture on it counts from.
-                let index = Int(press.startLocation.x / Self.dayWidth)
-                let line = Int((press.startLocation.y - Self.headHeight) / Self.rowHeight)
-                dayMenu = DayTarget(day: store.window.day(at: min(max(index, 0), store.window.days - 1)),
-                                    beside: layout.lines.indices.contains(line) ? layout.lines[line].entries.first?.id : nil,
-                                    point: press.startLocation)
+                showDayMenu(at: press.startLocation, layout: layout)
             }
+    }
+
+    /// Offers to add something on the day at a place in the grid.
+    private func showDayMenu(at point: CGPoint, layout: TimelineLayout) {
+        // The place is measured from the top of the grid, head included: an offset moves what is
+        // drawn, not where a gesture on it counts from.
+        let index = Int(point.x / Self.dayWidth)
+        let line = Int((point.y - Self.headHeight) / Self.rowHeight)
+        dayMenu = DayTarget(day: store.window.day(at: min(max(index, 0), store.window.days - 1)),
+                            beside: layout.lines.indices.contains(line) ? layout.lines[line].entries.first?.id : nil,
+                            point: point)
     }
 
     private var dayMenuAnchor: CGRect {
@@ -628,5 +638,21 @@ private struct RoadmapBar: View {
         .phaseAnimator(missed ? [1.0, 0.6] : [1.0]) { view, phase in
             view.opacity(phase)
         } animation: { _ in .easeInOut(duration: 0.9) }
+    }
+}
+
+/// A click of a pointer's secondary button — a right click on a trackpad or a mouse — and where it was.
+private struct SecondaryClick: UIGestureRecognizerRepresentable {
+    var action: (CGPoint) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UITapGestureRecognizer {
+        let recognizer = UITapGestureRecognizer()
+        recognizer.buttonMaskRequired = .secondary
+        recognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UITapGestureRecognizer, context: Context) {
+        if recognizer.state == .ended { action(context.converter.localLocation) }
     }
 }
