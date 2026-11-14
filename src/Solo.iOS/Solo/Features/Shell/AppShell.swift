@@ -68,10 +68,19 @@ struct RouteView: View {
     }
 }
 
-/// One section's navigation stack.
+/// A navigation stack that shows one of the navigator's sections.
+///
+/// A phone has one of these per tab, each showing its own section for good.
+/// An iPad has one, in the detail column, and which section it shows changes
+/// with the sidebar — it is one stack and not one per section because the
+/// column has a single navigation controller underneath whatever SwiftUI puts
+/// in it: a second stack handed a path while the first still had pages pushed
+/// inherits those pages, loses one of its own, and reports that as the reader
+/// having gone back.
 private struct SectionStack: View {
     @Environment(Navigator.self) private var navigator
     @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The section wanted. The one showing follows it — see `show`.
     var tab: AppTab
 
     /// The stack's own path, mirrored to and from the navigator. It is state
@@ -81,27 +90,69 @@ private struct SectionStack: View {
     @State private var path = NavigationPath()
     /// What `path` currently holds, since a NavigationPath can't be read back.
     @State private var shown: [Route] = []
+    /// The section whose root is at the bottom of the stack.
+    @State private var root: AppTab?
+    /// True while the stack is being taken somewhere else, when its count says nothing about the reader.
+    @State private var settling = false
+
+    private struct Target: Equatable {
+        var tab: AppTab
+        var routes: [Route]
+    }
 
     var body: some View {
+        let root = root ?? tab
         NavigationStack(path: $path) {
-            TabRoot(tab: tab)
+            TabRoot(tab: root)
+                .id(root)
                 // Beside a sidebar a large title is a blank band above the page; the bar carries it
                 // instead. On a phone the title stays large but shares its row with the bar's buttons,
                 // which gives the page a row back.
                 .toolbarTitleDisplayMode(sizeClass == .regular ? .inline : .inlineLarge)
-                .navigationDestination(for: Route.self) { RouteView(route: $0) }
+                // Each route is its own page: a board is not the last board shown something new.
+                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0) }
         }
-        .onChange(of: navigator[tab], initial: true) { _, routes in
-            guard routes != shown else { return }
-            shown = routes
-            path = NavigationPath(routes)
+        .onChange(of: Target(tab: tab, routes: navigator[tab]), initial: true) { _, target in
+            show(target)
         }
         .onChange(of: path.count) { _, count in
             // Every push goes through the navigator, so the only change that
             // starts here is a pop: Back, or the swipe.
-            guard count < shown.count else { return }
+            guard !settling, count < shown.count else { return }
             shown = Array(shown.prefix(count))
-            navigator[tab] = shown
+            navigator[root] = shown
+        }
+    }
+
+    private func show(_ target: Target) {
+        let root = root ?? tab
+        guard target.tab != root || target.routes != shown else { return }
+        // Further along the way already shown, or back along it: the stack does that itself, and animates it.
+        if target.tab == root, target.routes.starts(with: shown) || shown.starts(with: target.routes) {
+            shown = target.routes
+            path = NavigationPath(target.routes)
+            return
+        }
+        // Somewhere else altogether — another section, or another project's board from the
+        // sidebar. Back to the root first, then the new root and its pages on the next turn:
+        // the stack gets from nothing to anywhere cleanly, and from one place to another it doesn't.
+        settling = true
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            shown = []
+            path = NavigationPath()
+            self.root = target.tab
+        }
+        DispatchQueue.main.async {
+            // Wherever the navigator points by now, which may not be where it pointed a moment ago.
+            let routes = navigator[tab]
+            withTransaction(quiet) {
+                self.root = tab
+                shown = routes
+                path = NavigationPath(routes)
+            }
+            DispatchQueue.main.async { settling = false }
         }
     }
 }
@@ -171,7 +222,6 @@ private struct SplitShell: View {
                 .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
         } detail: {
             SectionStack(tab: navigator.tab)
-                .id(navigator.tab)
         }
         .navigationSplitViewStyle(.balanced)
         // Over the whole split view rather than the detail column: the panel stands above the
@@ -462,3 +512,4 @@ extension EnvironmentValues {
     /// True for sidebar rows outside the list — the footer — which have to draw their own selection.
     @Entry var sidebarRowStandsAlone = false
 }
+
