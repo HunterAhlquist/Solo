@@ -184,6 +184,81 @@ import Testing
     }
 }
 
+@Suite struct SketchHistoryTests {
+    private func stroke(_ id: String) -> SketchOp {
+        SketchOp(id: id, tool: "pen", ink: "blue", level: 1, seed: 1, pointerType: "pen", points: [[1, 2, 0.5]])
+    }
+
+    private func ids(_ doc: SharedDoc) -> [String] { doc.sketchStrokes().map(\.id) }
+
+    @Test func aStrokeIsTakenBackAndPutBackOneAtATime() {
+        let doc = SharedDoc()
+        let history = doc.sketchHistory()
+        for id in ["a", "b", "c"] {
+            doc.appendSketchOp(stroke(id))
+            history.closeStep()
+        }
+        #expect(history.undo())
+        #expect(ids(doc) == ["a", "b"])
+        #expect(history.undo())
+        #expect(ids(doc) == ["a"])
+        #expect(history.redo())
+        #expect(ids(doc) == ["a", "b"])
+        #expect(history.redo())
+        #expect(ids(doc) == ["a", "b", "c"])
+        // Nothing left to put back.
+        #expect(!history.redo())
+    }
+
+    @Test func aClearedPageComesBackWhole() {
+        let doc = SharedDoc()
+        let history = doc.sketchHistory()
+        for id in ["a", "b"] {
+            doc.appendSketchOp(stroke(id))
+            history.closeStep()
+        }
+        doc.clearSketch()
+        history.closeStep()
+        #expect(ids(doc).isEmpty)
+        #expect(history.undo())
+        #expect(ids(doc) == ["a", "b"])
+        #expect(history.redo())
+        #expect(ids(doc).isEmpty)
+    }
+
+    /// Undo is for what was done here: a stroke that arrived from someone else stays.
+    @Test func someoneElsesStrokeIsNotUndone() {
+        let theirs = SharedDoc()
+        theirs.appendSketchOp(stroke("theirs"))
+
+        let doc = SharedDoc()
+        let history = doc.sketchHistory()
+        doc.appendSketchOp(stroke("mine"))
+        history.closeStep()
+        doc.apply([theirs.fullState()])
+        #expect(Set(ids(doc)) == ["mine", "theirs"])
+
+        #expect(history.undo())
+        #expect(ids(doc) == ["theirs"])
+        #expect(!history.undo())
+        #expect(ids(doc) == ["theirs"])
+    }
+
+    /// What is undone here reaches everyone else as an ordinary update.
+    @Test func anUndoTravels() {
+        let doc = SharedDoc(), other = SharedDoc()
+        let history = doc.sketchHistory()
+        doc.appendSketchOp(stroke("a"))
+        history.closeStep()
+        other.apply([doc.fullState()])
+        #expect(ids(other) == ["a"])
+        let before = other.stateVector()
+        #expect(history.undo())
+        other.apply([doc.update(since: before)])
+        #expect(ids(other).isEmpty)
+    }
+}
+
 @Suite struct SketchTests {
     /// Values from the web editor's own `jitter` and `pressureWidth`: a
     /// sketch has to rasterize to the same pixels on every client.
@@ -275,8 +350,10 @@ import Testing
         first.appendSketchOp(stroke)
         second.apply([first.fullState()])
         #expect(second.sketchStrokes() == [stroke])
-        #expect(second.removeSketchOp(id: "one"))
+        second.clearSketch()
         #expect(second.sketchStrokes().isEmpty)
-        #expect(!second.removeSketchOp(id: "one"))
+        // And the clearing travels back.
+        first.apply([second.fullState()])
+        #expect(first.sketchStrokes().isEmpty)
     }
 }

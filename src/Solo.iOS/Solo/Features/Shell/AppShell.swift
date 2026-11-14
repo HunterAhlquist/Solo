@@ -141,17 +141,17 @@ private struct TabShell: View {
         @Bindable var navigator = navigator
         TabView(selection: $navigator.tab) {
             Tab(AppTab.work.title, systemImage: AppTab.work.symbol, value: AppTab.work) {
-                SectionStack(tab: .work)
+                SectionStack(tab: .work).animatesTabChanges()
             }
             Tab(AppTab.projects.title, systemImage: AppTab.projects.symbol, value: AppTab.projects) {
-                SectionStack(tab: .projects)
+                SectionStack(tab: .projects).animatesTabChanges()
             }
             Tab(AppTab.inbox.title, systemImage: AppTab.inbox.symbol, value: AppTab.inbox) {
-                SectionStack(tab: .inbox)
+                SectionStack(tab: .inbox).animatesTabChanges()
             }
             .badge(session.notifications.unreadCount)
             Tab(AppTab.account.title, systemImage: AppTab.account.symbol, value: AppTab.account) {
-                SectionStack(tab: .account)
+                SectionStack(tab: .account).animatesTabChanges()
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)

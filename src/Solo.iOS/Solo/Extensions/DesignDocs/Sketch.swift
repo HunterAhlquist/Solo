@@ -1,3 +1,5 @@
+import AVFoundation
+import ImageIO
 import SwiftUI
 import YSwift
 
@@ -129,28 +131,61 @@ nonisolated extension SharedDoc {
 
     func setSketchMeta(_ values: [String: String]) {
         let map: YMap<LooseString> = document.getOrCreateMap(named: "meta")
-        document.transactSync { transaction in
+        document.transactSync(origin: Self.localOrigin) { transaction in
             for (key, value) in values {
                 map.updateValue(LooseString(value), forKey: key, transaction: transaction)
             }
         }
     }
 
+    /// What a change made here is marked with, so the sketch's undo history can tell this
+    /// person's changes from everyone else's. YSwift keeps its initialisers to itself, but an
+    /// origin is Codable, which is a way in.
+    static let localOrigin: Origin? = try? JSONDecoder().decode(Origin.self, from: Data(#"{"origin":[115,111,108,111]}"#.utf8))
+
     func appendSketchOp(_ op: SketchOp) {
         let ops: YArray<SketchOp> = document.getOrCreateArray(named: "ops")
-        document.transactSync { ops.append(op, transaction: $0) }
+        document.transactSync(origin: Self.localOrigin) { ops.append(op, transaction: $0) }
     }
 
-    /// Takes back the newest stroke with this id, if it is still the last one drawn.
-    func removeSketchOp(id: String) -> Bool {
+    /// Takes everything off the page: the ink, and the text boxes the web editor adds — which
+    /// this app cannot draw, but can remove, and which Undo brings back with the rest.
+    func clearSketch() {
         let ops: YArray<SketchOp> = document.getOrCreateArray(named: "ops")
-        return document.transactSync { transaction in
-            let all = ops.toArray(transaction: transaction)
-            guard let index = all.lastIndex(where: { $0.id == id }) else { return false }
-            ops.remove(at: index, transaction: transaction)
-            return true
+        let texts: YMap<LooseString> = document.getOrCreateMap(named: "texts")
+        document.transactSync(origin: Self.localOrigin) { transaction in
+            let count = Int(ops.length(transaction: transaction))
+            if count > 0 { ops.removeRange(start: 0, length: count, transaction: transaction) }
+            texts.removeAll(transaction: transaction)
         }
     }
+
+    /// The history of what this person does to the sketch, for Undo and Redo.
+    func sketchHistory() -> SketchHistory {
+        let ops: YArray<SketchOp> = document.getOrCreateArray(named: "ops")
+        let cuts: YMap<SketchCut> = document.getOrCreateMap(named: "cuts")
+        let texts: YMap<LooseString> = document.getOrCreateMap(named: "texts")
+        let meta: YMap<LooseString> = document.getOrCreateMap(named: "meta")
+        return SketchHistory(manager: document.undoManager(trackedRefs: [ops, texts, meta, cuts]))
+    }
+}
+
+/// Undo and Redo for a sketch: Yjs's own undo manager over the same parts of the document the
+/// web editor's watches, so the two take back the same things — a stroke, a cleared page, a
+/// change of paper — and never anything somebody else did.
+nonisolated final class SketchHistory: @unchecked Sendable {
+    private let manager: YUndoManager<NSObject>
+
+    init(manager: YUndoManager<NSObject>) {
+        self.manager = manager
+        if let origin = SharedDoc.localOrigin { manager.addOrigin(origin) }
+    }
+
+    /// Ends the step being recorded, so the next change is undone on its own rather than with this one.
+    func closeStep() { manager.wrap() }
+
+    func undo() -> Bool { (try? manager.undo()) ?? false }
+    func redo() -> Bool { (try? manager.redo()) ?? false }
 }
 
 nonisolated enum SketchInk: String, CaseIterable, Identifiable, Sendable {
@@ -328,8 +363,17 @@ final class SketchModel: Identifiable {
     @ObservationIgnored private let projectId: UUID
     @ObservationIgnored private let vaultId: UUID
     @ObservationIgnored private var committed: SketchRaster
-    @ObservationIgnored private var mine: [String] = []
+    @ObservationIgnored private let history: SketchHistory
+    /// How many steps there are to take back and to put back. The history itself only says
+    /// whether an undo did anything, so the count is kept alongside it.
+    private var undoDepth = 0
+    private var redoDepth = 0
     @ObservationIgnored private var renderTask: Task<Void, Never>?
+    /// The page being cleared: nothing is drawn until it has gone.
+    private(set) var clearing = false
+    /// The explosion that takes a cleared page with it, while it plays.
+    private(set) var blast: SketchBlast?
+    @ObservationIgnored private var effect: SketchBlast.Effect?
     /// The page and its default ink follow the appearance, as they follow the theme on the web.
     @ObservationIgnored var colors = SketchColors.light {
         didSet {
@@ -346,9 +390,19 @@ final class SketchModel: Identifiable {
         self.page = page
         committed = SketchRaster(page: page)
         sync = DocSync(session: session, projectId: projectId, documentId: sketch.id, mayWrite: mayWrite)
+        history = sync.shared.sketchHistory()
     }
 
-    var canUndo: Bool { !mine.isEmpty }
+    var canUndo: Bool { undoDepth > 0 && !clearing }
+    var canRedo: Bool { redoDepth > 0 && !clearing }
+
+    /// A change was made here: it is a step of its own, and there is nothing left to redo.
+    private func recorded() {
+        history.closeStep()
+        undoDepth += 1
+        redoDepth = 0
+        sync.changedLocally()
+    }
 
     /// Replays the whole history. Run when the document changes underneath: at load, and when someone else draws.
     func rebuild() {
@@ -383,14 +437,76 @@ final class SketchModel: Identifiable {
         committed.paint(stroke)
         image = committed.image(page: page, paper: colors.paper, themeInk: colors.ink)
         sync.shared.appendSketchOp(stroke)
-        mine.append(stroke.id)
         strokeCount += 1
-        sync.changedLocally()
+        recorded()
     }
 
     func undo() {
-        guard let id = mine.popLast(), sync.shared.removeSketchOp(id: id) else { return }
+        guard canUndo else { return }
+        guard history.undo() else {
+            undoDepth = 0
+            return
+        }
+        undoDepth -= 1
+        redoDepth += 1
         sync.changedLocally()
+        rebuild()
+    }
+
+    func redo() {
+        guard canRedo else { return }
+        guard history.redo() else {
+            redoDepth = 0
+            return
+        }
+        redoDepth -= 1
+        undoDepth += 1
+        sync.changedLocally()
+        rebuild()
+    }
+
+    // MARK: Clearing the page
+
+    /// Fetches the explosion and its sound from the instance, where the extension keeps them,
+    /// so that clearing doesn't have to wait for them. Without them a page still clears.
+    func prepareEffects() async {
+        guard effect == nil else { return }
+        let content = "api/extensions/design-docs/content/"
+        async let picture = try? session.api.bytes(content + "explosion.gif").0
+        async let sound = try? session.api.bytes(content + "explosion.wav").0
+        effect = await SketchBlast.Effect(gif: picture, sound: sound)
+    }
+
+    /// Clears the page the way the web editor does: with a bang, the ink going at the height
+    /// of it. One step of the history, so Undo brings everything back.
+    func clearPage(reduceMotion: Bool) {
+        guard sync.canWrite, !clearing else { return }
+        clearing = true
+        effect?.playSound()
+        let frames = effect?.frames ?? []
+        Task {
+            // With Reduce Motion, or with no picture to show, the page is simply cleared.
+            if reduceMotion || frames.isEmpty {
+                erase()
+                try? await Task.sleep(for: .milliseconds(100))
+            } else {
+                let duration = effect?.duration ?? 1.19
+                blast = SketchBlast(frames: frames, duration: duration)
+                try? await Task.sleep(for: .seconds(duration / 2))
+                erase()
+                try? await Task.sleep(for: .seconds(duration / 2))
+                blast = nil
+            }
+            clearing = false
+        }
+    }
+
+    private func erase() {
+        guard sync.canWrite else { return }
+        // A step of its own at both ends: not folded into the stroke before it.
+        history.closeStep()
+        sync.shared.clearSketch()
+        recorded()
         rebuild()
     }
 
@@ -401,7 +517,7 @@ final class SketchModel: Identifiable {
         guard sync.canWrite else { return }
         let wanted = ["pageSize": size ?? page.size, "orientation": orientation ?? page.orientation, "pattern": pattern ?? page.pattern]
         sync.shared.setSketchMeta(wanted)
-        sync.changedLocally()
+        recorded()
         rebuild()
         Task {
             await session.perform {
@@ -410,6 +526,48 @@ final class SketchModel: Identifiable {
                 _ = try await session.api.changeDocSketch(projectId, vaultId, current, pageSize: wanted["pageSize"]!,
                                                          orientation: wanted["orientation"]!, pattern: wanted["pattern"]!)
             }
+        }
+    }
+}
+
+/// One playing of the explosion over the page.
+struct SketchBlast: Equatable {
+    var token = UUID()
+    var frames: [UIImage]
+    var duration: TimeInterval
+
+    static func == (a: SketchBlast, b: SketchBlast) -> Bool { a.token == b.token }
+
+    /// The explosion's frames and its sound, as fetched.
+    final class Effect {
+        let frames: [UIImage]
+        let duration: TimeInterval
+        private let player: AVAudioPlayer?
+
+        init(gif: Data?, sound: Data?) {
+            var frames: [UIImage] = []
+            var duration: TimeInterval = 0
+            if let gif, let source = CGImageSourceCreateWithData(gif as CFData, nil) {
+                for index in 0..<CGImageSourceGetCount(source) {
+                    guard let image = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+                    frames.append(UIImage(cgImage: image))
+                    let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+                    let timing = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+                    let delay = (timing?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
+                        ?? (timing?[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1
+                    // Browsers play a frame that asks for no time at all for a tenth of a second.
+                    duration += delay < 0.011 ? 0.1 : delay
+                }
+            }
+            self.frames = frames
+            self.duration = duration
+            player = sound.flatMap { try? AVAudioPlayer(data: $0) }
+            player?.prepareToPlay()
+        }
+
+        func playSound() {
+            player?.currentTime = 0
+            player?.play()
         }
     }
 }
@@ -448,14 +606,16 @@ struct SketchEditor: View {
     @Environment(\.colorScheme) private var colorScheme
     var model: SketchModel
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tool = "pen"
     @State private var ink: SketchInk = .theme
     @State private var level = 1
+    @State private var confirmingClear = false
 
     var body: some View {
         NavigationStack {
-            SketchCanvas(model: model, image: model.image, page: model.page, canDraw: model.sync.canWrite, tool: tool, ink: ink,
-                         level: level)
+            SketchCanvas(model: model, image: model.image, page: model.page, canDraw: model.sync.canWrite && !model.clearing,
+                         tool: tool, ink: ink, level: level, blast: model.blast)
                 .ignoresSafeArea(edges: .bottom)
                 .themedBackground()
                 .navigationBarTitleDisplayMode(.inline)
@@ -483,9 +643,14 @@ struct SketchEditor: View {
                                     Label("Portrait", systemImage: "rectangle.portrait").tag("portrait")
                                     Label("Landscape", systemImage: "rectangle").tag("landscape")
                                 }
+                                Divider()
+                                Button("Clear Sketch…", systemImage: "trash", role: .destructive) { confirmingClear = true }
+                                    .disabled(model.clearing)
                             }
                             Button("Undo", systemImage: "arrow.uturn.backward") { model.undo() }
                                 .disabled(!model.canUndo)
+                            Button("Redo", systemImage: "arrow.uturn.forward") { model.redo() }
+                                .disabled(!model.canRedo)
                         }
                     }
                 }
@@ -494,6 +659,14 @@ struct SketchEditor: View {
                         tools
                     }
                 }
+        }
+        .confirmationDialog("Clear this sketch?", isPresented: $confirmingClear, titleVisibility: .visible) {
+            Button("Clear Sketch", role: .destructive) { model.clearPage(reduceMotion: reduceMotion) }
+        } message: {
+            Text("Undo can restore it.")
+        }
+        .task(id: model.sync.canWrite) {
+            if model.sync.canWrite { await model.prepareEffects() }
         }
         .task {
             model.colors = .of(colorScheme)
@@ -562,6 +735,7 @@ struct SketchCanvas: UIViewRepresentable {
     var tool: String
     var ink: SketchInk
     var level: Int
+    var blast: SketchBlast?
 
     func makeUIView(context: Context) -> SketchScrollView {
         let view = SketchScrollView(page: CGSize(width: page.width, height: page.height))
@@ -577,6 +751,7 @@ struct SketchCanvas: UIViewRepresentable {
         page.tool = tool
         page.ink = ink
         page.level = level
+        page.play(blast)
     }
 }
 
@@ -651,6 +826,29 @@ final class SketchPageView: UIView {
 
     private var active: SketchOp?
     private weak var drawing: UITouch?
+    private var blastView: UIImageView?
+    private var playing: UUID?
+
+    /// Plays the explosion over the page — stretched to it, as on the web, and so zoomed and
+    /// moved with it — or takes it away once it is over.
+    func play(_ blast: SketchBlast?) {
+        guard blast?.token != playing else { return }
+        playing = blast?.token
+        blastView?.removeFromSuperview()
+        blastView = nil
+        guard let blast else { return }
+        abandon()
+        let view = UIImageView(frame: bounds)
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.contentMode = .scaleToFill
+        view.layer.magnificationFilter = .nearest
+        view.animationImages = blast.frames
+        view.animationDuration = blast.duration
+        view.animationRepeatCount = 1
+        addSubview(view)
+        view.startAnimating()
+        blastView = view
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
