@@ -206,6 +206,102 @@ public class KitTests : ComponentTestBase
     }
 
     [Fact]
+    public void A_text_field_is_core_s_field_and_what_is_written_reaches_the_extension()
+    {
+        OnTheWeb();
+        string? heard = null;
+        var field = Render<SoloTextField>(parameters => parameters
+            .Add(f => f.Label, "Sprint name")
+            .Add(f => f.Value, "Sprint 4")
+            .Add(f => f.Placeholder, "Sprint 5")
+            .Add(f => f.ValueChanged, value => heard = value));
+
+        var input = field.Find(".mud-input-control.solo-kit-field input");
+        Assert.Equal("Sprint 4", input.GetAttribute("value"));
+        Assert.Equal("Sprint 5", input.GetAttribute("placeholder"));
+        Assert.Contains("Sprint name", field.Markup);
+        Assert.NotEmpty(field.FindAll(".mud-input-outlined"));
+
+        // Heard as it is written, once the writing pauses: not on every key.
+        input.Input("Sprint 5");
+        Assert.Null(heard);
+        field.WaitForAssertion(() => Assert.Equal("Sprint 5", heard), TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void A_text_field_for_several_lines_is_a_text_area()
+    {
+        OnTheWeb();
+        var field = Render<SoloTextField>(parameters => parameters.Add(f => f.Label, "Notes").Add(f => f.Multiline, true));
+
+        Assert.NotEmpty(field.FindAll("textarea"));
+    }
+
+    private static readonly IReadOnlyList<SoloOption> Sizes = [new("s", "Small"), new("m", "Medium"), new("l", "Large")];
+
+    [Fact]
+    public void A_picker_shows_the_label_of_what_is_picked_and_not_its_value()
+    {
+        OnTheWeb();
+        var picker = Render<SoloPicker>(parameters => parameters
+            .Add(p => p.Label, "Size")
+            .Add(p => p.Options, Sizes)
+            .Add(p => p.Value, "m"));
+
+        Assert.Contains("Size", picker.Markup);
+        Assert.Contains("Medium", picker.Markup);
+        Assert.NotEmpty(picker.FindAll(".mud-select.solo-kit-picker"));
+    }
+
+    [Fact]
+    public async Task A_picker_hands_back_only_what_it_offered()
+    {
+        var heard = new List<string>();
+        var picker = Render<SoloPicker>(parameters => parameters
+            .Add(p => p.Label, "Size")
+            .Add(p => p.Options, Sizes)
+            .Add(p => p.ValueChanged, heard.Add));
+
+        await picker.InvokeAsync(() => picker.Instance.PickAsync("l"));
+        await picker.InvokeAsync(() => picker.Instance.PickAsync("xl"));
+        await picker.InvokeAsync(() => picker.Instance.PickAsync(null));
+        Assert.Equal(["l"], heard);
+
+        picker.Render(parameters => parameters.Add(p => p.Disabled, true));
+        await picker.InvokeAsync(() => picker.Instance.PickAsync("s"));
+        Assert.Equal(["l"], heard);
+    }
+
+    [Fact]
+    public void Without_a_host_a_field_and_a_picker_are_the_browser_s_own()
+    {
+        string? written = null, picked = null;
+
+        var field = Render<SoloTextField>(parameters => parameters
+            .Add(f => f.Label, "Name").Add(f => f.Value, "Ada").Add(f => f.ValueChanged, value => written = value));
+        var input = field.Find("label[data-solo-kit=textField] input[type=text]");
+        Assert.Equal("Ada", input.GetAttribute("value"));
+        input.Change("Grace");
+        Assert.Equal("Grace", written);
+
+        var notes = Render<SoloTextField>(parameters => parameters.Add(f => f.Label, "Notes").Add(f => f.Multiline, true));
+        Assert.NotEmpty(notes.FindAll("label[data-solo-kit=textField] textarea"));
+
+        var picker = Render<SoloPicker>(parameters => parameters
+            .Add(p => p.Label, "Size").Add(p => p.Options, Sizes).Add(p => p.Value, "m").Add(p => p.ValueChanged, value => picked = value));
+        var select = picker.Find("label[data-solo-kit=picker] select");
+        Assert.Equal(["Small", "Medium", "Large"], select.QuerySelectorAll("option").Select(option => option.TextContent));
+        Assert.True(select.QuerySelector("option[value=m]")!.HasAttribute("selected"));
+        select.Change("l");
+        Assert.Equal("l", picked);
+
+        // Nothing picked is shown as nothing picked, not as the first option.
+        var unpicked = Render<SoloPicker>(parameters => parameters
+            .Add(p => p.Label, "Size").Add(p => p.Options, Sizes).Add(p => p.Placeholder, "Choose a size"));
+        Assert.Equal("Choose a size", unpicked.Find("select option[selected]").TextContent);
+    }
+
+    [Fact]
     public void The_kit_is_closed()
     {
         // A kit component is a promise that every client can draw it, so nobody

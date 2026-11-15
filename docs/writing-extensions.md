@@ -1163,12 +1163,16 @@ Everything around the kit components is unchanged: the attribute that places the
 | `SoloRow` | One line of a list: icon, title, and what follows it. | `Title`, `Subtitle`, `Icon`, `Disabled`, `OnClick`, `Href`, `ChildContent` (the far end) |
 | `SoloProgress` | How far along something is. | `Value` (0 to 1), `Tone`, `Label` |
 | `SoloToggle` | A setting that is on or off. | `Label`, `Value`, `ValueChanged` (so `@bind-Value` works), `Disabled` |
+| `SoloTextField` | Somewhere to write: a line, or several. | `Label`, `Value`, `ValueChanged` (so `@bind-Value` works), `Placeholder`, `Multiline`, `Disabled` |
+| `SoloPicker` | One choice out of a few. | `Label`, `Value`, `ValueChanged` (so `@bind-Value` works), `Options` (a list of `SoloOption(Value, Label)`), `Placeholder`, `Disabled` |
 
 `Tone` is one of `Default`, `Muted`, `Primary`, `Success`, `Warning`, `Danger`.
 
 - **Text is text.** `Text`, `Title`, `Label` and the rest are strings and are shown as written. There is no markup inside a piece of kit text and no way to pass any.
 - **There is nothing to style.** No `Class`, no `Style`. A kit component takes its look from the client, which is what lets every client draw it. When you need a look of your own, write ordinary Razor instead.
 - **`Href` for somewhere to go, `OnClick` for something to do.** `Href` is a page of the app, relative to the instance: `projects/DMD/boards/main`, or one of your own routes. Prefer it over navigating from a handler — a client that has a screen of its own for that address can then open it. With both, the click is handled and then the client goes.
+- **A text field's value is yours.** `ValueChanged` is raised as the person writes, each time they pause, and when they leave the field — not once per key. What the field shows once they have left it is the `Value` you hand back, so a handler can tidy what was written (`value.Trim()`) or keep the old value to refuse it. Everything arrives as text: there is no kind of field for a number or a date, and saying what is wrong with what was written is yours to do, in a `SoloText` beside it.
+- **A picker is for a handful of options**, the number that fits in a menu. A `Value` that is none of the options is nothing picked, and the picker shows its `Placeholder`. Only an option's value is ever handed to `ValueChanged`.
 - **Icons are names**, the ones a manifest's `nav` entry takes: `Flag`, `Calendar`, `Chat`, `People`, `Dashboard`, `Book`, `Star`, `Bolt`, `Robot` and the rest of `SoloIcons` in `Solo.Client`. A name a client doesn't know is drawn as a neutral icon, never as a gap.
 - **Keep kit and other markup apart.** `SoloStack` and `SoloRow` take children, and those should be kit components. Anything else inside them is drawn on the web, and is simply not there for a client that draws the kit itself. A contribution is either built from the kit or it isn't; one that is half of each will look different from one client to the next.
 - **The kit is closed.** Its components are sealed and there is no base class to derive from: each one is a promise that every client can draw it. Nothing in it belongs to one platform, and nothing will be added that does. A new one is a contract change.

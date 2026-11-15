@@ -4,9 +4,10 @@
 // The page renders each mounted place's kit components as <solo-kit> nodes.
 // This watches them and posts what changed to the app as trees, through the
 // one way out a hosted page has (solo.host.post). The other way, the app can
-// ask for a place to be mounted, dropped or read again, and can press a node:
-// a press becomes a click on the element the node was made from, which the
-// component's own handler answers. Nothing else comes in, and a node is only
+// ask for a place to be mounted, dropped or read again, and can press a node
+// or write in one: a press becomes a click on the element the node was made
+// from, and something written a change on it, which the component's own
+// handler answers. Nothing else comes in, and a node is only
 // ever data going out.
 
 let nextId = 1;
@@ -187,6 +188,16 @@ export function start(reference, hostId) {
         // From the app: {"op":"mount"|"unmount"|"refresh", ...}, as text.
         receive(json) {
             return dotnet?.invokeMethodAsync('Receive', String(json));
+        },
+
+        // From the app: something was written in a field it drew, or picked in a picker. The
+        // text goes on the node as its value, which is where a change event is read from.
+        input(id, value) {
+            const element = elements.get(Number(id))?.deref();
+            if (!element?.isConnected || element.dataset.disabled || !element.dataset.input) return false;
+            element.value = String(value ?? '').slice(0, 100000);
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
         },
 
         // From the app: a node it drew was pressed.

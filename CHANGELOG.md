@@ -27,7 +27,7 @@ with its version in parentheses).
 
 ### SDK
 - Contract 1.16.0: the notification and email settings DTOs, `NotificationKind`, `DigestFrequency`, `SmtpSecurity`, `AuthConfigDto.EmailEnabled` and the core user topic `BoardHubConstants.NotificationsTopic`, used by core's own client and API.
-- Contract 1.17.0: the kit, `Solo.Shared.Kit`. Eight components an extension builds a contribution from (`SoloStack`, `SoloText`, `SoloIcon`, `SoloBadge`, `SoloButton`, `SoloRow`, `SoloProgress`, `SoloToggle`) that say what each piece is and leave the drawing to the client; the web client draws them with the components core itself uses. A contribution built from them is one a client that is not a browser can draw too, and so is a whole page; `[WebPage]` marks a page that needs more than the kit, for such a client to show from the web client instead. `HunterAhlquist.Solo.Shared` now depends on `Microsoft.AspNetCore.Components`. Client-only: a package using the kit needs 1.17 in `soloClientVersion`.
+- Contract 1.17.0: the kit, `Solo.Shared.Kit`. Ten components an extension builds a contribution from (`SoloStack`, `SoloText`, `SoloIcon`, `SoloBadge`, `SoloButton`, `SoloRow`, `SoloProgress`, `SoloToggle`, `SoloTextField`, `SoloPicker`) that say what each piece is and leave the drawing to the client; the web client draws them with the components core itself uses. A contribution built from them is one a client that is not a browser can draw too, and so is a whole page; `[WebPage]` marks a page that needs more than the kit, for such a client to show from the web client instead. `HunterAhlquist.Solo.Shared` now depends on `Microsoft.AspNetCore.Components`. Client-only: a package using the kit needs 1.17 in `soloClientVersion`.
 
 ### Extensions
 

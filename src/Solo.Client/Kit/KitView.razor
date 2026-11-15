@@ -54,6 +54,24 @@
             <solo-kit data-kind="toggle" data-label="@toggle.Label" data-value="@Flag(toggle.Value)" data-disabled="@Flag(toggle.Disabled)"
                       data-press="1" @onclick="@(() => toggle.ValueChanged.InvokeAsync(!toggle.Value))"></solo-kit>
             break;
+
+        case SoloTextField field:
+            @* Something written comes back as a change on the node, carrying the text (js/kit-surface.js). *@
+            <solo-kit data-kind="textField" data-label="@field.Label" data-value="@field.Value" data-placeholder="@field.Placeholder"
+                      data-multiline="@Flag(field.Multiline)" data-disabled="@Flag(field.Disabled)" data-input="1"
+                      @onchange="@(change => field.Disabled ? Task.CompletedTask : field.ValueChanged.InvokeAsync(change.Value as string ?? ""))"></solo-kit>
+            break;
+
+        case SoloPicker picker:
+            <solo-kit data-kind="picker" data-label="@picker.Label" data-value="@Picked(picker)" data-placeholder="@picker.Placeholder"
+                      data-disabled="@Flag(picker.Disabled)" data-input="1"
+                      @onchange="@(change => picker.PickAsync(change.Value as string))">
+                @foreach (var option in picker.Options)
+                {
+                    <solo-kit @key="option.Value" data-kind="option" data-value="@option.Value" data-label="@option.Label"></solo-kit>
+                }
+            </solo-kit>
+            break;
     }
 }
 else
@@ -117,6 +135,26 @@ else
             <MudSwitch T="bool" Value="@toggle.Value" ValueChanged="@toggle.ValueChanged" Label="@toggle.Label"
                        Disabled="@toggle.Disabled" Color="Color.Primary" Class="solo-kit-toggle" />
             break;
+
+        case SoloTextField field:
+            @* As core's own fields are drawn. Heard as the person writes, once they pause, and when they leave. *@
+            <MudTextField T="string" Value="@field.Value" ValueChanged="@field.ValueChanged" Label="@field.Label"
+                          Placeholder="@field.Placeholder" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Lines="@(field.Multiline ? 3 : 1)" AutoGrow="@field.Multiline" Disabled="@field.Disabled"
+                          Immediate="true" DebounceInterval="300" Class="solo-kit-field" />
+            break;
+
+        case SoloPicker picker:
+            <MudSelect T="string" Value="@Picked(picker)" ValueChanged="@(value => picker.PickAsync(value))"
+                       Label="@picker.Label" Placeholder="@picker.Placeholder" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Disabled="@picker.Disabled" ToStringFunc="@(value => picker.Options.FirstOrDefault(o => o.Value == value)?.Label)"
+                       Class="solo-kit-picker">
+                @foreach (var option in picker.Options)
+                {
+                    <MudSelectItem T="string" Value="@option.Value">@option.Label</MudSelectItem>
+                }
+            </MudSelect>
+            break;
     }
 }
 
@@ -128,6 +166,10 @@ else
     /// <summary>Set under the page an app keeps open to draw contributions itself.</summary>
     [CascadingParameter]
     public KitSurface? Surface { get; set; }
+
+    /// <summary>A picker's value when it is one of its options, and nothing when it is not.</summary>
+    private static string? Picked(SoloPicker picker) =>
+        picker.Options.Any(option => option.Value == picker.Value) ? picker.Value : null;
 
     /// <summary>A flag is there or it isn't: an attribute with no value is left out of the page altogether.</summary>
     private static string? Flag(bool set) => set ? "1" : null;

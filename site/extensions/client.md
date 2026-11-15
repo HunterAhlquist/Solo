@@ -236,12 +236,16 @@ Add `@using Solo.Shared.Kit` to the component.
 | `SoloRow` | Shows one line of a list. | `Title`, `Subtitle`, `Icon`, `Disabled`, `OnClick`, `Href`, `ChildContent` |
 | `SoloProgress` | Shows progress from 0 to 1. | `Value`, `Tone`, `Label` |
 | `SoloToggle` | Sets a value to on or off. | `Label`, `Value`, `ValueChanged`, `Disabled` |
+| `SoloTextField` | Lets the person write one line or several lines of text. | `Label`, `Value`, `ValueChanged`, `Placeholder`, `Multiline`, `Disabled` |
+| `SoloPicker` | Lets the person pick one of a small number of options. | `Label`, `Value`, `ValueChanged`, `Options`, `Placeholder`, `Disabled` |
 
 `Tone` is `Default`, `Muted`, `Primary`, `Success`, `Warning` or `Danger`.
 
 - **Text is text.** Solo shows each string as you wrote it. A string cannot contain markup.
 - **You cannot style a kit component.** It has no `Class` and no `Style`. If you need your own appearance, use ordinary Razor.
 - **Use `Href` to open a page and `OnClick` to do an action.** `Href` is an address in the app, relative to the instance. If you set both, Solo calls `OnClick` and then opens the page.
+- **`SoloTextField` calls `ValueChanged` when the person stops writing for a moment and when the person leaves the field.** After the person leaves the field, it shows the `Value` that you supply. Your handler can change the text, or keep the old value to refuse the new text. The value is always text.
+- **`Options` on `SoloPicker` is a list of `SoloOption(Value, Label)`.** The person sees `Label`. `ValueChanged` gets `Value`. If `Value` on the picker is not the value of an option, the picker shows `Placeholder`.
 - **An icon is a name.** Use the names that a `nav` entry in the manifest accepts. For a name that a client does not know, the client shows a default icon.
 - **Put only kit components in `SoloStack` and `SoloRow`.** A client that draws the kit with its own controls does not show other content.
 - **You cannot add a kit component.** The components are sealed.

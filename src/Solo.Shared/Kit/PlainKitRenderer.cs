@@ -141,6 +141,58 @@ internal sealed class PlainKitRenderer : ISoloKitRenderer
                 builder.AddContent(97, toggle.Label);
                 builder.CloseElement();
                 break;
+
+            case SoloTextField field:
+                builder.OpenElement(100, "label");
+                builder.AddAttribute(101, "data-solo-kit", "textField");
+                builder.AddContent(102, field.Label);
+                builder.OpenElement(103, field.Multiline ? "textarea" : "input");
+                if (!field.Multiline)
+                {
+                    builder.AddAttribute(104, "type", "text");
+                }
+
+                builder.AddAttribute(105, "value", field.Value);
+                builder.AddAttribute(106, "placeholder", field.Placeholder);
+                builder.AddAttribute(107, "disabled", field.Disabled);
+                builder.AddAttribute(108, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(
+                    field, change => field.ValueChanged.InvokeAsync(change.Value as string ?? "")));
+                builder.CloseElement();
+                builder.CloseElement();
+                break;
+
+            case SoloPicker picker:
+                builder.OpenElement(110, "label");
+                builder.AddAttribute(111, "data-solo-kit", "picker");
+                builder.AddContent(112, picker.Label);
+                builder.OpenElement(113, "select");
+                builder.AddAttribute(114, "disabled", picker.Disabled);
+                builder.AddAttribute(115, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(
+                    picker, change => picker.PickAsync(change.Value as string)));
+                if (picker.Options.All(option => option.Value != picker.Value))
+                {
+                    // Nothing picked: the browser would otherwise show the first option as if it were.
+                    builder.OpenElement(116, "option");
+                    builder.AddAttribute(117, "value", "");
+                    builder.AddAttribute(118, "selected", true);
+                    builder.AddAttribute(119, "disabled", true);
+                    builder.AddContent(120, picker.Placeholder ?? "");
+                    builder.CloseElement();
+                }
+
+                foreach (var option in picker.Options)
+                {
+                    builder.OpenElement(121, "option");
+                    builder.SetKey(option.Value);
+                    builder.AddAttribute(122, "value", option.Value);
+                    builder.AddAttribute(123, "selected", option.Value == picker.Value);
+                    builder.AddContent(124, option.Label);
+                    builder.CloseElement();
+                }
+
+                builder.CloseElement();
+                builder.CloseElement();
+                break;
         }
     }
 

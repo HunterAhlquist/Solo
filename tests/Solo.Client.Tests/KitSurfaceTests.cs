@@ -140,6 +140,71 @@ public class KitSurfaceTests : ComponentTestBase
         Assert.False(surface.Find("solo-kit[data-kind=toggle]").HasAttribute("data-value"));
     }
 
+    private sealed class Form : ComponentBase
+    {
+        public string Name = "Ada";
+        public string? Size;
+
+        protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)
+        {
+            builder.OpenComponent<SoloTextField>(0);
+            builder.AddComponentParameter(1, nameof(SoloTextField.Label), "Name");
+            builder.AddComponentParameter(2, nameof(SoloTextField.Value), Name);
+            builder.AddComponentParameter(3, nameof(SoloTextField.ValueChanged), EventCallback.Factory.Create<string>(this, value => Name = value.Trim()));
+            builder.CloseComponent();
+            builder.OpenComponent<SoloPicker>(4);
+            builder.AddComponentParameter(5, nameof(SoloPicker.Label), "Size");
+            builder.AddComponentParameter(6, nameof(SoloPicker.Value), Size);
+            builder.AddComponentParameter(7, nameof(SoloPicker.Options), (IReadOnlyList<SoloOption>)[new("s", "Small"), new("l", "Large")]);
+            builder.AddComponentParameter(8, nameof(SoloPicker.ValueChanged), EventCallback.Factory.Create<string>(this, value => Size = value));
+            builder.CloseComponent();
+        }
+    }
+
+    [Fact]
+    public void What_is_written_in_a_field_arrives_as_a_change_and_the_extension_s_value_comes_back()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<Form>(0);
+            builder.CloseComponent();
+        });
+
+        var field = surface.Find("solo-kit[data-kind=textField]");
+        Assert.Equal("Name", field.GetAttribute("data-label"));
+        Assert.Equal("Ada", field.GetAttribute("data-value"));
+        Assert.Equal("1", field.GetAttribute("data-input"));
+        Assert.False(field.HasAttribute("data-multiline"));
+
+        field.Change("  Grace  ");
+
+        // The handler tidied it: what the node says now is what the extension kept.
+        Assert.Equal("Grace", surface.Find("solo-kit[data-kind=textField]").GetAttribute("data-value"));
+    }
+
+    [Fact]
+    public void A_picker_s_options_are_its_children_and_only_one_of_them_can_be_picked()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<Form>(0);
+            builder.CloseComponent();
+        });
+
+        var picker = surface.Find("solo-kit[data-kind=picker]");
+        // Nothing picked yet: no value is said at all.
+        Assert.False(picker.HasAttribute("data-value"));
+        Assert.Equal(
+            ["s:Small", "l:Large"],
+            picker.QuerySelectorAll("solo-kit[data-kind=option]").Select(o => $"{o.GetAttribute("data-value")}:{o.GetAttribute("data-label")}"));
+
+        picker.Change("xl");
+        Assert.False(surface.Find("solo-kit[data-kind=picker]").HasAttribute("data-value"));
+
+        surface.Find("solo-kit[data-kind=picker]").Change("l");
+        Assert.Equal("l", surface.Find("solo-kit[data-kind=picker]").GetAttribute("data-value"));
+    }
+
     [Fact]
     public void Text_is_carried_as_text()
     {
