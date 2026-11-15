@@ -31,6 +31,12 @@ struct DashboardView: View {
     /// waiting for every card. Following a card to where it landed needs the card to exist,
     /// though, so a column something has just landed in is built whole from then on.
     @State private var whole: Set<TaskState> = []
+    /// Whether a phone's column selector has been scrolled up to the header, and so is drawn in
+    /// it. Kept where only the selector's two places are listening: as this page's own state it
+    /// had every card looked over again as the selector crossed, which was a stutter just there.
+    @State private var selector = SelectorPlace()
+    /// How tall whatever stands above the page's selector is.
+    @State private var aboveSelector: CGFloat = 0
     @State private var openTask: UUID?
     @State private var failed: String?
 
@@ -80,25 +86,32 @@ struct DashboardView: View {
                 } else {
                     FillLayout {
                         ScrollView {
-                            LazyVStack(spacing: 12, pinnedViews: .sectionHeaders) {
+                            LazyVStack(spacing: 12) {
                                 // Once, above the columns: it is the same roadmap whichever one is showing.
-                                DashboardExtensions(openTask: $openTask)
-                                Section {
-                                    // Here a column is only as tall as its own cards: there are no rows to keep in line.
-                                    ColumnPages(height: .showing) {
-                                        ForEach(TaskState.allCases) { status in
-                                            zone(cards, status, work)
-                                                .accessibilityHidden(status != column)
-                                        }
-                                    }
-                                    if cards.isEmpty { empty }
-                                } header: {
-                                    ColumnSwitcher(selection: $column, count: { status in cards.count { $0.task.status == status } }) {
-                                        payloads, status in
-                                        drop(payloads, status, cards)
-                                    }
-                                    .padding(.bottom, 2)
+                                // In a stack of its own so that there is always a row here, whose height
+                                // is how far down the page the selector starts.
+                                VStack(spacing: 0) {
+                                    DashboardExtensions(openTask: $openTask)
                                 }
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { aboveSelector = $0 }
+                                // A row like any other, which scrolls away: it is not held at the top by
+                                // the stack, because the header takes it over there (below), and two ways
+                                // of holding it are two places it can be. When the header has it, it is
+                                // out of the page altogether, room and all: see `SelectorSeat`.
+                                SelectorSeat(place: selector, inHeader: false) {
+                                    switcher(cards).padding(.bottom, ColumnSwitcher.footing)
+                                }
+                                // Here a column is only as tall as its own cards: there are no rows to keep in line.
+                                ColumnPages(height: .showing) {
+                                    ForEach(TaskState.allCases) { status in
+                                        zone(cards, status, work)
+                                            .accessibilityHidden(status != column)
+                                    }
+                                }
+                                // The selector's room under it is the header's, which is more than this
+                                // page wants between the selector and the cards.
+                                .padding(.top, 2 - ColumnSwitcher.footing)
+                                if cards.isEmpty { empty }
                             }
                             .padding(.horizontal, 14)
                             .padding(.bottom, 24)
@@ -107,6 +120,33 @@ struct DashboardView: View {
                         .followsLanding(landed?.token) {
                             if let landed { session.assigned.pulse(landed.taskId) }
                             landed = nil
+                        }
+                        // Whether the selector has been scrolled up to the header: it starts one row's gap
+                        // under what is above it. A flag and not a position, so that something is worked
+                        // out again when it gets there and not on every frame. And how far the page has
+                        // been scrolled, not where it is: when the header grows the page is moved down
+                        // by as much, and a test that the growing itself changed would undo it at once,
+                        // and then redo it, without end.
+                        .onScrollGeometryChange(for: Bool.self) { [aboveSelector] geometry in
+                            geometry.contentOffset.y + geometry.contentInsets.top >= aboveSelector + 12
+                        } action: { _, reached in
+                            selector.inHeader = reached
+                        }
+                    }
+                    // The selector starts under whatever extensions put above the columns, so it cannot
+                    // live in the header as a board's does. It joins the header when it gets there:
+                    // scrolled up to it, it is drawn as part of it, with the header's blur behind it
+                    // and under it, and is given back to the page when the page comes back down.
+                    //
+                    // The header's selector is there from the start, at no height and unseen, and not
+                    // made when it is wanted: glass that has just been made fades in, and the selector
+                    // would blink as it changed hands. No spacing, so that until then the bar takes no
+                    // room at all.
+                    .safeAreaBar(edge: .top, spacing: 0) {
+                        SelectorSeat(place: selector, inHeader: true) {
+                            switcher(cards)
+                                .padding(.horizontal, 14)
+                                .padding(.bottom, ColumnSwitcher.footing)
                         }
                     }
                     // A card held at either side is carried to the column that way.
@@ -176,6 +216,12 @@ struct DashboardView: View {
         .sorted {
             ($0.project.name.lowercased(), $0.board.name.lowercased(), $0.task.rank)
                 < ($1.project.name.lowercased(), $1.board.name.lowercased(), $1.task.rank)
+        }
+    }
+
+    private func switcher(_ cards: [Card]) -> some View {
+        ColumnSwitcher(selection: $column, count: { status in cards.count { $0.task.status == status } }) { payloads, status in
+            drop(payloads, status, cards)
         }
     }
 
@@ -258,6 +304,34 @@ struct DashboardView: View {
                 await session.assigned.refresh()
             }
         }
+    }
+}
+
+/// Which of its two places a phone's column selector is in: the page, or the header.
+@Observable private final class SelectorPlace {
+    var inHeader = false
+}
+
+/// One of the selector's two places, holding it only while it is the one in use, and otherwise
+/// taking no room and showing nothing.
+///
+/// The two have to be exactly as tall as each other. A header that grows has the page moved
+/// down by as much as it grew, so that what was in view stays in view from the header's point
+/// of view; the page gives up the selector's row in the same pass, which is as much again the
+/// other way, and nothing on the screen moves. A point's difference between them is a point's
+/// jump every time the selector changes hands.
+private struct SelectorSeat<Content: View>: View {
+    var place: SelectorPlace
+    var inHeader: Bool
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let used = place.inHeader == inHeader
+        content
+            .frame(height: used ? nil : 0, alignment: .top)
+            .opacity(used ? 1 : 0)
+            .allowsHitTesting(used)
+            .accessibilityHidden(!used)
     }
 }
 

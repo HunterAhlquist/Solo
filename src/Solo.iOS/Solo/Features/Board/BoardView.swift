@@ -755,6 +755,8 @@ private struct BoardPager: View {
                 model.drop(payloads, epicId: model.task(dropped: payloads.first ?? "")?.epicId, status: status, index: nil)
             }
             .padding(.horizontal, 14)
+            // The header ends a little below the selector, not along its bottom edge.
+            .padding(.bottom, ColumnSwitcher.footing)
         }
         .environment(watch)
     }
@@ -827,6 +829,9 @@ private struct PagerLane: View {
 /// column on a phone: let go over a column to send the card there, or hold
 /// over it to be taken there with the card still in hand.
 struct ColumnSwitcher: View {
+    /// The room a header leaves under the selector, so that its edge does not run along the selector's.
+    static let footing: CGFloat = 8
+
     @Environment(\.theme) private var theme
     @Binding var selection: TaskState
     var count: (TaskState) -> Int
