@@ -31,10 +31,12 @@ struct DashboardView: View {
     /// waiting for every card. Following a card to where it landed needs the card to exist,
     /// though, so a column something has just landed in is built whole from then on.
     @State private var whole: Set<TaskState> = []
-    /// Whether a phone's column selector has been scrolled up to the header, and so is drawn in
-    /// it. Kept where only the selector's two places are listening: as this page's own state it
-    /// had every card looked over again as the selector crossed, which was a stutter just there.
+    /// Whether a phone's column selector has been scrolled up to the header and is held there.
+    /// Kept where only the selector's two copies are listening: as this page's own state it
+    /// would have every card looked over again each time it changed.
     @State private var selector = SelectorPlace()
+    /// The page's scroll view, once it has been found.
+    @State private var pageScroll = FoundScrollView()
     /// How tall whatever stands above the page's selector is.
     @State private var aboveSelector: CGFloat = 0
     @State private var openTask: UUID?
@@ -86,7 +88,7 @@ struct DashboardView: View {
                 } else {
                     FillLayout {
                         ScrollView {
-                            LazyVStack(spacing: 12) {
+                            LazyVStack(spacing: 12, pinnedViews: .sectionHeaders) {
                                 // Once, above the columns: it is the same roadmap whichever one is showing.
                                 // In a stack of its own so that there is always a row here, whose height
                                 // is how far down the page the selector starts.
@@ -94,59 +96,62 @@ struct DashboardView: View {
                                     DashboardExtensions(openTask: $openTask)
                                 }
                                 .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { aboveSelector = $0 }
-                                // A row like any other, which scrolls away: it is not held at the top by
-                                // the stack, because the header takes it over there (below), and two ways
-                                // of holding it are two places it can be. When the header has it, it is
-                                // out of the page altogether, room and all: see `SelectorSeat`.
-                                SelectorSeat(place: selector, inHeader: false) {
-                                    switcher(cards).padding(.bottom, ColumnSwitcher.footing)
-                                }
-                                // Here a column is only as tall as its own cards: there are no rows to keep in line.
-                                ColumnPages(height: .showing) {
-                                    ForEach(TaskState.allCases) { status in
-                                        zone(cards, status, work)
-                                            .accessibilityHidden(status != column)
+                                Section {
+                                    // Here a column is only as tall as its own cards: there are no rows to keep in line.
+                                    ColumnPages(height: .showing) {
+                                        ForEach(TaskState.allCases) { status in
+                                            zone(cards, status, work)
+                                                .accessibilityHidden(status != column)
+                                        }
+                                    }
+                                    // The room under the selector is its header's, which is more than
+                                    // this page wants between the selector and the cards.
+                                    .padding(.top, 2 - ColumnSwitcher.footing)
+                                    if cards.isEmpty { empty }
+                                } header: {
+                                    // Held at the top by the stack. Held there, it is the header's own
+                                    // copy that is seen, and this one keeps its place under it: see
+                                    // `SelectorInHeader`.
+                                    SelectorInPage(place: selector) {
+                                        switcher(cards).padding(.bottom, ColumnSwitcher.footing)
                                     }
                                 }
-                                // The selector's room under it is the header's, which is more than this
-                                // page wants between the selector and the cards.
-                                .padding(.top, 2 - ColumnSwitcher.footing)
-                                if cards.isEmpty { empty }
                             }
                             .padding(.horizontal, 14)
                             .padding(.bottom, 24)
+                            // Says which scroll view this is, for the header's effect to be asked of.
+                            .background(ScrollViewFinder(found: pageScroll))
                         }
                         .columnPaging($column)
                         .followsLanding(landed?.token) {
                             if let landed { session.assigned.pulse(landed.taskId) }
                             landed = nil
                         }
-                        // Whether the selector has been scrolled up to the header: it starts one row's gap
-                        // under what is above it. A flag and not a position, so that something is worked
-                        // out again when it gets there and not on every frame. And how far the page has
-                        // been scrolled, not where it is: when the header grows the page is moved down
-                        // by as much, and a test that the growing itself changed would undo it at once,
-                        // and then redo it, without end.
-                        .onScrollGeometryChange(for: Bool.self) { [aboveSelector] geometry in
-                            geometry.contentOffset.y + geometry.contentInsets.top >= aboveSelector + 12
-                        } action: { _, reached in
-                            selector.inHeader = reached
+                        // Whether the selector has been scrolled up to the header and is held there: it
+                        // starts one row's gap under what is above it. A flag and not a position, so
+                        // that something is drawn again when it gets there and not on every frame;
+                        // and with a little give between getting there and leaving, so that a finger
+                        // resting on the very point does not have it going back and forth.
+                        .onScrollGeometryChange(for: Int.self) { [aboveSelector] geometry in
+                            let left = aboveSelector + 12 - (geometry.contentOffset.y + geometry.contentInsets.top)
+                            return left <= 0.5 ? 1 : left > 3 ? 0 : -1
+                        } action: { _, state in
+                            if state >= 0 { selector.held = state == 1 }
                         }
                     }
                     // The selector starts under whatever extensions put above the columns, so it cannot
-                    // live in the header as a board's does. It joins the header when it gets there:
-                    // scrolled up to it, it is drawn as part of it, with the header's blur behind it
-                    // and under it, and is given back to the page when the page comes back down.
-                    //
-                    // The header's selector is there from the start, at no height and unseen, and not
-                    // made when it is wanted: glass that has just been made fades in, and the selector
-                    // would blink as it changed hands. No spacing, so that until then the bar takes no
-                    // room at all.
-                    .safeAreaBar(edge: .top, spacing: 0) {
-                        SelectorSeat(place: selector, inHeader: true) {
+                    // live in a bar as a board's does: a bar that took its room only once the selector
+                    // got there moved the whole page as it did. Held at the top, it is shown from here
+                    // instead, over the page, and the system is asked to carry its header on behind it
+                    // — the same blur and the same edge as a board's, and nothing in the page moves.
+                    .overlay(alignment: .top) {
+                        SelectorInHeader(place: selector, scroll: pageScroll) {
                             switcher(cards)
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, ColumnSwitcher.footing)
+                                // Hosted apart from this page: see `ScrollEdgeContainer`.
+                                .environment(\.theme, theme)
+                                .environment(watch)
                         }
                     }
                     // A card held at either side is carried to the column that way.
@@ -307,31 +312,186 @@ struct DashboardView: View {
     }
 }
 
-/// Which of its two places a phone's column selector is in: the page, or the header.
+/// Whether a phone's column selector is in the page or held at the top of it.
 @Observable private final class SelectorPlace {
-    var inHeader = false
+    var held = false
 }
 
-/// One of the selector's two places, holding it only while it is the one in use, and otherwise
-/// taking no room and showing nothing.
-///
-/// The two have to be exactly as tall as each other. A header that grows has the page moved
-/// down by as much as it grew, so that what was in view stays in view from the header's point
-/// of view; the page gives up the selector's row in the same pass, which is as much again the
-/// other way, and nothing on the screen moves. A point's difference between them is a point's
-/// jump every time the selector changes hands.
-private struct SelectorSeat<Content: View>: View {
+/// The page's own copy of the selector: seen until it is held at the top, and from then on only
+/// keeping its place.
+private struct SelectorInPage<Content: View>: View {
     var place: SelectorPlace
-    var inHeader: Bool
     @ViewBuilder var content: Content
 
     var body: some View {
-        let used = place.inHeader == inHeader
         content
-            .frame(height: used ? nil : 0, alignment: .top)
-            .opacity(used ? 1 : 0)
-            .allowsHitTesting(used)
-            .accessibilityHidden(!used)
+            .opacity(place.held ? 0 : 1)
+            .allowsHitTesting(!place.held)
+            .accessibilityHidden(place.held)
+    }
+}
+
+/// The header's copy of the selector, laid over the top of the page exactly where the page
+/// holds its own, and seen only while it does. It is inside a view that asks the system to carry
+/// the page's header on down behind whatever it holds (`ScrollEdgeContainer`).
+///
+/// Two copies, because the header's effect blurs what is in the page, and the page's copy is in
+/// the page. Both are there from the start: glass that has just been made fades in, and the
+/// selector would blink as one took over from the other.
+private struct SelectorInHeader<Content: View>: View {
+    var place: SelectorPlace
+    var scroll: FoundScrollView
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollEdgeContainer(scroll: scroll, on: place.held, content: content)
+            .opacity(place.held ? 1 : 0)
+            .allowsHitTesting(place.held)
+            .accessibilityHidden(!place.held)
+    }
+}
+
+/// A scroll view that a view inside it has found and said.
+@Observable private final class FoundScrollView {
+    @ObservationIgnored weak var view: UIScrollView?
+    /// Counts up each time `view` is set: what a reader depends on, since `view` itself is not watched.
+    private(set) var changes = 0
+
+    func found(_ scroll: UIScrollView?) {
+        guard scroll !== view else { return }
+        view = scroll
+        changes += 1
+    }
+}
+
+/// In a scroll view's content: finds the scroll view it is in.
+private struct ScrollViewFinder: UIViewRepresentable {
+    var found: FoundScrollView
+
+    func makeUIView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.found = found
+        probe.isUserInteractionEnabled = false
+        return probe
+    }
+
+    func updateUIView(_ probe: Probe, context: Context) {
+        probe.found = found
+    }
+
+    final class Probe: UIView {
+        var found: FoundScrollView?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil else { return }
+            var view = superview
+            while let current = view {
+                if let scroll = current as? UIScrollView {
+                    found?.found(scroll)
+                    return
+                }
+                view = current.superview
+            }
+        }
+    }
+}
+
+/// Holds what stands over the top of a scroll view, and has the system carry the scroll view's
+/// header on behind it, as it does behind a bar: the page out of focus under it, ending as the
+/// header ends. It is the system's own effect, asked for, and takes no room from the page.
+///
+/// The system shapes the effect from what is inside the view that asks, so the content is hosted
+/// in it and not laid over it — which also means it is outside this page's environment, and has
+/// to be handed whatever of that it reads.
+private struct ScrollEdgeContainer<Content: View>: UIViewRepresentable {
+    var scroll: FoundScrollView
+    var on: Bool
+    var content: Content
+
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .clear
+        let host = UIHostingController(rootView: content)
+        host.view.backgroundColor = .clear
+        // It is placed by this view, not by the screen's edges.
+        host.safeAreaRegions = []
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: container.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+        // The system shapes the effect from the labels, images, glass and controls it finds in
+        // here, and what SwiftUI draws is none of those to it: with the content alone there is no
+        // effect at all. So a label stands behind the content, the size of it and saying nothing
+        // that can be seen, for the system to find.
+        let stand = UILabel()
+        stand.text = "\u{2060}"
+        stand.textColor = .clear
+        stand.isAccessibilityElement = false
+        stand.isUserInteractionEnabled = false
+        stand.translatesAutoresizingMaskIntoConstraints = false
+        container.insertSubview(stand, at: 0)
+        // As tall as the content while the effect is wanted, and of no height while it is not:
+        // the effect is as tall as this, and is brought in and taken away by this growing and
+        // shrinking, and not by being switched.
+        let full = stand.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        let none = stand.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            stand.topAnchor.constraint(equalTo: container.topAnchor),
+            stand.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stand.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            none,
+        ])
+        context.coordinator.full = full
+        context.coordinator.none = none
+        let interaction = UIScrollEdgeElementContainerInteraction()
+        interaction.edge = .top
+        container.addInteraction(interaction)
+        context.coordinator.host = host
+        context.coordinator.interaction = interaction
+        return container
+    }
+
+    func updateUIView(_ container: UIView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.host?.rootView = content
+        // Read so that this is done again when the scroll view is found.
+        _ = scroll.changes
+        coordinator.interaction?.scrollView = scroll.view
+        guard coordinator.on != on else { return }
+        coordinator.on = on
+        // One off before the other on: both at once cannot be satisfied.
+        if on {
+            coordinator.none?.isActive = false
+            coordinator.full?.isActive = true
+        } else {
+            coordinator.full?.isActive = false
+            coordinator.none?.isActive = true
+        }
+        // Quicker going than coming: the page's own selector is on its way down from under it.
+        UIView.animate(withDuration: on ? 0.22 : 0.12, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+            container.layoutIfNeeded()
+        }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIView, context: Context) -> CGSize? {
+        guard let host = context.coordinator.host, let width = proposal.width, width.isFinite else { return nil }
+        let fitted = host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: fitted.height)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var host: UIHostingController<Content>?
+        var interaction: UIScrollEdgeElementContainerInteraction?
+        var full: NSLayoutConstraint?
+        var none: NSLayoutConstraint?
+        var on = false
     }
 }
 
