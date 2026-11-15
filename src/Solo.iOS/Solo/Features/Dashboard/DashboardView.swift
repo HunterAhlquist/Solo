@@ -149,9 +149,6 @@ struct DashboardView: View {
                             switcher(cards)
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, ColumnSwitcher.footing)
-                                // Hosted apart from this page: see `ScrollEdgeContainer`.
-                                .environment(\.theme, theme)
-                                .environment(watch)
                         }
                     }
                     // A card held at either side is carried to the column that way.
@@ -332,87 +329,23 @@ private struct SelectorInPage<Content: View>: View {
 }
 
 /// The header's copy of the selector, laid over the top of the page exactly where the page
-/// holds its own, and seen only while it does. It is inside a view that asks the system to carry
-/// the page's header on down behind whatever it holds (`ScrollEdgeContainer`).
+/// holds its own, and seen only while it does. Behind it is a band that asks the system to carry
+/// the page's header on down behind it (`ScrollEdgeBand`).
 ///
 /// Two copies, because the header's effect blurs what is in the page, and the page's copy is in
 /// the page. Both are there from the start: glass that has just been made fades in, and the
 /// selector would blink as one took over from the other.
-///
-/// The system's effect arrives at its own pace, which is nearly at once and cannot be changed.
-/// So it is not what arrives. A header drawn to look like it comes in behind the selector first,
-/// as slowly as is wanted, and only when that is whole is the system's asked for, and the drawn
-/// one let go under it. What is left standing is the system's own, the same as a board's; the
-/// drawn one, whose blur is not quite the system's, is only ever seen on its way in.
 private struct SelectorInHeader<Content: View>: View {
     var place: SelectorPlace
     var scroll: FoundScrollView
     @ViewBuilder var content: Content
 
-    /// How much of the drawn header shows.
-    @State private var drawn: Double = 0
-    /// Whether the system's header has been asked for.
-    @State private var system = false
-    @State private var arriving: Task<Void, Never>?
-
-    /// How long the header takes to come in behind the selector.
-    static var arrival: Double { 0.6 }
-
     var body: some View {
-        ScrollEdgeContainer(scroll: scroll, on: system, content: content)
-            .background { DrawnHeader().opacity(drawn) }
+        content
+            .background { ScrollEdgeBand(scroll: scroll, on: place.held) }
             .opacity(place.held ? 1 : 0)
             .allowsHitTesting(place.held)
             .accessibilityHidden(!place.held)
-            .onChange(of: place.held) { _, held in
-                arriving?.cancel()
-                guard held else {
-                    // Leaving is the system's own going, which is quick, and right.
-                    system = false
-                    withAnimation(.easeOut(duration: 0.12)) { drawn = 0 }
-                    return
-                }
-                withAnimation(.easeInOut(duration: Self.arrival)) { drawn = 1 }
-                arriving = Task {
-                    try? await Task.sleep(for: .seconds(Self.arrival))
-                    guard !Task.isCancelled else { return }
-                    system = true
-                    // Once the system's is in under it, which takes it a moment.
-                    try? await Task.sleep(for: .milliseconds(250))
-                    guard !Task.isCancelled else { return }
-                    withAnimation(.easeOut(duration: 0.3)) { drawn = 0 }
-                }
-            }
-    }
-}
-
-/// A header drawn to look like the system's, to stand behind the selector while it comes in:
-/// the page out of focus, and most of the way back to the page's own background. The tones were
-/// set by sampling the system's header above it; the blur is the nearest material to it and
-/// not the same.
-private struct DrawnHeader: View {
-    @Environment(\.theme) private var theme
-    /// How far it runs up into the system's header, to meet it without a line.
-    private let rise: CGFloat = 20
-
-    var body: some View {
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial)
-            Color(uiColor: .systemBackground).opacity(0.86)
-            theme.primary.opacity(theme.isDark ? 0.16 : 0.115)
-        }
-        .mask {
-            GeometryReader { proxy in
-                LinearGradient(stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .black, location: rise / max(proxy.size.height, 1)),
-                    .init(color: .black, location: 1),
-                ], startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .padding(.top, -rise)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
 
@@ -462,81 +395,139 @@ private struct ScrollViewFinder: UIViewRepresentable {
     }
 }
 
-/// Holds what stands over the top of a scroll view, and has the system carry the scroll view's
-/// header on behind it, as it does behind a bar: the page out of focus under it, ending as the
-/// header ends. It is the system's own effect, asked for, and takes no room from the page.
+/// A band over the top of a scroll view that the system carries the scroll view's header on
+/// behind, as it does behind a bar: the page out of focus under it, ending as the header ends.
+/// It is the system's own effect, asked for, and takes no room from the page.
 ///
-/// The system shapes the effect from what is inside the view that asks, so the content is hosted
-/// in it and not laid over it — which also means it is outside this page's environment, and has
-/// to be handed whatever of that it reads.
-private struct ScrollEdgeContainer<Content: View>: UIViewRepresentable {
+/// The band grows down from the header's edge when it is wanted, and the effect with it
+/// (`BandReach`). That is the one way found of having the effect arrive at a pace that is not
+/// the system's, which is nearly at once. The system follows the size of the view that asks,
+/// as that size stands — not an animation of it, which it skips to the end of — and only while
+/// what is inside fills that view: a label growing inside a band of fixed size got no effect
+/// until it was whole. So it is the band itself that is walked from nothing to its full height.
+private struct ScrollEdgeBand: UIViewRepresentable {
     var scroll: FoundScrollView
     var on: Bool
-    var content: Content
 
     func makeUIView(context: Context) -> UIView {
-        let container = UIView()
-        container.backgroundColor = .clear
-        let host = UIHostingController(rootView: content)
-        host.view.backgroundColor = .clear
-        // It is placed by this view, not by the screen's edges.
-        host.safeAreaRegions = []
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(host.view)
+        let room = UIView()
+        room.backgroundColor = .clear
+        room.isUserInteractionEnabled = false
+
+        // The view that asks. As wide as the room and as tall as it is told.
+        let band = UIView()
+        band.backgroundColor = .clear
+        band.translatesAutoresizingMaskIntoConstraints = false
+        room.addSubview(band)
+        let height = band.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: container.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            band.topAnchor.constraint(equalTo: room.topAnchor),
+            band.leadingAnchor.constraint(equalTo: room.leadingAnchor),
+            band.trailingAnchor.constraint(equalTo: room.trailingAnchor),
+            height,
         ])
+
         // The system shapes the effect from the labels, images, glass and controls it finds in
-        // here, and what SwiftUI draws is none of those to it: with the content alone there is no
-        // effect at all. So a label stands behind the content, the size of it and saying nothing
-        // that can be seen, for the system to find.
+        // the view that asks, and from nothing else: an empty view gets no effect, and neither
+        // does one holding only what SwiftUI draws. So a label that shows nothing fills the band.
         let stand = UILabel()
         stand.text = "\u{2060}"
         stand.textColor = .clear
         stand.isAccessibilityElement = false
-        stand.isUserInteractionEnabled = false
         stand.translatesAutoresizingMaskIntoConstraints = false
-        container.insertSubview(stand, at: 0)
+        band.addSubview(stand)
         NSLayoutConstraint.activate([
-            stand.topAnchor.constraint(equalTo: container.topAnchor),
-            stand.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            stand.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stand.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stand.topAnchor.constraint(equalTo: band.topAnchor),
+            stand.bottomAnchor.constraint(equalTo: band.bottomAnchor),
+            stand.leadingAnchor.constraint(equalTo: band.leadingAnchor),
+            stand.trailingAnchor.constraint(equalTo: band.trailingAnchor),
         ])
+
         let interaction = UIScrollEdgeElementContainerInteraction()
         interaction.edge = .top
-        container.addInteraction(interaction)
-        context.coordinator.host = host
+        band.addInteraction(interaction)
         context.coordinator.interaction = interaction
-        return container
+        context.coordinator.reach = BandReach(height: height, in: room)
+        return room
     }
 
-    func updateUIView(_ container: UIView, context: Context) {
+    func updateUIView(_ room: UIView, context: Context) {
         let coordinator = context.coordinator
-        coordinator.host?.rootView = content
         // Read so that this is done again when the scroll view is found.
         _ = scroll.changes
-        // Switched, and not eased: the system brings its effect in and takes it away at its own
-        // pace whatever is done here. Animating this view's size, walking its size a step a frame,
-        // sliding it in, fading it, and setting this inside an animation were each tried at three
-        // seconds, and each time the effect was whole within one screenshot, 0.4 seconds later.
-        coordinator.interaction?.scrollView = on ? scroll.view : nil
+        if on { coordinator.interaction?.scrollView = scroll.view }
+        guard coordinator.on != on else { return }
+        coordinator.on = on
+        if on {
+            // Coming, the header reaches down behind the selector.
+            coordinator.reach?.go(to: 1, over: ScrollEdgeBand.arrival)
+        } else {
+            // Going, the effect is let go whole and the system takes it away, which is quick and
+            // reads right; the band is put back at nothing for the next time.
+            coordinator.interaction?.scrollView = nil
+            coordinator.reach?.reset()
+        }
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIView, context: Context) -> CGSize? {
-        guard let host = context.coordinator.host, let width = proposal.width, width.isFinite else { return nil }
-        let fitted = host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
-        return CGSize(width: width, height: fitted.height)
-    }
+    /// How long the header takes to reach down behind the selector.
+    static var arrival: CFTimeInterval { 0.5 }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
-        var host: UIHostingController<Content>?
         var interaction: UIScrollEdgeElementContainerInteraction?
+        var reach: BandReach?
+        var on = false
+    }
+}
+
+/// How far down its room the band reaches, walked a step a frame.
+private final class BandReach: NSObject {
+    private let height: NSLayoutConstraint
+    private weak var room: UIView?
+    private var link: CADisplayLink?
+    /// Nought, no reach, to one, the room's whole height.
+    private var now: CGFloat = 0
+    private var from: CGFloat = 0
+    private var to: CGFloat = 0
+    private var began: CFTimeInterval = 0
+    private var duration: CFTimeInterval = 0
+
+    init(height: NSLayoutConstraint, in room: UIView) {
+        self.height = height
+        self.room = room
+    }
+
+    func go(to target: CGFloat, over seconds: CFTimeInterval) {
+        from = now
+        to = target
+        duration = seconds
+        began = CACurrentMediaTime()
+        guard link == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(step))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    /// Back to nothing, at once.
+    func reset() {
+        link?.invalidate()
+        link = nil
+        now = 0
+        to = 0
+        height.constant = 0
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        let passed = duration > 0 ? min((CACurrentMediaTime() - began) / duration, 1) : 1
+        // Slow away and slow to rest.
+        let eased = passed * passed * (3 - 2 * passed)
+        now = from + (to - from) * eased
+        height.constant = (room?.bounds.height ?? 0) * now
+        if passed >= 1 {
+            link.invalidate()
+            self.link = nil
+        }
     }
 }
 
