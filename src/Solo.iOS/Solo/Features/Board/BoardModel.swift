@@ -85,6 +85,19 @@ final class BoardModel {
     var column: TaskState = .unstarted
     /// A card that has just changed column, for a phone to follow there.
     private(set) var landed: Landing?
+    /// The zones a card has landed in. A zone builds its cards as they come into view; on a
+    /// phone, whose page goes to a landed card, such a zone is built whole instead, so that the
+    /// card is there to go to.
+    private var wholeZones: Set<ZoneKey> = []
+
+    private struct ZoneKey: Hashable {
+        var epicId: UUID?
+        var status: TaskState
+    }
+
+    func isWhole(epicId: UUID?, status: TaskState) -> Bool {
+        wholeZones.contains(ZoneKey(epicId: epicId, status: status))
+    }
 
     struct Landing: Equatable {
         var taskId: UUID
@@ -393,6 +406,7 @@ final class BoardModel {
         if task.status != status {
             // A card dropped past the fold of a long Finished zone would land out of sight.
             if status == .finished, slot >= BoardDrag.finishedVisibleLimit { expandFinished(epicId) }
+            wholeZones.insert(ZoneKey(epicId: epicId, status: status))
             landed = Landing(taskId: task.id, status: status)
         }
 

@@ -286,27 +286,33 @@ nonisolated struct FillLayout: Layout {
 }
 
 /// A drop zone: one status of one lane.
+///
+/// Its cards are built as they scroll into view, and their glass is one container's. Both were
+/// measured on a phone scrolling a board of 580 tasks: a lane arriving whole, every card with a
+/// layer of glass to itself, held it to half its frame rate once the phone had warmed up, and
+/// neither change alone got it back (README, "A big board is built a lane at a time").
 private struct Zone: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
     var epicId: UUID?
     var status: TaskState
+    /// Build every card at once. A phone's page goes to a card that has just landed, which has
+    /// to exist to be found, so there a zone something has landed in is built whole from then on.
+    var whole = false
     @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
 
     var body: some View {
         let _ = Perf.count("zone")
-        let cards = model.cards(epicId: epicId, status: status)
-        let hidden = model.hiddenCount(epicId: epicId, status: status)
-        VStack(spacing: 6) {
-            ForEach(Array(cards.enumerated()), id: \.element.id) { index, task in
-                BoardCard(model: model, task: task, epicId: epicId, status: status, index: index)
-            }
-            if hidden > 0 {
-                ShowAllButton(hidden: hidden) { withAnimation { model.expandFinished(epicId) } }
-            }
-            if cards.isEmpty {
-                Color.clear.frame(height: 36)
+        Group {
+            // A container as tall as a long column costs more than it saves: Your Tasks, whose
+            // columns are that, scrolled at half the rate with one. So only a zone of a lane's
+            // usual size has one, which is every size this was measured at.
+            if model.cards(epicId: epicId, status: status).count <= Self.sharedGlassLimit {
+                // No spacing: the cards share the container's drawing, and are not to run into each other.
+                GlassEffectContainer(spacing: 0) { stack }
+            } else {
+                stack
             }
         }
         .padding(6)
@@ -326,6 +332,31 @@ private struct Zone: View {
             watch?.hover($0)
         }
         .animation(.easeOut(duration: 0.15), value: targeted)
+    }
+
+    /// The most cards a zone can hold and still draw their glass as one.
+    private static let sharedGlassLimit = 30
+
+    @ViewBuilder private var stack: some View {
+        if whole {
+            VStack(spacing: 6) { cards }
+        } else {
+            LazyVStack(spacing: 6) { cards }
+        }
+    }
+
+    @ViewBuilder private var cards: some View {
+        let cards = model.cards(epicId: epicId, status: status)
+        let hidden = model.hiddenCount(epicId: epicId, status: status)
+        ForEach(Array(cards.enumerated()), id: \.element.id) { index, task in
+            BoardCard(model: model, task: task, epicId: epicId, status: status, index: index)
+        }
+        if hidden > 0 {
+            ShowAllButton(hidden: hidden) { withAnimation { model.expandFinished(epicId) } }
+        }
+        if cards.isEmpty {
+            Color.clear.frame(height: 36)
+        }
     }
 }
 
@@ -749,7 +780,8 @@ private struct PagerLane: View {
             } else {
                 ColumnPages {
                     ForEach(TaskState.allCases) { status in
-                        Zone(model: model, epicId: epic?.id, status: status)
+                        Zone(model: model, epicId: epic?.id, status: status,
+                             whole: model.isWhole(epicId: epic?.id, status: status))
                             .accessibilityHidden(status != model.column)
                     }
                 }
