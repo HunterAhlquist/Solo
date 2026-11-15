@@ -139,6 +139,11 @@ struct DetailView: View {
                         taskFields(task)
                         TaskDetailExtensions(task: task, store: store)
                     }
+                    .task(id: task.id) {
+                        // A contribution drawn from the web saved something to this task: the board's copy is stale.
+                        session.kit.watch(task: task.id, as: "detail") { Task { await store.refresh() } }
+                    }
+                    .onDisappear { session.kit.watch(task: task.id, as: "detail", nil) }
                 } else if let epic {
                     AssigneeField(store: store, assigneeIds: epic.assigneeIds, canWrite: canWrite) { ids in
                         if let saved = await session.save({ try await api.setEpicAssignees(epic.id, ids) },

@@ -1,0 +1,75 @@
+@attribute [ProjectCardSection("Kit demo", Order = 90)]
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject ISoloLiveTopics Live
+
+@*
+    A project's roadmaps on its card, built from the kit and nothing else, so
+    that any client can draw it. The data, the live topic and the press are
+    ordinary client code. A row goes to its roadmap by Href, which a client
+    with a roadmap screen of its own can open there.
+*@
+
+@if (_roadmaps is null && _error is null)
+{
+    <SoloText Text="Loading…" Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+}
+else if (_error is not null)
+{
+    <SoloText Text="@_error" Variant="SoloTextVariant.Caption" Tone="SoloTone.Danger" />
+}
+else if (_roadmaps!.Count == 0)
+{
+    <SoloText Text="No roadmaps." Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+}
+else
+{
+    <SoloStack Spacing="SoloSpacing.None">
+        @foreach (var roadmap in _roadmaps)
+        {
+            <SoloRow @key="roadmap.Id" Icon="Flag" Title="@roadmap.Title" Href="@($"projects/{Project.Alias}/roadmaps/{roadmap.Id}")" />
+        }
+    </SoloStack>
+}
+
+@code {
+    private sealed record RoadmapSummary(Guid Id, string Title, uint Version);
+
+    private List<RoadmapSummary>? _roadmaps;
+    private string? _error;
+    private IAsyncDisposable? _live;
+
+    [Parameter, EditorRequired] public ProjectSummaryDto Project { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _live = await Live.SubscribeAsync(Project.Id, "roadmap:list", _ => InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        }));
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _roadmaps = await Api.GetAsync<List<RoadmapSummary>>($"api/ext/roadmap/projects/{Project.Id}/roadmaps");
+            _error = null;
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _error = "Couldn't load roadmaps.";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_live is not null)
+        {
+            await _live.DisposeAsync();
+        }
+    }
+}

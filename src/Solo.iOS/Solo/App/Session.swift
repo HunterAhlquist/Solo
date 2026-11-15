@@ -14,6 +14,8 @@ final class Session {
     let notifications: NotificationStore
     let assigned: AssignedTasksStore
     let extensions: ExtensionCatalog
+    /// What extensions with no native half add to core's screens, drawn here (KitSurface.swift).
+    let kit = KitSurfaceHost()
 
     /// True while requests are failing to reach the instance.
     private(set) var isOffline = false
@@ -33,6 +35,7 @@ final class Session {
         notifications = NotificationStore(api: api, hub: hub, toasts: toasts)
         assigned = AssignedTasksStore(api: api, hub: hub, userId: user.id)
         extensions = ExtensionCatalog(api: api)
+        kit.session = self
         api.onReachabilityChanged = { [weak self] reachable in
             guard let self, self.isOffline == reachable else { return }
             self.isOffline = !reachable
@@ -96,7 +99,6 @@ final class Session {
                 case "email": navigator.open(.adminEmail)
                 case "updates": navigator.open(.adminUpdates)
                 case "about": navigator.open(.about)
-                case "kitspike": navigator.open(.kitSpike)
                 default: break
                 }
             } else if let tab = AppTab(rawValue: target) {
@@ -113,6 +115,7 @@ final class Session {
     }
 
     func stop() async {
+        kit.reset()
         await hub.shutDown()
     }
 
@@ -132,6 +135,7 @@ final class Session {
         }
         await extensions.load()
         await projects.refreshProjects()
+        kit.restart()
         hub.resume()
     }
 

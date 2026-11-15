@@ -1,0 +1,19 @@
+@attribute [TaskCardExtension(Order = 90)]
+
+@* On every card of a board: a glance, and nothing when there is nothing to say. *@
+
+@if (Task.SubTasks.Count > 0)
+{
+    <SoloBadge Text="@($"{Task.SubTasks.Count(s => s.IsFinished)}/{Task.SubTasks.Count}")" Icon="Puzzle"
+               Tone="@(Task.SubTasks.All(s => s.IsFinished) ? SoloTone.Success : SoloTone.Default)" />
+}
+else
+{
+    <SoloBadge Text="@($"#{Task.Number}")" />
+}
+
+@code {
+    [Parameter, EditorRequired] public TaskDto Task { get; set; } = null!;
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public bool CanWrite { get; set; }
+}

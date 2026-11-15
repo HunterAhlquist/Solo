@@ -37,6 +37,11 @@ struct TaskDetailExtensions: View {
         if session.extensions.hasDesignDocs {
             LinkedDocsSection(task: task)
         }
+        // What extensions with no native half add, handed the task again whenever it changes.
+        KitContributions(seam: .taskDetail, project: store.board?.projectId, task: task.id, revision: Int(task.version),
+                         gap: 18) {
+            SectionTitle($0)
+        }
     }
 }
 
@@ -52,6 +57,9 @@ struct SidebarProjectExtensions: View {
         }
         if session.extensions.hasRoadmap {
             RoadmapSidebarSection(project: project)
+        }
+        KitContributions(seam: .projectNav, project: project.id) { title in
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
         }
         // Pages of extensions with no native half, where the web's sidebar lists them.
         ForEach(session.extensions.projectPages(for: project)) { page in
@@ -87,6 +95,7 @@ struct ProjectHomeExtensions: View {
         if session.extensions.hasRoadmap {
             RoadmapHomeSection(project: summary, canWrite: canWrite)
         }
+        KitContributions(seam: .projectHome, project: project.id) { SectionTitle($0) }
         PluginPagesHomeSection(project: summary)
     }
 }
@@ -146,6 +155,7 @@ struct ProjectCardExtensions: View {
         if session.extensions.hasRoadmap {
             RoadmapCardSection(project: project)
         }
+        KitContributions(seam: .projectCard, project: project.id) { SectionTitle($0) }
     }
 }
 
@@ -159,6 +169,7 @@ struct DashboardExtensions: View {
         if session.extensions.hasRoadmap {
             RoadmapDashboardSection(openTask: $openTask)
         }
+        KitContributions(seam: .dashboard) { SectionTitle($0) }
     }
 }
 

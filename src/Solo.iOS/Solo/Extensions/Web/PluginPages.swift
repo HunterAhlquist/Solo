@@ -39,19 +39,8 @@ nonisolated struct PluginPage: Hashable, Identifiable, Sendable {
         }
     }
 
-    /// The manifest names a Material icon; this is the nearest symbol of the system's.
-    var symbol: String { Self.symbols[icon ?? ""] ?? "puzzlepiece.extension" }
-
-    private static let symbols: [String: String] = [
-        "Analytics": "chart.bar", "Article": "doc.text", "BarChart": "chart.bar", "Bolt": "bolt",
-        "BugReport": "ladybug", "CalendarMonth": "calendar", "CalendarToday": "calendar", "Chat": "bubble.left",
-        "Checklist": "checklist", "Code": "chevron.left.forwardslash.chevron.right", "Dashboard": "square.grid.2x2",
-        "Description": "doc.text", "Extension": "puzzlepiece.extension", "Flag": "flag", "Folder": "folder",
-        "Group": "person.2", "Image": "photo", "Insights": "chart.line.uptrend.xyaxis", "Label": "tag",
-        "Link": "link", "List": "list.bullet", "Map": "map", "Notes": "note.text", "Notifications": "bell",
-        "People": "person.2", "Robot": "cpu", "Search": "magnifyingglass", "Settings": "gearshape", "Star": "star",
-        "Timeline": "chart.bar.xaxis", "Timer": "timer",
-    ]
+    /// The manifest names an icon as a project or a board does; a name the app doesn't know is the puzzle piece.
+    var symbol: String { SoloIcons.symbol(icon, fallback: "puzzlepiece.extension") }
 }
 
 /// The web client's addresses this app shows natively. A hosted page is told them, so that a

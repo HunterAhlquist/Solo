@@ -1,0 +1,23 @@
+@attribute [ProjectHomeSection("Kit demo", Order = 90)]
+
+@* One of most things, on a project's overview: state that lives in the component, and presses that change it. *@
+
+<SoloStack Spacing="SoloSpacing.Medium">
+    <SoloText Text="@($"Drawn by whichever client shows {Project.Name}.")" Tone="SoloTone.Muted" />
+    <SoloStack Direction="SoloDirection.Horizontal" Align="SoloAlign.Center">
+        <SoloButton Text="Count up" Icon="Bolt" Variant="SoloButtonVariant.Primary" OnClick="@(() => _count++)" />
+        <SoloButton Text="Reset" Destructive="true" Disabled="@(_count == 0)" OnClick="@(() => _count = 0)" />
+        <SoloButton Text="Plugin page" Variant="SoloButtonVariant.Plain" Href="@($"kit-spike/demo/{Project.Alias}")" />
+        <SoloBadge Text="@($"{_count} of 8")" Tone="@(_count >= 8 ? SoloTone.Success : SoloTone.Primary)" />
+    </SoloStack>
+    <SoloProgress Value="@(Math.Min(_count, 8) / 8.0)" Label="@($"{Math.Min(_count, 8)} of 8")" />
+    <SoloToggle Label="@(_on ? "Switched on" : "Switched off")" @bind-Value="_on" />
+</SoloStack>
+
+@code {
+    private int _count;
+    private bool _on;
+
+    [Parameter, EditorRequired] public ProjectSummaryDto Project { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+}

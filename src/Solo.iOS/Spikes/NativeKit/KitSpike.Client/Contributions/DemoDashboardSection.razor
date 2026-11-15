@@ -1,0 +1,14 @@
+@attribute [DashboardSection("Kit demo", Order = 90)]
+
+@* Above the personal board. No parameters: the page is the signed-in person's. *@
+
+<SoloStack Direction="SoloDirection.Horizontal" Align="SoloAlign.Center">
+    <SoloIcon Name="Star" Tone="SoloTone.Warning" Label="Starred" />
+    <SoloText Text="A section an extension put on Your Tasks." />
+    <SoloBadge Text="@($"pressed {_count}×")" Tone="SoloTone.Primary" />
+    <SoloButton Text="Press" OnClick="@(() => _count++)" />
+</SoloStack>
+
+@code {
+    private int _count;
+}

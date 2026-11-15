@@ -24,6 +24,8 @@ struct TaskCardView: View {
     var pulse = false
     var origin: TaskOrigin?
     var canWrite = false
+    /// The mount of the board this card is on, when extensions' card contributions are drawn for it.
+    var kitMount: String?
     /// The origin tab's measured size, which the card's outline is cut around.
     @State private var tab = CGSize.zero
 
@@ -76,6 +78,9 @@ struct TaskCardView: View {
                         if showDeadline {
                             deadlineRing
                         }
+                        if let kitMount {
+                            KitCardContributions(mount: kitMount, task: task.id)
+                        }
                         Spacer(minLength: 0)
                         if !task.subTasks.isEmpty {
                             HStack(spacing: 4) {
@@ -126,6 +131,7 @@ struct TaskCardView: View {
 
     private var hasFooter: Bool {
         showDeadline || !task.subTasks.isEmpty || !presence.isEmpty || !assignees.isEmpty
+            || kitMount.map { !session.kit.box(mount: $0, item: task.id.uuidString).sections.isEmpty } == true
     }
 
     private var isFinished: Bool { task.status == .finished }

@@ -17,8 +17,6 @@ nonisolated enum Route: Hashable, Sendable {
     case adminUpdates
     case adminThemes
     case about
-    /// The plugin kit spike's screen (Extensions/KitSpike): an experiment, reached from Account.
-    case kitSpike
     /// A page of an extension the app has no native half for: the web client's, shown inside the
     /// app. `path` is relative to the instance; `project` is the project it belongs to, if any.
     case pluginPage(path: String, title: String, project: String? = nil)
@@ -82,7 +80,7 @@ final class Navigator {
              .pluginPage(_, _, let project?):
             show(.projects, [.project(alias: project), route])
         case .mcpAccess, .notificationSettings, .devices, .appearance, .admin, .adminUsers, .adminEmail,
-             .adminExtensions, .adminUpdates, .adminThemes, .about, .kitSpike, .pluginPage:
+             .adminExtensions, .adminUpdates, .adminThemes, .about, .pluginPage:
             show(.account, [route])
         }
     }

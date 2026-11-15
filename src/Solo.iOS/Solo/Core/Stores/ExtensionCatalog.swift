@@ -41,13 +41,13 @@ final class ExtensionCatalog {
     }
 
     /// The extensions whose clients are compiled in.
-    private static let baked: Set<String> = [mcp, roadmap, designDocs]
+    static let bakedIds: Set<String> = [mcp, roadmap, designDocs]
 
     /// Extensions the instance runs that this app has no native half for. Their pages are
     /// shown from the web client; what they add to core's own screens is not shown at all,
     /// which Settings says, so that its absence reads as a limit of the app and not of the instance.
     var unsupported: [ClientExtension] {
-        installed.filter { !Self.baked.contains($0.id) && $0.clientAssembly != nil }
+        installed.filter { !Self.bakedIds.contains($0.id) && $0.clientAssembly != nil }
     }
 
     /// The pages those extensions list in their manifests, in the order the instance gave them.

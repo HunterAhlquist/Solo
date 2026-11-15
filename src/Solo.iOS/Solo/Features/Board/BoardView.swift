@@ -68,6 +68,16 @@ private struct BoardContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedBackground()
+        // What extensions with no native half add to cards: the board is mounted once, for all of them.
+        .task(id: board.id) {
+            session.kit.mount(BoardKitMount.id(for: board.id), .taskCard, project: board.projectId, board: board.id)
+        }
+        .task(id: board.tasks) {
+            // The cards changed: once they have settled, the contributions are handed them afresh.
+            try? await Task.sleep(for: .milliseconds(700))
+            if !Task.isCancelled { session.kit.refresh(BoardKitMount.id(for: board.id)) }
+        }
+        .onDisappear { session.kit.unmount(BoardKitMount.id(for: board.id)) }
         .navigationTitle(board.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -260,7 +270,8 @@ private struct BoardCard: View {
             assignees: store.members(task.assigneeIds),
             presence: store.editors(on: EntityTypes.task, task.id),
             pulse: store.pulsing.contains(task.id),
-            canWrite: model.canWrite)
+            canWrite: model.canWrite,
+            kitMount: store.board.map { BoardKitMount.id(for: $0.id) })
 
         Button { model.open(task) } label: { card }
             .buttonStyle(.plain)

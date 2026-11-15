@@ -1,0 +1,28 @@
+@attribute [TaskDetailExtension]
+
+@*
+    Under a task's fields. It says which version of the task it was handed,
+    which moves when the task is edited anywhere, and its button tells the host
+    it saved something, as a contribution does after writing to a task.
+*@
+
+<SoloStack Spacing="SoloSpacing.Small">
+    <SoloText Text="Kit demo" Variant="SoloTextVariant.Label" />
+    <SoloText Text="@($"{Task.Name} · version {Task.Version} · {Task.SubTasks.Count} sub-tasks")" Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+    <SoloStack Direction="SoloDirection.Horizontal" Align="SoloAlign.Center">
+        <SoloToggle Label="Flag for review" @bind-Value="_flagged" Disabled="@(!CanWrite)" />
+        <SoloButton Text="Say it changed" OnClick="@(() => OnChanged.InvokeAsync())" />
+        @if (_flagged)
+        {
+            <SoloBadge Text="Flagged" Icon="Flag" Tone="SoloTone.Warning" />
+        }
+    </SoloStack>
+</SoloStack>
+
+@code {
+    private bool _flagged;
+
+    [Parameter, EditorRequired] public TaskDto Task { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+}

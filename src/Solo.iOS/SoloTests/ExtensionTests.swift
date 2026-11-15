@@ -672,7 +672,8 @@ import Testing
         let page = PluginPage(extensionId: "mcp", label: "MCP access", icon: "Robot", route: "/mcp", requires: "Read")
         #expect(!page.isProjectLevel)
         #expect(page.path() == "mcp")
-        #expect(page.symbol == "cpu")
+        // The names a manifest takes are the ones a project's icon takes.
+        #expect(page.symbol == SoloIcons.symbol("Robot"))
     }
 
     @Test func anIconTheAppDoesNotKnowIsThePuzzlePiece() {
@@ -733,5 +734,87 @@ import Testing
             let claimed = HostedRoutes.patterns(all).contains { path.range(of: $0, options: .regularExpression) != nil }
             #expect(claimed == (HostedRoutes.destination(for: path, all) != nil), "\(path)")
         }
+    }
+}
+
+/// What extensions add to core's screens, as the web client's kit surface describes it and the
+/// app keeps it for the views that draw it.
+@Suite struct KitSurfaceTests {
+    private func update(_ json: String) throws -> KitUpdate {
+        try JSONDecoder().decode(KitUpdate.self, from: Data(json.utf8))
+    }
+
+    private let badge = #"{"id":7,"kind":"badge","props":{"text":"3 left","tone":"Warning"},"children":[]}"#
+
+    @Test func aTreeIsReadAsThePageWritesIt() throws {
+        let sent = try update(#"""
+        {"type":"kit","units":[{"mount":"m1","sections":[{"extension":"sprints","title":"Sprints","order":10,"nodes":[
+          {"id":3,"kind":"row","props":{"title":"Sprint 4","href":"sprints/DMD/4","press":"1"},"children":[\#(badge)]}]}]}]}
+        """#)
+        let section = try #require(sent.units.first?.sections.first)
+        #expect(section.extensionId == "sprints")
+        #expect(section.title == "Sprints")
+        let row = try #require(section.nodes.first)
+        #expect(row.kind == "row")
+        #expect(row["href"] == "sprints/DMD/4")
+        #expect(row.flag("press"))
+        #expect(!row.flag("disabled"))
+        #expect(row.children.first?["text"] == "3 left")
+    }
+
+    @Test func aPlaceKeepsWhatWasLastSaidOfIt() throws {
+        let host = KitSurfaceHost()
+        host.mount("m1", .projectCard, project: UUID())
+        let box = host.box(mount: "m1")
+        #expect(box.sections.isEmpty)
+
+        host.apply(try update(#"{"units":[{"mount":"m1","sections":[{"extension":"x","title":"T","order":0,"nodes":[\#(badge)]}]}]}"#))
+        #expect(box.sections.map(\.title) == ["T"])
+        // The same box every time: a view that read it once is the view that is told.
+        #expect(host.box(mount: "m1") === box)
+
+        host.apply(try update(#"{"units":[{"mount":"m1","sections":[]}]}"#))
+        #expect(box.sections.isEmpty)
+    }
+
+    @Test func oneCardChangingIsOneCardToldAndCardsThatLeftAreForgotten() throws {
+        let host = KitSurfaceHost()
+        let first = UUID(), second = UUID()
+        host.mount("board", .taskCard, board: UUID())
+        let section = #"{"extension":"x","title":"","order":0,"nodes":[\#(badge)]}"#
+        // The page writes ids in lower case; the app's are upper. They are the same card.
+        host.apply(try update(#"""
+        {"units":[{"mount":"board","sections":[],"items":[
+          {"item":"\#(first.uuidString.lowercased())","sections":[\#(section)]},
+          {"item":"\#(second.uuidString.lowercased())","sections":[\#(section)]}]}]}
+        """#))
+        let one = host.box(mount: "board", item: first.uuidString), two = host.box(mount: "board", item: second.uuidString)
+        #expect(one.sections.count == 1)
+        #expect(two.sections.count == 1)
+
+        host.apply(try update(#"{"units":[{"mount":"board","item":"\#(first.uuidString.lowercased())","sections":[]}]}"#))
+        #expect(one.sections.isEmpty)
+        #expect(two.sections.count == 1)
+
+        // The whole board again, without the second card: it has left.
+        host.apply(try update(#"{"units":[{"mount":"board","sections":[],"items":[{"item":"\#(first.uuidString.lowercased())","sections":[\#(section)]}]}]}"#))
+        #expect(one.sections.count == 1)
+        #expect(two.sections.isEmpty)
+    }
+
+    @Test func whatIsSaidOfAPlaceNoLongerMountedIsDropped() throws {
+        let host = KitSurfaceHost()
+        host.mount("m1", .dashboard)
+        host.unmount("m1")
+        host.apply(try update(#"{"units":[{"mount":"m1","sections":[{"extension":"x","title":"T","order":0,"nodes":[\#(badge)]}]}]}"#))
+        #expect(host.box(mount: "m1").sections.isEmpty)
+    }
+
+    @Test func nothingStartsWithoutAnExtensionThatCouldContribute() {
+        // No session, so no instance and no extensions: mounting is remembered and nothing runs.
+        let host = KitSurfaceHost()
+        host.mount("m1", .dashboard)
+        #expect(host.state == .idle)
+        #expect(host.webView == nil)
     }
 }

@@ -62,8 +62,6 @@ struct AccountView: View {
 
             Section {
                 link("About \(session.siteName)", "info.circle", .about)
-                // An experiment: a plugin's component run unseen and drawn natively.
-                link("Plugin Kit Spike", "flask", .kitSpike)
                 Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right") {
                     confirmation = Confirmation(title: "Sign out?",
                                                 message: "You'll need to sign in again to reach \(session.siteName).",
@@ -256,7 +254,8 @@ struct AboutView: View {
                     Text("\(session.extensions.unsupported.map(\.name).formatted(.list(type: .and))) "
                         + "\(session.extensions.unsupported.count == 1 ? "has" : "have") no screens of "
                         + "\(session.extensions.unsupported.count == 1 ? "its" : "their") own in this app. Their pages are "
-                        + "shown from the web app; anything they add to boards, tasks or projects is only in the web app.")
+                        + "shown from the web app, and what they add to projects, boards and tasks is drawn here where "
+                        + "it is built from Solo's kit. Anything else they add is only in the web app.")
                 }
             }
             .themedRow()

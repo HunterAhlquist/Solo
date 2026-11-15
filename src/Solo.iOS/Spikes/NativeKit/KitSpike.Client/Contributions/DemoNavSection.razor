@@ -1,0 +1,11 @@
+@attribute [ProjectNavSection("Kit demo", Order = 90)]
+
+@* Under a project in the sidebar: a link to this extension's page, and one to a core screen. *@
+
+<SoloRow Icon="Puzzle" Title="Plugin demo" Href="@($"kit-spike/demo/{Project.Alias}")" />
+<SoloRow Icon="Dashboard" Title="Project overview" Href="@($"projects/{Project.Alias}")" />
+
+@code {
+    [Parameter, EditorRequired] public ProjectSummaryDto Project { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+}

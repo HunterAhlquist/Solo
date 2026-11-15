@@ -99,9 +99,19 @@ The web client knows when it is hosted this way (`HostShell` in `Solo.Client`) a
 - **It signs in with the app's session.** The app hands it over for that page's lifetime; no provider is involved, whichever the instance uses. A session the API refuses is reported to the app, which checks for itself before signing anyone out.
 - **Links to screens the app has go to the app.** The app tells the page which addresses it owns — a board, a project, a baked-in extension's page where that extension is installed — and a link to one opens the native screen. Anything else is the extension's and stays in the page; a link off the instance opens in the browser.
 
-The page is given nothing of the device and can ask the app for nothing: it runs as web content, and what it may tell the app is that it is up, that its session was refused, and where it would like to go. What such an extension adds to core's own screens — a section on a task, a badge on a card — is not shown; About names the extensions that applies to.
+The page is given nothing of the device and can ask the app for nothing: it runs as web content, and what it may tell the app is that it is up, that its session was refused, and where it would like to go.
 
-`Spikes/NativeKit` has demo pages for trying this, and `SOLO_OPEN=web:<path>` opens any address of the web client's this way. `SOLO_WEB_EXTENSIONS=mcp` lists a baked-in extension's manifest pages from the web as well.
+**What such an extension adds to core's own screens** — a section on a project, a badge on a card — is drawn natively when it is built from the kit (`Solo.Shared.Kit`, contract 1.17), and not shown otherwise. The app cannot run the extension's code, so the code runs where it always does: one page of the web client, kept in a web view nobody sees for the whole session (the client's "kit surface"; `Extensions/Web/KitSurface.swift` here). The app asks it to mount a place; the page runs that place's contributions with the parameters core gives them and describes the kit components they render as a tree of nodes; the app draws the nodes with its own controls. A press goes back as a click on the node it came from, so the extension's handler answers it, and whatever changes comes back as a new tree.
+
+- **Places:** a project's card, overview and sidebar group; Your Tasks; a task's detail; the cards of a board. Not yet: cards on Your Tasks, board column headers, settings sections, the app bar and the task menu.
+- **Cards are for reading.** A card is one button, so what an extension puts on it is shown and cannot be pressed.
+- **Only data crosses.** A node is a kind and some text. `Href` on a row or a button opens the app's own screen where it has one, and the web client's page otherwise.
+- **It runs only when it could matter.** The page starts the first time a place is shown on an instance that has such an extension, and closes for good if it reports that none of them contributes anything. The system ending its process restarts it, twice at most; a memory warning with nothing mounted closes it until it is next needed. It sits in the window at one point square, because out of a window the system holds its timers back.
+- **A baked-in extension is never drawn this way.** The page is told which extensions the app has native halves for and leaves them out.
+
+About names the extensions this applies to. In a debug build the surface's timings and message sizes are written to `Documents/kit-surface.json`.
+
+`Spikes/NativeKit` is a plugin for trying all of this, with pages and a kit contribution for each place, and `SOLO_OPEN=web:<path>` opens any address of the web client's this way. `SOLO_WEB_EXTENSIONS=mcp` lists a baked-in extension's manifest pages from the web as well.
 
 ## Where it differs from the web client
 

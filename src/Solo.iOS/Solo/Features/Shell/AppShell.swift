@@ -5,12 +5,21 @@ import SwiftUI
 /// rotating or resizing loses nothing.
 struct AppShell: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(Session.self) private var session
 
     var body: some View {
-        if sizeClass == .regular {
-            SplitShell()
-        } else {
-            TabShell()
+        Group {
+            if sizeClass == .regular {
+                SplitShell()
+            } else {
+                TabShell()
+            }
+        }
+        // The page that runs extensions' contributions, kept in the window and out of sight.
+        .background(alignment: .topLeading) {
+            KitSurfaceAnchor(webView: session.kit.webView)
+                .frame(width: 1, height: 1)
+                .accessibilityHidden(true)
         }
     }
 }
@@ -58,8 +67,6 @@ struct RouteView: View {
             AdminThemesView()
         case .about:
             AboutView()
-        case .kitSpike:
-            KitSpikeView()
         case .pluginPage(let path, let title, _):
             PluginPageView(path: path, title: title)
         case .mcpAccess:

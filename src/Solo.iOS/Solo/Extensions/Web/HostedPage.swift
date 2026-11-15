@@ -14,6 +14,56 @@ import WebKit
 // plain notices — it is up, its session was refused, it would like to go
 // somewhere — and the app decides what each one is worth.
 
+/// What every web view that shows the instance's client is set up with.
+enum HostedWeb {
+    static let channel = "soloHost"
+
+    /// A web view configuration that tells the web client it is hosted and hands it the app's
+    /// session. The session is put where the web client keeps one it has been handed, for the
+    /// page's lifetime and no longer, and only on the instance that issued it.
+    ///
+    /// - Parameters:
+    ///   - routes: Patterns for the addresses the app has screens of its own for.
+    ///   - baked: Extensions the app draws itself, which a kit surface then leaves out.
+    static func configuration(instance: URL, token: String, user: User, routes: [String], baked: [String],
+                              listener: any WKScriptMessageHandler) -> WKWebViewConfiguration? {
+        guard let profile = (try? JSONEncoder().encode(user)).flatMap({ String(data: $0, encoding: .utf8) }),
+              let handed = (try? JSONSerialization.data(withJSONObject: [address(of: instance), token, profile, routes, baked]))
+                .flatMap({ String(data: $0, encoding: .utf8) }) else { return nil }
+        let configuration = WKWebViewConfiguration()
+        let script = """
+        (() => {
+            const [origin, token, user, routes, baked] = \(handed);
+            if (location.origin !== origin) return;
+            sessionStorage.setItem('solo.session.token', token);
+            sessionStorage.setItem('solo.session.user', user);
+            window.soloHost = { routes, baked, post: message => window.webkit.messageHandlers.\(channel).postMessage(message) };
+        })();
+        """
+        configuration.userContentController.addUserScript(
+            WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        configuration.userContentController.add(listener, name: channel)
+        return configuration
+    }
+
+    /// The scheme, host and port of an address, as a page's `location.origin` spells them.
+    static func address(of url: URL) -> String {
+        var text = "\(url.scheme ?? "https")://\(url.host ?? "")"
+        if let port = url.port { text += ":\(port)" }
+        return text
+    }
+
+    /// What a hosted page said, if it was the instance's own page in the main frame saying it.
+    static func notice(_ message: WKScriptMessage, from instance: URL?) -> (type: String, body: [String: Any], data: Data)? {
+        guard let instance, message.frameInfo.isMainFrame, let url = message.frameInfo.request.url,
+              address(of: url) == address(of: instance),
+              let text = message.body as? String, let data = text.data(using: .utf8),
+              let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let type = body["type"] as? String else { return nil }
+        return (type, body, data)
+    }
+}
+
 @Observable
 final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     private(set) var webView: WKWebView?
@@ -36,28 +86,11 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     func open(path: String, instance: URL, token: String, user: User, siteName: String, routes: [String]) {
         close()
         guard let url = URL(string: path, relativeTo: instance)?.absoluteURL,
-              let profile = (try? JSONEncoder().encode(user)).flatMap({ String(data: $0, encoding: .utf8) }),
-              let handed = (try? JSONSerialization.data(withJSONObject: [Self.address(of: instance), token, profile, routes]))
-                .flatMap({ String(data: $0, encoding: .utf8) }) else {
+              let configuration = HostedWeb.configuration(instance: instance, token: token, user: user, routes: routes,
+                                                          baked: [], listener: self) else {
             problem = "This page's address couldn't be read."
             return
         }
-
-        let configuration = WKWebViewConfiguration()
-        // The session is put where the web client keeps one it has been handed, for this page's
-        // lifetime and no longer, and only on the instance that issued it.
-        let script = """
-        (() => {
-            const [origin, token, user, routes] = \(handed);
-            if (location.origin !== origin) return;
-            sessionStorage.setItem('solo.session.token', token);
-            sessionStorage.setItem('solo.session.user', user);
-            window.soloHost = { routes, post: message => window.webkit.messageHandlers.soloHost.postMessage(message) };
-        })();
-        """
-        configuration.userContentController.addUserScript(
-            WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        configuration.userContentController.add(self, name: "soloHost")
 
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = self
@@ -90,7 +123,7 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
 
     func close() {
         titleWatch = nil
-        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "soloHost")
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: HostedWeb.channel)
         webView?.stopLoading()
         webView = nil
         isReady = false
@@ -98,16 +131,9 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
         title = nil
     }
 
-    /// The scheme, host and port of an address, as a page's `location.origin` spells them.
-    private static func address(of url: URL) -> String {
-        var text = "\(url.scheme ?? "https")://\(url.host ?? "")"
-        if let port = url.port { text += ":\(port)" }
-        return text
-    }
-
     private func isInstance(_ url: URL) -> Bool {
         guard let origin else { return false }
-        return Self.address(of: url) == Self.address(of: origin)
+        return HostedWeb.address(of: url) == HostedWeb.address(of: origin)
     }
 
     /// The web client titles a page "Roadmap · Instance"; the bar wants the first part.
@@ -127,17 +153,14 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         // Only the instance's own page, in the main frame, is listened to.
-        guard message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, isInstance(url),
-              let text = message.body as? String, let data = text.data(using: .utf8),
-              let notice = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let type = notice["type"] as? String else { return }
-        switch type {
+        guard let notice = HostedWeb.notice(message, from: origin) else { return }
+        switch notice.type {
         case "ready":
             isReady = true
         case "sessionRefused":
             onSessionRefused()
         case "navigate":
-            if let path = notice["path"] as? String, path.count < 2_000 { onNavigate(path) }
+            if let path = notice.body["path"] as? String, path.count < 2_000 { onNavigate(path) }
         default:
             break
         }

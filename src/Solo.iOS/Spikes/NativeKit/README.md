@@ -1,20 +1,22 @@
-# Plugin kit spike
+# The test plugin
 
-A question, not a feature: can a third-party plugin's Razor component run in a web view nobody sees, and be drawn by the native app with its own controls? Nothing here is released, built by CI or part of any solution.
+A client-only extension, `kit-spike`, that stands in for a third-party plugin: something the app has no native half for. It is how the app's support for such extensions is tried. Nothing here is released, built by CI or part of any solution.
+
+It began as a spike — could a plugin's Razor component run in a web view nobody sees and be drawn by the app? — with three components of its own and a page to host them. The answer was yes; the components became the contract's kit (`Solo.Shared.Kit`, contract 1.17) and the page became the web client's kit surface, so the spike's own versions are gone. What it measured is kept at the end.
 
 ## What is in it
 
-| Piece | Where | What it does |
-|---|---|---|
-| A client-only extension, `kit-spike` | this folder | Three "kit" components (`KitRow`, `KitBadge`, `KitText`), the Roadmap's project-card section rewritten with them (`RoadmapKitCard.razor`), and a host page at `/kit-spike/host`. |
-| The bridge | `content/kit.js` | Serializes the kit nodes on the host page as a tree and posts it to the app; turns a tap in the app back into a click on the element it came from. |
-| The app's side | `Solo/Extensions/KitSpike/KitHost.swift` | A web view signed in with the app's session, the tree drawn with SwiftUI, and a screen of measurements under Account → Plugin Kit Spike. |
+| File | What it is for |
+|---|---|
+| `PluginDemoPage`, `PluginDemoMorePage`, `AboutPage` and the manifest's `nav` | An extension's own pages, which the app shows from the web client. Links to a core screen, to another of its pages, and off the instance. The first page ends in a gallery of every kit component, drawn by the web client. |
+| `Contributions/DemoCardSection` | A project's card: its roadmaps, each a row with an `Href`. |
+| `Contributions/DemoHomeSection` | A project's overview: buttons, a badge, progress and a switch over state the component holds. |
+| `Contributions/DemoNavSection` | A project's sidebar group: two rows. |
+| `Contributions/DemoDashboardSection` | Your Tasks. |
+| `Contributions/DemoTaskDetail` | A task's detail: says which version of the task it was handed, and tells the host it saved something. |
+| `Contributions/DemoCardBadge` | Every card of a board: a badge. |
 
-A kit component draws MudBlazor markup on the web and a `<solo-kit>` element on a kit surface, so `RoadmapKitCard` is one source for both: on the web it is an ordinary `[ProjectCardSection]` ("Roadmaps (kit)" on each project's card), and in the app the same running component is what the native rows come from. Its data, its live topic and its click handler are ordinary client code.
-
-It also carries three plain pages (`PluginDemoPage`, `PluginDemoMorePage`, `AboutPage`) and the manifest entries that list them. They have nothing to do with the spike's kit: they are an extension with no native half, for trying how the app shows one (see the app's README, "Extensions with no native half").
-
-The first of them ends in a gallery of the contract's own kit, `Solo.Shared.Kit` (contract 1.17), one of each component, drawn by the web client. That kit is what the spike's three components were a sketch of. The app does not draw it natively yet; when it does, the spike's own `KitRow`, `KitBadge` and `KitText` go.
+Every contribution is built from the kit and nothing else, which is what lets the app draw it.
 
 ## Running it
 
@@ -23,39 +25,29 @@ build/pack-contract.sh
 src/Solo.iOS/Spikes/NativeKit/pack.sh <the instance's extensions directory>
 ```
 
-Restart the instance, then open Account → Plugin Kit Spike in the app. The Roadmap extension has to be installed too, since the card reads its endpoint.
+Restart the instance. The Roadmap extension has to be installed too, since the card section reads its endpoint. The instance has to be running this branch's web client.
 
-## What it found (iPhone simulator, a Debug build of the web client, the instance on the same Mac)
-
-| Question | Answer |
-|---|---|
-| Does it work at all? | Yes. Rows appear natively; a tap runs the component's C# handler, the component re-renders, and the new tree arrives with the change in it. A request to open a route comes through as a message. |
-| How long until rows show? | About 1.7 s from asking the web view to load, with WebKit's cache warm (1.5 s to the host page being up). 1.8–2.1 s without the cache — but the instance was local, so that leaves out the download. |
-| How much is downloaded cold? | About 14 MB compressed in 225 files for this Debug client. A Release client is trimmed and was not measured. |
-| How much memory? | About 190–200 MB for the web view's content process, plus about 12 MB and 11 MB for WebKit's GPU and networking processes. The app itself was at 96 MB. |
-| Is a hidden web view held back? | Not if it is in a window: hidden, or one point square, the page counts itself visible and its timers run on time (142 of 143 pulses). Out of any window its timers drop to one a second and a live change took 3–4 s to show, but it kept running for the 45 s it was watched. |
-| Does it survive the app going to the background? | For 30 s, yes: the page stopped, and carried on in the same process with its state when the app came back. |
-| Do live changes arrive? | Yes. A roadmap created through the API showed up in the tree within the 3 s that was waited, and left it again when deleted. |
-
-## On an iPhone Air, over the local network
-
-The same instance, reached at the Mac's address over plain HTTP, with a Debug build of the app handed a session at launch.
+## What the app's kit surface measured (iPad simulator, a Debug web client, the instance on the same Mac)
 
 | Question | Answer |
 |---|---|
-| Does it work on the device? | Yes: rows drawn, the page counting itself visible in a one-point web view, 123 of 128 pulses heard. |
-| How long until rows show? | 14.8 s (12.0 s to the host page being up). The simulator takes 13 s against the same address and 1.5 s against `localhost`, so nearly all of it belongs to the address and not to the phone: a plain-HTTP address on the network is not a secure context, and the web client starts about eleven seconds slower without one. Why exactly was not looked into. An instance behind HTTPS should not pay it, which was not measured. |
+| How long until the page is up? | 2.1–2.4 s from the app starting it. |
+| How long until a place shows its contributions, once the page is up? | Under 0.1 s for a project's card or a section. |
+| A board of 580 cards, a badge each? | 0.31–0.33 s from asking, as one message of 118 KB. |
+| One of those cards changing? | One message of 291 bytes, for that card. |
+| Memory with all of that mounted? | About 192 MB for the web view's content process. The app itself was at 150 MB with the board open. |
 
-## What it did not find out
+## What the spike measured before that (iPhone simulator)
 
-- Memory on a real iPhone or iPad, a fair boot time there (over HTTPS), and whether the system ends the web view's process when memory is short (the host notices if it does; it does not yet reload).
+| Question | Answer |
+|---|---|
+| Is a hidden web view held back? | Not if it is in a window: hidden, or one point square, the page counts itself visible and its timers run on time. Out of any window its timers drop to one a second and a live change took 3–4 s to show. |
+| Does it survive the app going to the background? | For 30 s, yes: the page stopped, and carried on in the same process with its state. |
+| On an iPhone Air over the local network? | It worked; the page took 12 s to come up, against 13 s on the simulator at the same address and 1.5 s at `localhost`. A plain-HTTP address on the network is not a secure context and the web client starts about eleven seconds slower without one. An instance behind HTTPS should not pay that, which was not measured. |
+
+## Still not known
+
+- Memory on a real iPhone or iPad, a fair start-up time there (over HTTPS), and how often the system ends the page's process when memory is short.
 - The cost with a Release web client, over a real network.
-- Many contributions at once — a board of cards with a badge each — which is the case a single hidden web view is meant to make affordable.
-- Dialogs, the task picker and anything else a hidden component might want to put on screen.
+- Scrolling a board while its cards' contributions are changing.
 - What App Review makes of it.
-
-## Shortcuts taken
-
-- The web client is told it is inside the desktop shell (`window.soloDesktop`) so that it takes a session token, which the app puts in `sessionStorage`. A real design needs its own way of handing the session over.
-- The host page names its one component. The host would find contributions by their attributes.
-- The kit lives in the plugin. It belongs in `Solo.Shared`.
