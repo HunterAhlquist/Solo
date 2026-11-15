@@ -247,6 +247,26 @@ Add `@using Solo.Shared.Kit` to the component.
 - **You cannot add a kit component.** The components are sealed.
 - **In your tests**, a kit component draws plain HTML with a `data-solo-kit` attribute, for example `<button data-solo-kit="button">`. A click on it calls your handler.
 
+### Pages and `[WebPage]`
+
+You can also build a page of your extension from the kit. A client that draws the kit with its own controls then draws the whole page as one of its own screens. You do not mark such a page.
+
+If a page needs more than the kit has, add `[WebPage]`:
+
+```razor
+@page "/burndown/{ProjectAlias}"
+@attribute [WebPage]
+@using Solo.Shared.Kit
+```
+
+A client that is not a browser shows a `[WebPage]` page from the web client. In a browser, the attribute changes nothing.
+
+- **A page is drawn by one or the other.** A client does not mix its own controls and web content on one page. If part of the page is not the kit, add `[WebPage]`.
+- **A page without the attribute that is not all kit still works.** The client shows it from the web client when the page first renders content that is not a kit component. The person sees the page change. Add `[WebPage]` to prevent that.
+- **Add `[WebPage]` to a page that reads its query string.** A page with a `[SupplyParameterFromQuery]` parameter is treated as a `[WebPage]` page.
+- **A page drawn from the kit has no layout and no `PageTitle`.** The client uses the label of the `nav` entry, or the name of your extension, as the title.
+- **While the page loads, render kit components or nothing.** The kit has no spinner.
+
 ## Services from Solo
 
 Inject these services into a page or a component. They are in `Solo.Shared.Extensibility`.

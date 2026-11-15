@@ -265,6 +265,13 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         startedAt = Date()
         #endif
         view.load(URLRequest(url: instance.appending(path: "kit-surface")))
+        // A page that loads and then never says it is up — a web client that could not start —
+        // would leave whatever is waiting on it waiting for good. Slow is allowed; silent is not.
+        Task { [weak self, weak view] in
+            try? await Task.sleep(for: .seconds(30))
+            guard let self, let view, self.webView === view, self.state == .starting else { return }
+            self.stop(as: .failed)
+        }
     }
 
     /// The person closed the sheet the page's dialog was shown in: the dialog is closed with it.

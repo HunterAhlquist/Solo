@@ -1174,3 +1174,26 @@ Everything around the kit components is unchanged: the attribute that places the
 - **The kit is closed.** Its components are sealed and there is no base class to derive from: each one is a promise that every client can draw it. Nothing in it belongs to one platform, and nothing will be added that does. A new one is a contract change.
 - **In your own tests** there is no host to draw the kit, so each component draws itself as plain HTML — a real `<button>`, a real checkbox — marked `data-solo-kit="button"`, `"row"`, `"toggle"` and so on. Clicks and changes work, so a bUnit test can find a kit component and press it.
 
+### A whole page from the kit, and `[WebPage]`
+
+The kit is not only for contributions. A page of your own — a routable component your manifest's `nav` points at — can be built from it too, and then a client that draws the kit can draw the page as a screen of its own, while your code runs where it always does. Nothing marks such a page: it is what a page is by saying nothing.
+
+A page that needs more than the kit has says so:
+
+```razor
+@page "/burndown/{ProjectAlias}"
+@attribute [WebPage]
+@using Solo.Shared.Kit
+
+<MudChart ChartType="ChartType.Line" ... />
+```
+
+`[WebPage]` means the web client draws this page wherever it is shown. A client that is not a browser shows it from the web client, inside its own bars, without first trying to draw it. In a browser it changes nothing.
+
+- **A page is one or the other, whole.** There is no screen that is half native controls and half web. Mark the page if any part of it is not the kit.
+- **An unmarked page that is not all kit still works.** Such a client notices the first thing the page renders that is not a kit component — a word of text, an image, a MudBlazor control — and shows the page from the web from then on. Nothing is lost, but the person sees it change over; mark the page and it opens as what it is. This is also what happens to every page written before 1.17.
+- **Mark a page that reads its query string.** Route parameters reach a page however it is shown. A `[SupplyParameterFromQuery]` parameter, or anything read from `NavigationManager.Uri`, belongs to the address the browser is at, which only a page the web client is showing has; a page with such a parameter is treated as marked.
+- **A page drawn from the kit has no layout and no `PageTitle`.** The client titles it with the label of the `nav` entry that led to it, or your extension's name.
+- **While loading, render kit or nothing.** There is no kit spinner; a `MudProgressCircular` shown for a moment is something that is not the kit, and makes the page the web's.
+- **Dialogs and snackbars still work** from a kit page's handlers — `ISoloTaskPicker`, MudBlazor's `IDialogService` and `ISnackbar` — as they do from a contribution's.
+

@@ -91,7 +91,7 @@ Two parts of Design Docs follow the web editor closely enough to be worth knowin
 
 ### Extensions with no native half
 
-Any other extension the instance runs still works here, as far as its own pages go. Its manifest's `nav` entries are listed where the web's sidebar lists them — per project on the project's overview and in the sidebar, once on the Account tab for an instance-level page — and opening one shows that page of the instance's web client inside the app's own bars (`Extensions/Web`).
+Any other extension the instance runs still works here. Its manifest's `nav` entries are listed where the web's sidebar lists them — per project on the project's overview and in the sidebar, once on the Account tab for an instance-level page. Opening one draws the page natively when it is built from the kit, which is covered further down, and otherwise shows that page of the instance's web client inside the app's own bars (`Extensions/Web`).
 
 The web client knows when it is hosted this way (`HostShell` in `Solo.Client`) and does three things differently:
 
@@ -110,6 +110,14 @@ The page is given nothing of the device and can ask the app for nothing: it runs
 - **Only data crosses.** A node is a kind and some text. `Href` on a row or a button opens the app's own screen where it has one, and the web client's page otherwise.
 - **It runs only when it could matter.** The page starts the first time a place is shown on an instance that has such an extension, and closes for good if it reports that none of them contributes anything. The system ending its process restarts it, twice at most; a memory warning with nothing mounted closes it until it is next needed. It sits in the window at one point square, because out of a window the system holds its timers back.
 - **A baked-in extension is never drawn this way.** The page is told which extensions the app has native halves for and leaves them out.
+
+**An extension's own page** is asked of the same hidden page first (`PluginPageView`). The web client finds the page for the address, runs it, and says who draws it:
+
+- **The app**, when everything the page renders is a kit component. It is drawn as a screen: text at a screen's size, a stack of nothing but rows as a glass panel, buttons as the app's own glass buttons, pull to refresh starting the page over.
+- **The web client**, in a web view as before, when the page is marked `[WebPage]`, reads a query string, or is not an extension's page at all. The app is told at once and never tries to draw it.
+- **The web client, after a moment**, when an unmarked page turns out to render something that is not the kit. The app switches to the web view when it is told, and does not switch back.
+
+Nothing is waited for that could not answer: with no kit surface — it failed, the instance's web client is older than this, nothing on the instance has a page — the page is the web's straight away. A link from a page shown in a web view to a page the app could draw stays in the web view, drawn by the web client: only the app's own list of screens is handed to a hosted page.
 
 About names the extensions this applies to. In a debug build the surface's timings and message sizes are written to `Documents/kit-surface.json`.
 
