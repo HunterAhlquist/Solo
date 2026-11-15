@@ -58,6 +58,8 @@ struct RouteView: View {
             AdminThemesView()
         case .about:
             AboutView()
+        case .kitSpike:
+            KitSpikeView()
         case .mcpAccess:
             McpAccessView()
         case .roadmap(let project, let roadmapId):

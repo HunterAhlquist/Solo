@@ -62,6 +62,8 @@ struct AccountView: View {
 
             Section {
                 link("About \(session.siteName)", "info.circle", .about)
+                // An experiment: a plugin's component run unseen and drawn natively.
+                link("Plugin Kit Spike", "flask", .kitSpike)
                 Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right") {
                     confirmation = Confirmation(title: "Sign out?",
                                                 message: "You'll need to sign in again to reach \(session.siteName).",

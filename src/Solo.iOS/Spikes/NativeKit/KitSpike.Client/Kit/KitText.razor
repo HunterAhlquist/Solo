@@ -1,0 +1,16 @@
+@* A line of small text: a state to report, not something to press. *@
+@if (Surface is not null)
+{
+    <solo-kit data-kind="text" data-text="@Text" data-tone="@Tone"></solo-kit>
+}
+else
+{
+    <MudText Typo="Typo.caption" Color="@(Tone == "error" ? Color.Error : Color.Secondary)" Class="px-1">@Text</MudText>
+}
+
+@code {
+    [CascadingParameter] public KitSurface? Surface { get; set; }
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    /// <summary>"error", or nothing for secondary text.</summary>
+    [Parameter] public string? Tone { get; set; }
+}

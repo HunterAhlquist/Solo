@@ -1,0 +1,9 @@
+{
+  "id": "kit-spike",
+  "name": "Kit spike",
+  "version": "0.1.0",
+  "soloClientVersion": ">=1.4 <2.0",
+  "client": "client/KitSpike.Client.dll",
+  "nav": [],
+  "hooks": []
+}

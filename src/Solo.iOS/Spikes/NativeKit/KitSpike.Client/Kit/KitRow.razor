@@ -1,0 +1,26 @@
+@*
+    A row: an icon, a title, and whatever small thing trails it. On the web it
+    is a link-like line; on a kit surface it is a node the surface draws.
+*@
+@if (Surface is not null)
+{
+    <solo-kit data-kind="row" data-icon="@Icon" data-title="@Title" data-tappable="@(OnClick.HasDelegate ? "1" : null)"
+              @onclick="OnClick">@ChildContent</solo-kit>
+}
+else
+{
+    <a role="button" tabindex="0" @onclick="OnClick"
+       style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer">
+        <MudIcon Icon="@KitIcons.Material(Icon)" Size="Size.Small" Color="Color.Primary" />
+        <span class="text-truncate" style="flex:1">@Title</span>
+        @ChildContent
+    </a>
+}
+
+@code {
+    [CascadingParameter] public KitSurface? Surface { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

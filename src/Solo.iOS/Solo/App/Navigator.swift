@@ -17,6 +17,8 @@ enum Route: Hashable {
     case adminUpdates
     case adminThemes
     case about
+    /// The plugin kit spike's screen (Extensions/KitSpike): an experiment, reached from Account.
+    case kitSpike
     /// A page a baked-in extension owns.
     case mcpAccess
     case roadmap(project: String, roadmapId: UUID)
@@ -76,7 +78,7 @@ final class Navigator {
         case .board(let project, _, _), .roadmap(let project, _), .designDocs(let project, _, _):
             show(.projects, [.project(alias: project), route])
         case .mcpAccess, .notificationSettings, .devices, .appearance, .admin, .adminUsers, .adminEmail,
-             .adminExtensions, .adminUpdates, .adminThemes, .about:
+             .adminExtensions, .adminUpdates, .adminThemes, .about, .kitSpike:
             show(.account, [route])
         }
     }

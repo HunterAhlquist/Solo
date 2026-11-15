@@ -1,0 +1,17 @@
+@* A few words in a pill. *@
+@if (Surface is not null)
+{
+    <solo-kit data-kind="badge" data-text="@Text" data-tone="@Tone"></solo-kit>
+}
+else
+{
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+             Color="@(Tone == "primary" ? Color.Primary : Color.Default)">@Text</MudChip>
+}
+
+@code {
+    [CascadingParameter] public KitSurface? Surface { get; set; }
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    /// <summary>"primary", or nothing for the quiet one.</summary>
+    [Parameter] public string? Tone { get; set; }
+}

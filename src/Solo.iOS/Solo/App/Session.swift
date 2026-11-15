@@ -93,6 +93,7 @@ final class Session {
                 case "email": navigator.open(.adminEmail)
                 case "updates": navigator.open(.adminUpdates)
                 case "about": navigator.open(.about)
+                case "kitspike": navigator.open(.kitSpike)
                 default: break
                 }
             } else if let tab = AppTab(rawValue: target) {

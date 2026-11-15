@@ -1,0 +1,99 @@
+@attribute [ProjectCardSection("Roadmaps (kit)", Order = 90)]
+@implements IAsyncDisposable
+@inject ISoloClientApi Api
+@inject ISoloLiveTopics Live
+@inject NavigationManager Navigation
+
+@*
+    The Roadmap extension's project-card section, written once with kit
+    components and nothing else. On the web it is an ordinary contribution to
+    each card on All projects. On a kit surface (KitHostPage) the same
+    component runs unseen and what it would show is handed over as kit nodes.
+
+    Its data, its live topic and its click handler are ordinary client code:
+    the point of the spike is that none of that changes.
+*@
+
+@if (_roadmaps is null && _error is null)
+{
+    <KitText Text="Loading…" />
+}
+else if (_error is not null)
+{
+    <KitText Text="@_error" Tone="error" />
+}
+else if (_roadmaps!.Count == 0)
+{
+    <KitText Text="No roadmaps." />
+}
+else
+{
+    @foreach (var roadmap in _roadmaps)
+    {
+        <KitRow @key="roadmap.Id" Icon="Timeline" Title="@roadmap.Title" OnClick="@(() => OpenAsync(roadmap))">
+            @if (_opened.TryGetValue(roadmap.Id, out var times))
+            {
+                <KitBadge Text="@($"opened {times}×")" Tone="primary" />
+            }
+        </KitRow>
+    }
+}
+
+@code {
+    private sealed record RoadmapSummary(Guid Id, string Title, uint Version);
+
+    private List<RoadmapSummary>? _roadmaps;
+    private string? _error;
+    private IAsyncDisposable? _live;
+    // State only the running component holds: a tap changes it, and the tree that comes back shows it.
+    private readonly Dictionary<Guid, int> _opened = [];
+
+    [CascadingParameter] public KitSurface? Surface { get; set; }
+    [Parameter, EditorRequired] public ProjectSummaryDto Project { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _live = await Live.SubscribeAsync(Project.Id, "roadmap:list", _ => InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        }));
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _roadmaps = await Api.GetAsync<List<RoadmapSummary>>($"api/ext/roadmap/projects/{Project.Id}/roadmaps");
+            _error = null;
+        }
+        catch (Exception e) when (e is SoloApiException or HttpRequestException)
+        {
+            _error = "Couldn't load roadmaps.";
+        }
+    }
+
+    private async Task OpenAsync(RoadmapSummary roadmap)
+    {
+        _opened[roadmap.Id] = _opened.GetValueOrDefault(roadmap.Id) + 1;
+        var route = $"projects/{Project.Alias}/roadmaps/{roadmap.Id}";
+        if (Surface is not null)
+        {
+            await Surface.OpenAsync(route);
+        }
+        else
+        {
+            Navigation.NavigateTo(route);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_live is not null)
+        {
+            await _live.DisposeAsync();
+        }
+    }
+}
