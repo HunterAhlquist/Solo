@@ -77,7 +77,10 @@ final class Session {
         if let target = ProcessInfo.processInfo.environment["SOLO_OPEN"] {
             let parts = target.split(separator: "-").map(String.init)
             let pieces = target.split(separator: ":").map(String.init)
-            if pieces.count == 3, pieces[0] == "roadmap", let id = UUID(uuidString: pieces[2]) {
+            if target.hasPrefix("web:") {
+                // Any address of the web client's, shown as an extension's page is.
+                navigator.open(.pluginPage(path: String(target.dropFirst(4)), title: "Page"))
+            } else if pieces.count == 3, pieces[0] == "roadmap", let id = UUID(uuidString: pieces[2]) {
                 navigator.open(.roadmap(project: pieces[1], roadmapId: id))
             } else if pieces.count >= 3, pieces[0] == "docs", let id = UUID(uuidString: pieces[2]) {
                 navigator.open(.designDocs(project: pieces[1], vaultId: id, noteId: pieces.count > 3 ? UUID(uuidString: pieces[3]) : nil))

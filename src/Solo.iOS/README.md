@@ -89,7 +89,19 @@ Two parts of Design Docs follow the web editor closely enough to be worth knowin
 - **Looking closer at a picture** is a scroll view's zoom (`ZoomablePicture.swift`), which keeps the place between the fingers where it is; a double tap zooms in on the place tapped.
 - **Undo in a sketch** is Yjs's undo manager over the same parts of the document the web editor's watches, so it takes back a stroke, a change of paper or a cleared page, and never anybody else's work. Clearing plays the web's explosion, which the app fetches from the extension's content on the instance rather than carrying a copy.
 
-An extension the instance runs that has no native half is named under About, so its absence reads as a limit of the app rather than of the instance.
+### Extensions with no native half
+
+Any other extension the instance runs still works here, as far as its own pages go. Its manifest's `nav` entries are listed where the web's sidebar lists them — per project on the project's overview and in the sidebar, once on the Account tab for an instance-level page — and opening one shows that page of the instance's web client inside the app's own bars (`Extensions/Web`).
+
+The web client knows when it is hosted this way (`HostShell` in `Solo.Client`) and does three things differently:
+
+- **It is only the page.** No app bar, no navigation, no footer, and no background of its own, so the app's shows through.
+- **It signs in with the app's session.** The app hands it over for that page's lifetime; no provider is involved, whichever the instance uses. A session the API refuses is reported to the app, which checks for itself before signing anyone out.
+- **Links to screens the app has go to the app.** The app tells the page which addresses it owns — a board, a project, a baked-in extension's page where that extension is installed — and a link to one opens the native screen. Anything else is the extension's and stays in the page; a link off the instance opens in the browser.
+
+The page is given nothing of the device and can ask the app for nothing: it runs as web content, and what it may tell the app is that it is up, that its session was refused, and where it would like to go. What such an extension adds to core's own screens — a section on a task, a badge on a card — is not shown; About names the extensions that applies to.
+
+`Spikes/NativeKit` has demo pages for trying this, and `SOLO_OPEN=web:<path>` opens any address of the web client's this way. `SOLO_WEB_EXTENSIONS=mcp` lists a baked-in extension's manifest pages from the web as well.
 
 ## Where it differs from the web client
 

@@ -3,7 +3,7 @@ import SwiftUI
 /// Everywhere a link can lead. Aliases rather than ids, as the web app's routes
 /// are: a route then means the same thing on every client and survives a
 /// refetch.
-enum Route: Hashable {
+nonisolated enum Route: Hashable, Sendable {
     case project(alias: String)
     /// `task` opens that task's detail once the board has loaded.
     case board(project: String, board: String, task: Int? = nil)
@@ -19,13 +19,16 @@ enum Route: Hashable {
     case about
     /// The plugin kit spike's screen (Extensions/KitSpike): an experiment, reached from Account.
     case kitSpike
+    /// A page of an extension the app has no native half for: the web client's, shown inside the
+    /// app. `path` is relative to the instance; `project` is the project it belongs to, if any.
+    case pluginPage(path: String, title: String, project: String? = nil)
     /// A page a baked-in extension owns.
     case mcpAccess
     case roadmap(project: String, roadmapId: UUID)
     case designDocs(project: String, vaultId: UUID, noteId: UUID? = nil)
 }
 
-enum AppTab: String, Hashable, CaseIterable {
+nonisolated enum AppTab: String, Hashable, CaseIterable, Sendable {
     case work, projects, inbox, account
 
     var title: String {
@@ -75,10 +78,11 @@ final class Navigator {
         switch route {
         case .project:
             show(.projects, [route])
-        case .board(let project, _, _), .roadmap(let project, _), .designDocs(let project, _, _):
+        case .board(let project, _, _), .roadmap(let project, _), .designDocs(let project, _, _),
+             .pluginPage(_, _, let project?):
             show(.projects, [.project(alias: project), route])
         case .mcpAccess, .notificationSettings, .devices, .appearance, .admin, .adminUsers, .adminEmail,
-             .adminExtensions, .adminUpdates, .adminThemes, .about, .kitSpike:
+             .adminExtensions, .adminUpdates, .adminThemes, .about, .kitSpike, .pluginPage:
             show(.account, [route])
         }
     }

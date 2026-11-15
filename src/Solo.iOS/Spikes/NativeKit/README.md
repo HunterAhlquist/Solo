@@ -12,6 +12,8 @@ A question, not a feature: can a third-party plugin's Razor component run in a w
 
 A kit component draws MudBlazor markup on the web and a `<solo-kit>` element on a kit surface, so `RoadmapKitCard` is one source for both: on the web it is an ordinary `[ProjectCardSection]` ("Roadmaps (kit)" on each project's card), and in the app the same running component is what the native rows come from. Its data, its live topic and its click handler are ordinary client code.
 
+It also carries three plain pages (`PluginDemoPage`, `PluginDemoMorePage`, `AboutPage`) and the manifest entries that list them. They have nothing to do with the kit: they are an extension with no native half, for trying how the app shows one (see the app's README, "Extensions with no native half").
+
 ## Running it
 
 ```bash

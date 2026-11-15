@@ -43,6 +43,7 @@ struct TaskDetailExtensions: View {
 /// Sections an extension adds under a project's entry in the sidebar.
 struct SidebarProjectExtensions: View {
     @Environment(Session.self) private var session
+    @Environment(Navigator.self) private var navigator
     var project: ProjectSummary
 
     var body: some View {
@@ -52,6 +53,17 @@ struct SidebarProjectExtensions: View {
         if session.extensions.hasRoadmap {
             RoadmapSidebarSection(project: project)
         }
+        // Pages of extensions with no native half, where the web's sidebar lists them.
+        ForEach(session.extensions.projectPages(for: project)) { page in
+            SidebarRow(title: page.label, symbol: page.symbol, selected: isCurrent(page)) {
+                navigator.open(.pluginPage(path: page.path(project: project.alias), title: page.label, project: project.alias))
+            }
+        }
+    }
+
+    private func isCurrent(_ page: PluginPage) -> Bool {
+        if case .pluginPage(let path, _, _) = navigator.current { return path == page.path(project: project.alias) }
+        return false
     }
 }
 
@@ -74,6 +86,50 @@ struct ProjectHomeExtensions: View {
         }
         if session.extensions.hasRoadmap {
             RoadmapHomeSection(project: summary, canWrite: canWrite)
+        }
+        PluginPagesHomeSection(project: summary)
+    }
+}
+
+/// The project's pages from extensions with no native half: on a phone, which has no
+/// sidebar, this is where they are reached.
+private struct PluginPagesHomeSection: View {
+    @Environment(Session.self) private var session
+    @Environment(Navigator.self) private var navigator
+    @Environment(\.theme) private var theme
+    var project: ProjectSummary
+
+    private let columns = [GridItem(.adaptive(minimum: 240), spacing: 12, alignment: .top)]
+
+    var body: some View {
+        let pages = session.extensions.projectPages(for: project)
+        if !pages.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionTitle("Extensions")
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(pages) { page in
+                        Button {
+                            navigator.push(.pluginPage(path: page.path(project: project.alias), title: page.label,
+                                                       project: project.alias))
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: page.symbol)
+                                    .font(.title3)
+                                    .foregroundStyle(theme.primary)
+                                    .frame(width: 28)
+                                Text(page.label).font(.headline).foregroundStyle(theme.textPrimary).lineLimit(1)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(theme.textDisabled)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .card(padding: 14)
+                    }
+                }
+            }
         }
     }
 }
@@ -123,6 +179,20 @@ struct InstanceExtensionLinks: View {
             } else {
                 RouteLink(route: .mcpAccess) {
                     Label("MCP Access", systemImage: "cpu")
+                }
+            }
+        }
+        // Instance-level pages of extensions with no native half.
+        ForEach(session.extensions.instancePages) { page in
+            let route = Route.pluginPage(path: page.path(), title: page.label)
+            if inSidebar {
+                SidebarRow(title: page.label, symbol: page.symbol,
+                           selected: navigator.tab == .account && navigator.current == route) {
+                    navigator.open(route)
+                }
+            } else {
+                RouteLink(route: route) {
+                    Label(page.label, systemImage: page.symbol)
                 }
             }
         }

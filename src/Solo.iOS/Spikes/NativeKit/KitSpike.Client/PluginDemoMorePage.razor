@@ -1,0 +1,11 @@
+@page "/kit-spike/demo/{ProjectAlias}/more"
+
+<PageTitle>Plugin demo, page two</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Page two</MudText>
+<MudText Class="mb-4">Still the extension's, so still shown here rather than handed to the app.</MudText>
+<MudButton Variant="Variant.Outlined" Href="@($"kit-spike/demo/{ProjectAlias}")">Back to the first page</MudButton>
+
+@code {
+    [Parameter] public string ProjectAlias { get; set; } = "";
+}

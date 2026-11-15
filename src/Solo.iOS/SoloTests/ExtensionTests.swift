@@ -650,3 +650,88 @@ import Testing
         #expect(held == [nil, nil])
     }
 }
+
+/// Pages of extensions the app has no native half for: which there are, who sees them, and
+/// which of the web client's addresses come back to the app.
+@Suite struct PluginPageTests {
+    private func project(owner: Bool = false, role: ProjectRole = .read) -> ProjectSummary {
+        ProjectSummary(id: UUID(), name: "Demo", alias: "DMD", icon: nil, imageId: nil, role: role, isOwner: owner)
+    }
+
+    @Test func aRouteWithAProjectInItIsListedPerProject() {
+        let page = PluginPage(extensionId: "sprints", label: "Sprints", icon: "Flag", route: "/sprints/{projectAlias}", requires: "Read")
+        #expect(page.isProjectLevel)
+        #expect(page.path(project: "DMD") == "sprints/DMD")
+        // The token is matched as the web's sidebar matches it, whatever its case.
+        let shouted = PluginPage(extensionId: "sprints", label: "Sprints", icon: nil, route: "/sprints/{ProjectAlias}/board", requires: nil)
+        #expect(shouted.isProjectLevel)
+        #expect(shouted.path(project: "DMD") == "sprints/DMD/board")
+    }
+
+    @Test func aRouteWithoutOneIsListedOnceForTheInstance() {
+        let page = PluginPage(extensionId: "mcp", label: "MCP access", icon: "Robot", route: "/mcp", requires: "Read")
+        #expect(!page.isProjectLevel)
+        #expect(page.path() == "mcp")
+        #expect(page.symbol == "cpu")
+    }
+
+    @Test func anIconTheAppDoesNotKnowIsThePuzzlePiece() {
+        let page = PluginPage(extensionId: "x", label: "X", icon: "SomethingNew", route: "/x", requires: nil)
+        #expect(page.symbol == "puzzlepiece.extension")
+    }
+
+    @Test func aPageAsksForTheAccessItsManifestNames() {
+        func page(_ requires: String?) -> PluginPage {
+            PluginPage(extensionId: "x", label: "X", icon: nil, route: "/x/{projectAlias}", requires: requires)
+        }
+        #expect(page("Read").allows(project()))
+        #expect(page(nil).allows(project()))
+        #expect(!page("Write").allows(project()))
+        #expect(page("Write").allows(project(role: .readWrite)))
+        #expect(!page("Owner").allows(project(role: .readWrite)))
+        #expect(page("Owner").allows(project(owner: true)))
+    }
+
+    @Test func coreScreensComeBackToTheApp() {
+        let none = HostedRoutes.Baked()
+        #expect(HostedRoutes.destination(for: "", none) == .tab(.work))
+        #expect(HostedRoutes.destination(for: "projects", none) == .tab(.projects))
+        #expect(HostedRoutes.destination(for: "notifications", none) == .tab(.inbox))
+        #expect(HostedRoutes.destination(for: "projects/DMD", none) == .route(.project(alias: "DMD")))
+        #expect(HostedRoutes.destination(for: "projects/DMD/boards/PW26", none)
+            == .route(.board(project: "DMD", board: "PW26", task: nil)))
+        #expect(HostedRoutes.destination(for: "projects/DMD/boards/PW26?task=DMD-PW26-12", none)
+            == .route(.board(project: "DMD", board: "PW26", task: 12)))
+        #expect(HostedRoutes.destination(for: "projects/DMD/boards/PW26?task=7", none)
+            == .route(.board(project: "DMD", board: "PW26", task: 7)))
+    }
+
+    @Test func anExtensionsOwnPagesStayInThePage() {
+        let none = HostedRoutes.Baked()
+        #expect(HostedRoutes.destination(for: "sprints/DMD", none) == nil)
+        #expect(HostedRoutes.destination(for: "projects/DMD/sprints/4", none) == nil)
+        #expect(HostedRoutes.destination(for: "settings", none) == nil)
+    }
+
+    @Test func aBakedExtensionsPagesAreTheAppsOnlyWhereItIsInstalled() {
+        let id = UUID()
+        let roadmap = "projects/DMD/roadmaps/\(id.uuidString.lowercased())"
+        let docs = "docs/DMD/\(id.uuidString.lowercased())"
+        #expect(HostedRoutes.destination(for: roadmap, .init()) == nil)
+        #expect(HostedRoutes.destination(for: docs, .init()) == nil)
+        #expect(HostedRoutes.destination(for: "mcp", .init()) == nil)
+        let all = HostedRoutes.Baked(roadmap: true, designDocs: true, mcp: true)
+        #expect(HostedRoutes.destination(for: roadmap, all) == .route(.roadmap(project: "DMD", roadmapId: id)))
+        #expect(HostedRoutes.destination(for: docs, all) == .route(.designDocs(project: "DMD", vaultId: id)))
+        #expect(HostedRoutes.destination(for: "mcp", all) == .route(.mcpAccess))
+    }
+
+    @Test func thePatternsThePageIsGivenAgreeWithWhereTheAppGoes() {
+        // The page tests a path against these in JavaScript; the app decides with the same list.
+        let all = HostedRoutes.Baked(roadmap: true, designDocs: true, mcp: true)
+        for path in ["", "projects", "projects/DMD", "projects/DMD/boards/PW26?task=3", "notifications", "mcp"] {
+            let claimed = HostedRoutes.patterns(all).contains { path.range(of: $0, options: .regularExpression) != nil }
+            #expect(claimed == (HostedRoutes.destination(for: path, all) != nil), "\(path)")
+        }
+    }
+}

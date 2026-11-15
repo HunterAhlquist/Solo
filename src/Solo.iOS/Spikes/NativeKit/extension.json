@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "soloClientVersion": ">=1.4 <2.0",
   "client": "client/KitSpike.Client.dll",
-  "nav": [],
+  "nav": [
+    { "route": "/kit-spike/demo/{projectAlias}", "label": "Plugin demo", "icon": "Extension", "requires": "Read" },
+    { "route": "/kit-spike/about", "label": "Kit spike", "icon": "Bolt" }
+  ],
   "hooks": []
 }

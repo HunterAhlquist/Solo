@@ -254,8 +254,9 @@ struct AboutView: View {
             } footer: {
                 if !session.extensions.unsupported.isEmpty {
                     Text("\(session.extensions.unsupported.map(\.name).formatted(.list(type: .and))) "
-                        + "\(session.extensions.unsupported.count == 1 ? "adds" : "add") screens this app doesn't have. "
-                        + "Use the web app for those.")
+                        + "\(session.extensions.unsupported.count == 1 ? "has" : "have") no screens of "
+                        + "\(session.extensions.unsupported.count == 1 ? "its" : "their") own in this app. Their pages are "
+                        + "shown from the web app; anything they add to boards, tasks or projects is only in the web app.")
                 }
             }
             .themedRow()

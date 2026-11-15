@@ -1,0 +1,30 @@
+@page "/kit-spike/demo/{ProjectAlias}"
+@inject NavigationManager Navigation
+
+@*
+    An ordinary extension page, with nothing in it written for the app: what
+    the app shows for an extension it has no native half for. Its links are the
+    cases the app has to get right — one to a screen the app has of its own,
+    one to another page of this extension, one off the instance.
+*@
+
+<PageTitle>Plugin demo</PageTitle>
+
+<MudText Typo="Typo.h5" GutterBottom="true">Plugin demo</MudText>
+<MudText Class="mb-4">A page from an extension, for project <b>@ProjectAlias</b>. Count: @_count</MudText>
+
+<MudStack Spacing="2" AlignItems="AlignItems.Start">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => _count++)">Count up (this page's own state)</MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"projects/{ProjectAlias}"))">
+        Open the project (a core screen)
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo("projects"))">All projects (a core screen)</MudButton>
+    <MudButton Variant="Variant.Outlined" Href="@($"kit-spike/demo/{ProjectAlias}/more")">A second page of this extension</MudButton>
+    <MudLink Href="https://example.com/" Target="_blank">A link off the instance</MudLink>
+</MudStack>
+
+@code {
+    private int _count;
+
+    [Parameter] public string ProjectAlias { get; set; } = "";
+}

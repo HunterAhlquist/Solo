@@ -40,10 +40,34 @@ final class ExtensionCatalog {
         installed.first { $0.id == id }?.version
     }
 
-    /// Extensions the instance runs that this app has no native half for:
-    /// named in Settings, so their absence here reads as a limit of the app
-    /// rather than of the instance.
+    /// The extensions whose clients are compiled in.
+    private static let baked: Set<String> = [mcp, roadmap, designDocs]
+
+    /// Extensions the instance runs that this app has no native half for. Their pages are
+    /// shown from the web client; what they add to core's own screens is not shown at all,
+    /// which Settings says, so that its absence reads as a limit of the app and not of the instance.
     var unsupported: [ClientExtension] {
-        installed.filter { ![Self.mcp, Self.roadmap, Self.designDocs].contains($0.id) && $0.clientAssembly != nil }
+        installed.filter { !Self.baked.contains($0.id) && $0.clientAssembly != nil }
+    }
+
+    /// The pages those extensions list in their manifests, in the order the instance gave them.
+    var pluginPages: [PluginPage] {
+        var shown = unsupported
+        #if DEBUG
+        // Verification: show a baked-in extension's manifest pages from the web as well, so the
+        // web path can be tried against real pages. "SOLO_WEB_EXTENSIONS=mcp,roadmap".
+        let also = Set((ProcessInfo.processInfo.environment["SOLO_WEB_EXTENSIONS"] ?? "").split(separator: ",").map(String.init))
+        shown += installed.filter { also.contains($0.id) }
+        #endif
+        return shown.flatMap { item in
+            item.nav.map { PluginPage(extensionId: item.id, label: $0.label, icon: $0.icon, route: $0.route, requires: $0.requires) }
+        }
+    }
+
+    /// Pages listed once for the instance, and pages a project lists for someone with this access to it.
+    var instancePages: [PluginPage] { pluginPages.filter { !$0.isProjectLevel } }
+
+    func projectPages(for project: ProjectSummary) -> [PluginPage] {
+        pluginPages.filter { $0.isProjectLevel && $0.allows(project) }
     }
 }

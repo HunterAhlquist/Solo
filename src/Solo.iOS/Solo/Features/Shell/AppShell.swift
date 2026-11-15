@@ -60,6 +60,8 @@ struct RouteView: View {
             AboutView()
         case .kitSpike:
             KitSpikeView()
+        case .pluginPage(let path, let title, _):
+            PluginPageView(path: path, title: title)
         case .mcpAccess:
             McpAccessView()
         case .roadmap(let project, let roadmapId):
