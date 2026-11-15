@@ -88,8 +88,13 @@ final class KitHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             sessionStorage.setItem('solo.session.token', token);
             sessionStorage.setItem('solo.session.user', user);
             const say = text => window.webkit.messageHandlers.soloKit.postMessage(JSON.stringify({ type: 'log', text }));
-            window.addEventListener('error', event => say('error: ' + event.message));
+            window.addEventListener('error', event => say('error: ' + (event.message || event.target?.src || event.target?.href || event.type)), true);
             window.addEventListener('unhandledrejection', event => say('rejected: ' + event.reason));
+            // What the page says to its console is the only account of a start that goes wrong.
+            for (const level of ['error', 'warn']) {
+                const original = console[level].bind(console);
+                console[level] = (...parts) => { say(level + ': ' + parts.map(String).join(' ').slice(0, 400)); original(...parts); };
+            }
         })();
         """
         configuration.userContentController.addUserScript(
@@ -182,8 +187,39 @@ final class KitHost: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     }
 
     private func note(_ line: String) {
-        lines.append(line)
-        if lines.count > 30 { lines.removeFirst(lines.count - 30) }
+        let elapsed = started.map { String(format: "%.1fs ", Date().timeIntervalSince($0)) } ?? ""
+        lines.append(elapsed + line)
+        if lines.count > 40 { lines.removeFirst(lines.count - 40) }
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        note("page committed")
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        note("page finished loading")
+        probe(webView, times: 8)
+    }
+
+    /// Asks the page how far it has got, every few seconds while it is still starting.
+    private func probe(_ view: WKWebView, times: Int) {
+        guard times > 0, view === webView, readyAfter == nil else { return }
+        let question = """
+        (() => {
+            const resources = performance.getEntriesByType('resource');
+            const failed = resources.filter(r => r.responseStatus >= 400 || (r.transferSize === 0 && r.decodedBodySize === 0 && r.duration > 0)).length;
+            return [document.title, document.readyState, 'secure=' + window.isSecureContext, 'resources=' + resources.length,
+                    'unanswered=' + failed, (document.querySelector('#blazor-error-ui')?.innerText || '').trim().slice(0, 120),
+                    (document.body?.innerText || '').trim().slice(0, 120)].join(' | ');
+        })()
+        """
+        view.evaluateJavaScript(question) { [weak self] answer, error in
+            Task { @MainActor in
+                self?.note("probe: " + ((answer as? String) ?? error?.localizedDescription ?? "nothing"))
+                try? await Task.sleep(for: .seconds(6))
+                self?.probe(view, times: times - 1)
+            }
+        }
     }
 
     // MARK: The web view stays on the instance

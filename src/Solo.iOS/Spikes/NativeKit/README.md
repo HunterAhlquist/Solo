@@ -33,9 +33,18 @@ Restart the instance, then open Account → Plugin Kit Spike in the app. The Roa
 | Does it survive the app going to the background? | For 30 s, yes: the page stopped, and carried on in the same process with its state when the app came back. |
 | Do live changes arrive? | Yes. A roadmap created through the API showed up in the tree within the 3 s that was waited, and left it again when deleted. |
 
+## On an iPhone Air, over the local network
+
+The same instance, reached at the Mac's address over plain HTTP, with a Debug build of the app handed a session at launch.
+
+| Question | Answer |
+|---|---|
+| Does it work on the device? | Yes: rows drawn, the page counting itself visible in a one-point web view, 123 of 128 pulses heard. |
+| How long until rows show? | 14.8 s (12.0 s to the host page being up). The simulator takes 13 s against the same address and 1.5 s against `localhost`, so nearly all of it belongs to the address and not to the phone: a plain-HTTP address on the network is not a secure context, and the web client starts about eleven seconds slower without one. Why exactly was not looked into. An instance behind HTTPS should not pay it, which was not measured. |
+
 ## What it did not find out
 
-- Anything on a real iPhone or iPad: boot time and memory there, and whether the system ends the web view's process when memory is short (the host notices if it does; it does not yet reload).
+- Memory on a real iPhone or iPad, a fair boot time there (over HTTPS), and whether the system ends the web view's process when memory is short (the host notices if it does; it does not yet reload).
 - The cost with a Release web client, over a real network.
 - Many contributions at once — a board of cards with a badge each — which is the case a single hidden web view is meant to make affordable.
 - Dialogs, the task picker and anything else a hidden component might want to put on screen.
