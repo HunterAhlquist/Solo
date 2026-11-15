@@ -10,7 +10,7 @@ struct TaskOrigin: Hashable {
 }
 
 /// A card is: name, label, deadline countdown, assignees, sub-task progress and
-/// presence. It flashes its outline once when a remote change lands on it.
+/// presence. Its glass deepens in colour once when a remote change lands on it.
 struct TaskCardView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
@@ -99,10 +99,10 @@ struct TaskCardView: View {
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // One outline around the tab and the card together: drawn apart, the card's top edge ran
-        // under the tab and split the two.
-        .background(theme.surface, in: cardShape)
-        .overlay(cardShape.strokeBorder(outline, lineWidth: pulse || showDeadline ? 1.5 : 1))
+        // The tab and the card are one piece of glass, washed with the theme's colour as a chosen
+        // tab or a targeted column is, and edged by the glass itself rather than by a drawn line.
+        // A remote change deepens the wash for a moment where it used to flash the outline.
+        .glassEffect(.regular.tint(pulse ? theme.primary.opacity(0.4) : theme.accentWash), in: cardShape)
         .opacity(isFinished ? 0.75 : 1)
         .contentShape(.dragPreview, cardShape)
         .animation(.easeOut(duration: 0.6), value: pulse)
@@ -112,12 +112,6 @@ struct TaskCardView: View {
 
     private var cardShape: TabbedCardShape {
         TabbedCardShape(tab: origin == nil ? .zero : tab)
-    }
-
-    private var outline: Color {
-        if pulse { return theme.primary }
-        if showDeadline { return deadlineColor.opacity(0.85) }
-        return theme.divider
     }
 
     private var hasFooter: Bool {
