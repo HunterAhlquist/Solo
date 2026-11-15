@@ -2166,6 +2166,12 @@ html.solo-hosted .mud-main-content {
     padding-top: 0 !important;
 }
 
+/* The kit surface's mounts (Kit/KitSurfacePage) are for an app to read, not for anyone to
+   look at. When the app shows the page, it is for a dialog a contribution opened. */
+#solo-kit-surface {
+    display: none;
+}
+
 /* The page sits on the app's own background rather than painting one over it. */
 html.solo-hosted,
 html.solo-hosted body,

@@ -27,7 +27,8 @@ public sealed class KitSurface;
 /// <summary>A place the app asked the surface to run contributions for.</summary>
 /// <param name="Id">The app's own name for this mount, which every tree it is sent carries.</param>
 /// <param name="Seam">One of <see cref="KitSeams"/>.</param>
-public sealed record KitMount(string Id, string Seam, Guid? ProjectId, Guid? BoardId, Guid? TaskId)
+/// <param name="ExtensionId">For a place that is one extension's alone: its settings panel.</param>
+public sealed record KitMount(string Id, string Seam, Guid? ProjectId, Guid? BoardId, Guid? TaskId, string? ExtensionId = null)
 {
     /// <summary>Moved by the app when what the mount shows is stale and should be read again.</summary>
     public int Revision { get; init; }
@@ -46,7 +47,22 @@ public static class KitSeams
     public const string TaskDetail = "taskDetail";
     public const string TaskCard = "taskCard";
 
-    public static readonly IReadOnlyList<string> All = [ProjectCard, ProjectHome, ProjectNav, Dashboard, TaskDetail, TaskCard];
+    /// <summary>The cards of Your Tasks: the same contributions as a board's cards, over the person's own work.</summary>
+    public const string AssignedCards = "assignedCards";
+    public const string BoardColumn = "boardColumn";
+    public const string ProjectSettings = "projectSettings";
+    public const string BoardSettings = "boardSettings";
+    public const string ExtensionSettings = "extensionSettings";
+    public const string AppBar = "appBar";
+
+    /// <summary>What extensions add to a task's menu. Classes rather than components: see <see cref="MenuContributors"/>.</summary>
+    public const string TaskMenu = "taskMenu";
+
+    public static readonly IReadOnlyList<string> All =
+    [
+        ProjectCard, ProjectHome, ProjectNav, Dashboard, TaskDetail, TaskCard, AssignedCards, BoardColumn,
+        ProjectSettings, BoardSettings, ExtensionSettings, AppBar, TaskMenu,
+    ];
 
     /// <summary>
     /// The components loaded extensions contribute to a seam, in the order core
@@ -60,9 +76,32 @@ public static class KitSeams
         ProjectNav => Find<ProjectNavSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
         Dashboard => Find<DashboardSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
         TaskDetail => Find<TaskDetailExtensionAttribute>(catalog, skip, _ => string.Empty, _ => 0),
-        TaskCard => Find<TaskCardExtensionAttribute>(catalog, skip, _ => string.Empty, a => a.Order),
+        TaskCard or AssignedCards => Find<TaskCardExtensionAttribute>(catalog, skip, _ => string.Empty, a => a.Order),
+        BoardColumn => Find<BoardColumnExtensionAttribute>(catalog, skip, _ => string.Empty, a => a.Order),
+        ProjectSettings => Find<ProjectSettingsSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
+        BoardSettings => Find<BoardSettingsSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
+        ExtensionSettings => Find<ExtensionSettingsAttribute>(catalog, skip, _ => string.Empty, _ => 0),
+        AppBar => Find<AppBarExtensionAttribute>(catalog, skip, _ => string.Empty, a => a.Order),
+        TaskMenu => MenuContributors(catalog, skip),
         _ => [],
     };
+
+    /// <summary>
+    /// The classes that add items to a task's menu, in core's order. The
+    /// "component" of each is the contributor's class, which the surface
+    /// creates and asks rather than renders.
+    /// </summary>
+    public static IReadOnlyList<KitContribution> MenuContributors(ExtensionCatalog catalog, IReadOnlySet<string> skip) =>
+        catalog.Loaded
+            .Where(e => !skip.Contains(e.Descriptor.Id))
+            .SelectMany(e => e.Assembly.GetExportedTypes()
+                .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(ISoloTaskMenuContributor).IsAssignableFrom(t))
+                .Select(t => (e.Descriptor.Id, Type: t, Attribute: t.GetCustomAttribute<TaskMenuContributorAttribute>()))
+                .Where(c => c.Attribute is not null))
+            .OrderBy(c => c.Attribute!.Order)
+            .ThenBy(c => c.Id, StringComparer.Ordinal)
+            .Select(c => new KitContribution(c.Id, string.Empty, c.Attribute!.Order, c.Type))
+            .ToList();
 
     private static IReadOnlyList<KitContribution> Find<TAttribute>(
         ExtensionCatalog catalog, IReadOnlySet<string> skip, Func<TAttribute, string> title, Func<TAttribute, int> order)

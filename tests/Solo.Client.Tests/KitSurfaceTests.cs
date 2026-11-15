@@ -241,6 +241,156 @@ public class KitSurfaceTests : ComponentTestBase
         Assert.Empty(mount.FindAll("[data-kit-section]"));
     }
 
+    private static readonly ProjectSummaryDto Demo =
+        new(TestData.ProjectId, "Demo", "DMD", null, null, ProjectRole.ReadWrite, false);
+
+    private static readonly BoardDto Sprint = new(TestData.BoardId, TestData.ProjectId, "Sprint", "SPR", null, null, true, 1);
+
+    /// <summary>A place the surface reads over the API: the routes it may ask for, and the mount itself.</summary>
+    private IRenderedComponent<KitMountView> Mounted(
+        KitMount mount, StubHttp http, ExtensionCatalog? catalog = null, Action<Guid>? onTaskChanged = null)
+    {
+        Services.AddSingleton(http.CreateClient());
+        Services.AddSingleton(catalog ?? Catalog());
+        return Render<KitMountView>(parameters =>
+        {
+            parameters.Add(m => m.Mount, mount).Add(m => m.Skip, Nothing);
+            if (onTaskChanged is not null)
+            {
+                parameters.Add(m => m.OnTaskChanged, onTaskChanged);
+            }
+        });
+    }
+
+    /// <summary>The board's routes go first: a project's boards are under the projects' own path.</summary>
+    private static StubHttp BoardRoutes(params TaskDto[] tasks) => new StubHttp()
+        .RouteJson($"api/projects/{TestData.ProjectId}/boards", new List<BoardDto> { Sprint })
+        .RouteJson($"api/boards/{TestData.BoardId}/tasks", tasks.ToList())
+        .RouteJson("api/projects", new List<ProjectSummaryDto> { Demo });
+
+    [Fact]
+    public void A_board_s_columns_are_an_item_apiece_each_handed_its_own_cards()
+    {
+        var http = BoardRoutes(
+            TestData.Task(status: TaskState.Unstarted),
+            TestData.Task(status: TaskState.Finished),
+            TestData.Task(status: TaskState.Unstarted));
+
+        var mount = Mounted(new KitMount("m1", KitSeams.BoardColumn, TestData.ProjectId, TestData.BoardId, null), http);
+
+        mount.WaitForAssertion(() =>
+        {
+            Assert.Equal("Unstarted:2", mount.Find("[data-kit-item=Unstarted] .test-column").TextContent);
+            Assert.Equal("InProgress:0", mount.Find("[data-kit-item=InProgress] .test-column").TextContent);
+            Assert.Equal("Finished:1", mount.Find("[data-kit-item=Finished] .test-column").TextContent);
+        });
+    }
+
+    [Fact]
+    public void A_card_on_Your_Tasks_is_told_what_its_board_s_card_is_told()
+    {
+        var mine = TestData.Task();
+        // A task whose board didn't come with it has no project to be told of, and is left out.
+        var stray = TestData.Task() with { BoardId = Guid.NewGuid() };
+        var http = new StubHttp().RouteJson(
+            "api/users/me/tasks", new AssignedTasksDto([Demo], [Sprint], [], [], [mine, stray]));
+
+        var mount = Mounted(new KitMount("m1", KitSeams.AssignedCards, null, null, null), http);
+
+        mount.WaitForAssertion(() =>
+        {
+            Assert.Equal("Task:True:True", mount.Find($"[data-kit-item='{mine.Id}'] .test-card-badge").TextContent);
+            Assert.Empty(mount.FindAll($"[data-kit-item='{stray.Id}']"));
+        });
+    }
+
+    [Fact]
+    public void Settings_sections_carry_core_s_title_and_what_is_being_set_up()
+    {
+        var project = Mounted(new KitMount("m1", KitSeams.ProjectSettings, TestData.ProjectId, null, null), BoardRoutes());
+
+        project.WaitForAssertion(() => Assert.Equal(
+            "DMD:True", project.Find("[data-kit-section][data-title=Automation] .test-project-settings").TextContent));
+
+        var board = Render<KitMountView>(parameters => parameters
+            .Add(m => m.Mount, new KitMount("m2", KitSeams.BoardSettings, TestData.ProjectId, TestData.BoardId, null))
+            .Add(m => m.Skip, Nothing));
+
+        board.WaitForAssertion(() => Assert.Equal(
+            "SPR:True", board.Find("[data-kit-section][data-title=Limits] .test-board-settings").TextContent));
+    }
+
+    [Fact]
+    public void An_extension_s_settings_panel_is_its_own_and_nobody_else_s()
+    {
+        var catalog = new ExtensionCatalog
+        {
+            Loaded =
+            [
+                .. Catalog().Loaded,
+                new LoadedExtension(
+                    new ClientExtensionDto("other", "Other", "1.0.0", ">=1.17 <2.0", "Other", []), Assembly.GetExecutingAssembly()),
+            ],
+        };
+
+        var mount = Mounted(new KitMount("m1", KitSeams.ExtensionSettings, null, null, null, "other"), new StubHttp(), catalog);
+
+        mount.WaitForAssertion(() =>
+        {
+            Assert.Equal("other", mount.Find(".test-settings-panel").TextContent);
+            Assert.All(mount.FindAll("[data-kit-section]"), section => Assert.Equal("other", section.GetAttribute("data-extension")));
+        });
+    }
+
+    [Fact]
+    public void The_app_bar_needs_nothing_read_to_be_drawn()
+    {
+        var http = new StubHttp();
+
+        var mount = Mounted(new KitMount("m1", KitSeams.AppBar, null, null, null), http);
+
+        Assert.Single(mount.FindAll("[data-kit-section] .test-app-bar"));
+        Assert.Empty(http.Requests);
+    }
+
+    [Fact]
+    public void A_task_s_menu_is_what_each_contributor_answers_and_a_press_is_its_choice()
+    {
+        var task = TestData.Task();
+        var log = new MenuLog();
+        Services.AddSingleton(log);
+        var http = new StubHttp()
+            .RouteJson($"api/tasks/{task.Id}", task)
+            .RouteJson("api/projects", new List<ProjectSummaryDto> { Demo });
+        var changed = new List<Guid>();
+
+        var mount = Mounted(new KitMount("m1", KitSeams.TaskMenu, TestData.ProjectId, null, task.Id), http, onTaskChanged: changed.Add);
+
+        mount.WaitForAssertion(() =>
+        {
+            // The contributor that throws costs its own items and nothing else.
+            var item = Assert.Single(mount.FindAll("solo-kit[data-kind=menuItem]"));
+            Assert.Equal("Plan it", item.GetAttribute("data-label"));
+            Assert.Equal("1", item.GetAttribute("data-press"));
+            Assert.False(item.HasAttribute("data-danger"));
+        });
+
+        mount.Find("solo-kit[data-kind=menuItem]").Click();
+
+        // Made from the host's services, told which task, and the app is told to read the task again.
+        Assert.Equal([("open", task.Id, true)], log.Chosen);
+        Assert.Equal([task.Id], changed);
+    }
+
+    [Fact]
+    public void Menu_contributors_are_classes_found_in_core_s_order()
+    {
+        var menu = KitSeams.Find(KitSeams.TaskMenu, Catalog(), Nothing);
+
+        Assert.Equal([typeof(TestMenuContributor), typeof(TestBrokenMenuContributor)], menu.Select(c => c.Component));
+        Assert.Empty(KitSeams.Find(KitSeams.TaskMenu, Catalog(), new HashSet<string> { "fixture" }));
+    }
+
     [Fact]
     public void Every_kit_component_has_a_node()
     {

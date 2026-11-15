@@ -1,8 +1,13 @@
 @namespace Solo.Client.Kit
 @using Solo.Client.Extensions
 @using Solo.Shared.Dtos
+@implements IAsyncDisposable
+@using Microsoft.Extensions.DependencyInjection
+@using Solo.Shared
+@using Solo.Shared.Extensibility
 @inject ApiClient Api
 @inject ExtensionCatalog Extensions
+@inject IServiceProvider Services
 
 @*
     One mounted place: its contributions, each handed what core hands it there.
@@ -17,8 +22,76 @@
         @Sections(new Dictionary<string, object> { ["Project"] = _project, ["CanWrite"] = ProjectNavStore.CanWrite(_project) })
         break;
 
-    case KitSeams.Dashboard:
+    case KitSeams.ProjectSettings when _project is not null:
+        @Sections(new Dictionary<string, object> { ["Project"] = _project, ["CanWrite"] = ProjectNavStore.CanWrite(_project) })
+        break;
+
+    case KitSeams.BoardSettings when _board is not null:
+        @Sections(new Dictionary<string, object>
+        {
+            ["Board"] = _board,
+            ["CanWrite"] = _project is not null && ProjectNavStore.CanWrite(_project),
+        })
+        break;
+
+    case KitSeams.ExtensionSettings when Mount.ExtensionId is { } extensionId:
+        @Sections(new Dictionary<string, object> { ["ExtensionId"] = extensionId })
+        break;
+
+    case KitSeams.Dashboard or KitSeams.AppBar:
         @Sections(null)
+        break;
+
+    case KitSeams.AssignedCards when _assigned is not null:
+        @foreach (var task in _assigned.Tasks)
+        {
+            // A card on Your Tasks is its board's card: the same contributions, told the same things.
+            var board = _assigned.Boards.FirstOrDefault(b => b.Id == task.BoardId);
+            var project = board is null ? null : _assigned.Projects.FirstOrDefault(p => p.Id == board.ProjectId);
+            if (project is not null)
+            {
+                <div @key="task.Id" data-kit-item="@task.Id">
+                    @Sections(new Dictionary<string, object>
+                    {
+                        ["Task"] = task,
+                        ["ProjectId"] = project.Id,
+                        ["CanWrite"] = ProjectNavStore.CanWrite(project),
+                    })
+                </div>
+            }
+        }
+        break;
+
+    case KitSeams.BoardColumn when _board is not null && _tasks is not null:
+        @foreach (var status in Enum.GetValues<TaskState>())
+        {
+            <div @key="status" data-kit-item="@status">
+                @Sections(new Dictionary<string, object>
+                {
+                    ["Board"] = _board,
+                    ["Status"] = status,
+                    // The whole column, as core's count beside it: every lane, finished cards too.
+                    ["Tasks"] = (IReadOnlyList<TaskDto>)_tasks.Where(t => t.Status == status).OrderBy(t => t.Rank).ToList(),
+                    ["CanWrite"] = _project is not null && ProjectNavStore.CanWrite(_project),
+                })
+            </div>
+        }
+        break;
+
+    case KitSeams.TaskMenu when _menu is not null:
+        @foreach (var entry in _menu)
+        {
+            <div @key="entry.Owner.Component" data-kit-section="1" data-extension="@entry.Owner.ExtensionId" data-title=""
+                 data-order="@entry.Owner.Order">
+                @foreach (var item in entry.Items)
+                {
+                    @* Not a kit component: an item of core's own menu, which the app puts in its menu for the task. *@
+                    <solo-kit @key="item.Id" data-kind="menuItem" data-label="@item.Label" data-danger="@(item.Danger ? "1" : null)"
+                              data-disabled="@(item.Disabled ? "1" : null)" data-separator="@(item.SeparatorBefore ? "1" : null)"
+                              data-press="1" @onclick="@(() => ChooseAsync(entry, item))"></solo-kit>
+                }
+            </div>
+        }
         break;
 
     case KitSeams.TaskDetail when _task is not null:
@@ -56,12 +129,22 @@
     [Parameter]
     public EventCallback<Guid> OnTaskChanged { get; set; }
 
+    private static readonly TimeSpan MenuTimeout = TimeSpan.FromSeconds(1);
+
+    private sealed record MenuEntry(KitContribution Owner, ISoloTaskMenuContributor Contributor, IReadOnlyList<ContextMenuItem> Items);
+
     private KitMount? _loaded;
     private ProjectSummaryDto? _project;
+    private BoardDto? _board;
     private TaskDto? _task;
     private IReadOnlyList<TaskDto>? _tasks;
+    private AssignedTasksDto? _assigned;
+    private List<MenuEntry>? _menu;
 
-    private IReadOnlyList<KitContribution> Contributions => KitSeams.Find(Mount.Seam, Extensions, Skip);
+    /// <summary>A settings panel is its own extension's and nobody else's.</summary>
+    private IReadOnlyList<KitContribution> Contributions => Mount.Seam == KitSeams.ExtensionSettings
+        ? KitSeams.Find(Mount.Seam, Extensions, Skip).Where(c => c.ExtensionId == Mount.ExtensionId).ToList()
+        : KitSeams.Find(Mount.Seam, Extensions, Skip);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -84,24 +167,120 @@
                 _project = (await Api.GetProjectsAsync()).FirstOrDefault(p => p.Id == projectId);
             }
 
+            if (Mount is { BoardId: { } board, ProjectId: { } owner } && Mount.Seam is KitSeams.BoardColumn or KitSeams.BoardSettings)
+            {
+                _board = (await Api.GetBoardsAsync(owner)).FirstOrDefault(b => b.Id == board);
+            }
+
             switch (Mount.Seam)
             {
-                case KitSeams.TaskDetail when Mount.TaskId is { } taskId:
+                case KitSeams.TaskDetail or KitSeams.TaskMenu when Mount.TaskId is { } taskId:
                     _task = await Api.GetTaskAsync(taskId);
                     break;
-                case KitSeams.TaskCard when Mount.BoardId is { } boardId:
+                case KitSeams.TaskCard or KitSeams.BoardColumn when Mount.BoardId is { } boardId:
                     _tasks = await Api.GetTasksAsync(boardId);
                     break;
+                case KitSeams.AssignedCards:
+                    _assigned = await Api.GetAssignedTasksAsync();
+                    break;
+            }
+
+            if (Mount.Seam == KitSeams.TaskMenu)
+            {
+                await AskMenuAsync();
             }
         }
         catch (Exception e) when (e is ApiException or HttpRequestException)
         {
             // The place has gone, or can't be read by this person: it has no contributions to show.
             _project = null;
+            _board = null;
             _task = null;
             _tasks = null;
+            _assigned = null;
+            await DropMenuAsync();
         }
     }
+
+    /// <summary>
+    /// Asks each contributor what it would add to the task's menu, as core's
+    /// own menu does: created from this scope's services, given a second to
+    /// answer, and left out if it throws or takes longer.
+    /// </summary>
+    private async Task AskMenuAsync()
+    {
+        await DropMenuAsync();
+        if (_task is not { } task || Mount.ProjectId is not { } projectId)
+        {
+            return;
+        }
+
+        var context = new TaskMenuContext(task, projectId, _project is not null && ProjectNavStore.CanWrite(_project));
+        var menu = new List<MenuEntry>();
+        foreach (var owner in Contributions)
+        {
+            ISoloTaskMenuContributor? contributor = null;
+            try
+            {
+                contributor = (ISoloTaskMenuContributor)ActivatorUtilities.CreateInstance(Services, owner.Component);
+                using var timeout = new CancellationTokenSource(MenuTimeout);
+                var items = await contributor.ItemsAsync(context, timeout.Token).AsTask().WaitAsync(MenuTimeout);
+                if (items.Count > 0)
+                {
+                    menu.Add(new MenuEntry(owner, contributor, items));
+                    contributor = null;
+                }
+            }
+            catch (Exception)
+            {
+                // One extension's menu failing costs only its own items.
+            }
+            finally
+            {
+                await DisposeAsync(contributor);
+            }
+        }
+
+        _menu = menu;
+    }
+
+    private async Task ChooseAsync(MenuEntry entry, ContextMenuItem item)
+    {
+        if (item.Disabled || _task is not { } task || Mount.ProjectId is not { } projectId)
+        {
+            return;
+        }
+
+        await entry.Contributor.OnChosenAsync(
+            item.Id, new TaskMenuContext(task, projectId, _project is not null && ProjectNavStore.CanWrite(_project)));
+        // Whatever it did, it may have done to the task: the app reads its own copy again.
+        await OnTaskChanged.InvokeAsync(task.Id);
+    }
+
+    private async Task DropMenuAsync()
+    {
+        foreach (var entry in _menu ?? [])
+        {
+            await DisposeAsync(entry.Contributor);
+        }
+
+        _menu = null;
+    }
+
+    private static async ValueTask DisposeAsync(object? contributor)
+    {
+        switch (contributor)
+        {
+            case IAsyncDisposable disposable:
+                await disposable.DisposeAsync();
+                break;
+            case IDisposable disposable:
+                disposable.Dispose();
+                break;
+        }
+    }
+
+    public async ValueTask DisposeAsync() => await DropMenuAsync();
 
     private async Task TaskSavedAsync()
     {

@@ -13,6 +13,7 @@ let nextId = 1;
 const ids = new WeakMap();
 const elements = new Map();
 let observer = null;
+let watcher = null;
 let dotnet = null;
 
 function idOf(element) {
@@ -124,7 +125,36 @@ export function start(reference, hostId) {
     });
     observer.observe(host, { subtree: true, childList: true, attributes: true, characterData: true });
 
+    // A contribution's handler may open a dialog — a task picker, a confirmation — or say
+    // something in a snackbar. Nobody can see this page, so the app is told: it shows the page
+    // while a dialog is up, and says a snackbar's words itself.
+    let dialogUp = false;
+    const said = new WeakSet();
+    watcher = new MutationObserver(() => {
+        const up = !!document.querySelector('.mud-dialog-container .mud-dialog');
+        if (up !== dialogUp) {
+            dialogUp = up;
+            window.solo.host.post('kitDialog', { open: up });
+        }
+        for (const snackbar of document.querySelectorAll('.mud-snackbar')) {
+            if (said.has(snackbar)) continue;
+            said.add(snackbar);
+            const text = (snackbar.querySelector('.mud-snackbar-content-message')?.textContent ?? snackbar.textContent ?? '').trim();
+            const tone = ['error', 'warning', 'success'].find(name => snackbar.className.includes(name)) ?? 'info';
+            if (text) window.solo.host.post('kitToast', { text: text.slice(0, 300), tone });
+        }
+    });
+    watcher.observe(document.body, { subtree: true, childList: true });
+
     window.solo.kitSurface = {
+        // From the app: the person closed the sheet a dialog was shown in. Whatever is open is
+        // closed the way a person would close it: by its close button, or failing that its backdrop.
+        dismiss() {
+            const close = [...document.querySelectorAll('.mud-dialog-container .mud-dialog .mud-button-close')];
+            if (close.length > 0) close.forEach(button => button.click());
+            else document.querySelectorAll('.mud-dialog-container .mud-overlay').forEach(overlay => overlay.click());
+        },
+
         // From the app: {"op":"mount"|"unmount"|"refresh", ...}, as text.
         receive(json) {
             return dotnet?.invokeMethodAsync('Receive', String(json));
@@ -155,6 +185,8 @@ export function taskChanged(task) {
 export function stop() {
     observer?.disconnect();
     observer = null;
+    watcher?.disconnect();
+    watcher = null;
     dotnet = null;
     delete window.solo.kitSurface;
 }
