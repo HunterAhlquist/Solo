@@ -260,7 +260,7 @@ struct RoadmapPage: View {
                                     Text(entry.task.name).font(.subheadline).foregroundStyle(theme.textPrimary)
                                         .multilineTextAlignment(.leading)
                                     Text(store.isPersonal
-                                        ? "\(store.serial(entry)) · \(entry.projectName ?? "") ▪ \(entry.boardName)"
+                                        ? "\(store.serial(entry)) · \(entry.projectName ?? "") • \(entry.boardName)"
                                         : store.serial(entry))
                                         .font(.caption.monospaced())
                                         .foregroundStyle(theme.textSecondary)

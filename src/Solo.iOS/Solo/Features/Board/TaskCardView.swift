@@ -36,7 +36,7 @@ struct TaskCardView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(origin.projectName).lineLimit(1)
-                        Text("▪").foregroundStyle(theme.textDisabled)
+                        Text("•").foregroundStyle(theme.textDisabled)
                         Text(origin.boardName).lineLimit(1)
                     }
                     .font(.caption2.weight(.medium))
