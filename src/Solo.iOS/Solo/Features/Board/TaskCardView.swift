@@ -232,12 +232,13 @@ nonisolated struct TabbedCardShape: InsettableShape {
 /// the overflow folds behind this, reachable but out of the way.
 struct ShowAllButton: View {
     @Environment(\.theme) private var theme
-    var hidden: Int
+    /// Every card of the column, as the web's button counts: the ones showing and the ones not.
+    var total: Int
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text("Show all \(hidden) more")
+            Text("Show all \(total)")
                 .font(.caption.weight(.medium))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)

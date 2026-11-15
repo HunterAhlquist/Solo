@@ -115,6 +115,7 @@ final class BoardModel {
     private(set) var collapsedEpics: Set<UUID> = []
     private var groupCollapsed: [UUID: Bool] = [:]
     private var expandedFinished: Set<UUID> = []
+    private var openFinished: Set<UUID> = []
     /// Stands in for "no epic" where a set needs a key.
     private static let adHocKey = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
@@ -168,6 +169,15 @@ final class BoardModel {
 
     func expandFinished(_ epicId: UUID?) {
         expandedFinished.insert(epicId ?? Self.adHocKey)
+    }
+
+    /// Whether a lane's Finished column, when it is one that overflows and so starts put away,
+    /// has been opened.
+    func isFinishedOpen(_ epicId: UUID?) -> Bool { openFinished.contains(epicId ?? Self.adHocKey) }
+
+    func toggleFinished(_ epicId: UUID?) {
+        let key = epicId ?? Self.adHocKey
+        if openFinished.remove(key) == nil { openFinished.insert(key) }
     }
 
     func count(_ status: TaskState) -> Int { store.taskCount(status) }

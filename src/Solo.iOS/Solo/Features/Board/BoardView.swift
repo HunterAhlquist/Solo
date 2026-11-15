@@ -197,6 +197,8 @@ private struct GridLane: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
     var epic: Epic?
+    /// How tall each active zone stands, which its Finished zone is held to.
+    @State private var heights = LaneHeights()
 
     var body: some View {
         VStack(spacing: 8) {
@@ -211,7 +213,7 @@ private struct GridLane: View {
                 // anywhere under a short column and still land in it.
                 ZoneRow(spacing: 8) {
                     ForEach(TaskState.allCases) { status in
-                        Zone(model: model, epicId: epic?.id, status: status)
+                        Zone(model: model, epicId: epic?.id, status: status, heights: heights)
                     }
                 }
             }
@@ -299,23 +301,43 @@ private struct Zone: View {
     /// Build every card at once. A phone's page goes to a card that has just landed, which has
     /// to exist to be found, so there a zone something has landed in is built whole from then on.
     var whole = false
+    /// How tall the lane's active zones stand: an active zone says, and a Finished zone, whose
+    /// cards may stand as tall and no taller, listens.
+    var heights: LaneHeights
     @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
 
     var body: some View {
         let _ = Perf.count("zone")
         Group {
-            // A container as tall as a long column costs more than it saves: Your Tasks, whose
-            // columns are that, scrolled at half the rate with one. So only a zone of a lane's
-            // usual size has one, which is every size this was measured at.
-            if model.cards(epicId: epicId, status: status).count <= Self.sharedGlassLimit {
-                // No spacing: the cards share the container's drawing, and are not to run into each other.
-                GlassEffectContainer(spacing: 0) { stack }
+            if status == .finished {
+                // History does not get to stretch the lane: see `FinishedFold`.
+                FinishedFold(count: model.tasks(epicId: epicId, status: status).count,
+                             showing: model.cards(epicId: epicId, status: status).count,
+                             beside: heights.tallest,
+                             guess: FinishedColumn.guess(from: heights.active.map { status, height in
+                                 (height, model.cards(epicId: epicId, status: status).count)
+                             }, extra: 12, spacing: 6),
+                             open: model.isFinishedOpen(epicId),
+                             onToggle: { model.toggleFinished(epicId) },
+                             landing: landing,
+                             sharedGlass: model.cards(epicId: epicId, status: status).count <= Self.sharedGlassLimit) { cards }
             } else {
-                stack
+                Group {
+                    // A container as tall as a long column costs more than it saves: Your Tasks, whose
+                    // columns are that, scrolled at half the rate with one. So only a zone of a lane's
+                    // usual size has one, which is every size this was measured at.
+                    if model.cards(epicId: epicId, status: status).count <= Self.sharedGlassLimit {
+                        // No spacing: the cards share the container's drawing, and are not to run into each other.
+                        GlassEffectContainer(spacing: 0) { stack }
+                    } else {
+                        stack
+                    }
+                }
+                .padding(6)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { heights.set(status, $0) }
             }
         }
-        .padding(6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .contentShape(.rect)
         .background(targeted ? theme.accentWash : .clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -337,6 +359,13 @@ private struct Zone: View {
     /// The most cards a zone can hold and still draw their glass as one.
     private static let sharedGlassLimit = 30
 
+    /// The card that has just landed in this zone, when one has.
+    private var landing: UUID? {
+        guard let landed = model.landed, landed.status == status,
+              model.cards(epicId: epicId, status: status).contains(where: { $0.id == landed.taskId }) else { return nil }
+        return landed.taskId
+    }
+
     @ViewBuilder private var stack: some View {
         if whole {
             VStack(spacing: 6) { cards }
@@ -352,7 +381,7 @@ private struct Zone: View {
             BoardCard(model: model, task: task, epicId: epicId, status: status, index: index)
         }
         if hidden > 0 {
-            ShowAllButton(hidden: hidden) { withAnimation { model.expandFinished(epicId) } }
+            ShowAllButton(total: hidden + cards.count) { withAnimation { model.expandFinished(epicId) } }
         }
         if cards.isEmpty {
             Color.clear.frame(height: 36)
@@ -768,6 +797,8 @@ private struct PagerLane: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
     var epic: Epic?
+    /// How tall each active zone stands, which its Finished zone is held to.
+    @State private var heights = LaneHeights()
 
     var body: some View {
         VStack(spacing: 8) {
@@ -781,7 +812,7 @@ private struct PagerLane: View {
                 ColumnPages {
                     ForEach(TaskState.allCases) { status in
                         Zone(model: model, epicId: epic?.id, status: status,
-                             whole: model.isWhole(epicId: epic?.id, status: status))
+                             whole: model.isWhole(epicId: epic?.id, status: status), heights: heights)
                             .accessibilityHidden(status != model.column)
                     }
                 }

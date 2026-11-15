@@ -334,3 +334,33 @@ import UIKit
         }
     }
 }
+
+/// How a Finished column is held to the height of the work beside it, as the
+/// web holds it (KanbanZone.razor, js/finished-column.js).
+@Suite struct FinishedColumnTests {
+    @Test func it_may_stand_as_tall_as_the_work_beside_it_and_no_taller() {
+        #expect(!FinishedColumn.overflows(cards: 600, beside: 600))
+        #expect(FinishedColumn.overflows(cards: 602, beside: 600))
+    }
+
+    @Test func beside_little_or_nothing_it_still_has_the_webs_fixed_room() {
+        #expect(!FinishedColumn.overflows(cards: 340, beside: 0))
+        #expect(!FinishedColumn.overflows(cards: 340, beside: 120))
+        #expect(FinishedColumn.overflows(cards: 342, beside: 120))
+    }
+
+    @Test func one_that_overflows_gives_its_button_room_out_of_its_own() {
+        #expect(FinishedColumn.room(beside: 600) == 600 - FinishedColumn.toggle)
+        // But is never given less than the fixed room.
+        #expect(FinishedColumn.room(beside: 120) == FinishedColumn.floor)
+    }
+
+    @Test func a_cards_height_is_guessed_from_the_columns_beside_it() {
+        // Three cards of 70 with gaps of 6 between them, in a zone padded by 6 all round; and an empty zone.
+        let guess = FinishedColumn.guess(from: [(height: 234, cards: 3), (height: 48, cards: 0)], extra: 12, spacing: 6)
+        #expect(guess == 76)
+        // With nothing to go by, a card is taken to be of the usual size.
+        #expect(FinishedColumn.guess(from: [(height: 48, cards: 0)], extra: 12, spacing: 6) == FinishedColumn.guess)
+        #expect(FinishedColumn.guess(from: [], extra: 12, spacing: 6) == FinishedColumn.guess)
+    }
+}

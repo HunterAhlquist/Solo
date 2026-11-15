@@ -22,6 +22,10 @@ struct DashboardView: View {
         var token = UUID()
     }
     @State private var finishedExpanded = false
+    /// Whether the Finished column, when it overflows and so starts put away, has been opened.
+    @State private var finishedOpen = false
+    /// How tall each active column stands, which the Finished column is held to.
+    @State private var heights = LaneHeights()
     /// Columns whose cards are all built, not only the ones in view. A column is built as it
     /// is scrolled into, which is what lets a person with hundreds of tasks open the app without
     /// waiting for every card. Following a card to where it landed needs the card to exist,
@@ -180,7 +184,17 @@ struct DashboardView: View {
         let inColumn = all.filter { $0.task.status == status }
         let folded = status == .finished && !finishedExpanded
         let shown = folded ? Array(inColumn.prefix(BoardDrag.finishedVisibleLimit)) : inColumn
-        DashboardZone(status: status, lazy: !whole.contains(status), onDrop: { drop($0, status, all) }) {
+        // What is finished is held to the height of what is not, as on a board: see `FinishedFold`.
+        let fold = status == .finished
+            ? DashboardFold(count: inColumn.count, showing: shown.count,
+                            beside: Dictionary(uniqueKeysWithValues: TaskState.allCases.filter { $0 != .finished }.map { other in
+                                (other, all.count { $0.task.status == other })
+                            }),
+                            open: finishedOpen, landing: landed?.status == .finished ? landed?.taskId : nil,
+                            onToggle: { finishedOpen.toggle() })
+            : nil
+        DashboardZone(status: status, lazy: !whole.contains(status), fold: fold, heights: heights,
+                      onDrop: { drop($0, status, all) }) {
             ForEach(shown) { card in
                 let view = TaskCardView(
                     task: card.task, projectId: card.project.id,
@@ -210,7 +224,7 @@ struct DashboardView: View {
                     }
             }
             if shown.count < inColumn.count {
-                ShowAllButton(hidden: inColumn.count - shown.count) { withAnimation { finishedExpanded = true } }
+                ShowAllButton(total: inColumn.count) { withAnimation { finishedExpanded = true } }
             }
         }
     }
@@ -247,11 +261,26 @@ struct DashboardView: View {
     }
 }
 
+/// What the Finished column is told, to hold itself to the height of the others.
+private struct DashboardFold {
+    var count: Int
+    var showing: Int
+    /// How many cards each active column holds.
+    var beside: [TaskState: Int]
+    var open: Bool
+    var landing: UUID?
+    var onToggle: () -> Void
+}
+
 private struct DashboardZone<Content: View>: View {
     @Environment(\.theme) private var theme
     var status: TaskState
     /// Build cards as they come into view, and not all of them at once.
     var lazy = true
+    /// What a Finished column needs to hold itself to the height of the others.
+    var fold: DashboardFold?
+    /// How tall the active columns stand: they say, and the Finished one listens.
+    var heights: LaneHeights
     var onDrop: ([String]) -> Bool
     @ViewBuilder var content: Content
     @Environment(CardDragWatch.self) private var watch: CardDragWatch?
@@ -259,16 +288,30 @@ private struct DashboardZone<Content: View>: View {
 
     var body: some View {
         Group {
-            if lazy {
-                LazyVStack(spacing: 8) {
+            if let fold {
+                FinishedFold(count: fold.count, showing: fold.showing, beside: heights.tallest,
+                             guess: FinishedColumn.guess(from: heights.active.map { ($1, fold.beside[$0] ?? 0) },
+                                                         extra: 24, spacing: 8),
+                             open: fold.open,
+                             onToggle: fold.onToggle, landing: fold.landing, spacing: 8, inset: 0) {
                     content
                     Color.clear.frame(height: 24)
                 }
             } else {
-                VStack(spacing: 8) {
-                    content
-                    Color.clear.frame(height: 24)
+                Group {
+                    if lazy {
+                        LazyVStack(spacing: 8) {
+                            content
+                            Color.clear.frame(height: 24)
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            content
+                            Color.clear.frame(height: 24)
+                        }
+                    }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { heights.set(status, $0) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)

@@ -301,8 +301,18 @@ extension View {
 
     /// On a card: this is the one the page should go to.
     func landingTarget(_ isTarget: Bool) -> some View {
-        background {
-            if isTarget {
+        modifier(LandingTarget(isTarget: isTarget))
+    }
+}
+
+private struct LandingTarget: ViewModifier {
+    /// Not inside a column that scrolls by itself: there the column is what the page goes to.
+    @Environment(\.landsInPage) private var landsInPage
+    var isTarget: Bool
+
+    func body(content: Content) -> some View {
+        content.background {
+            if isTarget, landsInPage {
                 GeometryReader { proxy in
                     Color.clear.preference(key: LandingFrameKey.self, value: proxy.frame(in: .scrollView))
                 }
