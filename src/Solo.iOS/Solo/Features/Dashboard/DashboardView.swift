@@ -472,8 +472,11 @@ private struct ScrollEdgeContainer<Content: View>: UIViewRepresentable {
             coordinator.full?.isActive = false
             coordinator.none?.isActive = true
         }
-        // Quicker going than coming: the page's own selector is on its way down from under it.
-        UIView.animate(withDuration: on ? 0.22 : 0.12, delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+        // Coming, it eases in and takes its time, so that the header is seen to reach down behind
+        // the selector; at half the length and from a standing start it read as a switch. Going
+        // is quick: the page's own selector is on its way down from under it.
+        UIView.animate(withDuration: on ? 0.45 : 0.12, delay: 0,
+                       options: [on ? .curveEaseInOut : .curveEaseOut, .beginFromCurrentState]) {
             container.layoutIfNeeded()
         }
     }
