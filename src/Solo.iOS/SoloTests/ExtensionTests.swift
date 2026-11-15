@@ -802,6 +802,36 @@ import Testing
         #expect(two.sections.isEmpty)
     }
 
+    @Test func aColumnIsAnItemOfItsBoardNamedByItsStatus() throws {
+        let host = KitSurfaceHost()
+        let board = UUID()
+        let columns = BoardKitMount.columns(for: board)
+        // Not the cards' mount: a board's cards and its columns are asked for apart.
+        #expect(columns != BoardKitMount.id(for: board))
+        host.mount(columns, .boardColumn, project: UUID(), board: board)
+        host.apply(try update(#"""
+        {"units":[{"mount":"\#(columns)","sections":[],"items":[
+          {"item":"Unstarted","sections":[]},
+          {"item":"InProgress","sections":[{"extension":"x","title":"","order":0,"nodes":[\#(badge)]}]}]}]}
+        """#))
+        #expect(host.box(mount: columns, item: TaskState.inProgress.rawValue).sections.count == 1)
+        #expect(host.box(mount: columns, item: TaskState.unstarted.rawValue).sections.isEmpty)
+        #expect(host.box(mount: columns, item: TaskState.finished.rawValue).sections.isEmpty)
+    }
+
+    @Test func aMenuItemSaysWhatItIsAndNothingItIsNot() throws {
+        let sent = try update(#"""
+        {"units":[{"mount":"menu","sections":[{"extension":"x","title":"","order":0,"nodes":[
+          {"id":1,"kind":"menuItem","props":{"label":"Link another task…","press":"1"},"children":[]},
+          {"id":2,"kind":"menuItem","props":{"label":"Forget its links","danger":"1","separator":"1","press":"1"},"children":[]}]}]}]}
+        """#)
+        let items = try #require(sent.units.first?.sections.first?.nodes)
+        #expect(items.map(\.kind) == ["menuItem", "menuItem"])
+        #expect(items[0]["label"] == "Link another task…")
+        #expect(!items[0].flag("danger") && !items[0].flag("separator") && !items[0].flag("disabled"))
+        #expect(items[1].flag("danger") && items[1].flag("separator"))
+    }
+
     @Test func whatIsSaidOfAPlaceNoLongerMountedIsDropped() throws {
         let host = KitSurfaceHost()
         host.mount("m1", .dashboard)

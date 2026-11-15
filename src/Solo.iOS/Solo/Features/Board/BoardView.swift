@@ -71,13 +71,20 @@ private struct BoardContent: View {
         // What extensions with no native half add to cards: the board is mounted once, for all of them.
         .task(id: board.id) {
             session.kit.mount(BoardKitMount.id(for: board.id), .taskCard, project: board.projectId, board: board.id)
+            session.kit.mount(BoardKitMount.columns(for: board.id), .boardColumn, project: board.projectId, board: board.id)
         }
         .task(id: board.tasks) {
             // The cards changed: once they have settled, the contributions are handed them afresh.
             try? await Task.sleep(for: .milliseconds(700))
-            if !Task.isCancelled { session.kit.refresh(BoardKitMount.id(for: board.id)) }
+            if !Task.isCancelled {
+                session.kit.refresh(BoardKitMount.id(for: board.id))
+                session.kit.refresh(BoardKitMount.columns(for: board.id))
+            }
         }
-        .onDisappear { session.kit.unmount(BoardKitMount.id(for: board.id)) }
+        .onDisappear {
+            session.kit.unmount(BoardKitMount.id(for: board.id))
+            session.kit.unmount(BoardKitMount.columns(for: board.id))
+        }
         .navigationTitle(board.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -158,6 +165,11 @@ private struct BoardGrid: View {
                                 Image(systemName: status.symbol)
                                 Text(status.title)
                                 Text("\(model.count(status))").monospacedDigit().foregroundStyle(theme.textSecondary)
+                                // What extensions add beside a column's count. Here only: the phone
+                                // has no such header, as on the web.
+                                if let board = model.board {
+                                    KitItemContributions(mount: BoardKitMount.columns(for: board.id), item: status.rawValue)
+                                }
                             }
                             .font(.footnote.weight(.semibold))
                             .frame(maxWidth: .infinity)

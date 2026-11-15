@@ -271,6 +271,11 @@ struct BoardsSection: View {
                 }, refresh: load)
                 await reload()
                 return saved != nil
+            } extra: {
+                // What extensions add to a board's settings, under core's own fields.
+                KitContributions(seam: .boardSettings, project: board.projectId, board: board.id) { title in
+                    Text(title).font(.subheadline.weight(.semibold))
+                }
             }
         }
         .sheet(item: $labelling) { board in

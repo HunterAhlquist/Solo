@@ -1,0 +1,11 @@
+@attribute [AppBarExtension(Order = 90)]
+
+@* The app bar: the one place always on screen on the web. A count that changes while the person is elsewhere. *@
+
+<SoloRow Icon="Bolt" Title="Kit demo" OnClick="@(() => _count++)">
+    <SoloBadge Text="@_count.ToString()" Tone="@(_count > 0 ? SoloTone.Primary : SoloTone.Default)" />
+</SoloRow>
+
+@code {
+    private int _count;
+}

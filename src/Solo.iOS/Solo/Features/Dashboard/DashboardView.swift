@@ -116,12 +116,20 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedBackground()
         .task {
+            // What extensions with no native half add to cards, for every card here at once.
+            session.kit.mount(BoardKitMount.assigned, .assignedCards)
             do {
                 try await store.load()
             } catch {
                 failed = (error as? LocalizedError)?.errorDescription ?? "Try again."
             }
         }
+        .task(id: store.work?.tasks) {
+            // The cards changed: once they have settled, the contributions are handed them afresh.
+            try? await Task.sleep(for: .milliseconds(700))
+            if !Task.isCancelled { session.kit.refresh(BoardKitMount.assigned) }
+        }
+        .onDisappear { session.kit.unmount(BoardKitMount.assigned) }
         .refreshable { await store.refresh() }
         .taskDetail($openTask)
         // Outside the detail panel: a title set within an inspector's content never reaches the bar.
@@ -168,7 +176,7 @@ struct DashboardView: View {
                     label: card.task.labelId.flatMap { id in work.labels.first { $0.id == id } },
                     assignees: work.members.filter { member in member.userId.map(card.task.assigneeIds.contains) ?? false },
                     pulse: session.assigned.pulsing.contains(card.task.id),
-                    origin: card.origin, canWrite: card.project.canWrite)
+                    origin: card.origin, canWrite: card.project.canWrite, kitMount: BoardKitMount.assigned)
                 Button { openTask = card.task.id } label: { view }
                     .buttonStyle(.plain)
                     .landingTarget(landed?.taskId == card.task.id)

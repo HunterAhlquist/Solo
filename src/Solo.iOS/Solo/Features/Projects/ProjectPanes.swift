@@ -592,6 +592,10 @@ struct ProjectSettingsSection: View {
             }
             .card(padding: 14)
 
+            // What extensions add to a project's settings: below core's fields and above the
+            // danger zone, as on the web.
+            KitContributions(seam: .projectSettings, project: project.id) { SectionTitle($0) }
+
             VStack(alignment: .leading, spacing: 8) {
                 SectionTitle("Danger zone")
                 Text("Deleting a project removes its boards, tasks and history. There is no undo.")

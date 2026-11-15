@@ -70,6 +70,11 @@ final class KitBox {
 /// The places the web client can mount, by the names it knows them by.
 nonisolated enum KitSeam: String, Sendable {
     case projectCard, projectHome, projectNav, dashboard, taskDetail, taskCard
+    /// The cards of Your Tasks: a board's card contributions, over the person's own work.
+    case assignedCards
+    case boardColumn, projectSettings, boardSettings, extensionSettings, appBar
+    /// What extensions add to a task's menu.
+    case taskMenu
 }
 
 @Observable
@@ -89,6 +94,8 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         var project: UUID?
         var board: UUID?
         var task: UUID?
+        /// For a place that is one extension's alone: its settings panel.
+        var plugin: String?
     }
 
     private(set) var state = State.idle
@@ -96,6 +103,9 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     private(set) var webView: WKWebView?
     /// The places some extension contributes to, once the page has said.
     private(set) var seams: Set<String> = []
+    /// True while the page has a dialog up — a contribution asked for a task to be picked, or
+    /// for something to be confirmed — and so has to be shown.
+    private(set) var presenting = false
 
     @ObservationIgnored weak var session: Session?
     @ObservationIgnored private var mounts: [String: Mount] = [:]
@@ -143,8 +153,9 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         return box
     }
 
-    func mount(_ id: String, _ seam: KitSeam, project: UUID? = nil, board: UUID? = nil, task: UUID? = nil) {
-        mounts[id] = Mount(seam: seam, project: project, board: board, task: task)
+    func mount(_ id: String, _ seam: KitSeam, project: UUID? = nil, board: UUID? = nil, task: UUID? = nil,
+               plugin: String? = nil) {
+        mounts[id] = Mount(seam: seam, project: project, board: board, task: task, plugin: plugin)
         sent.remove(id)
         switch state {
         case .idle: start()
@@ -215,8 +226,15 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         view.load(URLRequest(url: instance.appending(path: "kit-surface")))
     }
 
+    /// The person closed the sheet the page's dialog was shown in: the dialog is closed with it.
+    func dismissDialog() {
+        webView?.evaluateJavaScript("window.solo?.kitSurface?.dismiss()")
+        presenting = false
+    }
+
     /// Closes the web view. Mounts are remembered, so a later start picks them up again.
     func stop(as next: State = .idle) {
+        presenting = false
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: HostedWeb.channel)
         webView?.stopLoading()
         webView?.removeFromSuperview()
@@ -252,6 +270,7 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         request["project"] = mount.project?.uuidString.lowercased()
         request["board"] = mount.board?.uuidString.lowercased()
         request["task"] = mount.task?.uuidString.lowercased()
+        request["extension"] = mount.plugin
         sent.insert(id)
         #if DEBUG
         mountedAt[id] = Date()
@@ -315,6 +334,19 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case "taskChanged":
             if let text = notice.body["task"] as? String, let task = UUID(uuidString: text) {
                 taskWatchers[task]?.values.forEach { $0() }
+            }
+        case "kitDialog":
+            presenting = (notice.body["open"] as? Bool) == true
+        case "kitToast":
+            // What a contribution would have said in a snackbar, said the way the app says things.
+            if let text = notice.body["text"] as? String, !text.isEmpty {
+                let style: ToastCenter.Style = switch notice.body["tone"] as? String {
+                case "error": .error
+                case "warning": .warning
+                case "success": .success
+                default: .info
+                }
+                session?.toasts.show(String(text.prefix(300)), style)
             }
         case "sessionRefused":
             // Asked of the instance rather than believed, as for a hosted page.
@@ -406,6 +438,8 @@ extension Session {
 /// at a size nobody can see or touch.
 struct KitSurfaceAnchor: UIViewRepresentable {
     var webView: WKWebView?
+    /// While the page is being shown for a dialog it is in the sheet, not here.
+    var lent = false
 
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
@@ -416,7 +450,7 @@ struct KitSurfaceAnchor: UIViewRepresentable {
     }
 
     func updateUIView(_ view: UIView, context: Context) {
-        guard let webView else {
+        guard let webView, !lent else {
             view.subviews.forEach { $0.removeFromSuperview() }
             return
         }
@@ -424,7 +458,30 @@ struct KitSurfaceAnchor: UIViewRepresentable {
             view.subviews.forEach { $0.removeFromSuperview() }
             view.addSubview(webView)
         }
+        webView.frame = CGRect(x: 0, y: 0, width: 800, height: 600)
         webView.alpha = 0.01
+        webView.isUserInteractionEnabled = false
+    }
+}
+
+/// The page itself, shown: for a dialog one of its contributions opened. Nothing else on the
+/// page can be seen, so what the sheet shows is that dialog on the app's own background.
+struct KitSurfaceDialog: UIViewRepresentable {
+    var webView: WKWebView
+
+    func makeUIView(context: Context) -> UIView { UIView() }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        if webView.superview !== view {
+            view.addSubview(webView)
+        }
+        webView.frame = view.bounds
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        webView.alpha = 1
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.isUserInteractionEnabled = true
     }
 }
 
@@ -500,6 +557,7 @@ struct KitNodeView: View {
         case "row": row
         case "progress": progress
         case "toggle": toggle
+        case "menuItem": menuItem
         // A kind this build doesn't know — a newer kit than the app — is left out, not guessed at.
         default: EmptyView()
         }
@@ -660,6 +718,13 @@ struct KitNodeView: View {
             .accessibilityLabel(node["label"] ?? "Progress")
     }
 
+    /// An item an extension adds to a task's menu, for use inside a menu.
+    @ViewBuilder private var menuItem: some View {
+        if node.flag("separator") { Divider() }
+        Button(node["label"] ?? "", role: node.flag("danger") ? .destructive : nil) { session.kit.press(node) }
+            .disabled(node.flag("disabled"))
+    }
+
     private var toggle: some View {
         // The value is the extension's. The switch asks for the other one and shows it when it arrives.
         Toggle(node["label"] ?? "", isOn: Binding(get: { node.flag("value") }, set: { _ in session.kit.press(node) }))
@@ -680,15 +745,16 @@ final class KitMountLifetime {
 
     /// Called as the view is drawn. Mounts the place the first time and when it changes, and
     /// has it read again when the revision moves; otherwise does nothing.
-    func keep(on host: KitSurfaceHost, _ seam: KitSeam, project: UUID?, board: UUID?, task: UUID?, revision: Int) {
-        let wanted = "\(seam.rawValue)|\(project?.uuidString ?? "")|\(board?.uuidString ?? "")|\(task?.uuidString ?? "")"
+    func keep(on host: KitSurfaceHost, _ seam: KitSeam, project: UUID? = nil, board: UUID? = nil, task: UUID? = nil,
+              plugin: String? = nil, revision: Int = 0) {
+        let wanted = "\(seam.rawValue)|\(project?.uuidString ?? "")|\(board?.uuidString ?? "")|\(task?.uuidString ?? "")|\(plugin ?? "")"
         let id = id
         if asked != wanted {
             asked = wanted
             self.revision = revision
             self.host = host
             // After this pass of drawing: mounting changes what views are watching.
-            DispatchQueue.main.async { host.mount(id, seam, project: project, board: board, task: task) }
+            DispatchQueue.main.async { host.mount(id, seam, project: project, board: board, task: task, plugin: plugin) }
         } else if self.revision != revision {
             self.revision = revision
             DispatchQueue.main.async { host.refresh(id) }
@@ -708,7 +774,10 @@ struct KitContributions<Header: View>: View {
     @Environment(Session.self) private var session
     var seam: KitSeam
     var project: UUID?
+    var board: UUID?
     var task: UUID?
+    /// The one extension whose place this is, for a place that belongs to one.
+    var plugin: String?
     /// Moved when what the place shows has gone stale, so the contributions are handed it afresh.
     var revision: Int = 0
     /// Room above each section, where the stack around it leaves none.
@@ -719,7 +788,8 @@ struct KitContributions<Header: View>: View {
     @State private var lifetime = KitMountLifetime()
 
     var body: some View {
-        let _ = lifetime.keep(on: session.kit, seam, project: project, board: nil, task: task, revision: revision)
+        let _ = lifetime.keep(on: session.kit, seam, project: project, board: board, task: task, plugin: plugin,
+                              revision: revision)
         ForEach(session.kit.box(mount: lifetime.id).sections) { section in
             VStack(alignment: .leading, spacing: 6) {
                 if !section.title.isEmpty { header(section.title) }
@@ -732,16 +802,16 @@ struct KitContributions<Header: View>: View {
     }
 }
 
-/// What extensions add to a board's cards. The board is one mount and each card an item of it,
-/// so the page is asked once however many cards there are.
-struct KitCardContributions: View {
+/// What extensions add to one item of a mount: a card of a board or of Your Tasks, or a column
+/// of a board. The whole board is one mount, so the page is asked once however many there are.
+struct KitItemContributions: View {
     @Environment(Session.self) private var session
-    /// The board's mount, as `BoardKitMount.id(for:)` names it.
     var mount: String
-    var task: UUID
+    /// A task's id, or a column's status.
+    var item: String
 
     var body: some View {
-        let sections = session.kit.box(mount: mount, item: task.uuidString).sections
+        let sections = session.kit.box(mount: mount, item: item).sections
         if !sections.isEmpty {
             // A card is one button, so what sits on it is for reading: a press opens the task.
             HStack(spacing: 6) {
@@ -756,4 +826,36 @@ struct KitCardContributions: View {
 
 nonisolated enum BoardKitMount {
     static func id(for board: UUID) -> String { "board:" + board.uuidString.lowercased() }
+    static func columns(for board: UUID) -> String { "columns:" + board.uuidString.lowercased() }
+    /// The cards of Your Tasks.
+    static let assigned = "assigned"
+}
+
+/// What extensions add to a task's menu, as a menu of its own beside the task's other actions.
+/// No button at all when nothing is added.
+struct KitTaskMenu: View {
+    @Environment(Session.self) private var session
+    var task: UUID
+    var project: UUID?
+    /// Moved when the task changes, since what a menu offers depends on the task.
+    var revision: Int = 0
+
+    @State private var lifetime = KitMountLifetime()
+
+    var body: some View {
+        let _ = lifetime.keep(on: session.kit, .taskMenu, project: project, task: task, revision: revision)
+        let sections = session.kit.box(mount: lifetime.id).sections
+        if !sections.isEmpty {
+            Menu("More Actions", systemImage: "ellipsis") {
+                ForEach(sections) { section in
+                    Section {
+                        ForEach(section.nodes) { KitNodeView(node: $0) }
+                    }
+                }
+            }
+            // Only the dots: the task's own actions are beside it and need the room for their words.
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glass)
+        }
+    }
 }

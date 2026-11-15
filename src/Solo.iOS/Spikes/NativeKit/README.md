@@ -14,9 +14,14 @@ It began as a spike — could a plugin's Razor component run in a web view nobod
 | `Contributions/DemoNavSection` | A project's sidebar group: two rows. |
 | `Contributions/DemoDashboardSection` | Your Tasks. |
 | `Contributions/DemoTaskDetail` | A task's detail: says which version of the task it was handed, and tells the host it saved something. |
-| `Contributions/DemoCardBadge` | Every card of a board: a badge. |
+| `Contributions/DemoCardBadge` | Every card, on a board and on Your Tasks: a badge. |
+| `Contributions/DemoColumnBadge` | A board's column headers: how many sub-tasks the column's cards have. |
+| `Contributions/DemoProjectSettings`, `DemoBoardSettings` | A section of a project's settings and of a board's: a switch, and a badge that follows it. |
+| `Contributions/DemoExtensionSettings` | The extension's own panel in Admin → Extensions. |
+| `Contributions/DemoAppBar` | The app bar: a row that counts its presses. |
+| `Contributions/DemoTaskMenu` | A task's menu — a class, not a component. One item says something in a snackbar, one opens the host's task picker (a dialog), one is marked dangerous. |
 
-Every contribution is built from the kit and nothing else, which is what lets the app draw it.
+Every contribution is built from the kit and nothing else, which is what lets the app draw it. The menu is the exception: its items are data already.
 
 ## Running it
 

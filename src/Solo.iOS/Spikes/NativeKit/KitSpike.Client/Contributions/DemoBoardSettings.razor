@@ -1,0 +1,18 @@
+@attribute [BoardSettingsSection("Kit demo", Order = 90)]
+
+@* In a board's settings, under its name, alias and icon. *@
+
+<SoloStack Spacing="SoloSpacing.Small">
+    <SoloToggle Label="@($"Count sub-tasks on {Board.Name}")" @bind-Value="_on" Disabled="@(!CanWrite)" />
+    @if (_on)
+    {
+        <SoloBadge Text="Counting" Icon="Bolt" Tone="SoloTone.Success" />
+    }
+</SoloStack>
+
+@code {
+    private bool _on;
+
+    [Parameter, EditorRequired] public BoardDto Board { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+}

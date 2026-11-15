@@ -699,6 +699,8 @@ struct AdminExtensionsView: View {
             if !item.hooks.isEmpty {
                 Text("Intercepts: \(item.hooks.joined(separator: ", "))").font(.caption).foregroundStyle(theme.textSecondary)
             }
+            // The extension's own settings panel, where it has one built from the kit.
+            KitContributions(seam: .extensionSettings, plugin: item.extensionId) { _ in EmptyView() }
             if let update {
                 if update.compatible {
                     Text("Version \(update.availableVersion) is available (\(Self.size(update.sizeBytes))).")

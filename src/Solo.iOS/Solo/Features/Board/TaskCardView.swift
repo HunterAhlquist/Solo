@@ -79,7 +79,7 @@ struct TaskCardView: View {
                             deadlineRing
                         }
                         if let kitMount {
-                            KitCardContributions(mount: kitMount, task: task.id)
+                            KitItemContributions(mount: kitMount, item: task.id.uuidString)
                         }
                         Spacer(minLength: 0)
                         if !task.subTasks.isEmpty {

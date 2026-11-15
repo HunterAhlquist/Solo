@@ -193,6 +193,9 @@ struct InstanceExtensionLinks: View {
                 }
             }
         }
+        // What extensions put in the web's app bar: the one place always on screen there. Here it
+        // sits with the instance's own entries, which is the nearest thing the app has to one.
+        KitContributions(seam: .appBar) { _ in EmptyView() }
         // Instance-level pages of extensions with no native half.
         ForEach(session.extensions.instancePages) { page in
             let route = Route.pluginPage(path: page.path(), title: page.label)

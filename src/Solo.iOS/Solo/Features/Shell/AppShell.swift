@@ -17,9 +17,19 @@ struct AppShell: View {
         }
         // The page that runs extensions' contributions, kept in the window and out of sight.
         .background(alignment: .topLeading) {
-            KitSurfaceAnchor(webView: session.kit.webView)
+            KitSurfaceAnchor(webView: session.kit.webView, lent: session.kit.presenting)
                 .frame(width: 1, height: 1)
                 .accessibilityHidden(true)
+        }
+        // A contribution opened a dialog on that page: it is shown for as long as the dialog is up.
+        .sheet(isPresented: Binding(get: { session.kit.presenting && session.kit.webView != nil },
+                                    set: { if !$0 { session.kit.dismissDialog() } })) {
+            if let webView = session.kit.webView {
+                KitSurfaceDialog(webView: webView)
+                    .ignoresSafeArea()
+                    .themedBackground()
+                    .presentationDetents([.medium, .large])
+            }
         }
     }
 }

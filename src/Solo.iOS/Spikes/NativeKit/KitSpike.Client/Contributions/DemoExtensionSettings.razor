@@ -1,0 +1,14 @@
+@attribute [ExtensionSettings]
+
+@* Inside this extension's own entry in Admin settings. *@
+
+<SoloStack Spacing="SoloSpacing.Small">
+    <SoloText Text="@($"Settings of {ExtensionId}, drawn by the client.")" Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+    <SoloToggle Label="An instance-wide switch" @bind-Value="_on" />
+</SoloStack>
+
+@code {
+    private bool _on;
+
+    [Parameter] public string ExtensionId { get; set; } = "";
+}

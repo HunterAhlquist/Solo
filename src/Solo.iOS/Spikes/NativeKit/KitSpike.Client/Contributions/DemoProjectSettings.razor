@@ -1,0 +1,15 @@
+@attribute [ProjectSettingsSection("Kit demo", Order = 90)]
+
+@* In a project's settings, between core's fields and the danger zone. *@
+
+<SoloStack Spacing="SoloSpacing.Small">
+    <SoloText Text="@($"A setting an extension keeps for {Project.Name}.")" Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+    <SoloToggle Label="Track sprints here" @bind-Value="_on" Disabled="@(!CanWrite)" />
+</SoloStack>
+
+@code {
+    private bool _on;
+
+    [Parameter, EditorRequired] public ProjectSummaryDto Project { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+}

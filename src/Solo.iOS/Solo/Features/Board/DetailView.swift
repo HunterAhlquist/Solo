@@ -166,8 +166,8 @@ struct DetailView: View {
 
                 CommentsSection(store: store, taskId: task?.id, epicId: epic?.id)
 
-                if canWrite {
-                    HStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    if canWrite {
                         if task != nil {
                             Button("Move to Board", systemImage: "arrow.right.doc.on.clipboard") { moving = true }
                                 .buttonStyle(.glass)
@@ -178,9 +178,14 @@ struct DetailView: View {
                         .buttonStyle(.glass)
                         .tint(theme.error)
                     }
-                    .font(.subheadline)
-                    .padding(.top, 4)
+                    // What extensions add to the task's menu. Theirs to offer whoever is looking,
+                    // so not only to someone who can write.
+                    if let task {
+                        KitTaskMenu(task: task.id, project: store.board?.projectId, revision: Int(task.version))
+                    }
                 }
+                .font(.subheadline)
+                .padding(.top, 4)
             }
             .padding(16)
         }

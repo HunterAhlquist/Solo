@@ -1,0 +1,12 @@
+@attribute [BoardColumnExtension(Order = 90)]
+
+@* Beside a column's count: something about the whole column. *@
+
+<SoloBadge Text="@($"{Tasks.Sum(t => t.SubTasks.Count)} sub")" Tone="@(Status == TaskState.Finished ? SoloTone.Success : SoloTone.Default)" />
+
+@code {
+    [Parameter, EditorRequired] public BoardDto Board { get; set; } = null!;
+    [Parameter] public TaskState Status { get; set; }
+    [Parameter] public IReadOnlyList<TaskDto> Tasks { get; set; } = [];
+    [Parameter] public bool CanWrite { get; set; }
+}
