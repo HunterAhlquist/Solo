@@ -2,37 +2,22 @@
 @inject NavigationManager Navigation
 
 @*
-    An ordinary extension page, with nothing in it written for the app: what
-    the app shows for an extension it has no native half for. Its links are the
-    cases the app has to get right — one to a screen the app has of its own,
-    one to another page of this extension, one off the instance.
+    A page built from the kit and nothing else. The web client draws it with
+    the components core is made of; an app that draws pages itself draws it as
+    a screen of its own, with its own controls, while this code runs where it
+    always does. Its links are the cases such an app has to get right: a core
+    screen by address and from a handler, a page the web has to show, and
+    somewhere off the instance.
 *@
 
 <PageTitle>Plugin demo</PageTitle>
 
-<MudText Typo="Typo.h5" GutterBottom="true">Plugin demo</MudText>
-<MudText Class="mb-4">A page from an extension, for project <b>@ProjectAlias</b>. Count: @_count</MudText>
-
-<MudStack Spacing="2" AlignItems="AlignItems.Start">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => _count++)">Count up (this page's own state)</MudButton>
-    <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"projects/{ProjectAlias}"))">
-        Open the project (a core screen)
-    </MudButton>
-    <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo("projects"))">All projects (a core screen)</MudButton>
-    <MudButton Variant="Variant.Outlined" Href="@($"kit-spike/demo/{ProjectAlias}/more")">A second page of this extension</MudButton>
-    <MudLink Href="https://example.com/" Target="_blank">A link off the instance</MudLink>
-</MudStack>
-
-<MudDivider Class="my-6" />
-
-@*
-    The contract's kit (Solo.Shared.Kit, contract 1.17), one of everything: what
-    an extension's small contributions are meant to be built from. Here the web
-    client draws them; nothing below is styled by this page.
-*@
-<SoloStack Spacing="SoloSpacing.Medium">
-    <SoloText Text="The kit" Variant="SoloTextVariant.Heading" />
-    <SoloText Text="Each of these says what it is, and the client draws it." Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+<SoloStack Spacing="SoloSpacing.Large">
+    <SoloStack>
+        <SoloText Text="Plugin demo" Variant="SoloTextVariant.Heading" />
+        <SoloText Text="@($"A page from an extension, for project {ProjectAlias}. Count: {_count}")" />
+        <SoloText Text="Each piece says what it is, and the client draws it." Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+    </SoloStack>
 
     <SoloStack Direction="SoloDirection.Horizontal" Align="SoloAlign.Center">
         <SoloIcon Name="Flag" Tone="SoloTone.Primary" Label="Flagged" />
@@ -47,12 +32,16 @@
         <SoloButton Text="Count up" Variant="SoloButtonVariant.Primary" Icon="Bolt" OnClick="@(() => _count++)" />
         <SoloButton Text="Open the project" Href="@($"projects/{ProjectAlias}")" />
         <SoloButton Text="Plain" Variant="SoloButtonVariant.Plain" OnClick="@(() => _count++)" />
-        <SoloButton Text="Delete" Destructive="true" OnClick="@(() => _count = 0)" />
+        <SoloButton Text="Reset" Destructive="true" OnClick="@(() => _count = 0)" />
         <SoloButton Text="Disabled" Disabled="true" />
     </SoloStack>
 
     <SoloStack Spacing="SoloSpacing.None" Align="SoloAlign.Stretch">
-        <SoloRow Icon="Dashboard" Title="A row that goes somewhere" Subtitle="The project, which is a core screen" Href="@($"projects/{ProjectAlias}")" />
+        <SoloRow Icon="Dashboard" Title="The project" Subtitle="A core screen, by its address" Href="@($"projects/{ProjectAlias}")" />
+        <SoloRow Icon="Flag" Title="All projects" Subtitle="A core screen, from a handler" OnClick="@(() => Navigation.NavigateTo("projects"))" />
+        <SoloRow Icon="Extension" Title="Page two" Subtitle="Marked [WebPage]: the web client draws it" Href="@($"kit-spike/demo/{ProjectAlias}/more")" />
+        <SoloRow Icon="Book" Title="About" Subtitle="Not marked, and not the kit either" Href="kit-spike/about" />
+        <SoloRow Icon="Star" Title="A link off the instance" Subtitle="example.com" Href="https://example.com/" />
         <SoloRow Icon="Bolt" Title="A row that does something" OnClick="@(() => _count++)">
             <SoloBadge Text="@($"pressed {_count}×")" Tone="SoloTone.Primary" />
         </SoloRow>

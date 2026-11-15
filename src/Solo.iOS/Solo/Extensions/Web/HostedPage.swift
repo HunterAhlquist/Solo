@@ -227,8 +227,66 @@ private struct HostedWebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {}
 }
 
-/// An extension's page: the web client's, inside the app's own bars.
+/// An extension's page. Drawn by the app when the page is built from the kit, and otherwise
+/// the web client's own, inside the app's bars — which of the two is the web client's to say,
+/// since only it can run the page.
 struct PluginPageView: View {
+    @Environment(Session.self) private var session
+    var path: String
+    var title: String
+
+    @State private var lifetime = KitMountLifetime()
+    /// Decided for the web, for good: the page said so, drew something the kit has not got, or
+    /// nothing could be asked.
+    @State private var web = false
+
+    var body: some View {
+        let kit = session.kit
+        let box = kit.box(mount: lifetime.id)
+        // Asking is what starts the kit surface, so the page is asked for before anything is known.
+        let _ = web ? () : lifetime.keep(on: kit, .page, path: path)
+        Group {
+            if web || !kit.mayAnswer(.page) {
+                WebPluginPage(path: path, title: title)
+            } else if box.page == .app {
+                KitPageView(mount: lifetime.id)
+                    .themedBackground()
+                    .navigationTitle(title.isEmpty ? ownerName(box.owner) : title)
+                    .toolbarTitleDisplayMode(.inline)
+            } else {
+                ProgressView().controlSize(.large)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .themedBackground()
+                    .navigationTitle(title)
+                    .toolbarTitleDisplayMode(.inline)
+            }
+        }
+        .onChange(of: box.page) { _, drawer in
+            if drawer == .web { giveToWeb() }
+        }
+        // Up and asked, the surface answers at once. Silence past that is an instance whose web
+        // client is older than the app and knows nothing of pages: the page is still its to show.
+        .task(id: kit.state) {
+            guard kit.state == .running else { return }
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled, box.page == nil { giveToWeb() }
+        }
+    }
+
+    /// The page is running in the surface as well, until it is let go there.
+    private func giveToWeb() {
+        web = true
+        lifetime.drop()
+    }
+
+    /// A page reached by a link has no title of its own here: it goes by its extension's name.
+    private func ownerName(_ id: String?) -> String {
+        session.extensions.installed.first { $0.id == id }?.name ?? ""
+    }
+}
+
+/// An extension's page as the web client draws it, inside the app's own bars.
+private struct WebPluginPage: View {
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
     @Environment(\.theme) private var theme

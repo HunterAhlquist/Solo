@@ -832,6 +832,37 @@ import Testing
         #expect(items[1].flag("danger") && items[1].flag("separator"))
     }
 
+    @Test func aPageIsTheAppsToDrawUntilItIsSeenToNeedTheWeb() throws {
+        let host = KitSurfaceHost()
+        host.mount("p1", .page, path: "sprints/DMD")
+        let box = host.box(mount: "p1")
+        // Not yet answered: neither the one nor the other.
+        #expect(box.page == nil)
+
+        host.apply(try update(#"{"units":[{"mount":"p1","page":"native","extension":"sprints","sections":[{"extension":"sprints","title":"","order":0,"nodes":[\#(badge)]}],"items":[]}]}"#))
+        #expect(box.page == .app)
+        #expect(box.owner == "sprints")
+        #expect(box.sections.count == 1)
+
+        // It drew something the kit has not got. That is not taken back by a later tree without it.
+        host.apply(try update(#"{"units":[{"mount":"p1","page":"web","extension":"sprints","sections":[],"items":[]}]}"#))
+        #expect(box.page == .web)
+        host.apply(try update(#"{"units":[{"mount":"p1","page":"native","extension":"sprints","sections":[],"items":[]}]}"#))
+        #expect(box.page == .web)
+    }
+
+    @Test func aPlaceThatIsNotAPageSaysNothingOfWhoDrawsIt() throws {
+        let host = KitSurfaceHost()
+        host.mount("m1", .dashboard)
+        host.apply(try update(#"{"units":[{"mount":"m1","sections":[]}]}"#))
+        #expect(host.box(mount: "m1").page == nil)
+    }
+
+    @Test func nothingIsWaitedForThatCouldNotAnswer() {
+        // No session: no instance to ask, so a page is not kept waiting on the surface.
+        #expect(!KitSurfaceHost().mayAnswer(.page))
+    }
+
     @Test func whatIsSaidOfAPlaceNoLongerMountedIsDropped() throws {
         let host = KitSurfaceHost()
         host.mount("m1", .dashboard)

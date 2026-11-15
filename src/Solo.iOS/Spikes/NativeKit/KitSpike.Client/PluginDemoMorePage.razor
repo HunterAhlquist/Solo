@@ -1,11 +1,31 @@
 @page "/kit-spike/demo/{ProjectAlias}/more"
+@attribute [WebPage]
+@inject NavigationManager Navigation
+
+@*
+    A page that is not the kit's, and says so: MudBlazor, as an extension's
+    pages have always been. The web client draws it wherever it is shown, so an
+    app shows it from the web, inside its own bars, without first trying to
+    draw it. Its links are the ones a page shown that way has to get right.
+*@
 
 <PageTitle>Plugin demo, page two</PageTitle>
 
 <MudText Typo="Typo.h5" GutterBottom="true">Page two</MudText>
-<MudText Class="mb-4">Still the extension's, so still shown here rather than handed to the app.</MudText>
-<MudButton Variant="Variant.Outlined" Href="@($"kit-spike/demo/{ProjectAlias}")">Back to the first page</MudButton>
+<MudText Class="mb-4">Marked as a web page, for project <b>@ProjectAlias</b>. Count: @_count</MudText>
+
+<MudStack Spacing="2" AlignItems="AlignItems.Start">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => _count++)">Count up (this page's own state)</MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo($"projects/{ProjectAlias}"))">
+        Open the project (a core screen)
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo("projects"))">All projects (a core screen)</MudButton>
+    <MudButton Variant="Variant.Outlined" Href="@($"kit-spike/demo/{ProjectAlias}")">Back to the first page</MudButton>
+    <MudLink Href="https://example.com/" Target="_blank">A link off the instance</MudLink>
+</MudStack>
 
 @code {
+    private int _count;
+
     [Parameter] public string ProjectAlias { get; set; } = "";
 }

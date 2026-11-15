@@ -14,7 +14,12 @@ import WebKit
 // Only kit components (Solo.Shared.Kit) cross over, and only as data: a node
 // is a kind and some text. The page is handed nothing of the device and can
 // ask the app for nothing. An extension that draws with anything else simply
-// has nothing here; its pages are still shown, from the web (HostedPage).
+// has nothing here.
+//
+// An extension's own page is mounted the same way, and drawn as a screen of
+// the app's when it is built from the kit (KitPageView, at the end). A page
+// that says it is the web's, or that draws something the kit has not got, is
+// shown from the web client instead (HostedPage).
 
 /// One kit component, as the page describes it.
 nonisolated struct KitNode: Decodable, Identifiable, Sendable, Equatable {
@@ -52,6 +57,14 @@ nonisolated struct KitUpdate: Decodable, Sendable {
         var sections: [KitSection]
         /// Set when the whole mount is being sent: every item it has now.
         var items: [Item]?
+        /// For a mount that is a whole page: "native" when the app can draw it, "web" when it cannot.
+        var page: String?
+        /// Whose page it is.
+        var owner: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case mount, item, sections, items, page, owner = "extension"
+        }
     }
 
     struct Item: Decodable, Sendable {
@@ -65,6 +78,18 @@ nonisolated struct KitUpdate: Decodable, Sendable {
 @Observable
 final class KitBox {
     fileprivate(set) var sections: [KitSection] = []
+    /// For a whole page: who draws it, once the web client has said. Nil until then.
+    fileprivate(set) var page: KitPageDrawer?
+    /// The extension a page belongs to.
+    fileprivate(set) var owner: String?
+}
+
+/// Who draws an extension's page.
+nonisolated enum KitPageDrawer: Sendable {
+    /// The app, from the kit nodes the page is made of.
+    case app
+    /// The web client, in a web view: the page says so, or draws something the kit has not got.
+    case web
 }
 
 /// The places the web client can mount, by the names it knows them by.
@@ -75,6 +100,8 @@ nonisolated enum KitSeam: String, Sendable {
     case boardColumn, projectSettings, boardSettings, extensionSettings, appBar
     /// What extensions add to a task's menu.
     case taskMenu
+    /// An extension's whole page, by its address.
+    case page
 }
 
 @Observable
@@ -96,6 +123,8 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         var task: UUID?
         /// For a place that is one extension's alone: its settings panel.
         var plugin: String?
+        /// For a whole page: its address, relative to the instance.
+        var path: String?
     }
 
     private(set) var state = State.idle
@@ -154,8 +183,8 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     }
 
     func mount(_ id: String, _ seam: KitSeam, project: UUID? = nil, board: UUID? = nil, task: UUID? = nil,
-               plugin: String? = nil) {
-        mounts[id] = Mount(seam: seam, project: project, board: board, task: task, plugin: plugin)
+               plugin: String? = nil, path: String? = nil) {
+        mounts[id] = Mount(seam: seam, project: project, board: board, task: task, plugin: plugin, path: path)
         sent.remove(id)
         switch state {
         case .idle: start()
@@ -176,6 +205,18 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     func refresh(_ id: String) {
         guard sent.contains(id) else { return }
         tell(["op": "refresh", "id": id])
+    }
+
+    /// Whether asking for a place could still be answered. False once it is known that it never
+    /// will be — the page couldn't run, or nothing on the instance contributes there — so that a
+    /// screen waiting on an answer can stop waiting.
+    func mayAnswer(_ seam: KitSeam) -> Bool {
+        switch state {
+        case .running: seams.contains(seam.rawValue)
+        case .starting: true
+        case .idle: worthStarting
+        case .unneeded, .failed: false
+        }
     }
 
     /// A node the app drew was pressed: the component's own handler answers it.
@@ -271,6 +312,7 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         request["board"] = mount.board?.uuidString.lowercased()
         request["task"] = mount.task?.uuidString.lowercased()
         request["extension"] = mount.plugin
+        request["path"] = mount.path
         sent.insert(id)
         #if DEBUG
         mountedAt[id] = Date()
@@ -370,7 +412,13 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
                 set(box(mount: unit.mount, item: item), unit.sections)
                 continue
             }
-            set(box(mount: unit.mount), unit.sections)
+            let whole = box(mount: unit.mount)
+            set(whole, unit.sections)
+            if let page = unit.page {
+                // Once a page has been seen to need the web it is the web's: it does not flicker back.
+                if whole.page != .web { whole.page = page == "native" ? .app : .web }
+                if whole.owner != unit.owner { whole.owner = unit.owner }
+            }
             guard let items = unit.items else { continue }
             var current = Set<String>()
             for item in items {
@@ -413,8 +461,10 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     /// The system ended the page's process, which it does when memory is short. It is started
     /// again if anything is still mounted, but not over and over.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        stop()
         restarts += 1
+        // Three times running without once coming up: it is not going to, and whatever was
+        // waiting on it — a page, above all — is told so rather than left waiting.
+        stop(as: restarts > 2 ? .failed : .idle)
         if !mounts.isEmpty, restarts <= 2 { start() }
     }
 }
@@ -424,6 +474,15 @@ extension Session {
     /// and otherwise a page of the web client's, shown inside the app.
     func openKitLink(_ path: String) {
         var path = path
+        if let url = URL(string: path), let scheme = url.scheme?.lowercased() {
+            guard ["http", "https"].contains(scheme), HostedWeb.address(of: url) == HostedWeb.address(of: api.baseURL) else {
+                // Somewhere off the instance is the browser's, as a link in a page of the web's would be.
+                if ["http", "https", "mailto"].contains(scheme) { UIApplication.shared.open(url) }
+                return
+            }
+            // The instance's own address written out in full: the same place as the path alone.
+            path = url.path(percentEncoded: true) + (url.query(percentEncoded: true).map { "?" + $0 } ?? "")
+        }
         while path.hasPrefix("/") { path.removeFirst() }
         let baked = HostedRoutes.Baked(roadmap: extensions.hasRoadmap, designDocs: extensions.hasDesignDocs, mcp: extensions.hasMcp)
         switch HostedRoutes.destination(for: path, baked) {
@@ -541,10 +600,17 @@ nonisolated struct KitFlow: Layout {
     }
 }
 
+extension EnvironmentValues {
+    /// True for nodes drawn as a screen of their own, which have a screen's room: text at the
+    /// size a screen's text is, and rows gathered into a panel as a settings screen's are.
+    @Entry var kitPage = false
+}
+
 /// A kit node, drawn with the app's own controls.
 struct KitNodeView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
+    @Environment(\.kitPage) private var onPage
     var node: KitNode
 
     var body: some View {
@@ -594,7 +660,17 @@ struct KitNodeView: View {
             case "End": .bottom
             default: .top
             }
-            KitFlow(spacing: max(gap, 6), alignment: across) { children }
+            KitFlow(spacing: max(gap, onPage ? 8 : 6), alignment: across) { children }
+        } else if onPage, !node.children.isEmpty, node.children.allSatisfy({ $0.kind == "row" }) {
+            // Nothing but rows, on a screen: a panel of them, as the app's own lists of things are.
+            VStack(spacing: 0) {
+                ForEach(node.children) { child in
+                    KitNodeView(node: child)
+                    if child.id != node.children.last?.id { Divider() }
+                }
+            }
+            .card(padding: 0)
+            .padding(.vertical, gap)
         } else {
             // A stack that runs down is as wide as its place; its children sit across it as it says.
             let across: HorizontalAlignment = switch node["align"] {
@@ -609,10 +685,10 @@ struct KitNodeView: View {
 
     private var text: some View {
         let font: Font = switch node["variant"] {
-        case "Caption": .caption
+        case "Caption": onPage ? .footnote : .caption
         case "Label": .subheadline.weight(.semibold)
-        case "Heading": .headline
-        default: .subheadline
+        case "Heading": onPage ? .title3.weight(.semibold) : .headline
+        default: onPage ? .body : .subheadline
         }
         return Text(node["text"] ?? "")
             .font(font)
@@ -664,23 +740,33 @@ struct KitNodeView: View {
             if let icon = node["icon"] { Image(systemName: SoloIcons.symbol(icon)) }
         }
         let role: ButtonRole? = node.flag("destructive") ? .destructive : nil
+        // The app's own buttons: glass, and filled with the accent for the one that matters most.
         Group {
             switch node["variant"] {
             case "Primary":
-                Button(role: role, action: pressed) { label.onAccent() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(node.flag("destructive") ? theme.error : theme.fill)
+                if node.flag("destructive") {
+                    Button(role: role, action: pressed) { label.foregroundStyle(.white) }
+                        .buttonStyle(.glassProminent)
+                        .tint(theme.error)
+                } else {
+                    Button(role: role, action: pressed) { label.onAccent() }
+                        .buttonStyle(.glassProminent)
+                }
             case "Plain":
                 Button(role: role, action: pressed) { label }
                     .buttonStyle(.borderless)
                     .tint(node.flag("destructive") ? theme.error : theme.textPrimary)
             default:
-                Button(role: role, action: pressed) { label }
-                    .buttonStyle(.bordered)
-                    .tint(node.flag("destructive") ? theme.error : theme.primary)
+                if node.flag("destructive") {
+                    Button(role: role, action: pressed) { label }
+                        .buttonStyle(.glass)
+                        .tint(theme.error)
+                } else {
+                    Button(role: role, action: pressed) { label }
+                        .buttonStyle(.glass)
+                }
             }
         }
-        .controlSize(.small)
         .disabled(!acts)
     }
 
@@ -701,8 +787,9 @@ struct KitNodeView: View {
             Spacer(minLength: 8)
             children
         }
-        .font(.subheadline)
-        .padding(.vertical, 6)
+        .font(onPage ? .body : .subheadline)
+        .padding(.vertical, onPage ? 11 : 6)
+        .padding(.horizontal, onPage ? 14 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(.rect)
         if acts {
@@ -728,7 +815,7 @@ struct KitNodeView: View {
     private var toggle: some View {
         // The value is the extension's. The switch asks for the other one and shows it when it arrives.
         Toggle(node["label"] ?? "", isOn: Binding(get: { node.flag("value") }, set: { _ in session.kit.press(node) }))
-            .font(.subheadline)
+            .font(onPage ? .body : .subheadline)
             .tint(theme.fill)
             .disabled(node.flag("disabled"))
     }
@@ -746,19 +833,27 @@ final class KitMountLifetime {
     /// Called as the view is drawn. Mounts the place the first time and when it changes, and
     /// has it read again when the revision moves; otherwise does nothing.
     func keep(on host: KitSurfaceHost, _ seam: KitSeam, project: UUID? = nil, board: UUID? = nil, task: UUID? = nil,
-              plugin: String? = nil, revision: Int = 0) {
-        let wanted = "\(seam.rawValue)|\(project?.uuidString ?? "")|\(board?.uuidString ?? "")|\(task?.uuidString ?? "")|\(plugin ?? "")"
+              plugin: String? = nil, path: String? = nil, revision: Int = 0) {
+        let wanted = "\(seam.rawValue)|\(project?.uuidString ?? "")|\(board?.uuidString ?? "")|\(task?.uuidString ?? "")|\(plugin ?? "")|\(path ?? "")"
         let id = id
         if asked != wanted {
             asked = wanted
             self.revision = revision
             self.host = host
             // After this pass of drawing: mounting changes what views are watching.
-            DispatchQueue.main.async { host.mount(id, seam, project: project, board: board, task: task, plugin: plugin) }
+            DispatchQueue.main.async { host.mount(id, seam, project: project, board: board, task: task, plugin: plugin, path: path) }
         } else if self.revision != revision {
             self.revision = revision
             DispatchQueue.main.async { host.refresh(id) }
         }
+    }
+
+    /// Lets the place go before the view does: it is being shown some other way.
+    func drop() {
+        guard asked != nil else { return }
+        asked = nil
+        let id = id
+        DispatchQueue.main.async { [weak host] in host?.unmount(id) }
     }
 
     deinit {
@@ -798,6 +893,8 @@ struct KitContributions<Header: View>: View {
             // As wide as its place, from the leading edge, whatever the stack around it would do.
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, gap)
+            // A part of someone else's screen: its buttons are the small ones.
+            .controlSize(.small)
         }
     }
 }
@@ -820,6 +917,7 @@ struct KitItemContributions: View {
                 }
             }
             .allowsHitTesting(false)
+            .controlSize(.small)
         }
     }
 }
@@ -857,5 +955,34 @@ struct KitTaskMenu: View {
             .labelStyle(.iconOnly)
             .buttonStyle(.glass)
         }
+    }
+}
+
+// MARK: - Pages
+
+/// An extension's page, drawn by the app from the kit nodes it is made of. The page's own
+/// code is running in the kit surface; this is what it says it shows, as a screen.
+struct KitPageView: View {
+    @Environment(Session.self) private var session
+    /// The page's mount on the surface.
+    var mount: String
+
+    var body: some View {
+        let sections = session.kit.box(mount: mount).sections
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(sections) { section in
+                    ForEach(section.nodes) { KitNodeView(node: $0) }
+                }
+            }
+            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .environment(\.kitPage, true)
+            .animation(.snappy, value: sections)
+        }
+        // Reading it again starts the page over, as reloading it on the web would.
+        .refreshable { session.kit.refresh(mount) }
     }
 }
