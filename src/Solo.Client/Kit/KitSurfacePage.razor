@@ -44,7 +44,8 @@ else
     private bool _started;
 
     /// <summary>What the app sends: a place to mount, to drop, or to read again.</summary>
-    private sealed record Request(string Op, string? Id, string? Seam, Guid? Project, Guid? Board, Guid? Task, string? Extension);
+    private sealed record Request(
+        string Op, string? Id, string? Seam, Guid? Project, Guid? Board, Guid? Task, string? Extension, string? Path);
 
     private IDisposable? _navigation;
 
@@ -133,7 +134,9 @@ else
         switch (request.Op)
         {
             case "mount" when request.Seam is not null && KitSeams.All.Contains(request.Seam):
-                _mounts[id] = new KitMount(id, request.Seam, request.Project, request.Board, request.Task, request.Extension);
+                _mounts[id] = new KitMount(
+                    id, request.Seam, request.Project, request.Board, request.Task, request.Extension,
+                    request.Path is { Length: <= 2000 } path ? path : null);
                 break;
             case "unmount":
                 _mounts.Remove(id);

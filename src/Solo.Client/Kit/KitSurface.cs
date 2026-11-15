@@ -17,6 +17,10 @@ namespace Solo.Client.Kit;
 //
 // Only kit components cross over. Anything else a contribution renders stays
 // in the page nobody sees.
+//
+// An extension's own page can be mounted the same way (KitPages), and there
+// what does not cross over matters: a page is either drawn whole by the app or
+// shown whole from the web, so the app is told which.
 
 /// <summary>
 /// Cascaded over everything the surface page mounts. A kit component drawn
@@ -28,7 +32,9 @@ public sealed class KitSurface;
 /// <param name="Id">The app's own name for this mount, which every tree it is sent carries.</param>
 /// <param name="Seam">One of <see cref="KitSeams"/>.</param>
 /// <param name="ExtensionId">For a place that is one extension's alone: its settings panel.</param>
-public sealed record KitMount(string Id, string Seam, Guid? ProjectId, Guid? BoardId, Guid? TaskId, string? ExtensionId = null)
+/// <param name="Path">For a whole page: its address, relative to the instance.</param>
+public sealed record KitMount(
+    string Id, string Seam, Guid? ProjectId, Guid? BoardId, Guid? TaskId, string? ExtensionId = null, string? Path = null)
 {
     /// <summary>Moved by the app when what the mount shows is stale and should be read again.</summary>
     public int Revision { get; init; }
@@ -58,10 +64,13 @@ public static class KitSeams
     /// <summary>What extensions add to a task's menu. Classes rather than components: see <see cref="MenuContributors"/>.</summary>
     public const string TaskMenu = "taskMenu";
 
+    /// <summary>An extension's whole page, for an app that draws pages built from the kit itself: see <see cref="KitPages"/>.</summary>
+    public const string Page = "page";
+
     public static readonly IReadOnlyList<string> All =
     [
         ProjectCard, ProjectHome, ProjectNav, Dashboard, TaskDetail, TaskCard, AssignedCards, BoardColumn,
-        ProjectSettings, BoardSettings, ExtensionSettings, AppBar, TaskMenu,
+        ProjectSettings, BoardSettings, ExtensionSettings, AppBar, TaskMenu, Page,
     ];
 
     /// <summary>
@@ -83,6 +92,7 @@ public static class KitSeams
         ExtensionSettings => Find<ExtensionSettingsAttribute>(catalog, skip, _ => string.Empty, _ => 0),
         AppBar => Find<AppBarExtensionAttribute>(catalog, skip, _ => string.Empty, a => a.Order),
         TaskMenu => MenuContributors(catalog, skip),
+        Page => KitPages.Components(catalog, skip).Select(p => new KitContribution(p.ExtensionId, string.Empty, 0, p.Component)).ToList(),
         _ => [],
     };
 

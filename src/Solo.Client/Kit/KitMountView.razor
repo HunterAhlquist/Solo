@@ -10,7 +10,8 @@
 @inject IServiceProvider Services
 
 @*
-    One mounted place: its contributions, each handed what core hands it there.
+    One mounted place: its contributions, each handed what core hands it there —
+    or, for a page, the page itself with what its address gives it.
     A section is marked with whose it is and the title core would have drawn
     over it; a board's cards are an item apiece, so that one card changing
     sends one card.
@@ -94,6 +95,26 @@
         }
         break;
 
+    case KitSeams.Page when _page is { Web: false } shown:
+        <div data-kit-section="1" data-kit-page="native" data-extension="@shown.ExtensionId" data-title="" data-order="0">
+            @* Keyed by the revision: asked to read again, the page starts over, as a reload would have it. *@
+            <ErrorBoundary @key="Mount.Revision">
+                <ChildContent>
+                    <DynamicComponent Type="@shown.Component" Parameters="@shown.Parameters" />
+                </ChildContent>
+                <ErrorContent>
+                    <solo-kit data-kind="text" data-variant="Caption" data-tone="Danger"
+                              data-text="This page couldn't be drawn."></solo-kit>
+                </ErrorContent>
+            </ErrorBoundary>
+        </div>
+        break;
+
+    case KitSeams.Page when _resolved:
+        @* The web's to draw: marked so, not one of an extension's at all, or needing a query string. *@
+        <div data-kit-section="1" data-kit-page="web" data-extension="@_page?.ExtensionId" data-title="" data-order="0"></div>
+        break;
+
     case KitSeams.TaskDetail when _task is not null:
         @Sections(new Dictionary<string, object>
         {
@@ -140,6 +161,8 @@
     private IReadOnlyList<TaskDto>? _tasks;
     private AssignedTasksDto? _assigned;
     private List<MenuEntry>? _menu;
+    private KitPage? _page;
+    private bool _resolved;
 
     /// <summary>A settings panel is its own extension's and nobody else's.</summary>
     private IReadOnlyList<KitContribution> Contributions => Mount.Seam == KitSeams.ExtensionSettings
@@ -153,7 +176,20 @@
             return;
         }
 
+        var asked = _loaded;
         _loaded = Mount;
+        if (Mount.Seam == KitSeams.Page)
+        {
+            // Found once for the address; reading it again keeps the page and starts it over.
+            if (asked?.Path != Mount.Path || !_resolved)
+            {
+                _page = Mount.Path is { } path ? KitPages.Resolve(path, Extensions, Skip) : null;
+                _resolved = true;
+            }
+
+            return;
+        }
+
         // Nothing to fetch for a place nobody contributes to.
         if (Contributions.Count == 0)
         {

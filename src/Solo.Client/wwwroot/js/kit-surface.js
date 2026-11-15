@@ -60,6 +60,34 @@ function sectionsOf(unit) {
         .filter(section => section.nodes.length > 0);
 }
 
+// What a page may contain and still be drawn by the app: kit nodes, and markup that only holds
+// them. Words of its own, a picture, a field, a table — anything a person would see that is
+// not the kit's — and the page is the web's to show.
+const foreignKinds = new Set(['svg', 'img', 'picture', 'canvas', 'video', 'audio', 'iframe', 'object', 'embed',
+    'input', 'textarea', 'select', 'button', 'table', 'hr', 'progress', 'meter']);
+
+function hasForeign(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let at = walker.nextNode(); at; at = walker.nextNode()) {
+        if (at.nodeType === 1) {
+            if (foreignKinds.has(at.localName)) return true;
+        } else if (at.data.trim() && !['style', 'script'].includes(at.parentElement?.localName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// For a mount that is a whole page: whether the app draws it or shows the web's, and whose it is.
+function pageOf(mount) {
+    const page = mount.querySelector('[data-kit-page]');
+    if (!page) return {};
+    return {
+        page: page.dataset.kitPage === 'web' || hasForeign(page) ? 'web' : 'native',
+        extension: page.dataset.extension ?? '',
+    };
+}
+
 function describe(unit) {
     const mount = unit.closest('[data-kit-mount]');
     if (unit !== mount) {
@@ -71,6 +99,7 @@ function describe(unit) {
         mount: mount.dataset.kitMount,
         sections: sectionsOf(mount),
         items: items.map(item => ({ item: item.dataset.kitItem, sections: sectionsOf(item) })),
+        ...pageOf(mount),
     };
 }
 
