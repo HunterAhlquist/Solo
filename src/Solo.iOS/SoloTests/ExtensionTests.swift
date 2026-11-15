@@ -863,6 +863,24 @@ import Testing
         #expect(!KitSurfaceHost().mayAnswer(.page))
     }
 
+    @Test func aFieldAndAPickerSayWhatTheyHoldAndAPickersOptionsAreItsChildren() throws {
+        let sent = try update(#"""
+        {"units":[{"mount":"p1","sections":[{"extension":"x","title":"","order":0,"nodes":[
+          {"id":1,"kind":"textField","props":{"label":"Name","value":"","placeholder":"Ada","input":"1"},"children":[]},
+          {"id":2,"kind":"picker","props":{"label":"Size","input":"1"},"children":[
+            {"id":3,"kind":"option","props":{"value":"s","label":"Small"},"children":[]},
+            {"id":4,"kind":"option","props":{"value":"l","label":"Large"},"children":[]}]}]}]}]}
+        """#)
+        let nodes = try #require(sent.units.first?.sections.first?.nodes)
+        // Written nothing yet is an empty value, which is not the same as no value.
+        #expect(nodes[0]["value"] == "")
+        #expect(!nodes[0].flag("multiline") && !nodes[0].flag("disabled"))
+        // Nothing picked is no value at all.
+        #expect(nodes[1]["value"] == nil)
+        #expect(nodes[1].children.map { $0["value"] } == ["s", "l"])
+        #expect(nodes[1].children.map { $0["label"] } == ["Small", "Large"])
+    }
+
     @Test func whatIsSaidOfAPlaceNoLongerMountedIsDropped() throws {
         let host = KitSurfaceHost()
         host.mount("m1", .dashboard)

@@ -50,11 +50,32 @@
 
     <SoloProgress Value="@(Math.Min(_count, 8) / 8.0)" Label="@($"{Math.Min(_count, 8)} of 8")" />
     <SoloToggle Label="@(_on ? "On" : "Off")" @bind-Value="_on" />
+
+    @* Something to write and something to pick. The handler tidies what was written, so the
+       field shows what the extension kept and not only what was typed. *@
+    <SoloStack Spacing="SoloSpacing.Medium" Align="SoloAlign.Stretch">
+        <SoloTextField Label="Your name" Placeholder="Ada" Value="@_name" ValueChanged="@(value => _name = value.Trim())" />
+        <SoloPicker Label="Mood" Placeholder="Pick one" Options="Moods" @bind-Value="_mood" />
+        <SoloStack Direction="SoloDirection.Horizontal" Align="SoloAlign.Center">
+            <SoloText Text="@(_name.Length == 0 ? "Hello." : $"Hello, {_name}.")" />
+            @if (Moods.FirstOrDefault(m => m.Value == _mood) is { } mood)
+            {
+                <SoloBadge Text="@mood.Label" Tone="@(_mood == "bad" ? SoloTone.Danger : _mood == "good" ? SoloTone.Success : SoloTone.Default)" />
+            }
+        </SoloStack>
+        <SoloTextField Label="Notes" Placeholder="Several lines" Multiline="true" @bind-Value="_notes" />
+        <SoloText Text="@($"{_notes.Length} characters of notes")" Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+    </SoloStack>
 </SoloStack>
 
 @code {
+    private static readonly IReadOnlyList<SoloOption> Moods = [new("good", "Good"), new("fine", "Fine"), new("bad", "Bad")];
+
     private int _count;
     private bool _on;
+    private string _name = "";
+    private string? _mood;
+    private string _notes = "";
 
     [Parameter] public string ProjectAlias { get; set; } = "";
 }

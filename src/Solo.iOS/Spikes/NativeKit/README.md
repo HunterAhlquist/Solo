@@ -8,7 +8,7 @@ It began as a spike — could a plugin's Razor component run in a web view nobod
 
 | File | What it is for |
 |---|---|
-| `PluginDemoPage` and the manifest's `nav` | A page built from the kit alone, with one of every component, which the app draws as a screen of its own. Its rows are the links such a page has to get right: a core screen by address and from a handler, the two pages below, and somewhere off the instance. |
+| `PluginDemoPage` and the manifest's `nav` | A page built from the kit alone, with one of every component — a field whose handler tidies what is written and a picker among them — which the app draws as a screen of its own. Its rows are the links such a page has to get right: a core screen by address and from a handler, the two pages below, and somewhere off the instance. |
 | `PluginDemoMorePage` | A MudBlazor page marked `[WebPage]`: the app shows it from the web client without trying to draw it. Links to a core screen, back to the first page, and off the instance. |
 | `AboutPage` | A MudBlazor page that is not marked, as every page written before the kit is: the app asks, is told it is not the kit, and shows it from the web. |
 | `Contributions/DemoCardSection` | A project's card: its roadmaps, each a row with an `Href`. |

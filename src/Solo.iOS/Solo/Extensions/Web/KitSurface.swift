@@ -224,6 +224,15 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         webView?.evaluateJavaScript("window.solo?.kitSurface?.press(\(node.id))")
     }
 
+    /// Something was written in a field the app drew, or picked in a picker: the component's
+    /// own handler is handed it, as it would be from the web's field.
+    func input(_ node: KitNode, _ value: String) {
+        // The text as a JSON array of one, which is also a JavaScript one: nothing in it can end the string early.
+        guard let data = try? JSONSerialization.data(withJSONObject: [value]),
+              let literal = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript("window.solo?.kitSurface?.input(\(node.id), \(literal)[0])")
+    }
+
     /// Runs while a task's detail is open, when one of its contributions saved something to the task.
     func watch(task: UUID, as watcher: String, _ changed: (() -> Void)?) {
         taskWatchers[task, default: [:]][watcher] = changed
@@ -630,6 +639,8 @@ struct KitNodeView: View {
         case "row": row
         case "progress": progress
         case "toggle": toggle
+        case "textField": KitTextFieldView(node: node)
+        case "picker": KitPickerView(node: node)
         case "menuItem": menuItem
         // A kind this build doesn't know — a newer kit than the app — is left out, not guessed at.
         default: EmptyView()
@@ -828,6 +839,118 @@ struct KitNodeView: View {
     }
 }
 
+/// A field for writing in. The value is the extension's: what is written is sent to it when
+/// the writing pauses and when the field is left, and what the field shows once it has been
+/// left is whatever the extension kept — it may have tidied it, or refused it.
+private struct KitTextFieldView: View {
+    @Environment(Session.self) private var session
+    @Environment(\.theme) private var theme
+    @Environment(\.kitPage) private var onPage
+    var node: KitNode
+
+    @State private var text = ""
+    /// The extension's value as last heard. Kept here because a task that waits reads this,
+    /// where it would read the node as it was when the task began.
+    @State private var kept = ""
+    @State private var sent: String?
+    @State private var pause: Task<Void, Never>?
+    @FocusState private var focused: Bool
+
+    private var multiline: Bool { node.flag("multiline") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(node["label"] ?? "")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(theme.textSecondary)
+            field
+        }
+        .disabled(node.flag("disabled"))
+        .onChange(of: node["value"] ?? "", initial: true) { _, value in
+            kept = value
+            // While it is being written in, the field is the person's: an answer to what they
+            // wrote a moment ago must not replace what they have written since.
+            if !focused { text = value }
+        }
+        .onChange(of: text) { _, value in
+            guard focused else { return }
+            pause?.cancel()
+            pause = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                if !Task.isCancelled { send(value) }
+            }
+        }
+        .onChange(of: focused) { _, isFocused in
+            guard !isFocused else { return }
+            pause?.cancel()
+            send(text)
+            Task {
+                // Long enough for the extension to answer; then the field shows what it kept.
+                try? await Task.sleep(for: .milliseconds(500))
+                if !focused { text = kept }
+            }
+        }
+    }
+
+    @ViewBuilder private var field: some View {
+        let input = TextField(node["placeholder"] ?? "", text: $text, axis: multiline ? .vertical : .horizontal)
+            .lineLimit(multiline ? 3...8 : 1...1)
+            .font(onPage ? .body : .subheadline)
+            .focused($focused)
+            .submitLabel(multiline ? .return : .done)
+        if onPage {
+            input.card(padding: 12)
+        } else {
+            // Inside someone else's panel, which is glass already: a field is a quieter well in it.
+            input.padding(.horizontal, 10).padding(.vertical, 8)
+                .background(theme.backgroundGray, in: .rect(cornerRadius: 10))
+        }
+    }
+
+    private func send(_ value: String) {
+        guard value != (sent ?? kept) else { return }
+        sent = value
+        session.kit.input(node, value)
+    }
+}
+
+/// One choice out of a few, as a menu. What is picked is the extension's to say, so the menu
+/// shows the node's value and only asks for another.
+private struct KitPickerView: View {
+    @Environment(Session.self) private var session
+    @Environment(\.theme) private var theme
+    @Environment(\.kitPage) private var onPage
+    var node: KitNode
+
+    var body: some View {
+        let options = node.children.filter { $0.kind == "option" }
+        let picked = node["value"]
+        HStack(spacing: 8) {
+            Text(node["label"] ?? "")
+                .font(onPage ? .body : .subheadline)
+                .foregroundStyle(theme.textPrimary)
+            Spacer(minLength: 8)
+            Picker(node["label"] ?? "", selection: Binding(
+                get: { picked ?? Self.nothing },
+                set: { if $0 != picked, $0 != Self.nothing { session.kit.input(node, $0) } })) {
+                if picked == nil {
+                    Text(node["placeholder"] ?? "Choose").tag(Self.nothing)
+                }
+                ForEach(options) { option in
+                    Text(option["label"] ?? "").tag(option["value"] ?? "")
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .tint(theme.primary)
+        }
+        .disabled(node.flag("disabled"))
+    }
+
+    /// The menu's selection while nothing is picked. No option can have it: it is not text an extension could write.
+    private static let nothing = "\u{1}"
+}
+
 /// One mounted place, for as long as the view that asked for it is in the tree. A view with
 /// nothing to show has nowhere to hang a task or an appearance on, so the mount is kept by an
 /// object the view owns instead: made with the view, and gone with it.
@@ -989,6 +1112,7 @@ struct KitPageView: View {
             .environment(\.kitPage, true)
             .animation(.snappy, value: sections)
         }
+        .scrollDismissesKeyboard(.interactively)
         // Reading it again starts the page over, as reloading it on the web would.
         .refreshable { session.kit.refresh(mount) }
     }
