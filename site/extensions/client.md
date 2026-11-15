@@ -206,6 +206,47 @@ An example of a sidebar section:
 
 **App bar.** Show one icon button, with a badge if necessary. The app bar is narrow on a phone, and all extensions share it. Use it for a state that changes while the person is on a different page, such as a count of unread items.
 
+## The kit
+
+A contribution is ordinary Razor, and only a browser can draw it. For a small contribution, use **the kit**: components that say what each part is and let the client draw it. Contract 1.17 added it. Solo draws a kit component with the same component that it uses for the same job, so it matches Solo without a stylesheet. A client that is not a browser can draw it with its own controls.
+
+Add `@using Solo.Shared.Kit` to the component.
+
+```razor
+@attribute [ProjectCardSection("Sprints")]
+@using Solo.Shared.Kit
+
+<SoloStack Spacing="SoloSpacing.None">
+    @foreach (var sprint in _sprints)
+    {
+        <SoloRow @key="sprint.Id" Icon="Flag" Title="@sprint.Name" Href="@($"sprints/{Project.Alias}/{sprint.Id}")">
+            <SoloBadge Text="@($"{sprint.Remaining} left")" Tone="SoloTone.Warning" />
+        </SoloRow>
+    }
+</SoloStack>
+```
+
+| Component | Purpose | Parameters |
+|---|---|---|
+| `SoloStack` | Puts its children in a line. | `Direction`, `Spacing`, `Align`, `ChildContent` |
+| `SoloText` | Shows text. | `Text`, `Variant`, `Tone` |
+| `SoloIcon` | Shows an icon. | `Name`, `Tone`, `Label` |
+| `SoloBadge` | Shows one or two words in a pill. | `Text`, `Icon`, `Tone` |
+| `SoloButton` | Does an action or opens a page. | `Text`, `Icon`, `Variant`, `Destructive`, `Disabled`, `OnClick`, `Href` |
+| `SoloRow` | Shows one line of a list. | `Title`, `Subtitle`, `Icon`, `Disabled`, `OnClick`, `Href`, `ChildContent` |
+| `SoloProgress` | Shows progress from 0 to 1. | `Value`, `Tone`, `Label` |
+| `SoloToggle` | Sets a value to on or off. | `Label`, `Value`, `ValueChanged`, `Disabled` |
+
+`Tone` is `Default`, `Muted`, `Primary`, `Success`, `Warning` or `Danger`.
+
+- **Text is text.** Solo shows each string as you wrote it. A string cannot contain markup.
+- **You cannot style a kit component.** It has no `Class` and no `Style`. If you need your own appearance, use ordinary Razor.
+- **Use `Href` to open a page and `OnClick` to do an action.** `Href` is an address in the app, relative to the instance. If you set both, Solo calls `OnClick` and then opens the page.
+- **An icon is a name.** Use the names that a `nav` entry in the manifest accepts. For a name that a client does not know, the client shows a default icon.
+- **Put only kit components in `SoloStack` and `SoloRow`.** A client that draws the kit with its own controls does not show other content.
+- **You cannot add a kit component.** The components are sealed.
+- **In your tests**, a kit component draws plain HTML with a `data-solo-kit` attribute, for example `<button data-solo-kit="button">`. A click on it calls your handler.
+
 ## Services from Solo
 
 Inject these services into a page or a component. They are in `Solo.Shared.Extensibility`.

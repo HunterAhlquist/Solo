@@ -31,6 +31,11 @@ public static class SoloClientServices
         // building the client's services is not inside a hosting app.
         services.TryAddSingleton(new Hosting.HostShell(false));
 
+        // The kit (Solo.Shared.Kit): what an extension builds a contribution
+        // from when every client should be able to draw it. This is how the
+        // web client does.
+        services.AddSingleton<Solo.Shared.Kit.ISoloKitRenderer, Kit.MudKitRenderer>();
+
         // Empty at boot. The endpoints serving extension client halves are
         // authenticated, so App.razor fills this once there is a signed-in user
         // and re-renders to let the router pick up their routes.

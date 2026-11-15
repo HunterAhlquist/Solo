@@ -1107,3 +1107,70 @@ board's order. Closed boards are never in it, as they are never on the
 dashboard, so `IncludeClosedBoards` is ignored and the dialog has no switch for
 it. Everything else in `TaskPickerOptions` means what it does for `PickAsync`.
 Client-only: a package that calls it needs 1.14 in `soloClientVersion`.
+
+## Contract 1.17: the kit
+
+Declare `"soloClientVersion": ">=1.17 <2.0"` to use this section. It adds nothing on the server.
+
+A contribution to one of core's pages is ordinary Razor: MudBlazor, your own markup, your own stylesheet. That is the right tool for anything with a look of its own, and it has one limit — only a browser can draw it. **The kit** is for the contributions that don't need a look of their own: a badge on a card, a list of links under a project, a switch on a task. A kit component says what a piece *is* and leaves the drawing to the client. The web client draws it with the same components core uses for the same job, so it matches without any styling from you; a client that is not a browser can draw the same contribution with controls of its own.
+
+No client other than the web draws the kit yet. Building a small contribution from it now is what makes that contribution ready for one that does.
+
+```razor
+@attribute [ProjectCardSection("Sprints")]
+@using Solo.Shared.Kit
+@inject ISoloClientApi Api
+
+@if (_sprints is null)
+{
+    <SoloText Text="Loading…" Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+}
+else
+{
+    <SoloStack Spacing="SoloSpacing.None">
+        @foreach (var sprint in _sprints)
+        {
+            <SoloRow @key="sprint.Id" Icon="Flag" Title="@sprint.Name" Href="@($"sprints/{Project.Alias}/{sprint.Id}")">
+                @if (sprint.Remaining > 0)
+                {
+                    <SoloBadge Text="@($"{sprint.Remaining} left")" Tone="SoloTone.Warning" />
+                }
+            </SoloRow>
+        }
+    </SoloStack>
+}
+
+@code {
+    private List<SprintDto>? _sprints;
+
+    [Parameter] public ProjectSummaryDto Project { get; set; } = null!;
+    [Parameter] public bool CanWrite { get; set; }
+
+    protected override async Task OnInitializedAsync() =>
+        _sprints = await Api.GetAsync<List<SprintDto>>($"api/ext/sprints/projects/{Project.Id}/sprints");
+}
+```
+
+Everything around the kit components is unchanged: the attribute that places the contribution, the parameters core hands it, `ISoloClientApi`, live topics, your own `@code`.
+
+| Component | What it is | Parameters |
+|---|---|---|
+| `SoloStack` | Arrangement: its children in a line, down or across. | `Direction` (`Vertical`, `Horizontal`), `Spacing` (`None`, `Small`, `Medium`, `Large`), `Align` (`Start`, `Center`, `End`, `Stretch`), `ChildContent` |
+| `SoloText` | A piece of text. | `Text`, `Variant` (`Body`, `Caption`, `Label`, `Heading`), `Tone` |
+| `SoloIcon` | An icon, by name. | `Name`, `Tone`, `Label` (what it means, when nothing beside it says) |
+| `SoloBadge` | A word or two in a pill. To read, not to press. | `Text`, `Icon`, `Tone` |
+| `SoloButton` | Something to press. | `Text`, `Icon`, `Variant` (`Primary`, `Secondary`, `Plain`), `Destructive`, `Disabled`, `OnClick`, `Href` |
+| `SoloRow` | One line of a list: icon, title, and what follows it. | `Title`, `Subtitle`, `Icon`, `Disabled`, `OnClick`, `Href`, `ChildContent` (the far end) |
+| `SoloProgress` | How far along something is. | `Value` (0 to 1), `Tone`, `Label` |
+| `SoloToggle` | A setting that is on or off. | `Label`, `Value`, `ValueChanged` (so `@bind-Value` works), `Disabled` |
+
+`Tone` is one of `Default`, `Muted`, `Primary`, `Success`, `Warning`, `Danger`.
+
+- **Text is text.** `Text`, `Title`, `Label` and the rest are strings and are shown as written. There is no markup inside a piece of kit text and no way to pass any.
+- **There is nothing to style.** No `Class`, no `Style`. A kit component takes its look from the client, which is what lets every client draw it. When you need a look of your own, write ordinary Razor instead.
+- **`Href` for somewhere to go, `OnClick` for something to do.** `Href` is a page of the app, relative to the instance: `projects/DMD/boards/main`, or one of your own routes. Prefer it over navigating from a handler — a client that has a screen of its own for that address can then open it. With both, the click is handled and then the client goes.
+- **Icons are names**, the ones a manifest's `nav` entry takes: `Flag`, `Calendar`, `Chat`, `People`, `Dashboard`, `Book`, `Star`, `Bolt`, `Robot` and the rest of `SoloIcons` in `Solo.Client`. A name a client doesn't know is drawn as a neutral icon, never as a gap.
+- **Keep kit and other markup apart.** `SoloStack` and `SoloRow` take children, and those should be kit components. Anything else inside them is drawn on the web, and is simply not there for a client that draws the kit itself. A contribution is either built from the kit or it isn't; one that is half of each will look different from one client to the next.
+- **The kit is closed.** Its components are sealed and there is no base class to derive from: each one is a promise that every client can draw it. Nothing in it belongs to one platform, and nothing will be added that does. A new one is a contract change.
+- **In your own tests** there is no host to draw the kit, so each component draws itself as plain HTML — a real `<button>`, a real checkbox — marked `data-solo-kit="button"`, `"row"`, `"toggle"` and so on. Clicks and changes work, so a bUnit test can find a kit component and press it.
+

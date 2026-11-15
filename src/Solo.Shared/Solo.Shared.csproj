@@ -12,7 +12,16 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Description>DTOs and the client-side seams a Solo extension's pages compile against: the host's API client, task drawer, task picker, context menu, live topics, and the attributes that place components in the app.</Description>
+    <Description>DTOs and the client-side seams a Solo extension's pages compile against: the host's API client, task drawer, task picker, context menu, live topics, the attributes that place components in the app, and the kit of components every Solo client can draw.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- For the kit (Kit/), whose components are Blazor components without
+         being Razor files. Components alone, not Components.Web: the server
+         has this assembly too, and gets it from its shared framework. An
+         extension's client half already takes Components.Web at the instance's
+         version, which brings this one with it. -->
+    <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.14" />
+  </ItemGroup>
 
 </Project>

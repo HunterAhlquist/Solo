@@ -27,17 +27,18 @@ with its version in parentheses).
 
 ### SDK
 - Contract 1.16.0: the notification and email settings DTOs, `NotificationKind`, `DigestFrequency`, `SmtpSecurity`, `AuthConfigDto.EmailEnabled` and the core user topic `BoardHubConstants.NotificationsTopic`, used by core's own client and API.
+- Contract 1.17.0: the kit, `Solo.Shared.Kit`. Eight components an extension builds a contribution from (`SoloStack`, `SoloText`, `SoloIcon`, `SoloBadge`, `SoloButton`, `SoloRow`, `SoloProgress`, `SoloToggle`) that say what each piece is and leave the drawing to the client; the web client draws them with the components core itself uses. A contribution built from them is one a client that is not a browser can draw too. `HunterAhlquist.Solo.Shared` now depends on `Microsoft.AspNetCore.Components`. Client-only: a package using the kit needs 1.17 in `soloClientVersion`.
 
 ### Extensions
 
 #### MCP Server (1.6.5)
-- Rebuilt on contract 1.16.0.
+- Rebuilt on contract 1.17.0.
 
 #### Roadmaps (1.10.2)
-- Rebuilt on contract 1.16.0.
+- Rebuilt on contract 1.17.0.
 
 #### Design Docs (1.5.4)
-- Rebuilt on contract 1.16.0.
+- Rebuilt on contract 1.17.0.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
 
 ## v1.20.1 (2026-11-05)

@@ -2100,6 +2100,60 @@ html.solo-desktop .solo-titlebar {
     border-top: 1px solid var(--mud-palette-divider);
 }
 
+/* The kit (Solo.Shared.Kit), as the web client draws it (Kit/KitView.razor).
+   A row is the one piece with no MudBlazor component of its own: a line of a
+   list, as a board's link on a project card is. */
+.solo-kit-row {
+    display: flex;
+    /* A row is as wide as the place it is in, whatever the stack around it does
+       with its other children: what follows the title belongs at the far end. */
+    align-self: stretch;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 6px;
+    border-radius: var(--mud-default-borderradius);
+    color: inherit;
+    text-decoration: none;
+}
+
+.solo-kit-row--pressable {
+    cursor: pointer;
+}
+
+.solo-kit-row--pressable:hover,
+.solo-kit-row--pressable:focus-visible {
+    background-color: var(--mud-palette-action-default-hover);
+    outline: none;
+}
+
+.solo-kit-row--disabled {
+    opacity: 0.5;
+}
+
+.solo-kit-row__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.solo-kit-row__subtitle {
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.75rem;
+}
+
+/* A stack that runs down the page is as wide as its place, like a row; where
+   its children sit across it is its Align. One that runs across hugs them. */
+.solo-kit-stack.flex-column {
+    align-self: stretch;
+}
+
+/* A chip in a line of text sits on that line, not a row of its own. */
+.solo-kit-badge.mud-chip {
+    margin: 0;
+}
+
 /* Hosted by an app in a web view of its own (HostShell): the app draws the bars,
    so there is no app bar to leave room for, here or in anything that pins
    itself below one. */

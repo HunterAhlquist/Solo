@@ -103,10 +103,19 @@ namespace Solo.Shared.Extensibility;
 /// them; no seam for extensions to raise notifications yet. They are members
 /// of the shared assembly, so a package reading one needs 1.16 in the range
 /// covering the half that does.</para>
+/// <para>1.17.0 adds the kit, <c>Solo.Shared.Kit</c>: components an extension
+/// builds a contribution from that say what each piece is — a row, a badge, a
+/// button, a switch — and leave the drawing to the client, registered through
+/// <c>ISoloKitRenderer</c>. Solo's web client draws them with MudBlazor; they
+/// are there so that a client which is not a browser can draw the same
+/// contribution with controls of its own. With them the shared assembly takes
+/// its first dependency, on <c>Microsoft.AspNetCore.Components</c>. It is
+/// client-only, so a package using the kit needs 1.17 in
+/// <c>soloClientVersion</c> alone.</para>
 /// </remarks>
 public static class ContractVersion
 {
-    public const string Current = "1.16.0";
+    public const string Current = "1.17.0";
 
     /// <summary>
     /// <see cref="Current"/> as the loader compares it. Derived rather than

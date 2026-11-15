@@ -1,0 +1,137 @@
+@namespace Solo.Client.Kit
+@using Solo.Shared.Kit
+
+@*
+    One kit component, drawn. The kit says what a thing is and this says what
+    that looks like here: the same MudBlazor components, sizes and colours core
+    uses for the same job, so nothing about a contribution gives away that an
+    extension made it.
+*@
+
+@switch (Source)
+{
+    case SoloStack stack:
+        <MudStack Row="@(stack.Direction == SoloDirection.Horizontal)" Spacing="@Gap(stack.Spacing)"
+                  AlignItems="@Across(stack.Align)" Wrap="@(stack.Direction == SoloDirection.Horizontal ? Wrap.Wrap : Wrap.NoWrap)"
+                  Class="solo-kit-stack">
+            @stack.ChildContent
+        </MudStack>
+        break;
+
+    case SoloText text:
+        <MudText Typo="@Type(text.Variant)" Color="@Tone(text.Tone, Color.Inherit)" Class="solo-kit-text">@text.Text</MudText>
+        break;
+
+    case SoloIcon icon:
+        <MudIcon Icon="@SoloIcons.Resolve(icon.Name)" Size="Size.Small" Color="@Tone(icon.Tone, Color.Inherit)"
+                 Title="@icon.Label" Class="solo-kit-icon" />
+        break;
+
+    case SoloBadge badge:
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@Tone(badge.Tone, Color.Default)"
+                 Icon="@(badge.Icon is null ? null : SoloIcons.Resolve(badge.Icon))" Class="solo-kit-badge">@badge.Text</MudChip>
+        break;
+
+    case SoloButton button:
+        <MudButton Variant="@Weight(button.Variant)" Size="Size.Small" Disabled="@button.Disabled"
+                   Color="@(button.Destructive ? Color.Error : button.Variant == SoloButtonVariant.Plain ? Color.Default : Color.Primary)"
+                   StartIcon="@(button.Icon is null ? null : SoloIcons.Resolve(button.Icon))"
+                   Href="@(button.Disabled ? null : button.Href)" OnClick="@button.OnClick" Class="solo-kit-button">@button.Text</MudButton>
+        break;
+
+    case SoloRow row when row.Href is not null && !row.Disabled:
+        <a class="solo-kit-row solo-kit-row--pressable" href="@row.Href" @onclick="@row.OnClick">
+            @RowParts(row)
+        </a>
+        break;
+
+    case SoloRow row when row.OnClick.HasDelegate && !row.Disabled:
+        <div class="solo-kit-row solo-kit-row--pressable" role="button" tabindex="0"
+             @onclick="@row.OnClick" @onkeydown="@(key => PressAsync(key, row))">
+            @RowParts(row)
+        </div>
+        break;
+
+    case SoloRow row:
+        <div class="solo-kit-row @(row.Disabled ? "solo-kit-row--disabled" : null)" aria-disabled="@(row.Disabled ? "true" : null)">
+            @RowParts(row)
+        </div>
+        break;
+
+    case SoloProgress progress:
+        <MudProgressLinear Value="@(Math.Clamp(progress.Value, 0, 1) * 100)" Color="@Tone(progress.Tone, Color.Primary)"
+                           Rounded="true" Size="Size.Small" Class="solo-kit-progress" aria-label="@progress.Label" />
+        break;
+
+    case SoloToggle toggle:
+        <MudSwitch T="bool" Value="@toggle.Value" ValueChanged="@toggle.ValueChanged" Label="@toggle.Label"
+                   Disabled="@toggle.Disabled" Color="Color.Primary" Class="solo-kit-toggle" />
+        break;
+}
+
+@code {
+    /// <summary>The kit component this draws. Its parameters are read on every render.</summary>
+    [Parameter, EditorRequired]
+    public SoloKitComponent Source { get; set; } = null!;
+
+    private RenderFragment RowParts(SoloRow row) => @<text>
+        @if (row.Icon is not null)
+        {
+            <MudIcon Icon="@SoloIcons.Resolve(row.Icon)" Size="Size.Small" Color="Color.Primary" />
+        }
+        <span class="solo-kit-row__text">
+            <span class="solo-kit-row__title text-truncate">@row.Title</span>
+            @if (row.Subtitle is not null)
+            {
+                <span class="solo-kit-row__subtitle text-truncate">@row.Subtitle</span>
+            }
+        </span>
+        @row.ChildContent
+    </text>;
+
+    /// <summary>A row with only a handler is a button in all but element, so it answers the keys a button does.</summary>
+    private static Task PressAsync(KeyboardEventArgs key, SoloRow row) =>
+        key.Key is "Enter" or " " ? row.OnClick.InvokeAsync() : Task.CompletedTask;
+
+    private static int Gap(SoloSpacing spacing) => spacing switch
+    {
+        SoloSpacing.None => 0,
+        SoloSpacing.Small => 1,
+        SoloSpacing.Medium => 2,
+        _ => 4,
+    };
+
+    private static AlignItems Across(SoloAlign align) => align switch
+    {
+        SoloAlign.Center => AlignItems.Center,
+        SoloAlign.End => AlignItems.End,
+        SoloAlign.Stretch => AlignItems.Stretch,
+        _ => AlignItems.Start,
+    };
+
+    private static Typo Type(SoloTextVariant variant) => variant switch
+    {
+        SoloTextVariant.Caption => Typo.caption,
+        SoloTextVariant.Label => Typo.subtitle2,
+        SoloTextVariant.Heading => Typo.h6,
+        _ => Typo.body2,
+    };
+
+    private static Variant Weight(SoloButtonVariant variant) => variant switch
+    {
+        SoloButtonVariant.Primary => Variant.Filled,
+        SoloButtonVariant.Plain => Variant.Text,
+        _ => Variant.Outlined,
+    };
+
+    /// <summary>Muted is the colour core gives its own secondary text; the unmarked tone is the place's own.</summary>
+    private static Color Tone(SoloTone tone, Color unmarked) => tone switch
+    {
+        SoloTone.Muted => Color.Secondary,
+        SoloTone.Primary => Color.Primary,
+        SoloTone.Success => Color.Success,
+        SoloTone.Warning => Color.Warning,
+        SoloTone.Danger => Color.Error,
+        _ => unmarked,
+    };
+}
