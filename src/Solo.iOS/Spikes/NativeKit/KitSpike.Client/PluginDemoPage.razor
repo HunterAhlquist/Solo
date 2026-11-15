@@ -23,8 +23,49 @@
     <MudLink Href="https://example.com/" Target="_blank">A link off the instance</MudLink>
 </MudStack>
 
+<MudDivider Class="my-6" />
+
+@*
+    The contract's kit (Solo.Shared.Kit, contract 1.17), one of everything: what
+    an extension's small contributions are meant to be built from. Here the web
+    client draws them; nothing below is styled by this page.
+*@
+<SoloStack Spacing="SoloSpacing.Medium">
+    <SoloText Text="The kit" Variant="SoloTextVariant.Heading" />
+    <SoloText Text="Each of these says what it is, and the client draws it." Variant="SoloTextVariant.Caption" Tone="SoloTone.Muted" />
+
+    <SoloStack Direction="SoloDirection.Horizontal" Align="SoloAlign.Center">
+        <SoloIcon Name="Flag" Tone="SoloTone.Primary" Label="Flagged" />
+        <SoloBadge Text="Default" />
+        <SoloBadge Text="Primary" Tone="SoloTone.Primary" />
+        <SoloBadge Text="On track" Icon="Star" Tone="SoloTone.Success" />
+        <SoloBadge Text="3 left" Tone="SoloTone.Warning" />
+        <SoloBadge Text="Overdue" Tone="SoloTone.Danger" />
+    </SoloStack>
+
+    <SoloStack Direction="SoloDirection.Horizontal" Align="SoloAlign.Center">
+        <SoloButton Text="Count up" Variant="SoloButtonVariant.Primary" Icon="Bolt" OnClick="@(() => _count++)" />
+        <SoloButton Text="Open the project" Href="@($"projects/{ProjectAlias}")" />
+        <SoloButton Text="Plain" Variant="SoloButtonVariant.Plain" OnClick="@(() => _count++)" />
+        <SoloButton Text="Delete" Destructive="true" OnClick="@(() => _count = 0)" />
+        <SoloButton Text="Disabled" Disabled="true" />
+    </SoloStack>
+
+    <SoloStack Spacing="SoloSpacing.None" Align="SoloAlign.Stretch">
+        <SoloRow Icon="Dashboard" Title="A row that goes somewhere" Subtitle="The project, which is a core screen" Href="@($"projects/{ProjectAlias}")" />
+        <SoloRow Icon="Bolt" Title="A row that does something" OnClick="@(() => _count++)">
+            <SoloBadge Text="@($"pressed {_count}×")" Tone="SoloTone.Primary" />
+        </SoloRow>
+        <SoloRow Icon="Book" Title="A row that only says something" Subtitle="Nothing to press" />
+    </SoloStack>
+
+    <SoloProgress Value="@(Math.Min(_count, 8) / 8.0)" Label="@($"{Math.Min(_count, 8)} of 8")" />
+    <SoloToggle Label="@(_on ? "On" : "Off")" @bind-Value="_on" />
+</SoloStack>
+
 @code {
     private int _count;
+    private bool _on;
 
     [Parameter] public string ProjectAlias { get; set; } = "";
 }
