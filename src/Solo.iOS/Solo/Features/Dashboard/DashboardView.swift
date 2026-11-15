@@ -460,7 +460,7 @@ private struct ScrollEdgeBand: UIViewRepresentable {
         coordinator.on = on
         if on {
             // Coming, the header reaches down behind the selector.
-            coordinator.reach?.go(to: 1, over: ScrollEdgeBand.arrival)
+            coordinator.reach?.go(to: 1, with: ScrollEdgeBand.arrival)
         } else {
             // Going, the effect is let go whole and the system takes it away, which is quick and
             // reads right; the band is put back at nothing for the next time.
@@ -469,8 +469,9 @@ private struct ScrollEdgeBand: UIViewRepresentable {
         }
     }
 
-    /// How long the header takes to reach down behind the selector.
-    static var arrival: CFTimeInterval { 0.5 }
+    /// How the header reaches down behind the selector: the system's own smooth spring, which
+    /// sets off quickly and settles without a bounce, as its sheets and bars do.
+    static var arrival: Spring { .smooth(duration: 0.3) }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -491,17 +492,17 @@ private final class BandReach: NSObject {
     private var from: CGFloat = 0
     private var to: CGFloat = 0
     private var began: CFTimeInterval = 0
-    private var duration: CFTimeInterval = 0
+    private var spring = Spring.smooth
 
     init(height: NSLayoutConstraint, in room: UIView) {
         self.height = height
         self.room = room
     }
 
-    func go(to target: CGFloat, over seconds: CFTimeInterval) {
+    func go(to target: CGFloat, with spring: Spring) {
         from = now
         to = target
-        duration = seconds
+        self.spring = spring
         began = CACurrentMediaTime()
         guard link == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(step))
@@ -519,12 +520,13 @@ private final class BandReach: NSObject {
     }
 
     @objc private func step(_ link: CADisplayLink) {
-        let passed = duration > 0 ? min((CACurrentMediaTime() - began) / duration, 1) : 1
-        // Slow away and slow to rest.
-        let eased = passed * passed * (3 - 2 * passed)
-        now = from + (to - from) * eased
-        height.constant = (room?.bounds.height ?? 0) * now
-        if passed >= 1 {
+        let passed = CACurrentMediaTime() - began
+        // The spring is the system's; only the walking of it is done here, since the system
+        // skips an animation of this view and follows its size as it stands.
+        let settled = passed >= spring.settlingDuration
+        now = settled ? to : from + spring.value(target: to - from, initialVelocity: 0, time: passed)
+        height.constant = max((room?.bounds.height ?? 0) * now, 0)
+        if settled {
             link.invalidate()
             self.link = nil
         }
