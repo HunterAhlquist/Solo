@@ -338,16 +338,81 @@ private struct SelectorInPage<Content: View>: View {
 /// Two copies, because the header's effect blurs what is in the page, and the page's copy is in
 /// the page. Both are there from the start: glass that has just been made fades in, and the
 /// selector would blink as one took over from the other.
+///
+/// The system's effect arrives at its own pace, which is nearly at once and cannot be changed.
+/// So it is not what arrives. A header drawn to look like it comes in behind the selector first,
+/// as slowly as is wanted, and only when that is whole is the system's asked for, and the drawn
+/// one let go under it. What is left standing is the system's own, the same as a board's; the
+/// drawn one, whose blur is not quite the system's, is only ever seen on its way in.
 private struct SelectorInHeader<Content: View>: View {
     var place: SelectorPlace
     var scroll: FoundScrollView
     @ViewBuilder var content: Content
 
+    /// How much of the drawn header shows.
+    @State private var drawn: Double = 0
+    /// Whether the system's header has been asked for.
+    @State private var system = false
+    @State private var arriving: Task<Void, Never>?
+
+    /// How long the header takes to come in behind the selector.
+    static var arrival: Double { 0.6 }
+
     var body: some View {
-        ScrollEdgeContainer(scroll: scroll, on: place.held, content: content)
+        ScrollEdgeContainer(scroll: scroll, on: system, content: content)
+            .background { DrawnHeader().opacity(drawn) }
             .opacity(place.held ? 1 : 0)
             .allowsHitTesting(place.held)
             .accessibilityHidden(!place.held)
+            .onChange(of: place.held) { _, held in
+                arriving?.cancel()
+                guard held else {
+                    // Leaving is the system's own going, which is quick, and right.
+                    system = false
+                    withAnimation(.easeOut(duration: 0.12)) { drawn = 0 }
+                    return
+                }
+                withAnimation(.easeInOut(duration: Self.arrival)) { drawn = 1 }
+                arriving = Task {
+                    try? await Task.sleep(for: .seconds(Self.arrival))
+                    guard !Task.isCancelled else { return }
+                    system = true
+                    // Once the system's is in under it, which takes it a moment.
+                    try? await Task.sleep(for: .milliseconds(250))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.3)) { drawn = 0 }
+                }
+            }
+    }
+}
+
+/// A header drawn to look like the system's, to stand behind the selector while it comes in:
+/// the page out of focus, and most of the way back to the page's own background. The tones were
+/// set by sampling the system's header above it; the blur is the nearest material to it and
+/// not the same.
+private struct DrawnHeader: View {
+    @Environment(\.theme) private var theme
+    /// How far it runs up into the system's header, to meet it without a line.
+    private let rise: CGFloat = 20
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            Color(uiColor: .systemBackground).opacity(0.86)
+            theme.primary.opacity(theme.isDark ? 0.16 : 0.115)
+        }
+        .mask {
+            GeometryReader { proxy in
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: rise / max(proxy.size.height, 1)),
+                    .init(color: .black, location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .padding(.top, -rise)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -435,19 +500,12 @@ private struct ScrollEdgeContainer<Content: View>: UIViewRepresentable {
         stand.isUserInteractionEnabled = false
         stand.translatesAutoresizingMaskIntoConstraints = false
         container.insertSubview(stand, at: 0)
-        // As tall as the content while the effect is wanted, and of no height while it is not:
-        // the effect is as tall as this, and is brought in and taken away by this growing and
-        // shrinking, and not by being switched.
-        let full = stand.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        let none = stand.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
             stand.topAnchor.constraint(equalTo: container.topAnchor),
+            stand.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             stand.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             stand.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            none,
         ])
-        context.coordinator.full = full
-        context.coordinator.none = none
         let interaction = UIScrollEdgeElementContainerInteraction()
         interaction.edge = .top
         container.addInteraction(interaction)
@@ -461,24 +519,11 @@ private struct ScrollEdgeContainer<Content: View>: UIViewRepresentable {
         coordinator.host?.rootView = content
         // Read so that this is done again when the scroll view is found.
         _ = scroll.changes
-        coordinator.interaction?.scrollView = scroll.view
-        guard coordinator.on != on else { return }
-        coordinator.on = on
-        // One off before the other on: both at once cannot be satisfied.
-        if on {
-            coordinator.none?.isActive = false
-            coordinator.full?.isActive = true
-        } else {
-            coordinator.full?.isActive = false
-            coordinator.none?.isActive = true
-        }
-        // Coming, it eases in and takes its time, so that the header is seen to reach down behind
-        // the selector; at half the length and from a standing start it read as a switch. Going
-        // is quick: the page's own selector is on its way down from under it.
-        UIView.animate(withDuration: on ? 0.45 : 0.12, delay: 0,
-                       options: [on ? .curveEaseInOut : .curveEaseOut, .beginFromCurrentState]) {
-            container.layoutIfNeeded()
-        }
+        // Switched, and not eased: the system brings its effect in and takes it away at its own
+        // pace whatever is done here. Animating this view's size, walking its size a step a frame,
+        // sliding it in, fading it, and setting this inside an animation were each tried at three
+        // seconds, and each time the effect was whole within one screenshot, 0.4 seconds later.
+        coordinator.interaction?.scrollView = on ? scroll.view : nil
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIView, context: Context) -> CGSize? {
@@ -492,9 +537,6 @@ private struct ScrollEdgeContainer<Content: View>: UIViewRepresentable {
     final class Coordinator {
         var host: UIHostingController<Content>?
         var interaction: UIScrollEdgeElementContainerInteraction?
-        var full: NSLayoutConstraint?
-        var none: NSLayoutConstraint?
-        var on = false
     }
 }
 
