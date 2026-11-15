@@ -48,62 +48,62 @@ struct DashboardView: View {
                     // Neither the bars around the page nor the row of columns asks how tall
                     // every card is: see `FillLayout` and `ZoneRow`.
                     FillLayout {
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            DashboardExtensions(openTask: $openTask)
-                            ZoneRow(spacing: 10) {
-                                ForEach(TaskState.allCases) { status in
-                                    VStack(spacing: 8) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: status.symbol)
-                                            Text(status.title)
-                                            Text("\(cards.count { $0.task.status == status })")
-                                                .monospacedDigit().foregroundStyle(theme.textSecondary)
-                                        }
-                                        .font(.footnote.weight(.semibold))
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 9)
-                                        .glassEffect(.regular, in: .capsule)
-                                        zone(cards, status, work)
-                                    }
-                                }
-                            }
-                            if cards.isEmpty { empty }
-                        }
-                        .padding(16)
-                    }
-                    }
-                } else {
-                    FillLayout {
-                    ScrollView {
-                        LazyVStack(spacing: 12, pinnedViews: .sectionHeaders) {
-                            // Once, above the columns: it is the same roadmap whichever one is showing.
-                            DashboardExtensions(openTask: $openTask)
-                            Section {
-                                // Here a column is only as tall as its own cards: there are no rows to keep in line.
-                                ColumnPages(height: .showing) {
+                        ScrollView {
+                            VStack(spacing: 16) {
+                                DashboardExtensions(openTask: $openTask)
+                                ZoneRow(spacing: 10) {
                                     ForEach(TaskState.allCases) { status in
-                                        zone(cards, status, work)
-                                            .accessibilityHidden(status != column)
+                                        VStack(spacing: 8) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: status.symbol)
+                                                Text(status.title)
+                                                Text("\(cards.count { $0.task.status == status })")
+                                                    .monospacedDigit().foregroundStyle(theme.textSecondary)
+                                            }
+                                            .font(.footnote.weight(.semibold))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 9)
+                                            .glassEffect(.regular, in: .capsule)
+                                            zone(cards, status, work)
+                                        }
                                     }
                                 }
                                 if cards.isEmpty { empty }
-                            } header: {
-                                ColumnSwitcher(selection: $column, count: { status in cards.count { $0.task.status == status } }) {
-                                    payloads, status in
-                                    drop(payloads, status, cards)
-                                }
-                                .padding(.bottom, 2)
                             }
+                            .padding(16)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 24)
                     }
-                    .columnPaging($column)
-                    .followsLanding(landed?.token) {
-                        if let landed { session.assigned.pulse(landed.taskId) }
-                        landed = nil
-                    }
+                } else {
+                    FillLayout {
+                        ScrollView {
+                            LazyVStack(spacing: 12, pinnedViews: .sectionHeaders) {
+                                // Once, above the columns: it is the same roadmap whichever one is showing.
+                                DashboardExtensions(openTask: $openTask)
+                                Section {
+                                    // Here a column is only as tall as its own cards: there are no rows to keep in line.
+                                    ColumnPages(height: .showing) {
+                                        ForEach(TaskState.allCases) { status in
+                                            zone(cards, status, work)
+                                                .accessibilityHidden(status != column)
+                                        }
+                                    }
+                                    if cards.isEmpty { empty }
+                                } header: {
+                                    ColumnSwitcher(selection: $column, count: { status in cards.count { $0.task.status == status } }) {
+                                        payloads, status in
+                                        drop(payloads, status, cards)
+                                    }
+                                    .padding(.bottom, 2)
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 24)
+                        }
+                        .columnPaging($column)
+                        .followsLanding(landed?.token) {
+                            if let landed { session.assigned.pulse(landed.taskId) }
+                            landed = nil
+                        }
                     }
                     // A card held at either side is carried to the column that way.
                     .overlay {
