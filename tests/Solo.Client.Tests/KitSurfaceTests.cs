@@ -1,0 +1,259 @@
+using System.Reflection;
+using Bunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using Solo.Client.Api;
+using Solo.Client.Extensions;
+using Solo.Client.Kit;
+using Solo.Shared;
+using Solo.Shared.Dtos;
+using Solo.Shared.Kit;
+
+namespace Solo.Client.Tests;
+
+/// <summary>
+/// The kit on a kit surface: nothing is drawn, and each component is written
+/// out as a node saying what it is, for an app to draw with controls of its
+/// own. A press on a node is a click on it.
+/// </summary>
+public class KitSurfaceTests : ComponentTestBase
+{
+    public KitSurfaceTests() => Services.AddSingleton<ISoloKitRenderer, MudKitRenderer>();
+
+    /// <summary>Renders kit markup as the surface page does: under a cascaded <see cref="KitSurface"/>.</summary>
+    private IRenderedComponent<CascadingValue<KitSurface>> OnSurface(RenderFragment content) =>
+        Render<CascadingValue<KitSurface>>(parameters => parameters
+            .Add(c => c.Value, new KitSurface())
+            .Add(c => c.ChildContent, content));
+
+    private sealed class Switchboard : ComponentBase
+    {
+        private bool _on;
+        private int _count;
+
+        protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)
+        {
+            builder.OpenComponent<SoloToggle>(0);
+            builder.AddComponentParameter(1, nameof(SoloToggle.Label), _on ? "Switched on" : "Switched off");
+            builder.AddComponentParameter(2, nameof(SoloToggle.Value), _on);
+            builder.AddComponentParameter(3, nameof(SoloToggle.ValueChanged), EventCallback.Factory.Create<bool>(this, value => _on = value));
+            builder.CloseComponent();
+            builder.OpenComponent<SoloButton>(4);
+            builder.AddComponentParameter(5, nameof(SoloButton.Text), $"Pressed {_count}");
+            builder.AddComponentParameter(6, nameof(SoloButton.OnClick), EventCallback.Factory.Create(this, () => _count++));
+            builder.CloseComponent();
+        }
+    }
+
+    [Fact]
+    public void A_kit_component_becomes_a_node_and_not_markup()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<SoloBadge>(0);
+            builder.AddComponentParameter(1, nameof(SoloBadge.Text), "3 left");
+            builder.AddComponentParameter(2, nameof(SoloBadge.Tone), SoloTone.Warning);
+            builder.AddComponentParameter(3, nameof(SoloBadge.Icon), "Flag");
+            builder.CloseComponent();
+        });
+
+        var node = surface.Find("solo-kit");
+        Assert.Equal("badge", node.GetAttribute("data-kind"));
+        Assert.Equal("3 left", node.GetAttribute("data-text"));
+        Assert.Equal("Warning", node.GetAttribute("data-tone"));
+        Assert.Equal("Flag", node.GetAttribute("data-icon"));
+        Assert.Empty(surface.FindAll(".mud-chip"));
+    }
+
+    [Fact]
+    public void A_node_carries_only_what_it_was_given()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<SoloRow>(0);
+            builder.AddComponentParameter(1, nameof(SoloRow.Title), "Roadmap");
+            builder.AddComponentParameter(2, nameof(SoloRow.Href), "projects/DMD/roadmaps/1");
+            builder.CloseComponent();
+        });
+
+        var row = surface.Find("solo-kit[data-kind=row]");
+        Assert.Equal("projects/DMD/roadmaps/1", row.GetAttribute("data-href"));
+        // No handler, not disabled, no subtitle: none of those is said at all.
+        Assert.False(row.HasAttribute("data-press"));
+        Assert.False(row.HasAttribute("data-disabled"));
+        Assert.False(row.HasAttribute("data-subtitle"));
+    }
+
+    [Fact]
+    public void Children_nest_inside_the_node_that_holds_them()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<SoloRow>(0);
+            builder.AddComponentParameter(1, nameof(SoloRow.Title), "Sprint 4");
+            builder.AddComponentParameter(2, nameof(SoloRow.ChildContent), (RenderFragment)(child =>
+            {
+                child.OpenComponent<SoloBadge>(0);
+                child.AddComponentParameter(1, nameof(SoloBadge.Text), "3 left");
+                child.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Equal("3 left", surface.Find("solo-kit[data-kind=row] > solo-kit[data-kind=badge]").GetAttribute("data-text"));
+    }
+
+    [Fact]
+    public void A_press_on_a_button_reaches_the_extension_and_what_it_shows_follows()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<Switchboard>(0);
+            builder.CloseComponent();
+        });
+
+        var button = surface.Find("solo-kit[data-kind=button]");
+        Assert.Equal("1", button.GetAttribute("data-press"));
+        button.Click();
+
+        Assert.Equal("Pressed 1", surface.Find("solo-kit[data-kind=button]").GetAttribute("data-text"));
+    }
+
+    [Fact]
+    public void A_press_on_a_switch_asks_for_the_other_value()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<Switchboard>(0);
+            builder.CloseComponent();
+        });
+
+        var toggle = surface.Find("solo-kit[data-kind=toggle]");
+        Assert.False(toggle.HasAttribute("data-value"));
+        toggle.Click();
+
+        toggle = surface.Find("solo-kit[data-kind=toggle]");
+        Assert.Equal("1", toggle.GetAttribute("data-value"));
+        Assert.Equal("Switched on", toggle.GetAttribute("data-label"));
+
+        toggle.Click();
+        Assert.False(surface.Find("solo-kit[data-kind=toggle]").HasAttribute("data-value"));
+    }
+
+    [Fact]
+    public void Text_is_carried_as_text()
+    {
+        var surface = OnSurface(builder =>
+        {
+            builder.OpenComponent<SoloText>(0);
+            builder.AddComponentParameter(1, nameof(SoloText.Text), "<b>bold</b> & \"quoted\"");
+            builder.CloseComponent();
+        });
+
+        Assert.Equal("<b>bold</b> & \"quoted\"", surface.Find("solo-kit").GetAttribute("data-text"));
+        Assert.Empty(surface.FindAll("b"));
+    }
+
+    /// <summary>This test assembly stands in for an extension's client half, as in the other section tests.</summary>
+    private static ExtensionCatalog Catalog() => new()
+    {
+        Loaded =
+        [
+            new LoadedExtension(
+                new ClientExtensionDto("fixture", "Fixture", "1.0.0", ">=1.17 <2.0", "Fixture", []),
+                Assembly.GetExecutingAssembly()),
+        ],
+    };
+
+    private static readonly IReadOnlySet<string> Nothing = new HashSet<string>();
+
+    [Fact]
+    public void A_seam_s_contributions_are_core_s_in_core_s_order_and_say_whose_they_are()
+    {
+        var home = KitSeams.Find(KitSeams.ProjectHome, Catalog(), Nothing);
+
+        Assert.Equal(["Plans", "Broken"], home.Select(c => c.Title));
+        Assert.All(home, contribution => Assert.Equal("fixture", contribution.ExtensionId));
+        Assert.Equal(typeof(PlansHomeSection), home[0].Component);
+    }
+
+    [Fact]
+    public void An_extension_the_app_draws_itself_is_left_out()
+    {
+        Assert.NotEmpty(KitSeams.Find(KitSeams.ProjectCard, Catalog(), Nothing));
+        Assert.Empty(KitSeams.Find(KitSeams.ProjectCard, Catalog(), new HashSet<string> { "fixture" }));
+        Assert.Empty(KitSeams.Find("somewhere-else", Catalog(), Nothing));
+    }
+
+    private IRenderedComponent<KitMountView> Mounted(string seam, ProjectSummaryDto project)
+    {
+        var api = new StubHttp().RouteJson("api/projects", new List<ProjectSummaryDto> { project }).CreateClient();
+        Services.AddSingleton(api);
+        Services.AddSingleton(Catalog());
+        return Render<KitMountView>(parameters => parameters
+            .Add(m => m.Mount, new KitMount("m1", seam, project.Id, null, null))
+            .Add(m => m.Skip, Nothing));
+    }
+
+    [Fact]
+    public void A_mounted_place_hands_each_contribution_what_core_hands_it_there()
+    {
+        var project = new ProjectSummaryDto(Guid.NewGuid(), "Demo", "DMD", null, null, ProjectRole.ReadWrite, false);
+
+        var mount = Mounted(KitSeams.ProjectCard, project);
+
+        mount.WaitForAssertion(() =>
+        {
+            var section = mount.Find("[data-kit-section][data-extension=fixture]");
+            Assert.Equal("Plans", section.GetAttribute("data-title"));
+            // The contribution ran with the project and what its viewer may do, as on a core page.
+            Assert.Equal("DMD:True", section.TextContent.Trim());
+        });
+    }
+
+    [Fact]
+    public void A_contribution_that_throws_says_so_in_its_own_place_and_the_rest_stand()
+    {
+        var project = new ProjectSummaryDto(Guid.NewGuid(), FaultyHomeSection.Trigger, "FLT", null, null, ProjectRole.Read, false);
+
+        var mount = Mounted(KitSeams.ProjectHome, project);
+
+        mount.WaitForAssertion(() =>
+        {
+            var broken = mount.Find("[data-kit-section][data-title=Broken] solo-kit");
+            Assert.Equal("text", broken.GetAttribute("data-kind"));
+            Assert.Equal("Danger", broken.GetAttribute("data-tone"));
+            Assert.Equal("FLT:False", mount.Find("[data-kit-section][data-title=Plans]").TextContent.Trim());
+        });
+    }
+
+    [Fact]
+    public void A_place_nobody_can_read_has_no_contributions()
+    {
+        var project = new ProjectSummaryDto(Guid.NewGuid(), "Demo", "DMD", null, null, ProjectRole.Read, false);
+        Services.AddSingleton(new StubHttp().RouteJson("api/projects", new List<ProjectSummaryDto>()).CreateClient());
+        Services.AddSingleton(Catalog());
+
+        var mount = Render<KitMountView>(parameters => parameters
+            .Add(m => m.Mount, new KitMount("m1", KitSeams.ProjectCard, project.Id, null, null))
+            .Add(m => m.Skip, Nothing));
+
+        Assert.Empty(mount.FindAll("[data-kit-section]"));
+    }
+
+    [Fact]
+    public void Every_kit_component_has_a_node()
+    {
+        foreach (var type in typeof(SoloKitComponent).Assembly.GetTypes()
+                     .Where(type => type.IsSubclassOf(typeof(SoloKitComponent)) && !type.IsAbstract))
+        {
+            var surface = OnSurface(builder =>
+            {
+                builder.OpenComponent(0, type);
+                builder.CloseComponent();
+            });
+
+            Assert.True(surface.FindAll("solo-kit[data-kind]").Count == 1, $"{type.Name} has no node on a kit surface");
+        }
+    }
+}

@@ -1,0 +1,80 @@
+using System.Reflection;
+using Microsoft.AspNetCore.Components;
+using Solo.Client.Extensions;
+using Solo.Shared.Extensibility;
+
+namespace Solo.Client.Kit;
+
+// The kit surface: what an app that hosts the client uses to draw extensions'
+// contributions with controls of its own. The app keeps one page of the
+// client open where nobody sees it (KitSurfacePage) and asks it to mount a
+// place — this project's card, that task's detail. The page runs the
+// contributions for that place exactly as a core page would, with the same
+// parameters, except that a kit component there is not drawn: it becomes a
+// node saying what it is, and a script (js/kit-surface.js) hands the app the
+// nodes as a tree. A press in the app comes back as a click on the node it was
+// made from, so the extension's own handler answers it.
+//
+// Only kit components cross over. Anything else a contribution renders stays
+// in the page nobody sees.
+
+/// <summary>
+/// Cascaded over everything the surface page mounts. A kit component drawn
+/// under one is written out as a node rather than as MudBlazor (KitView).
+/// </summary>
+public sealed class KitSurface;
+
+/// <summary>A place the app asked the surface to run contributions for.</summary>
+/// <param name="Id">The app's own name for this mount, which every tree it is sent carries.</param>
+/// <param name="Seam">One of <see cref="KitSeams"/>.</param>
+public sealed record KitMount(string Id, string Seam, Guid? ProjectId, Guid? BoardId, Guid? TaskId)
+{
+    /// <summary>Moved by the app when what the mount shows is stale and should be read again.</summary>
+    public int Revision { get; init; }
+}
+
+/// <summary>One extension's component for a seam.</summary>
+public sealed record KitContribution(string ExtensionId, string Title, int Order, Type Component);
+
+/// <summary>The places the surface can mount, by the names the app uses for them.</summary>
+public static class KitSeams
+{
+    public const string ProjectCard = "projectCard";
+    public const string ProjectHome = "projectHome";
+    public const string ProjectNav = "projectNav";
+    public const string Dashboard = "dashboard";
+    public const string TaskDetail = "taskDetail";
+    public const string TaskCard = "taskCard";
+
+    public static readonly IReadOnlyList<string> All = [ProjectCard, ProjectHome, ProjectNav, Dashboard, TaskDetail, TaskCard];
+
+    /// <summary>
+    /// The components loaded extensions contribute to a seam, in the order core
+    /// draws them: by the attribute's order, then by extension id. Extensions
+    /// the app draws itself are left out — it has those already.
+    /// </summary>
+    public static IReadOnlyList<KitContribution> Find(string seam, ExtensionCatalog catalog, IReadOnlySet<string> skip) => seam switch
+    {
+        ProjectCard => Find<ProjectCardSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
+        ProjectHome => Find<ProjectHomeSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
+        ProjectNav => Find<ProjectNavSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
+        Dashboard => Find<DashboardSectionAttribute>(catalog, skip, a => a.Title, a => a.Order),
+        TaskDetail => Find<TaskDetailExtensionAttribute>(catalog, skip, _ => string.Empty, _ => 0),
+        TaskCard => Find<TaskCardExtensionAttribute>(catalog, skip, _ => string.Empty, a => a.Order),
+        _ => [],
+    };
+
+    private static IReadOnlyList<KitContribution> Find<TAttribute>(
+        ExtensionCatalog catalog, IReadOnlySet<string> skip, Func<TAttribute, string> title, Func<TAttribute, int> order)
+        where TAttribute : Attribute =>
+        catalog.Loaded
+            .Where(e => !skip.Contains(e.Descriptor.Id))
+            .SelectMany(e => e.Assembly.GetExportedTypes()
+                .Where(t => !t.IsAbstract && typeof(IComponent).IsAssignableFrom(t))
+                .Select(t => (e.Descriptor.Id, Type: t, Attribute: t.GetCustomAttribute<TAttribute>()))
+                .Where(c => c.Attribute is not null))
+            .OrderBy(c => order(c.Attribute!))
+            .ThenBy(c => c.Id, StringComparer.Ordinal)
+            .Select(c => new KitContribution(c.Id, title(c.Attribute!), order(c.Attribute!), c.Type))
+            .ToList();
+}

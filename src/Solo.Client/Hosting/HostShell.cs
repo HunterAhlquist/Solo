@@ -22,6 +22,32 @@ public sealed class HostShell(bool hosted)
 {
     public bool IsHosted { get; } = hosted;
 
+    /// <summary>
+    /// Set while the page showing is the kit surface (Kit/KitSurfacePage), which
+    /// answers for navigation itself: it never leaves, whatever asks it to.
+    /// </summary>
+    public bool OnKitSurface { get; set; }
+
+    /// <summary>
+    /// Somewhere a contribution on the kit surface asked to go. The app opens
+    /// it, as a screen of its own or as a page of the client's.
+    /// </summary>
+    public async ValueTask OpenAsync(IJSRuntime js, string path)
+    {
+        if (!IsHosted)
+        {
+            return;
+        }
+
+        try
+        {
+            await js.InvokeVoidAsync("solo.host.post", "open", new { path });
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     /// <summary>Asked once, at boot, before the services that depend on the answer are registered.</summary>
     public static async Task<HostShell> DetectAsync(IJSRuntime js)
     {

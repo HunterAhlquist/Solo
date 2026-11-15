@@ -1,0 +1,142 @@
+@namespace Solo.Client.Kit
+@using Solo.Client.Extensions
+@using Solo.Shared.Dtos
+@inject ApiClient Api
+@inject ExtensionCatalog Extensions
+
+@*
+    One mounted place: its contributions, each handed what core hands it there.
+    A section is marked with whose it is and the title core would have drawn
+    over it; a board's cards are an item apiece, so that one card changing
+    sends one card.
+*@
+
+@switch (Mount.Seam)
+{
+    case KitSeams.ProjectCard or KitSeams.ProjectHome or KitSeams.ProjectNav when _project is not null:
+        @Sections(new Dictionary<string, object> { ["Project"] = _project, ["CanWrite"] = ProjectNavStore.CanWrite(_project) })
+        break;
+
+    case KitSeams.Dashboard:
+        @Sections(null)
+        break;
+
+    case KitSeams.TaskDetail when _task is not null:
+        @Sections(new Dictionary<string, object>
+        {
+            ["Task"] = _task,
+            ["CanWrite"] = _project is not null && ProjectNavStore.CanWrite(_project),
+            ["OnChanged"] = EventCallback.Factory.Create(this, TaskSavedAsync),
+        })
+        break;
+
+    case KitSeams.TaskCard when _tasks is not null && Mount.ProjectId is { } projectId:
+        @foreach (var task in _tasks)
+        {
+            <div @key="task.Id" data-kit-item="@task.Id">
+                @Sections(new Dictionary<string, object>
+                {
+                    ["Task"] = task,
+                    ["ProjectId"] = projectId,
+                    ["CanWrite"] = _project is not null && ProjectNavStore.CanWrite(_project),
+                })
+            </div>
+        }
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public KitMount Mount { get; set; } = null!;
+
+    /// <summary>Extensions the app draws itself.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlySet<string> Skip { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<Guid> OnTaskChanged { get; set; }
+
+    private KitMount? _loaded;
+    private ProjectSummaryDto? _project;
+    private TaskDto? _task;
+    private IReadOnlyList<TaskDto>? _tasks;
+
+    private IReadOnlyList<KitContribution> Contributions => KitSeams.Find(Mount.Seam, Extensions, Skip);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded == Mount)
+        {
+            return;
+        }
+
+        _loaded = Mount;
+        // Nothing to fetch for a place nobody contributes to.
+        if (Contributions.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (Mount.ProjectId is { } projectId)
+            {
+                _project = (await Api.GetProjectsAsync()).FirstOrDefault(p => p.Id == projectId);
+            }
+
+            switch (Mount.Seam)
+            {
+                case KitSeams.TaskDetail when Mount.TaskId is { } taskId:
+                    _task = await Api.GetTaskAsync(taskId);
+                    break;
+                case KitSeams.TaskCard when Mount.BoardId is { } boardId:
+                    _tasks = await Api.GetTasksAsync(boardId);
+                    break;
+            }
+        }
+        catch (Exception e) when (e is ApiException or HttpRequestException)
+        {
+            // The place has gone, or can't be read by this person: it has no contributions to show.
+            _project = null;
+            _task = null;
+            _tasks = null;
+        }
+    }
+
+    private async Task TaskSavedAsync()
+    {
+        if (_task is not { } task)
+        {
+            return;
+        }
+
+        try
+        {
+            // The contribution is handed the saved task, version and all, as the drawer hands it one.
+            _task = await Api.GetTaskAsync(task.Id);
+        }
+        catch (Exception e) when (e is ApiException or HttpRequestException)
+        {
+        }
+
+        await OnTaskChanged.InvokeAsync(task.Id);
+    }
+
+    private RenderFragment Sections(IDictionary<string, object>? parameters) => @<text>
+        @foreach (var contribution in Contributions)
+        {
+            <div @key="contribution.Component" data-kit-section="1" data-extension="@contribution.ExtensionId"
+                 data-title="@contribution.Title" data-order="@contribution.Order">
+                <ErrorBoundary>
+                    <ChildContent>
+                        <DynamicComponent Type="@contribution.Component" Parameters="@parameters" />
+                    </ChildContent>
+                    <ErrorContent>
+                        <solo-kit data-kind="text" data-variant="Caption" data-tone="Danger"
+                                  data-text="This extension couldn't draw its part."></solo-kit>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </div>
+        }
+    </text>;
+}

@@ -8,71 +8,129 @@
     extension made it.
 *@
 
-@switch (Source)
+@if (Surface is not null)
 {
-    case SoloStack stack:
-        <MudStack Row="@(stack.Direction == SoloDirection.Horizontal)" Spacing="@Gap(stack.Spacing)"
-                  AlignItems="@Across(stack.Align)" Wrap="@(stack.Direction == SoloDirection.Horizontal ? Wrap.Wrap : Wrap.NoWrap)"
-                  Class="solo-kit-stack">
-            @stack.ChildContent
-        </MudStack>
-        break;
+    @* On a kit surface nothing is drawn. Each component is written out as what
+       it is, for an app to draw with controls of its own (KitSurface.cs). The
+       names and values here are what that app reads, so they are the kit's own
+       words and not MudBlazor's. *@
+    switch (Source)
+    {
+        case SoloStack stack:
+            <solo-kit data-kind="stack" data-direction="@stack.Direction" data-spacing="@stack.Spacing" data-align="@stack.Align">@stack.ChildContent</solo-kit>
+            break;
 
-    case SoloText text:
-        <MudText Typo="@Type(text.Variant)" Color="@Tone(text.Tone, Color.Inherit)" Class="solo-kit-text">@text.Text</MudText>
-        break;
+        case SoloText text:
+            <solo-kit data-kind="text" data-text="@text.Text" data-variant="@text.Variant" data-tone="@text.Tone"></solo-kit>
+            break;
 
-    case SoloIcon icon:
-        <MudIcon Icon="@SoloIcons.Resolve(icon.Name)" Size="Size.Small" Color="@Tone(icon.Tone, Color.Inherit)"
-                 Title="@icon.Label" Class="solo-kit-icon" />
-        break;
+        case SoloIcon icon:
+            <solo-kit data-kind="icon" data-name="@icon.Name" data-tone="@icon.Tone" data-label="@icon.Label"></solo-kit>
+            break;
 
-    case SoloBadge badge:
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@Tone(badge.Tone, Color.Default)"
-                 Icon="@(badge.Icon is null ? null : SoloIcons.Resolve(badge.Icon))" Class="solo-kit-badge">@badge.Text</MudChip>
-        break;
+        case SoloBadge badge:
+            <solo-kit data-kind="badge" data-text="@badge.Text" data-icon="@badge.Icon" data-tone="@badge.Tone"></solo-kit>
+            break;
 
-    case SoloButton button:
-        <MudButton Variant="@Weight(button.Variant)" Size="Size.Small" Disabled="@button.Disabled"
-                   Color="@(button.Destructive ? Color.Error : button.Variant == SoloButtonVariant.Plain ? Color.Default : Color.Primary)"
-                   StartIcon="@(button.Icon is null ? null : SoloIcons.Resolve(button.Icon))"
-                   Href="@(button.Disabled ? null : button.Href)" OnClick="@button.OnClick" Class="solo-kit-button">@button.Text</MudButton>
-        break;
+        case SoloButton button:
+            <solo-kit data-kind="button" data-text="@button.Text" data-icon="@button.Icon" data-variant="@button.Variant"
+                      data-destructive="@Flag(button.Destructive)" data-disabled="@Flag(button.Disabled)" data-href="@button.Href"
+                      data-press="@Flag(button.OnClick.HasDelegate)" @onclick="@button.OnClick"></solo-kit>
+            break;
 
-    case SoloRow row when row.Href is not null && !row.Disabled:
-        <a class="solo-kit-row solo-kit-row--pressable" href="@row.Href" @onclick="@row.OnClick">
-            @RowParts(row)
-        </a>
-        break;
+        case SoloRow row:
+            <solo-kit data-kind="row" data-title="@row.Title" data-subtitle="@row.Subtitle" data-icon="@row.Icon"
+                      data-disabled="@Flag(row.Disabled)" data-href="@row.Href" data-press="@Flag(row.OnClick.HasDelegate)"
+                      @onclick="@row.OnClick">@row.ChildContent</solo-kit>
+            break;
 
-    case SoloRow row when row.OnClick.HasDelegate && !row.Disabled:
-        <div class="solo-kit-row solo-kit-row--pressable" role="button" tabindex="0"
-             @onclick="@row.OnClick" @onkeydown="@(key => PressAsync(key, row))">
-            @RowParts(row)
-        </div>
-        break;
+        case SoloProgress progress:
+            <solo-kit data-kind="progress" data-tone="@progress.Tone" data-label="@progress.Label"
+                      data-value="@Math.Clamp(progress.Value, 0, 1).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"></solo-kit>
+            break;
 
-    case SoloRow row:
-        <div class="solo-kit-row @(row.Disabled ? "solo-kit-row--disabled" : null)" aria-disabled="@(row.Disabled ? "true" : null)">
-            @RowParts(row)
-        </div>
-        break;
+        case SoloToggle toggle:
+            @* A press is the one thing an app sends back, so a switch is pressed: it asks for the other value. *@
+            <solo-kit data-kind="toggle" data-label="@toggle.Label" data-value="@Flag(toggle.Value)" data-disabled="@Flag(toggle.Disabled)"
+                      data-press="1" @onclick="@(() => toggle.ValueChanged.InvokeAsync(!toggle.Value))"></solo-kit>
+            break;
+    }
+}
+else
+{
+    switch (Source)
+    {
+        case SoloStack stack:
+            <MudStack Row="@(stack.Direction == SoloDirection.Horizontal)" Spacing="@Gap(stack.Spacing)"
+                      AlignItems="@Across(stack.Align)" Wrap="@(stack.Direction == SoloDirection.Horizontal ? Wrap.Wrap : Wrap.NoWrap)"
+                      Class="solo-kit-stack">
+                @stack.ChildContent
+            </MudStack>
+            break;
 
-    case SoloProgress progress:
-        <MudProgressLinear Value="@(Math.Clamp(progress.Value, 0, 1) * 100)" Color="@Tone(progress.Tone, Color.Primary)"
-                           Rounded="true" Size="Size.Small" Class="solo-kit-progress" aria-label="@progress.Label" />
-        break;
+        case SoloText text:
+            <MudText Typo="@Type(text.Variant)" Color="@Tone(text.Tone, Color.Inherit)" Class="solo-kit-text">@text.Text</MudText>
+            break;
 
-    case SoloToggle toggle:
-        <MudSwitch T="bool" Value="@toggle.Value" ValueChanged="@toggle.ValueChanged" Label="@toggle.Label"
-                   Disabled="@toggle.Disabled" Color="Color.Primary" Class="solo-kit-toggle" />
-        break;
+        case SoloIcon icon:
+            <MudIcon Icon="@SoloIcons.Resolve(icon.Name)" Size="Size.Small" Color="@Tone(icon.Tone, Color.Inherit)"
+                     Title="@icon.Label" Class="solo-kit-icon" />
+            break;
+
+        case SoloBadge badge:
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@Tone(badge.Tone, Color.Default)"
+                     Icon="@(badge.Icon is null ? null : SoloIcons.Resolve(badge.Icon))" Class="solo-kit-badge">@badge.Text</MudChip>
+            break;
+
+        case SoloButton button:
+            <MudButton Variant="@Weight(button.Variant)" Size="Size.Small" Disabled="@button.Disabled"
+                       Color="@(button.Destructive ? Color.Error : button.Variant == SoloButtonVariant.Plain ? Color.Default : Color.Primary)"
+                       StartIcon="@(button.Icon is null ? null : SoloIcons.Resolve(button.Icon))"
+                       Href="@(button.Disabled ? null : button.Href)" OnClick="@button.OnClick" Class="solo-kit-button">@button.Text</MudButton>
+            break;
+
+        case SoloRow row when row.Href is not null && !row.Disabled:
+            <a class="solo-kit-row solo-kit-row--pressable" href="@row.Href" @onclick="@row.OnClick">
+                @RowParts(row)
+            </a>
+            break;
+
+        case SoloRow row when row.OnClick.HasDelegate && !row.Disabled:
+            <div class="solo-kit-row solo-kit-row--pressable" role="button" tabindex="0"
+                 @onclick="@row.OnClick" @onkeydown="@(key => PressAsync(key, row))">
+                @RowParts(row)
+            </div>
+            break;
+
+        case SoloRow row:
+            <div class="solo-kit-row @(row.Disabled ? "solo-kit-row--disabled" : null)" aria-disabled="@(row.Disabled ? "true" : null)">
+                @RowParts(row)
+            </div>
+            break;
+
+        case SoloProgress progress:
+            <MudProgressLinear Value="@(Math.Clamp(progress.Value, 0, 1) * 100)" Color="@Tone(progress.Tone, Color.Primary)"
+                               Rounded="true" Size="Size.Small" Class="solo-kit-progress" aria-label="@progress.Label" />
+            break;
+
+        case SoloToggle toggle:
+            <MudSwitch T="bool" Value="@toggle.Value" ValueChanged="@toggle.ValueChanged" Label="@toggle.Label"
+                       Disabled="@toggle.Disabled" Color="Color.Primary" Class="solo-kit-toggle" />
+            break;
+    }
 }
 
 @code {
     /// <summary>The kit component this draws. Its parameters are read on every render.</summary>
     [Parameter, EditorRequired]
     public SoloKitComponent Source { get; set; } = null!;
+
+    /// <summary>Set under the page an app keeps open to draw contributions itself.</summary>
+    [CascadingParameter]
+    public KitSurface? Surface { get; set; }
+
+    /// <summary>A flag is there or it isn't: an attribute with no value is left out of the page altogether.</summary>
+    private static string? Flag(bool set) => set ? "1" : null;
 
     private RenderFragment RowParts(SoloRow row) => @<text>
         @if (row.Icon is not null)

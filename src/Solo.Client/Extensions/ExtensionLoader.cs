@@ -83,8 +83,16 @@ public sealed class ExtensionCatalog
     {
         SetLoaded(loaded);
         _skipped = skipped;
+        Settled = true;
         Changed?.Invoke();
     }
+
+    /// <summary>
+    /// Whether a load has been published. Until it has, an empty catalog means
+    /// "not known yet" rather than "none installed", which matters to whoever
+    /// has to say that an instance's extensions contribute nothing.
+    /// </summary>
+    public bool Settled { get; private set; }
 
     private void SetLoaded(IReadOnlyList<LoadedExtension> loaded)
     {

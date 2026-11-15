@@ -170,6 +170,11 @@
     /// </summary>
     private async ValueTask OnHostedLocationChanging(LocationChangingContext context)
     {
+        if (Shell.OnKitSurface)
+        {
+            return;
+        }
+
         // The target is as the caller wrote it: absolute from a link, relative from NavigateTo.
         string path;
         try
