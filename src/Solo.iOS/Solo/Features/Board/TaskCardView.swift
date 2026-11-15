@@ -101,8 +101,9 @@ struct TaskCardView: View {
         }
         // The tab and the card are one piece of glass, washed with the theme's colour as a chosen
         // tab or a targeted column is, and edged by the glass itself rather than by a drawn line.
-        // A remote change deepens the wash for a moment where it used to flash the outline.
-        .glassEffect(.regular.tint(pulse ? theme.primary.opacity(0.4) : theme.accentWash), in: cardShape)
+        // The wash says what the outline said: it runs from the theme's colour to red as a deadline
+        // nears, and a remote change deepens it for a moment where the outline used to flash.
+        .glassEffect(.regular.tint(wash), in: cardShape)
         .opacity(isFinished ? 0.75 : 1)
         .contentShape(.dragPreview, cardShape)
         .animation(.easeOut(duration: 0.6), value: pulse)
@@ -112,6 +113,15 @@ struct TaskCardView: View {
 
     private var cardShape: TabbedCardShape {
         TabbedCardShape(tab: origin == nil ? .zero : tab)
+    }
+
+    /// The colour of the card's glass. With a deadline running it is somewhere between the
+    /// theme's colour, at the start of the task's window, and red, at its end and after.
+    private var wash: Color {
+        if pulse { return theme.primary.opacity(0.4) }
+        guard showDeadline else { return theme.accentWash }
+        return theme.primary.mix(with: Theme.deadlineColor(elapsed: 1), by: elapsed)
+            .opacity(theme.isDark ? 0.24 : 0.16)
     }
 
     private var hasFooter: Bool {
