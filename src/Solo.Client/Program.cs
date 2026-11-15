@@ -8,6 +8,7 @@ using MudBlazor.Services;
 using Solo.Client;
 using Solo.Client.Api;
 using Solo.Client.Auth;
+using Solo.Client.Hosting;
 using Solo.Client.Realtime;
 using Solo.Client.State;
 using Solo.Shared.Dtos;
@@ -28,10 +29,16 @@ var instance = new InstanceConnection(builder.HostEnvironment.BaseAddress);
 // configured from the API's environment rather than baked into the client.
 // ---------------------------------------------------------------------------
 AppConfig config;
+HostShell shell;
 using(var bootstrapServices=builder.Services.BuildServiceProvider())
 {
-    config=await LoadConfigAsync(instance,bootstrapServices.GetRequiredService<IJSRuntime>());
+    var bootstrapJs=bootstrapServices.GetRequiredService<IJSRuntime>();
+    config=await LoadConfigAsync(instance,bootstrapJs);
+    // Whether an app is showing this client in a web view of its own: asked
+    // here because which authentication is registered below depends on it.
+    shell=await HostShell.DetectAsync(bootstrapJs);
 }
+builder.Services.AddSingleton(shell);
 
 // ---------------------------------------------------------------------------
 // HTTP, realtime, state and the (empty) extension catalog — see
@@ -47,7 +54,14 @@ builder.Services.AddSoloClient(instance, config);
 // Authentication. Every path ends in the same place — an ID token on the wire —
 // but Google can't reach it the same way as everyone else.
 // ---------------------------------------------------------------------------
-if (config.IsGoogle)
+if (shell.IsHosted)
+{
+    // The app that hosts the client has already signed in and handed its
+    // session over, so no provider is involved, whichever the instance uses.
+    builder.Services.AddAuthorizationCore();
+    builder.Services.AddScoped<AuthenticationStateProvider, HostedAuthenticationStateProvider>();
+}
+else if (config.IsGoogle)
 {
     // Google's "Web application" clients require a client_secret at the token
     // endpoint even with PKCE, and a browser cannot hold a secret. Google Identity

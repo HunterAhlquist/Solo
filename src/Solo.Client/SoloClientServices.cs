@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.JSInterop;
 using Solo.Client.Api;
 using Solo.Client.Offline;
@@ -26,6 +27,9 @@ public static class SoloClientServices
         services.AddSingleton(config);
         // The clock DayRollover reads "today" from, so a test can move it.
         services.AddSingleton(TimeProvider.System);
+        // Program.cs registers the real answer before this runs; anything else
+        // building the client's services is not inside a hosting app.
+        services.TryAddSingleton(new Hosting.HostShell(false));
 
         // Empty at boot. The endpoints serving extension client halves are
         // authenticated, so App.razor fills this once there is a signed-in user

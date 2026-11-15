@@ -17,16 +17,25 @@ namespace Solo.Client.Auth;
 /// ever exposes the access token, so we read the ID token out of the session store
 /// oidc-client writes. Requesting an access token first is what triggers a silent
 /// renewal, so the stored ID token we then read is fresh.</item>
+/// <item>Inside an app that hosts the client (<see cref="Hosting.HostShell"/>) it is
+/// not an ID token at all but the Solo session the app handed over, which the API
+/// takes as a bearer credential whatever the provider.</item>
 /// </list>
 /// </summary>
 public sealed class IdTokenProvider(
     IServiceProvider services,
     IJSRuntime js,
     AppConfig config,
-    GoogleIdentityService google)
+    GoogleIdentityService google,
+    Hosting.HostShell? shell = null)
 {
     public async ValueTask<string?> GetTokenAsync()
     {
+        if (shell is { IsHosted: true })
+        {
+            return await js.InvokeAsync<string?>("solo.session.token");
+        }
+
         if (config.IsGoogle)
         {
             return await google.GetTokenAsync();
@@ -55,5 +64,5 @@ public sealed class IdTokenProvider(
 
     /// <summary>Whether requests carry the web app's session cookie (see <see cref="GoogleIdentityService"/>).</summary>
     public async ValueTask<bool> HoldsSessionCookieAsync() =>
-        config.IsGoogle && await google.HoldsSessionCookieAsync();
+        shell is not { IsHosted: true } && config.IsGoogle && await google.HoldsSessionCookieAsync();
 }

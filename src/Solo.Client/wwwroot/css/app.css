@@ -2100,6 +2100,27 @@ html.solo-desktop .solo-titlebar {
     border-top: 1px solid var(--mud-palette-divider);
 }
 
+/* Hosted by an app in a web view of its own (HostShell): the app draws the bars,
+   so there is no app bar to leave room for, here or in anything that pins
+   itself below one. */
+html.solo-hosted {
+    --mud-appbar-height: 0px;
+    --solo-appbar-bottom: 0px;
+}
+
+html.solo-hosted .mud-main-content {
+    padding-top: 0 !important;
+}
+
+/* The page sits on the app's own background rather than painting one over it. */
+html.solo-hosted,
+html.solo-hosted body,
+html.solo-hosted #app,
+html.solo-hosted .mud-layout,
+html.solo-hosted .mud-main-content {
+    background-color: transparent !important;
+}
+
 /* A workspace owns the available content height; its editor supplies scrolling. */
 .workspace-content { height:100dvh; display:flex; flex-direction:column; }
 .workspace-container { flex:1; min-height:0; height:100%; padding:0; display:flex; flex-direction:column; }

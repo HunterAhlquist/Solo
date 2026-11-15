@@ -11,6 +11,7 @@
 @inject ThemeState Theme
 @inject Solo.Client.Extensions.ExtensionCatalog Extensions
 @inject WorkspaceState Workspace
+@inject Solo.Client.Hosting.HostShell Shell
 
 <SoloThemeProvider />
 <MudPopoverProvider />
@@ -22,6 +23,10 @@
 <RestartOverlay />
 
 <MudLayout>
+    @* Inside an app that hosts the client the app draws the bars and the
+       navigation, so the page is only its content (HostShell). *@
+    @if (!Shell.IsHosted)
+    {
     @* Height comes from the theme's AppbarHeight (5em), so no Dense here. *@
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
@@ -68,14 +73,18 @@
             </Authorized>
         </AuthorizeView>
     </MudAppBar>
+    }
 
     <AuthorizeView>
         <Authorized>
-            @* Responsive, not Mini: a Mini drawer is icon-only and can't hold a tree. *@
-            <MudDrawer @bind-Open="_drawerOpen" Elevation="1" ClipMode="DrawerClipMode.Always"
-                       Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md">
-                <NavMenu />
-            </MudDrawer>
+            @if (!Shell.IsHosted)
+            {
+                @* Responsive, not Mini: a Mini drawer is icon-only and can't hold a tree. *@
+                <MudDrawer @bind-Open="_drawerOpen" Elevation="1" ClipMode="DrawerClipMode.Always"
+                           Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md">
+                    <NavMenu />
+                </MudDrawer>
+            }
             <TaskDrawerHost />
         </Authorized>
     </AuthorizeView>
@@ -87,7 +96,7 @@
             </DayRollover>
         </MudContainer>
 
-        @if (!Workspace.Options.FillHeight)
+        @if (!Workspace.Options.FillHeight && !Shell.IsHosted)
         {
             <footer class="app-footer">
                 @* The one place that always says Solo: an instance with a name of
@@ -140,12 +149,43 @@
     private bool _expiryDialogOpen;
     private bool _signingOut;
 
+    private IDisposable? _hostNavigation;
+
     protected override void OnInitialized()
     {
         SessionExpiry.Expired += OnSessionExpired;
         Session.AccessDenied += OnAccessDenied;
         Extensions.Changed += OnExtensionsChanged;
         Workspace.Changed += OnWorkspaceChanged;
+        if (Shell.IsHosted)
+        {
+            _hostNavigation = Navigation.RegisterLocationChangingHandler(OnHostedLocationChanging);
+        }
+    }
+
+    /// <summary>
+    /// Inside a hosting app, a link to a screen the app has of its own — a
+    /// board, a project, a task — goes to the app, and this page stays put.
+    /// Anything else is an extension's page, and navigates here as usual.
+    /// </summary>
+    private async ValueTask OnHostedLocationChanging(LocationChangingContext context)
+    {
+        // The target is as the caller wrote it: absolute from a link, relative from NavigateTo.
+        string path;
+        try
+        {
+            path = Navigation.ToBaseRelativePath(Navigation.ToAbsoluteUri(context.TargetLocation).AbsoluteUri);
+        }
+        catch (ArgumentException)
+        {
+            // Somewhere off the instance: the app's web view decides what becomes of that.
+            return;
+        }
+
+        if (await Shell.ClaimsAsync(Js, path))
+        {
+            context.PreventNavigation();
+        }
     }
 
     private IReadOnlyList<Type>? _appBarExtensions;
@@ -168,6 +208,13 @@
     /// </summary>
     private void OnSessionExpired() => _ = InvokeAsync(async () =>
     {
+        if (Shell.IsHosted)
+        {
+            // The session is the hosting app's, and so is signing in again.
+            await Shell.SessionRefusedAsync(Js);
+            return;
+        }
+
         if (_expiryDialogOpen)
         {
             return;
@@ -210,6 +257,13 @@
     /// </summary>
     private void OnAccessDenied() => _ = InvokeAsync(async () =>
     {
+        if (Shell.IsHosted)
+        {
+            // Not this page's session to drop: the app is told, and decides.
+            await Shell.SessionRefusedAsync(Js);
+            return;
+        }
+
         if (_signingOut)
         {
             return;
@@ -225,6 +279,7 @@
         Session.AccessDenied -= OnAccessDenied;
         Extensions.Changed -= OnExtensionsChanged;
         Workspace.Changed -= OnWorkspaceChanged;
+        _hostNavigation?.Dispose();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -233,6 +288,9 @@
         {
             return;
         }
+
+        // A hosting app shows that it is waiting until the client says it is up.
+        await Shell.ReadyAsync(Js);
 
         if (AuthenticationStateTask is not null &&
             (await AuthenticationStateTask).User.Identity?.IsAuthenticated == true)

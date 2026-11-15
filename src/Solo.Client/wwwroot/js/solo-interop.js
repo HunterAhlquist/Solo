@@ -217,6 +217,49 @@ window.solo = {
     },
 
     // -----------------------------------------------------------------------
+    // An app that hosts the client in a web view of its own (HostShell in the
+    // client; Solo's iOS app showing an extension's page). The app puts
+    // window.soloHost in the page before any script runs:
+    //
+    //   routes  regular expressions, as strings, for the paths the app has
+    //           screens of its own for;
+    //   post    a function taking one JSON string, the only way to the app.
+    //
+    // and a session beside it, in sessionStorage under `session`'s keys. The
+    // page is handed nothing else, and can ask for nothing: what it says to
+    // the app is that it is up, that its session was refused, and where it
+    // would like to go, and the app does with each what it sees fit.
+    // -----------------------------------------------------------------------
+    host: {
+        available: () => !!window.soloHost,
+
+        post(type, detail) {
+            try {
+                window.soloHost?.post?.(JSON.stringify({ type, ...(detail ?? {}) }));
+            } catch {
+                // The app stopped listening; nothing here waits on an answer.
+            }
+        },
+
+        // Whether the app has a screen of its own for a path relative to the
+        // instance. If so it has been asked to show it, and the caller stays put.
+        claim(path) {
+            const routes = Array.isArray(window.soloHost?.routes) ? window.soloHost.routes : [];
+            const owned = routes.some(route => {
+                try {
+                    return new RegExp(route).test(path);
+                } catch {
+                    return false;
+                }
+            });
+            if (owned) {
+                window.solo.host.post('navigate', { path });
+            }
+            return owned;
+        },
+    },
+
+    // -----------------------------------------------------------------------
     // The host context menu (ISoloContextMenu). Inside the desktop shell it is
     // the operating system's own, through the preload's bridge. Anywhere else
     // ContextMenuHost draws it, and these place it and walk it by keyboard.
@@ -509,3 +552,8 @@ document.addEventListener('click', e => {
         if (event.key === 'Tab') document.documentElement.dataset.soloInput = 'keyboard';
     }, true);
 })();
+
+// Hosted by an app (see `host` above): the styles that leave the app bar's room out key on this.
+if (window.soloHost) {
+    document.documentElement.classList.add('solo-hosted');
+}

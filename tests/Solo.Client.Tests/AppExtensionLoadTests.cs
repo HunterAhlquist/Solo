@@ -56,6 +56,8 @@ public class AppExtensionLoadTests : SoloBunitContext
 
         Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
         Services.AddMudMarkdownServices();
+        // The layout and the sign-in redirect ask whether an app hosts the client: here, none does.
+        Services.AddSingleton(new Solo.Client.Hosting.HostShell(false));
 
         var api = _http.CreateClient();
         Services.AddSingleton(api);

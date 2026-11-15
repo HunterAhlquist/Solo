@@ -60,6 +60,10 @@ public abstract class ComponentTestBase : SoloBunitContext
         // about sign-in or naming registers its own after this, which wins.
         Services.AddSingleton(new AppConfig());
 
+        // The layout asks whether an app is hosting the client. Not hosted, as in
+        // a browser; a test about hosting registers its own after this, which wins.
+        Services.AddSingleton(new Solo.Client.Hosting.HostShell(false));
+
         // Every component that saves injects it, so it belongs here rather than
         // in each test class that happens to render one.
         Services.AddScoped<SaveGuard>();

@@ -1,4 +1,11 @@
 @inject NavigationManager Navigation
+@inject Solo.Client.Hosting.HostShell Shell
+@inject IJSRuntime Js
+
+@if (Shell.IsHosted)
+{
+    <MudAlert Severity="Severity.Info" Class="ma-8">Sign in again in the app to see this page.</MudAlert>
+}
 
 @code {
     /// <summary>
@@ -7,6 +14,14 @@
     /// </summary>
     protected override void OnInitialized()
     {
+        if (Shell.IsHosted)
+        {
+            // Inside a hosting app there is no sign-in page to go to: the app
+            // holds the session, and is told that the one it handed over is gone.
+            _ = Shell.SessionRefusedAsync(Js);
+            return;
+        }
+
         var returnUrl = Navigation.ToBaseRelativePath(Navigation.Uri);
         var query = string.IsNullOrEmpty(returnUrl)
             ? string.Empty

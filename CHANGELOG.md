@@ -20,6 +20,7 @@ with its version in parentheses).
 - Inviting someone to a project emails them a link to the instance, when email is on. Pending members get a resend button.
 - Each person gets an email digest: daily or weekly at the hour they pick, or as it happens, batched every 15 minutes. It lists overdue work, work due within 2 weeks with the earliest deadline first, and work recently assigned to them. Mail apps can unsubscribe in one click. People can now pick their time zone in **Notifications**.
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
+- The web client can be shown inside an app that hosts it in a web view of its own: it leaves out its bars and navigation, signs in with the session the app hands it, and passes a link to a screen the app has back to the app. Nothing changes in a browser or in the desktop app.
 
 ### Desktop
 - Notifications from your instance show as system notifications while the app is open.
