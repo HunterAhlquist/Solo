@@ -138,20 +138,24 @@ private struct BoardGrid: View {
     @Bindable var model: BoardModel
 
     var body: some View {
+        FillLayout {
+            grid
+        }
+    }
+
+    private var grid: some View {
         ScrollView {
             LazyVStack(spacing: 14, pinnedViews: .sectionHeaders) {
                 Section {
                     if !model.store.isOpen {
                         InfoBanner(text: "You cannot make changes to a board that is closed, reopen the board to enable editing.")
                     }
-                    ForEach(model.topLevel) { item in
-                        switch item {
-                        case .group(let group):
-                            GroupContainer(model: model, group: group) { epic in
-                                GridLane(model: model, epic: epic)
-                            }
-                        case .epic(let epic):
-                            GridLane(model: model, epic: epic)
+                    ForEach(model.rows) { row in
+                        switch row {
+                        case .group(let group, let piece):
+                            GroupHeader(model: model, group: group).groupPiece(piece, gap: 14)
+                        case .lane(let epic, let piece):
+                            GridLane(model: model, epic: epic).groupPiece(piece, gap: 14)
                         }
                     }
                     GridLane(model: model, epic: nil)
@@ -196,25 +200,88 @@ private struct GridLane: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            LaneHeader(model: model, epic: epic, count: model.tasks(epicId: epic?.id).count)
+            LaneHeader(model: model, epic: epic, count: model.taskCount(epicId: epic?.id))
             if let epic, model.isCollapsed(epic) {
-                Text("\(model.tasks(epicId: epic.id).count) task(s) hidden")
+                Text("\(model.taskCount(epicId: epic.id)) task(s) hidden")
                     .font(.caption)
                     .foregroundStyle(theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                HStack(alignment: .top, spacing: 8) {
+                // Every zone is as tall as the tallest, so a card can be let go
+                // anywhere under a short column and still land in it.
+                ZoneRow(spacing: 8) {
                     ForEach(TaskState.allCases) { status in
                         Zone(model: model, epicId: epic?.id, status: status)
                     }
                 }
-                // Every zone is as tall as the tallest, so a card can be let go
-                // anywhere under a short column and still land in it.
-                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(10)
         .glassEffect(.regular, in: theme.cardShape)
+    }
+}
+
+/// A lane's zones side by side: the same width each, and all as tall as the tallest.
+///
+/// A stack would do it — a row of columns told to take their ideal height — but a stack asks
+/// each child how small and how large it could be before deciding, and so does every stack
+/// inside it, so a lane of twenty cards was measured many times over to be laid out once.
+/// The answer here is known without asking: a third of the width each.
+nonisolated struct ZoneRow: Layout {
+    var spacing: CGFloat = 8
+
+    private func column(_ width: CGFloat, _ count: Int) -> CGFloat {
+        count > 0 ? max((width - spacing * CGFloat(count - 1)) / CGFloat(count), 0) : 0
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.replacingUnspecifiedDimensions(by: CGSize(width: 900, height: 0)).width
+        let each = ProposedViewSize(width: column(width, subviews.count), height: nil)
+        // Each column is asked once. The answer is kept by the column itself, so asking for it
+        // again when placing costs nothing.
+        return CGSize(width: width, height: subviews.map { $0.sizeThatFits(each).height }.max() ?? 0)
+    }
+
+    /// Nothing in a row of zones is aligned to from outside it. Said outright, because the
+    /// answer a layout gives when it says nothing is found by laying its children out again.
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let width = column(bounds.width, subviews.count)
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + CGFloat(index) * (width + spacing), y: bounds.minY),
+                          anchor: .topLeading, proposal: ProposedViewSize(width: width, height: bounds.height))
+        }
+    }
+}
+
+/// Takes the room it is offered and gives all of it to its content, without asking the
+/// content how large it would like to be.
+///
+/// A scroll view asked that question has to ask its content, and for a lazy stack to answer
+/// it has to build rows it would not otherwise have built yet. Bars around a page — a
+/// navigation bar, a tab bar, anything in the safe area — ask it of the page every time they
+/// are laid out. For a page that is a scroll view filling the screen the answer is always
+/// "whatever there is", so this gives it without the cost.
+nonisolated struct FillLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 320, height: 480))
+    }
+
+    func explicitAlignment(of guide: HorizontalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? { nil }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(bounds.size))
+        }
     }
 }
 
@@ -228,6 +295,7 @@ private struct Zone: View {
     @State private var targeted = false
 
     var body: some View {
+        let _ = Perf.count("zone")
         let cards = model.cards(epicId: epicId, status: status)
         let hidden = model.hiddenCount(epicId: epicId, status: status)
         VStack(spacing: 6) {
@@ -274,6 +342,7 @@ private struct BoardCard: View {
     @State private var targeted = false
 
     var body: some View {
+        let _ = Perf.count("card")
         let store = model.store
         let card = TaskCardView(
             task: task,
@@ -468,62 +537,121 @@ private struct EpicMenu: View {
     }
 }
 
-/// A titled container around the epics of one group.
-private struct GroupContainer<Lane: View>: View {
+/// The title of a group of epics, which heads its outline. The epics are rows of their own
+/// below it (`BoardModel.rows`), not children of this.
+private struct GroupHeader: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
     var group: EpicGroup
-    @ViewBuilder var lane: (Epic) -> Lane
 
     var body: some View {
         let collapsed = model.isCollapsed(group)
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Button {
-                    withAnimation(.snappy) { model.toggle(group) }
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .rotationEffect(.degrees(collapsed ? -90 : 0))
-                        .font(.footnote.weight(.bold))
-                        .frame(width: 28, height: 28)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(collapsed ? "Expand group" : "Collapse group")
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(.snappy) { model.toggle(group) }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .rotationEffect(.degrees(collapsed ? -90 : 0))
+                    .font(.footnote.weight(.bold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(collapsed ? "Expand group" : "Collapse group")
 
-                Text(group.name)
-                    .font(.headline.weight(theme.headingWeight))
-                Text("\(model.epics(in: group).count)")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(theme.textSecondary)
-                Spacer()
-                if model.canWrite {
-                    Button("Add epic to group", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
-                        .labelStyle(.iconOnly)
-                        .frame(width: 30, height: 30)
-                    Menu("Group actions", systemImage: "ellipsis") {
-                        Button("Rename", systemImage: "pencil") { model.promptRename(group) }
-                        Button("Add Epic", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
-                        Divider()
-                        Button("Move Up", systemImage: "arrow.up") { Task { await model.move(group, by: -1) } }
-                            .disabled(!model.canMove(group, by: -1))
-                        Button("Move Down", systemImage: "arrow.down") { Task { await model.move(group, by: 1) } }
-                            .disabled(!model.canMove(group, by: 1))
-                        Divider()
-                        Button("Delete Group", systemImage: "trash", role: .destructive) { model.confirmDelete(group) }
-                    }
+            Text(group.name)
+                .font(.headline.weight(theme.headingWeight))
+            Text("\(model.epics(in: group).count)")
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(theme.textSecondary)
+            Spacer()
+            if model.canWrite {
+                Button("Add epic to group", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
                     .labelStyle(.iconOnly)
                     .frame(width: 30, height: 30)
+                Menu("Group actions", systemImage: "ellipsis") {
+                    Button("Rename", systemImage: "pencil") { model.promptRename(group) }
+                    Button("Add Epic", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
+                    Divider()
+                    Button("Move Up", systemImage: "arrow.up") { Task { await model.move(group, by: -1) } }
+                        .disabled(!model.canMove(group, by: -1))
+                    Button("Move Down", systemImage: "arrow.down") { Task { await model.move(group, by: 1) } }
+                        .disabled(!model.canMove(group, by: 1))
+                    Divider()
+                    Button("Delete Group", systemImage: "trash", role: .destructive) { model.confirmDelete(group) }
                 }
-            }
-            if !collapsed {
-                ForEach(model.epics(in: group)) { epic in
-                    lane(epic)
-                }
+                .labelStyle(.iconOnly)
+                .frame(width: 30, height: 30)
             }
         }
-        .padding(10)
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(theme.divider, lineWidth: 1))
+    }
+}
+
+/// A group's outline, or the part of it one row carries: open at the bottom for the title,
+/// open at both ends for an epic in the middle, open at the top for the last.
+private nonisolated struct GroupOutline: Shape {
+    var piece: GroupPiece
+    var radius: CGFloat = 28
+
+    func path(in rect: CGRect) -> Path {
+        let box = rect.insetBy(dx: 0.5, dy: 0.5)
+        guard piece != .whole else { return Path(roundedRect: box, cornerRadius: radius, style: .continuous) }
+        var path = Path()
+        let top = piece == .top, bottom = piece == .bottom
+        if top {
+            // Up the leading side, over the head, and down the trailing side.
+            path.move(to: CGPoint(x: box.minX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: box.minX, y: box.minY + radius))
+            path.addArc(tangent1End: CGPoint(x: box.minX, y: box.minY), tangent2End: CGPoint(x: box.minX + radius, y: box.minY), radius: radius)
+            path.addLine(to: CGPoint(x: box.maxX - radius, y: box.minY))
+            path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.minY), tangent2End: CGPoint(x: box.maxX, y: box.minY + radius), radius: radius)
+            path.addLine(to: CGPoint(x: box.maxX, y: rect.maxY))
+        } else if bottom {
+            // Down the leading side, under the foot, and up the trailing side.
+            path.move(to: CGPoint(x: box.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: box.minX, y: box.maxY - radius))
+            path.addArc(tangent1End: CGPoint(x: box.minX, y: box.maxY), tangent2End: CGPoint(x: box.minX + radius, y: box.maxY), radius: radius)
+            path.addLine(to: CGPoint(x: box.maxX - radius, y: box.maxY))
+            path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.maxY), tangent2End: CGPoint(x: box.maxX, y: box.maxY - radius), radius: radius)
+            path.addLine(to: CGPoint(x: box.maxX, y: rect.minY))
+        } else {
+            path.move(to: CGPoint(x: box.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: box.minX, y: rect.maxY))
+            path.move(to: CGPoint(x: box.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: box.maxX, y: rect.maxY))
+        }
+        return path
+    }
+}
+
+private struct GroupPieceModifier: ViewModifier {
+    @Environment(\.theme) private var theme
+    var piece: GroupPiece
+    /// The room the page leaves between rows, which the outline has to cross to meet the next piece.
+    var gap: CGFloat
+
+    func body(content: Content) -> some View {
+        let closes = piece == .bottom || piece == .whole
+        content
+            .padding(.horizontal, 10)
+            .padding(.top, piece == .top || piece == .whole ? 10 : 0)
+            .padding(.bottom, closes ? 10 : 0)
+            .background {
+                GroupOutline(piece: piece)
+                    .stroke(theme.divider, lineWidth: 1)
+                    .padding(.bottom, closes ? 0 : -gap)
+            }
+    }
+}
+
+private extension View {
+    /// Draws this row's part of its group's outline. A row in no group is left as it is.
+    @ViewBuilder func groupPiece(_ piece: GroupPiece?, gap: CGFloat) -> some View {
+        if let piece {
+            modifier(GroupPieceModifier(piece: piece, gap: gap))
+        } else {
+            self
+        }
     }
 }
 
@@ -551,19 +679,38 @@ private struct BoardPager: View {
     @State private var watch = CardDragWatch()
 
     var body: some View {
+        FillLayout {
+            pages
+        }
+        // A card held at either side is carried to the column that way.
+        .overlay {
+            ColumnEdgeSensors(selection: $model.column, watch: watch) { payloads, status in
+                // Let go on the edge itself, it joins the column showing — unless that is where it already is.
+                guard let task = model.task(dropped: payloads.first ?? ""), task.status != status else { return false }
+                return model.drop(payloads, epicId: task.epicId, status: status, index: nil)
+            }
+        }
+        .safeAreaBar(edge: .top, spacing: 8) {
+            ColumnSwitcher(selection: $model.column, count: model.count) { payloads, status in
+                model.drop(payloads, epicId: model.task(dropped: payloads.first ?? "")?.epicId, status: status, index: nil)
+            }
+            .padding(.horizontal, 14)
+        }
+        .environment(watch)
+    }
+
+    private var pages: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 if !model.store.isOpen {
                     InfoBanner(text: "You cannot make changes to a board that is closed, reopen the board to enable editing.")
                 }
-                ForEach(model.topLevel) { item in
-                    switch item {
-                    case .group(let group):
-                        GroupContainer(model: model, group: group) { epic in
-                            PagerLane(model: model, epic: epic)
-                        }
-                    case .epic(let epic):
-                        PagerLane(model: model, epic: epic)
+                ForEach(model.rows) { row in
+                    switch row {
+                    case .group(let group, let piece):
+                        GroupHeader(model: model, group: group).groupPiece(piece, gap: 12)
+                    case .lane(let epic, let piece):
+                        PagerLane(model: model, epic: epic).groupPiece(piece, gap: 12)
                     }
                 }
                 PagerLane(model: model, epic: nil)
@@ -575,27 +722,12 @@ private struct BoardPager: View {
             .padding(.bottom, 24)
         }
         .columnPaging($model.column)
-        // A card held at either side is carried to the column that way.
-        .overlay {
-            ColumnEdgeSensors(selection: $model.column, watch: watch) { payloads, status in
-                // Let go on the edge itself, it joins the column showing — unless that is where it already is.
-                guard let task = model.task(dropped: payloads.first ?? ""), task.status != status else { return false }
-                return model.drop(payloads, epicId: task.epicId, status: status, index: nil)
-            }
-        }
         // A moved card is followed: to its column, then down the page to the card itself.
         .followsLanding(model.landed?.token) { model.landingFollowed() }
         .onChange(of: model.landed) { _, landing in
             guard let landing else { return }
             withAnimation(.snappy(duration: 0.32)) { model.column = landing.status }
         }
-        .safeAreaBar(edge: .top, spacing: 8) {
-            ColumnSwitcher(selection: $model.column, count: model.count) { payloads, status in
-                model.drop(payloads, epicId: model.task(dropped: payloads.first ?? "")?.epicId, status: status, index: nil)
-            }
-            .padding(.horizontal, 14)
-        }
-        .environment(watch)
     }
 }
 
@@ -608,9 +740,9 @@ private struct PagerLane: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            LaneHeader(model: model, epic: epic, count: model.tasks(epicId: epic?.id).count)
+            LaneHeader(model: model, epic: epic, count: model.taskCount(epicId: epic?.id))
             if let epic, model.isCollapsed(epic) {
-                Text("\(model.tasks(epicId: epic.id).count) task(s) hidden")
+                Text("\(model.taskCount(epicId: epic.id)) task(s) hidden")
                     .font(.caption)
                     .foregroundStyle(theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)

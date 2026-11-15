@@ -6,6 +6,7 @@ struct SoloApp: App {
 
     init() {
         SoloImages.configure()
+        Perf.start()
     }
 
     var body: some Scene {

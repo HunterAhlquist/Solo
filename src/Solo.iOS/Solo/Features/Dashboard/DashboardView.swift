@@ -22,6 +22,11 @@ struct DashboardView: View {
         var token = UUID()
     }
     @State private var finishedExpanded = false
+    /// Columns whose cards are all built, not only the ones in view. A column is built as it
+    /// is scrolled into, which is what lets a person with hundreds of tasks open the app without
+    /// waiting for every card. Following a card to where it landed needs the card to exist,
+    /// though, so a column something has just landed in is built whole from then on.
+    @State private var whole: Set<TaskState> = []
     @State private var openTask: UUID?
     @State private var failed: String?
 
@@ -40,10 +45,13 @@ struct DashboardView: View {
             if let work = store.work {
                 let cards = cards(from: work)
                 if sizeClass == .regular {
+                    // Neither the bars around the page nor the row of columns asks how tall
+                    // every card is: see `FillLayout` and `ZoneRow`.
+                    FillLayout {
                     ScrollView {
                         VStack(spacing: 16) {
                             DashboardExtensions(openTask: $openTask)
-                            HStack(alignment: .top, spacing: 10) {
+                            ZoneRow(spacing: 10) {
                                 ForEach(TaskState.allCases) { status in
                                     VStack(spacing: 8) {
                                         HStack(spacing: 6) {
@@ -64,7 +72,9 @@ struct DashboardView: View {
                         }
                         .padding(16)
                     }
+                    }
                 } else {
+                    FillLayout {
                     ScrollView {
                         LazyVStack(spacing: 12, pinnedViews: .sectionHeaders) {
                             // Once, above the columns: it is the same roadmap whichever one is showing.
@@ -90,6 +100,11 @@ struct DashboardView: View {
                         .padding(.bottom, 24)
                     }
                     .columnPaging($column)
+                    .followsLanding(landed?.token) {
+                        if let landed { session.assigned.pulse(landed.taskId) }
+                        landed = nil
+                    }
+                    }
                     // A card held at either side is carried to the column that way.
                     .overlay {
                         ColumnEdgeSensors(selection: $column, watch: watch) { payloads, status in
@@ -97,10 +112,6 @@ struct DashboardView: View {
                         }
                     }
                     .environment(watch)
-                    .followsLanding(landed?.token) {
-                        if let landed { session.assigned.pulse(landed.taskId) }
-                        landed = nil
-                    }
                     .onChange(of: landed) { _, landing in
                         guard let landing else { return }
                         withAnimation(.snappy(duration: 0.32)) { column = landing.status }
@@ -169,7 +180,7 @@ struct DashboardView: View {
         let inColumn = all.filter { $0.task.status == status }
         let folded = status == .finished && !finishedExpanded
         let shown = folded ? Array(inColumn.prefix(BoardDrag.finishedVisibleLimit)) : inColumn
-        DashboardZone(status: status, onDrop: { drop($0, status, all) }) {
+        DashboardZone(status: status, lazy: !whole.contains(status), onDrop: { drop($0, status, all) }) {
             ForEach(shown) { card in
                 let view = TaskCardView(
                     task: card.task, projectId: card.project.id,
@@ -222,6 +233,8 @@ struct DashboardView: View {
            (session.assigned.work?.tasks.count { $0.status == .finished } ?? 0) > BoardDrag.finishedVisibleLimit {
             finishedExpanded = true
         }
+        // On a phone the page goes to the card, which has to be there to say where it is.
+        if sizeClass != .regular { whole.insert(status) }
         landed = Landing(taskId: card.task.id, status: status)
         Task {
             if let saved = await session.save({ try await session.api.setTaskStatus(card.task.id, status) },
@@ -237,15 +250,26 @@ struct DashboardView: View {
 private struct DashboardZone<Content: View>: View {
     @Environment(\.theme) private var theme
     var status: TaskState
+    /// Build cards as they come into view, and not all of them at once.
+    var lazy = true
     var onDrop: ([String]) -> Bool
     @ViewBuilder var content: Content
     @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
 
     var body: some View {
-        VStack(spacing: 8) {
-            content
-            Color.clear.frame(height: 24)
+        Group {
+            if lazy {
+                LazyVStack(spacing: 8) {
+                    content
+                    Color.clear.frame(height: 24)
+                }
+            } else {
+                VStack(spacing: 8) {
+                    content
+                    Color.clear.frame(height: 24)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .padding(6)

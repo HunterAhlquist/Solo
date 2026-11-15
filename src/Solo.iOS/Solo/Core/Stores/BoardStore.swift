@@ -1,13 +1,43 @@
 import Foundation
 import Observation
 
+/// A board's tasks by where they sit: one pass over them when the board changes, in place of
+/// a sort and a filter of every task for every zone of every lane each time the page is drawn.
+nonisolated struct BoardIndex: Sendable {
+    private struct Zone: Hashable {
+        var epicId: UUID?
+        var status: TaskState
+    }
+
+    private var zones: [Zone: [TaskItem]] = [:]
+    private var lanes: [UUID?: Int] = [:]
+    private var statuses: [TaskState: Int] = [:]
+
+    init(_ tasks: [TaskItem] = []) {
+        for task in tasks.sorted(by: { $0.rank < $1.rank }) {
+            zones[Zone(epicId: task.epicId, status: task.status), default: []].append(task)
+            lanes[task.epicId, default: 0] += 1
+            statuses[task.status, default: 0] += 1
+        }
+    }
+
+    func tasks(epicId: UUID?, status: TaskState) -> [TaskItem] { zones[Zone(epicId: epicId, status: status)] ?? [] }
+    func count(epicId: UUID?) -> Int { lanes[epicId] ?? 0 }
+    func count(_ status: TaskState) -> Int { statuses[status] ?? 0 }
+}
+
 /// One board's state: the render payload, the project's members, and who else
 /// is here. Change events carry field names, not values, so a change is
 /// answered with a refetch — one task where the event names one, the whole
 /// board (debounced) for anything else.
 @Observable
 final class BoardStore {
-    private(set) var board: BoardDetail?
+    private(set) var board: BoardDetail? {
+        didSet { index = BoardIndex(board?.tasks ?? []) }
+    }
+    /// The board's tasks, sorted out once each time the board changes. Not watched on its own
+    /// account: it changes exactly when `board` does, which is what a reader of it is watching.
+    @ObservationIgnored private var index = BoardIndex()
     private(set) var members: [ProjectMember] = []
     private(set) var presence: [PresenceEntry] = []
     /// Entities a remote change just landed on, for the one-shot outline pulse.
@@ -43,7 +73,22 @@ final class BoardStore {
     /// A closed board is read-only for everyone, comments included.
     var canWrite: Bool { access.canWrite && isOpen }
 
-    var orderedTasks: [TaskItem] { (board?.tasks ?? []).sorted { $0.rank < $1.rank } }
+    /// The tasks of one zone — one status of one lane — in rank order.
+    func tasks(epicId: UUID?, status: TaskState) -> [TaskItem] {
+        _ = board
+        return index.tasks(epicId: epicId, status: status)
+    }
+
+    /// How many tasks a lane has, in every status.
+    func taskCount(epicId: UUID?) -> Int {
+        _ = board
+        return index.count(epicId: epicId)
+    }
+
+    func taskCount(_ status: TaskState) -> Int {
+        _ = board
+        return index.count(status)
+    }
 
     func label(_ id: UUID?) -> SoloLabel? {
         guard let id else { return nil }

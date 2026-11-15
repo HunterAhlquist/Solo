@@ -30,6 +30,7 @@ struct TaskCardView: View {
     @State private var tab = CGSize.zero
 
     var body: some View {
+        let _ = Perf.count("cardBody")
         VStack(alignment: .leading, spacing: 0) {
             if let origin {
                 // The tab is a navigation, never a detail open.

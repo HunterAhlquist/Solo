@@ -8,7 +8,7 @@ enum BoardSelection: Hashable {
 
 /// A top-level row of a board: a group of epics, or an epic that sits in none.
 /// Groups and ungrouped epics share one rank order.
-enum BoardItem: Identifiable {
+nonisolated enum BoardItem: Identifiable, Sendable {
     case group(EpicGroup)
     case epic(Epic)
 
@@ -23,6 +23,49 @@ enum BoardItem: Identifiable {
         switch self {
         case .group(let group): group.rank
         case .epic(let epic): epic.rank
+        }
+    }
+}
+
+/// Which part of a group's outline a row carries. A group is drawn a row at a time — its
+/// title, then each of its epics — so that the page builds only the epics in view; the
+/// outline around them is drawn in the same pieces, which meet.
+nonisolated enum GroupPiece: Sendable {
+    /// The title, with epics under it.
+    case top
+    case middle
+    /// The last epic.
+    case bottom
+    /// The title alone: a group that is folded, or has no epics.
+    case whole
+}
+
+/// One row of the board page, top to bottom.
+nonisolated enum BoardRow: Identifiable, Sendable {
+    case group(EpicGroup, GroupPiece)
+    /// An epic's lane, and its place in its group's outline if it is in one.
+    case lane(Epic, GroupPiece?)
+
+    var id: UUID {
+        switch self {
+        case .group(let group, _): group.id
+        case .lane(let epic, _): epic.id
+        }
+    }
+
+    /// The rows of a page, from its groups and loose epics in their order. A group's title is
+    /// always a row; its epics follow as rows of their own unless it is folded.
+    nonisolated static func rows(_ items: [BoardItem], epics: (EpicGroup) -> [Epic],
+                                 collapsed: (EpicGroup) -> Bool) -> [BoardRow] {
+        items.flatMap { item -> [BoardRow] in
+            switch item {
+            case .epic(let epic):
+                return [.lane(epic, nil)]
+            case .group(let group):
+                let inside = collapsed(group) ? [] : epics(group)
+                guard let last = inside.last else { return [.group(group, .whole)] }
+                return [.group(group, .top)] + inside.map { .lane($0, $0.id == last.id ? .bottom : .middle) }
+            }
         }
     }
 }
@@ -80,18 +123,23 @@ final class BoardModel {
         return items.sorted { ($0.rank, $0.id.uuidString) < ($1.rank, $1.id.uuidString) }
     }
 
+    /// The page's rows: every group's title and every lane that is showing, each a row of its
+    /// own, so that a group of many epics is built an epic at a time as it comes into view.
+    var rows: [BoardRow] {
+        BoardRow.rows(topLevel, epics: epics(in:), collapsed: isCollapsed)
+    }
+
     func epics(in group: EpicGroup) -> [Epic] {
         (board?.epics ?? []).filter { $0.groupId == group.id }.sorted { $0.rank < $1.rank }
     }
 
     /// Every task in a zone, in rank order — folded ones included.
     func tasks(epicId: UUID?, status: TaskState) -> [TaskItem] {
-        store.orderedTasks.filter { $0.epicId == epicId && $0.status == status }
+        store.tasks(epicId: epicId, status: status)
     }
 
-    func tasks(epicId: UUID?) -> [TaskItem] {
-        store.orderedTasks.filter { $0.epicId == epicId }
-    }
+    /// How many tasks a lane has, whatever their status.
+    func taskCount(epicId: UUID?) -> Int { store.taskCount(epicId: epicId) }
 
     /// The cards a zone shows. Past 25, a Finished zone folds the overflow away.
     func cards(epicId: UUID?, status: TaskState) -> [TaskItem] {
@@ -101,16 +149,15 @@ final class BoardModel {
     }
 
     func hiddenCount(epicId: UUID?, status: TaskState) -> Int {
-        tasks(epicId: epicId, status: status).count - cards(epicId: epicId, status: status).count
+        guard status == .finished, !expandedFinished.contains(epicId ?? Self.adHocKey) else { return 0 }
+        return max(tasks(epicId: epicId, status: status).count - BoardDrag.finishedVisibleLimit, 0)
     }
 
     func expandFinished(_ epicId: UUID?) {
         expandedFinished.insert(epicId ?? Self.adHocKey)
     }
 
-    func count(_ status: TaskState) -> Int {
-        (board?.tasks ?? []).count { $0.status == status }
-    }
+    func count(_ status: TaskState) -> Int { store.taskCount(status) }
 
     var isEmpty: Bool {
         guard let board else { return false }

@@ -74,7 +74,7 @@ final class Session {
             },
         ]
 
-        #if DEBUG
+        #if DEBUG || PERF
         // Simulator verification: start on a given page instead of tapping there.
         // "DMD", "DMD-PW26" or "DMD-PW26-2"; or a tab's name.
         if let target = ProcessInfo.processInfo.environment["SOLO_OPEN"] {

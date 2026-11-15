@@ -42,7 +42,7 @@ final class AppModel {
     // MARK: Launch
 
     func launch() async {
-        #if DEBUG
+        #if DEBUG || PERF
         // Simulator verification without a provider round-trip: a session
         // minted straight into a development database is handed in through
         // the environment. Compiled out of release builds.

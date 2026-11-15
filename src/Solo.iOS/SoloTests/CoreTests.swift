@@ -247,3 +247,90 @@ import UIKit
         #expect(spans.contains { $0.kind == .destination(NoteAddress.url(id)) })
     }
 }
+
+// A big board is drawn a lane at a time, from tasks sorted out once.
+
+@Suite struct BoardLayoutTests {
+    private let board = UUID()
+
+    private func task(_ name: String, epic: UUID? = nil, _ status: TaskState, rank: Double) -> TaskItem {
+        TaskItem(id: UUID(), boardId: board, epicId: epic, number: Int(rank), name: name, labelId: nil, description: nil,
+                 status: status, createdAt: Date(timeIntervalSince1970: 0), deadlineAt: nil, rank: rank, version: 1,
+                 assigneeIds: [], subTasks: [], startAt: nil)
+    }
+
+    private func epic(_ name: String, group: UUID? = nil, rank: Double) -> Epic {
+        Epic(id: UUID(), boardId: board, name: name, description: nil, rank: rank, version: 1, assigneeIds: [], groupId: group)
+    }
+
+    @Test func aZoneHoldsItsOwnTasksInRankOrder() {
+        let lane = UUID()
+        let index = BoardIndex([
+            task("c", epic: lane, .unstarted, rank: 30),
+            task("a", epic: lane, .unstarted, rank: 10),
+            task("done", epic: lane, .finished, rank: 20),
+            task("loose", .unstarted, rank: 5),
+            task("b", epic: lane, .unstarted, rank: 20),
+        ])
+        #expect(index.tasks(epicId: lane, status: .unstarted).map(\.name) == ["a", "b", "c"])
+        #expect(index.tasks(epicId: lane, status: .finished).map(\.name) == ["done"])
+        #expect(index.tasks(epicId: lane, status: .inProgress).isEmpty)
+        // No epic is a lane like any other.
+        #expect(index.tasks(epicId: nil, status: .unstarted).map(\.name) == ["loose"])
+        #expect(index.tasks(epicId: UUID(), status: .unstarted).isEmpty)
+    }
+
+    @Test func countsAreByLaneAndByColumn() {
+        let lane = UUID()
+        let index = BoardIndex([
+            task("a", epic: lane, .unstarted, rank: 1), task("b", epic: lane, .finished, rank: 2),
+            task("c", .finished, rank: 3),
+        ])
+        #expect(index.count(epicId: lane) == 2)
+        #expect(index.count(epicId: nil) == 1)
+        #expect(index.count(.finished) == 2)
+        #expect(index.count(.unstarted) == 1)
+        #expect(index.count(.inProgress) == 0)
+        #expect(BoardIndex().count(.finished) == 0)
+    }
+
+    @Test func aGroupIsItsTitleAndThenEachOfItsEpicsAsARowOfItsOwn() {
+        let group = EpicGroup(id: UUID(), boardId: board, name: "Milestone", rank: 1, version: 1)
+        let first = epic("One", group: group.id, rank: 1), second = epic("Two", group: group.id, rank: 2)
+        let third = epic("Three", group: group.id, rank: 3), loose = epic("Loose", rank: 9)
+        let rows = BoardRow.rows([.group(group), .epic(loose)], epics: { _ in [first, second, third] }, collapsed: { _ in false })
+
+        #expect(rows.map(\.id) == [group.id, first.id, second.id, third.id, loose.id])
+        // The outline opens under the title, runs down the sides, and closes under the last epic.
+        guard case .group(_, .top) = rows[0], case .lane(_, .middle?) = rows[1], case .lane(_, .middle?) = rows[2],
+              case .lane(_, .bottom?) = rows[3], case .lane(_, nil) = rows[4] else {
+            Issue.record("The group's outline is not in the pieces expected.")
+            return
+        }
+    }
+
+    @Test func aFoldedOrEmptyGroupIsItsTitleAlone() {
+        let group = EpicGroup(id: UUID(), boardId: board, name: "Milestone", rank: 1, version: 1)
+        let inside = epic("One", group: group.id, rank: 1)
+
+        let folded = BoardRow.rows([.group(group)], epics: { _ in [inside] }, collapsed: { _ in true })
+        let empty = BoardRow.rows([.group(group)], epics: { _ in [] }, collapsed: { _ in false })
+        for rows in [folded, empty] {
+            #expect(rows.count == 1)
+            guard case .group(_, .whole) = rows[0] else {
+                Issue.record("A group with nothing under it should close its own outline.")
+                return
+            }
+        }
+    }
+
+    @Test func aGroupOfOneEpicClosesUnderIt() {
+        let group = EpicGroup(id: UUID(), boardId: board, name: "Milestone", rank: 1, version: 1)
+        let only = epic("One", group: group.id, rank: 1)
+        let rows = BoardRow.rows([.group(group)], epics: { _ in [only] }, collapsed: { _ in false })
+        guard rows.count == 2, case .group(_, .top) = rows[0], case .lane(_, .bottom?) = rows[1] else {
+            Issue.record("One epic is both the first and the last of its group.")
+            return
+        }
+    }
+}
