@@ -95,7 +95,6 @@ struct RoadmapPage: View {
                         selectionBar.padding(.bottom, 8)
                     }
                 }
-                .refreshable { await store.reload() }
                 // Inside the panel modifier: an inspector lays its own backing under the page beside it.
                 .themedBackground()
                 .taskDetail($openTask)

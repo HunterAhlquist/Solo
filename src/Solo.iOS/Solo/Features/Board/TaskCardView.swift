@@ -111,7 +111,10 @@ struct TaskCardView: View {
         // nears, and a remote change deepens it for a moment where the outline used to flash.
         .glassEffect(.regular.tint(wash), in: cardShape)
         .opacity(isFinished ? 0.75 : 1)
-        .contentShape(.dragPreview, cardShape)
+        // The whole card is the card: what a tap lands on as well as what is picked up. Left
+        // unsaid, a tap between the things written on it found nothing there on a phone, and
+        // only a tap on the title or a badge opened the task.
+        .contentShape([.interaction, .dragPreview], cardShape)
         .animation(.easeOut(duration: 0.6), value: pulse)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)

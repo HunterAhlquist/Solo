@@ -39,7 +39,6 @@ struct InboxView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedBackground()
-        .refreshable { await store.refresh() }
         .confirmation($confirmation)
         .taskDetail($openTask)
         // Outside the detail panel, or the title and menu never reach the bar beside a sidebar.

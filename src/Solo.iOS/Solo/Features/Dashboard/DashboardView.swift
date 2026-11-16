@@ -198,7 +198,6 @@ struct DashboardView: View {
             if !Task.isCancelled { session.kit.refresh(BoardKitMount.assigned) }
         }
         .onDisappear { session.kit.unmount(BoardKitMount.assigned) }
-        .refreshable { await store.refresh() }
         .taskDetail($openTask)
         // Outside the detail panel: a title set within an inspector's content never reaches the bar.
         .navigationTitle("Your Tasks")

@@ -128,7 +128,6 @@ private struct BoardContent: View {
         }
         .textPrompt($model.prompt)
         .confirmation($model.confirmation)
-        .refreshable { await model.store.refresh() }
     }
 }
 
