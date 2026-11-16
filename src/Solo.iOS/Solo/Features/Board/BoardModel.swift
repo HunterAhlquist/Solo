@@ -98,7 +98,7 @@ final class BoardModel {
     /// card is there to go to.
     private var wholeZones: Set<ZoneKey> = []
 
-    private struct ZoneKey: Hashable {
+    struct ZoneKey: Hashable {
         var epicId: UUID?
         var status: TaskState
     }
@@ -162,7 +162,9 @@ final class BoardModel {
             guard board?.groups?.contains(where: { $0.id == id }) == true, let frame = drag.rows[id] else { return nil }
             return .group(id, frame: frame.insetBy(dx: -10, dy: -10))
         }
-        guard let task = task(dropped: payload), let frame = drag.cards[task.id] else { return nil }
+        // Where the copy of it in the column it is now in says it stands.
+        guard let task = task(dropped: payload),
+              let frame = drag.frame(of: task.id, in: ZoneKey(epicId: task.epicId, status: task.status)) else { return nil }
         return .card(task.id, frame: frame)
     }
 

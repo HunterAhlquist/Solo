@@ -226,7 +226,7 @@ private struct GridLane: View {
         .padding(10)
         .glassEffect(.regular, in: theme.cardShape)
         // In hand, its header is what is carried and the lane has left its place.
-        .leaves(epic != nil && model.drag.epic == epic?.id)
+        .leaves(epic != nil && model.drag.epic == epic?.id, closed: epic != nil && model.drag.left == epic?.id)
     }
 }
 
@@ -472,7 +472,7 @@ private struct BoardCard: View {
         let _ = Perf.count("card")
         let store = model.store
         let drag = model.drag
-        let lifted = drag.card == task.id
+        let column = BoardModel.ZoneKey(epicId: epicId, status: status)
         let card = TaskCardView(
             task: task,
             projectId: store.board?.projectId ?? UUID(),
@@ -490,11 +490,11 @@ private struct BoardCard: View {
                 .buttonStyle(.plain)
                 .standing {
                     zone.cards[task.id] = $0
-                    drag.cards[task.id] = $0
+                    drag.stands(task.id, in: column, at: $0)
                 }
                 .onDisappear {
                     zone.cards[task.id] = nil
-                    drag.cards[task.id] = nil
+                    drag.stands(task.id, in: column, at: nil)
                 }
                 .landingTarget(model.landed?.taskId == task.id)
                 .contextMenu {
@@ -509,9 +509,8 @@ private struct BoardCard: View {
                         Button("Delete", systemImage: "trash", role: .destructive) { model.confirmDelete(task) }
                     }
                 }
-                .modifier(CardDrag(enabled: model.canWrite, payload: store.serial(task)))
-                .leaves(lifted)
-                .padding(.bottom, lifted ? 0 : Self.gap)
+                .modifier(CardDrag(enabled: model.canWrite, payload: store.serial(task), drag: drag, id: task.id))
+                .padding(.bottom, drag.left == task.id ? 0 : Self.gap)
         }
     }
 }
@@ -519,12 +518,19 @@ private struct BoardCard: View {
 struct CardDrag: ViewModifier {
     var enabled: Bool
     var payload: String
+    /// What is in hand, and which card this is: it leaves its place while it is the one. Read
+    /// here so that only the cards are looked over again when one is picked up, and not the
+    /// page that holds them.
+    var drag: CardDragWatch
+    var id: UUID
 
     func body(content: Content) -> some View {
         if enabled {
             // A preview of nothing: what the system would show is the card shrunk, and the card
-            // in hand is drawn by the board (`CarriedCard`).
-            content.onDrag { BoardDrag.provider(payload) } preview: { NothingToShow() }
+            // in hand is drawn by the page (`CarriedThing`).
+            content
+                .onDrag { BoardDrag.provider(payload) } preview: { NothingToShow() }
+                .leaves(drag.card == id, closed: drag.left == id)
         } else {
             content
         }
@@ -557,33 +563,20 @@ extension View {
         }
     }
 
-    /// Something in hand has left its place: no height, and what there is of it far off to one
-    /// side. It is still there, because the system is carrying it by this view and gives up if
-    /// the view goes; and it is moved away and not only made clear, because the system goes on
-    /// drawing a view it has lifted whatever is said of its opacity.
+    /// Something in hand has left its place. It is still there, because the system is carrying
+    /// the drag by this view and gives up if the view goes; so it is put far off to one side,
+    /// and its place is closed.
     ///
-    /// Going off to the side and coming back are done at once, whatever is being animated
-    /// around it: left to animate, a card that was let go was seen flying in from off the
-    /// screen to where the card in hand had just been put down. How tall it is and how clear
-    /// are outside that, and go at the pace of what is around them: its place closes behind it
-    /// as the room for it opens elsewhere, and a card given back to its place comes into view
-    /// as the place opens, not all at once over the card below.
-    func leaves(_ gone: Bool) -> some View {
+    /// Off to the side, and not only made clear, because the system keeps a picture of what it
+    /// lifted and draws it where the view is for as long as it carries it, whatever is said of
+    /// the view's opacity inside the drag or outside it. `gone` is that, and is always all at
+    /// once: see `CardDragWatch.offered` for why, and for `closed`, which follows a moment
+    /// after and is the place closing behind it — and opening again when it is given back,
+    /// which is when it comes back into view.
+    func leaves(_ gone: Bool, closed: Bool) -> some View {
         offset(x: gone ? 3000 : 0)
-            .animation(nil, value: gone)
-            .opacity(gone ? 0 : 1)
-            .frame(height: gone ? 0 : nil, alignment: .top)
-    }
-}
-
-/// On a card: it leaves its place while it is the one in hand. A modifier of its own so that
-/// only the cards are looked over again when one is picked up, and not the page that holds them.
-struct LeavesInHand: ViewModifier {
-    var drag: CardDragWatch
-    var id: UUID
-
-    func body(content: Content) -> some View {
-        content.leaves(drag.card == id)
+            .opacity(gone || closed ? 0 : 1)
+            .frame(height: closed ? 0 : nil, alignment: .top)
     }
 }
 
@@ -905,7 +898,7 @@ private struct LaneRow<Lane: View>: View {
                     // Under the lane by the page's usual gap; and where the lane has left, being
                     // the one in hand, the row's own place is already that far under the one before.
                     SlotGap(drag: drag, height: drag.room(for: .inside(group)), radius: theme.cardShape.cornerSize.width,
-                            spacing: drag.epic == epic.id ? 0 : spacing, above: true)
+                            spacing: drag.left == epic.id ? 0 : spacing, above: true)
                 }
             } else {
                 lane
@@ -938,7 +931,7 @@ private struct GroupRow: View {
                 }
             }
             .groupPiece(piece, gap: spacing)
-            .leaves(drag.group == group.id)
+            .leaves(drag.group == group.id, closed: drag.left == group.id)
         }
     }
 }
@@ -1253,7 +1246,7 @@ private struct PagerLane: View {
         .padding(10)
         .glassEffect(.regular, in: theme.cardShape)
         // In hand, its header is what is carried and the lane has left its place.
-        .leaves(epic != nil && model.drag.epic == epic?.id)
+        .leaves(epic != nil && model.drag.epic == epic?.id, closed: epic != nil && model.drag.left == epic?.id)
     }
 }
 

@@ -181,7 +181,7 @@ struct DashboardView: View {
             watch.resolve = { [session, watch] serial in
                 guard let work = session.assigned.work,
                       let card = Self.cards(from: work).first(where: { $0.serial == serial }), card.project.canWrite,
-                      let frame = watch.cards[card.task.id] else { return nil }
+                      let frame = watch.frame(of: card.task.id, in: card.task.status) else { return nil }
                 return .card(card.task.id, frame: frame)
             }
             // What extensions with no native half add to cards, for every card here at once.
@@ -257,8 +257,8 @@ struct DashboardView: View {
                 Button { openTask = card.task.id } label: { cardView(card, work) }
                     .buttonStyle(.plain)
                     // Where it stands: where it is picked up from, and how wide it is in hand.
-                    .standing { watch.cards[card.task.id] = $0 }
-                    .onDisappear { watch.cards[card.task.id] = nil }
+                    .standing { watch.stands(card.task.id, in: status, at: $0) }
+                    .onDisappear { watch.stands(card.task.id, in: status, at: nil) }
                     .landingTarget(landed?.taskId == card.task.id)
                     .contextMenu {
                         Button("Open", systemImage: "arrow.up.forward.app") { openTask = card.task.id }
@@ -273,8 +273,7 @@ struct DashboardView: View {
                             }
                         }
                     }
-                    .modifier(CardDrag(enabled: card.project.canWrite, payload: card.serial))
-                    .modifier(LeavesInHand(drag: watch, id: card.task.id))
+                    .modifier(CardDrag(enabled: card.project.canWrite, payload: card.serial, drag: watch, id: card.task.id))
             }
             if shown.count < inColumn.count {
                 ShowAllButton(total: inColumn.count) { withAnimation { finishedExpanded = true } }

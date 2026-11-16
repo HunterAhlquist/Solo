@@ -163,6 +163,13 @@ import UIKit
         return watch
     }
 
+    /// Waits for the second step of picking something up or giving it back: its place closing
+    /// behind it, or opening again. Given time enough, however busy the tests beside this are.
+    private func settled(_ watch: CardDragWatch, closed: Bool) async throws {
+        for _ in 0..<60 where (watch.left != nil) != closed { try await Task.sleep(for: .milliseconds(50)) }
+        #expect((watch.left != nil) == closed)
+    }
+
     /// The edges of a phone's board only take touches while a card is in hand.
     @Test func aDragIsOnFromTheFirstTargetToTheDrop() {
         let watch = CardDragWatch()
@@ -190,6 +197,33 @@ import UIKit
         watch.ended()
         #expect(watch.lifted == nil)
         #expect(watch.payload == nil)
+    }
+
+    @Test func itIsInHandAtOnceAndItsPlaceClosesAMomentAfter() async throws {
+        let watch = watch()
+        watch.offered("CARD")
+        // In hand, and its place still open: the two are not one change.
+        #expect(watch.card == card)
+        #expect(watch.left == nil)
+        try await settled(watch, closed: true)
+        #expect(watch.left == card)
+        // Given back the same way round: out of hand at once, and then its place opens.
+        watch.ended()
+        #expect(watch.lifted == nil)
+        #expect(watch.left == card)
+        try await settled(watch, closed: false)
+    }
+
+    @Test func oneGivenBackIsBackWhenTheNextIsPickedUp() async throws {
+        let watch = watch()
+        watch.offered("CARD")
+        try await settled(watch, closed: true)
+        watch.ended()
+        watch.offered("EPIC")
+        // The card's place is not left closed behind the lane.
+        #expect(watch.left == nil)
+        try await settled(watch, closed: true)
+        #expect(watch.left == epic)
     }
 
     @Test func somethingFromElsewhereIsCarriedButIsNothingOfTheBoards() {
@@ -221,40 +255,47 @@ import UIKit
         #expect(watch.spot == CGPoint(x: 120, y: 460))
     }
 
-    @Test func roomIsMadeOnlyWhereTheCardInHandWouldLand() {
+    @Test func roomIsMadeOnlyWhereTheCardInHandWouldLand() async throws {
         let watch = watch()
         watch.offered("CARD")
         let place = CardDragWatch.Slot(epicId: epic, status: .inProgress, index: 2)
         watch.aim(place, true)
+        // Not until its own place closes: the two are one movement.
+        #expect(watch.gap(epicId: epic, status: .inProgress, index: 2) == 0)
+        try await settled(watch, closed: true)
         #expect(watch.gap(epicId: epic, status: .inProgress, index: 2) == 70)
         #expect(watch.gap(epicId: epic, status: .inProgress, index: 3) == 0)
         #expect(watch.gap(epicId: nil, status: .inProgress, index: 2) == 0)
         #expect(watch.aimed)
     }
 
-    @Test func aLaneInHandFoldsEveryLaneAndAGroupEveryGroupToo() {
+    @Test func aLaneInHandFoldsEveryLaneAndAGroupEveryGroupToo() async throws {
         let lane = watch()
         lane.offered("EPIC")
         lane.hover(true)
-        #expect(lane.foldsLanes)
-        #expect(!lane.foldsGroups)
         // The arrows at the page's edges are for a card.
         #expect(!lane.carriesCard)
+        try await settled(lane, closed: true)
+        #expect(lane.foldsLanes)
+        #expect(!lane.foldsGroups)
         lane.ended()
+        try await settled(lane, closed: false)
         #expect(!lane.foldsLanes)
 
         let groups = watch()
         groups.offered("GROUP")
+        try await settled(groups, closed: true)
         #expect(groups.foldsLanes)
         #expect(groups.foldsGroups)
     }
 
-    @Test func roomForALaneIsAsTallAsItIsDrawnInHand() {
+    @Test func roomForALaneIsAsTallAsItIsDrawnInHand() async throws {
         let watch = watch()
         watch.offered("EPIC")
         watch.holds(height: 66)
         let other = UUID()
         watch.steer(to: .before(other))
+        try await settled(watch, closed: true)
         #expect(watch.room(for: .before(other)) == 66)
         #expect(watch.room(for: .inside(other)) == 0)
         #expect(watch.room(for: .last) == 0)
@@ -270,6 +311,7 @@ import UIKit
         watch.offered("EPIC")
         watch.hover(true)
         watch.steer(to: .last)
+        try await settled(watch, closed: true)
         watch.settle()
         #expect(watch.settling)
         #expect(!watch.active)
@@ -278,6 +320,7 @@ import UIKit
         #expect(watch.berth == .last)
         watch.landed()
         #expect(watch.lifted == nil)
+        #expect(watch.left == nil)
         #expect(watch.berth == nil)
         // Still folded for a moment: it is put down among the names it was carried over.
         #expect(watch.foldsLanes)

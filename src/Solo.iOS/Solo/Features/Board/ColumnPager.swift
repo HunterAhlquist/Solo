@@ -178,6 +178,9 @@ final class CardDragWatch {
     /// over and the page opens again around it.
     private(set) var foldsLanes = false
     private(set) var foldsGroups = false
+    /// The thing whose place has closed behind it: the card, the lane or the group in hand, a
+    /// moment after it is picked up, and until a moment after it is given back. See `offered`.
+    private(set) var left: UUID?
     /// Where each row of the page stands, in the board's space: a lane by its epic, a group's
     /// title by its group. What the rows say of themselves, for working out which two a lane
     /// in hand is between.
@@ -199,11 +202,26 @@ final class CardDragWatch {
     @ObservationIgnored private var leaving: Task<Void, Never>?
     @ObservationIgnored private var arriving: Task<Void, Never>?
     @ObservationIgnored private var unfolding: Task<Void, Never>?
+    @ObservationIgnored private var parting: Task<Void, Never>?
     /// What a thing in hand is, from what it is called: the board's to say, since it is the
     /// board's cards and lanes that are known by those names. See `offered`.
     @ObservationIgnored var resolve: ((String) -> Lift?)?
-    /// Where each card that is built stands, in the board's space: where one is picked up from.
-    @ObservationIgnored var cards: [UUID: CGRect] = [:]
+    /// Where each card that is built stands, in the board's space, by the column it was built
+    /// in: where one is picked up from. By column, because a card that changes column is for a
+    /// moment built in both, and the one on its way out goes on saying where it is — which is
+    /// wherever the old column has slid to — after the new one has said where the card now is.
+    @ObservationIgnored private var stood: [UUID: [AnyHashable: CGRect]] = [:]
+
+    /// A card built in a column says where it stands, or that it is gone from there.
+    func stands(_ id: UUID, in column: AnyHashable, at frame: CGRect?) {
+        stood[id, default: [:]][column] = frame
+        if stood[id]?.isEmpty == true { stood[id] = nil }
+    }
+
+    /// Where a card stands, as the copy of it in this column last said.
+    func frame(of id: UUID, in column: AnyHashable) -> CGRect? {
+        stood[id]?[column]
+    }
 
     /// The card in hand, when it is a card.
     var card: UUID? {
@@ -239,7 +257,7 @@ final class CardDragWatch {
 
     /// The room to leave at a berth for the lane or the group in hand to land in.
     func room(for place: Berth) -> CGFloat {
-        berth == place && (carriesEpic || carriesGroup) ? held : 0
+        left != nil && berth == place && (carriesEpic || carriesGroup) ? held : 0
     }
 
     /// Whether there is anywhere the thing in hand would land.
@@ -248,7 +266,9 @@ final class CardDragWatch {
     /// The room to leave before the card at `index` of a zone — or after its last, for the
     /// index one past it — for the card in hand to land in.
     func gap(epicId: UUID?, status: TaskState, index: Int) -> CGFloat {
-        guard case .card(_, let frame) = lifted, slot == Slot(epicId: epicId, status: status, index: index) else { return 0 }
+        // Not before its own place has closed: the two are one movement.
+        guard left != nil, case .card(_, let frame) = lifted,
+              slot == Slot(epicId: epicId, status: status, index: index) else { return 0 }
         return frame.height
     }
 
@@ -261,15 +281,37 @@ final class CardDragWatch {
     /// nothing, and then not at all for the next press on the same thing, which it answers from
     /// what it was told before. What does not vary is that a thing picked up is at once over
     /// somewhere it could be let go, having been picked up from there, and says its name.
+    ///
+    /// It is picked up in two steps. First, and all at once, it is in hand: the thing drawn in
+    /// hand is there and the thing itself is not. Then, a moment after, its place closes and
+    /// room opens where it would land, and the lanes fold, at their own pace. The first cannot
+    /// be at any pace: the system keeps a picture of what it lifted and draws it wherever the
+    /// thing is, and moves that picture at whatever pace is going when the thing moves — so
+    /// that a card put out of sight while its place was closing was seen flying off the screen.
     func offered(_ name: String?) {
         guard lifted == nil, !settling, let name, let lift = resolve?(name) else { return }
         payload = name
         unfolding?.cancel()
+        parting?.cancel()
         held = 0
-        withAnimation(.snappy(duration: 0.25)) {
+        var still = Transaction()
+        still.disablesAnimations = true
+        withTransaction(still) {
+            // Whatever was being given back when this was picked up is back.
+            left = nil
+            slot = nil
+            berth = nil
             lifted = lift
-            foldsLanes = carriesEpic || carriesGroup
-            foldsGroups = carriesGroup
+        }
+        let id = card ?? epic ?? group
+        parting = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(30))
+            guard !Task.isCancelled, let self, self.lifted != nil else { return }
+            withAnimation(.snappy(duration: 0.25)) {
+                self.left = id
+                self.foldsLanes = self.carriesEpic || self.carriesGroup
+                self.foldsGroups = self.carriesGroup
+            }
         }
     }
 
@@ -390,24 +432,31 @@ final class CardDragWatch {
         arriving?.cancel()
         payload = nil
         active = false
-        guard lifted != nil || slot != nil else { return }
-        let clear = {
-            self.lifted = nil
-            self.slot = nil
-            self.berth = nil
-            self.spot = nil
-            self.landing = nil
-            self.settling = false
-        }
-        let unfold = {
-            self.foldsLanes = false
-            self.foldsGroups = false
-        }
+        guard lifted != nil || slot != nil || left != nil else { return }
         unfolding?.cancel()
+        parting?.cancel()
+        var still = Transaction()
+        still.disablesAnimations = true
         if animated {
-            withAnimation(.snappy(duration: 0.25)) {
-                clear()
-                unfold()
+            // Given back, or let go somewhere that is not a place for it: the same two steps as
+            // picking it up, the other way. It is out of hand at once, and then its place opens
+            // again and it comes into view there.
+            withTransaction(still) {
+                lifted = nil
+                spot = nil
+                settling = false
+            }
+            parting = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(30))
+                guard !Task.isCancelled, let self else { return }
+                withAnimation(.snappy(duration: 0.25)) {
+                    self.left = nil
+                    self.slot = nil
+                    self.berth = nil
+                    self.landing = nil
+                    self.foldsLanes = false
+                    self.foldsGroups = false
+                }
             }
         } else {
             // Put down without a flourish, since the thing drawn in hand and the thing in its
@@ -415,9 +464,15 @@ final class CardDragWatch {
             // animate, not even what a zone would animate of its own accord for no longer
             // being aimed at. The page opening again is a change to be seen, and so is made a
             // moment after, by itself.
-            var still = Transaction()
-            still.disablesAnimations = true
-            withTransaction(still, clear)
+            withTransaction(still) {
+                lifted = nil
+                left = nil
+                slot = nil
+                berth = nil
+                spot = nil
+                landing = nil
+                settling = false
+            }
             guard foldsLanes || foldsGroups else { return }
             unfolding = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(40))
