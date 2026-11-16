@@ -14,8 +14,15 @@ nonisolated struct SketchView: Equatable, Sendable {
     /// In radians, clockwise as the screen shows it, kept between a half turn either way.
     var angle: CGFloat = 0
 
-    /// How far out and in the page goes, as on the web.
-    static let zoomRange: ClosedRange<CGFloat> = 0.1...16
+    /// How far out and in the page goes. Out, as on the web. In, half as far: the web's sixteen
+    /// times is a pixel wider than a thumb, and the page is lost behind it (`ZoomLimit`). A
+    /// large page on a dense screen may stop short even of this: see `most(for:screenScale:)`.
+    static let zoomRange: ClosedRange<CGFloat> = 0.1...ZoomLimit.sketchPixel
+
+    /// How far in a page of this size may go on a screen of this scale.
+    static func most(for page: CGSize, screenScale: CGFloat) -> CGFloat {
+        ZoomLimit.most(wanted: zoomRange.upperBound, longestSide: max(page.width, page.height), screenScale: screenScale)
+    }
 
     /// The point of the page under a point of the view.
     func pagePoint(_ point: CGPoint) -> CGPoint {
@@ -31,9 +38,13 @@ nonisolated struct SketchView: Equatable, Sendable {
 
     /// This view zoomed or turned, with whatever of the page is at `anchor` now ending up at
     /// `target` — the same place, unless the fingers that hold it have moved.
-    func anchored(at anchor: CGPoint, zoom: CGFloat? = nil, angle: CGFloat? = nil, movedTo target: CGPoint? = nil) -> SketchView {
+    func anchored(at anchor: CGPoint, zoom: CGFloat? = nil, angle: CGFloat? = nil, movedTo target: CGPoint? = nil,
+                  most: CGFloat = SketchView.zoomRange.upperBound) -> SketchView {
         let held = pagePoint(anchor), target = target ?? anchor
-        var next = SketchView(pan: .zero, zoom: min(max(zoom ?? self.zoom, Self.zoomRange.lowerBound), Self.zoomRange.upperBound),
+        // A page already further in than it may now go — the limit is the page's, and pages
+        // change size — is left where it is and not pulled back by a pan.
+        let ceiling = max(min(most, Self.zoomRange.upperBound), zoom == nil ? self.zoom : 0)
+        var next = SketchView(pan: .zero, zoom: min(max(zoom ?? self.zoom, Self.zoomRange.lowerBound), ceiling),
                               angle: Self.wrapped(angle ?? self.angle))
         let offset = next.viewPoint(held)
         next.pan = CGPoint(x: target.x - offset.x, y: target.y - offset.y)
@@ -65,11 +76,11 @@ nonisolated struct SketchView: Equatable, Sendable {
 
         /// The view with the fingers where they are now: the page goes with their middle,
         /// grows as they part and turns as they turn.
-        func view(_ a: CGPoint, _ b: CGPoint) -> SketchView {
+        func view(_ a: CGPoint, _ b: CGPoint, most: CGFloat = SketchView.zoomRange.upperBound) -> SketchView {
             let now = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
             let turned = atan2(b.y - a.y, b.x - a.x) - rotation
             return view.anchored(at: middle, zoom: view.zoom * hypot(a.x - b.x, a.y - b.y) / max(1, distance),
-                                 angle: view.angle + atan2(sin(turned), cos(turned)), movedTo: now)
+                                 angle: view.angle + atan2(sin(turned), cos(turned)), movedTo: now, most: most)
         }
     }
 }
@@ -198,6 +209,10 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
     /// Fingers that came down under a Pencil, or were down when it arrived: a resting palm.
     private var ignored: Set<UITouch> = []
     private var pinch: SketchView.Pinch?
+    /// How far in this page may go on this screen.
+    private var mostZoom: CGFloat {
+        SketchView.most(for: pageView.bounds.size, screenScale: window?.screen.scale ?? traitCollection.displayScale)
+    }
     private var drag: (touch: UITouch, from: CGPoint, pan: CGPoint)?
     private var tap = SketchTouchTap()
     private var beforeTap: (view: SketchView, fitted: Bool)?
@@ -373,7 +388,7 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
         }
         if let pinch, fingers.count >= 2 {
             guard touches.contains(fingers[0]) || touches.contains(fingers[1]) else { return }
-            move(to: pinch.view(fingers[0].location(in: self), fingers[1].location(in: self)))
+            move(to: pinch.view(fingers[0].location(in: self), fingers[1].location(in: self), most: mostZoom))
             return
         }
         if let drag, touches.contains(drag.touch) {
@@ -440,7 +455,7 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
         recognizer.setTranslation(.zero, in: self)
         let keys = recognizer.modifierFlags
         if keys.contains(.command) || keys.contains(.control) {
-            move(to: view.anchored(at: at, zoom: view.zoom * exp(by.y * 0.005)))
+            move(to: view.anchored(at: at, zoom: view.zoom * exp(by.y * 0.005), most: mostZoom))
         } else if keys.contains(.alternate) {
             move(to: view.anchored(at: at, angle: view.angle - by.y * 0.15 * .pi / 180))
         } else {
@@ -464,7 +479,7 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
         case .changed:
             let scale = recognizer.scale
             guard scale > 0, lastScale > 0 else { return }
-            move(to: view.anchored(at: recognizer.location(in: self), zoom: view.zoom * scale / lastScale))
+            move(to: view.anchored(at: recognizer.location(in: self), zoom: view.zoom * scale / lastScale, most: mostZoom))
             lastScale = scale
         default:
             break

@@ -1014,12 +1014,21 @@ final class SketchPageView: UIView {
         layer.shadowOpacity = 0.18
         layer.shadowRadius = 10
         layer.shadowOffset = CGSize(width: 0, height: 2)
+        // Said outright, so that the shadow is not worked out from the page itself: that is done
+        // by drawing the page aside at the size it is zoomed to, which is the first thing to
+        // give out as it grows (`ZoomLimit`).
+        layer.shadowPath = UIBezierPath(rect: bounds).cgPath
         isAccessibilityElement = true
         accessibilityLabel = "Sketch page"
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// The paper changed size or was turned: its shadow is the new page's.
+    override var bounds: CGRect {
+        didSet { if bounds.size != oldValue.size { layer.shadowPath = UIBezierPath(rect: bounds).cgPath } }
+    }
 
     /// A touch as a point of a stroke: page pixels, and how hard it is pressed
     /// where the hardware says. A finger has no pressure, so it draws the chosen width.

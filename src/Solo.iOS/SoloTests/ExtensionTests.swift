@@ -597,9 +597,49 @@ import Testing
     }
 
     @Test func theZoomStopsAtItsLimitsAndTheAngleWraps() {
-        #expect(view.anchored(at: anchor, zoom: 400).zoom == 16)
+        #expect(view.anchored(at: anchor, zoom: 400).zoom == 8)
         #expect(view.anchored(at: anchor, zoom: 0.001).zoom == 0.1)
         #expect(abs(view.anchored(at: anchor, angle: 3 * .pi).angle - .pi) < 1e-9)
+    }
+
+    @Test func aPageStopsShortOfTheLimitWhereItWouldBeTooLargeToDraw() {
+        // A page a thumb can cross goes all the way in, whatever the screen.
+        #expect(SketchView.most(for: CGSize(width: 420, height: 595), screenScale: 3) == 8)
+        // A3 on a phone would be 28,584 pixels tall at eight times, and is held to 24,000.
+        let a3 = SketchView.most(for: CGSize(width: 842, height: 1191), screenScale: 3)
+        #expect(abs(a3 - 24000 / (1191 * 3)) < 1e-9)
+        // The same page on an iPad's coarser screen has the room.
+        #expect(SketchView.most(for: CGSize(width: 842, height: 1191), screenScale: 2) == 8)
+
+        // And the page's own limit is the one a pinch stops at, with the place held still held.
+        let held = view.pagePoint(anchor)
+        let next = view.anchored(at: anchor, zoom: 400, most: a3)
+        #expect(next.zoom == a3)
+        #expect(abs(next.pagePoint(anchor).x - held.x) < 1e-6)
+        #expect(abs(next.pagePoint(anchor).y - held.y) < 1e-6)
+    }
+
+    @Test func aPageAlreadyPastItsLimitIsNotPulledBackByBeingMoved() {
+        var deep = view
+        deep.zoom = 7
+        // Turned or carried, with no zoom asked for: it stays as far in as it was.
+        #expect(deep.anchored(at: anchor, angle: 0.3, most: 4).zoom == 7)
+        // Zoomed, it comes back to the limit.
+        #expect(deep.anchored(at: anchor, zoom: 7.5, most: 4).zoom == 4)
+    }
+
+    @Test func aPictureGoesInUntilItsPixelsAreAsLargeAsTheyAreAnyUse() {
+        // A sketch 595 points across, drawn at one pixel to a point and fitted to 372: eight
+        // points to a pixel is 12.8 times.
+        let sketch = ZoomLimit.most(pixel: ZoomLimit.sketchPixel, fitted: 372.0 / 595, density: 1, longestSide: 527, screenScale: 3)
+        #expect(abs(sketch - 8 * 595.0 / 372) < 1e-9)
+        // A photograph 2,560 pixels across, fitted to the same: two points to a pixel.
+        let photo = ZoomLimit.most(pixel: ZoomLimit.photoPixel, fitted: 372.0 / 2560, density: 1, longestSide: 372, screenScale: 3)
+        #expect(abs(photo - 2 * 2560.0 / 372) < 1e-9)
+        // One so small it is already past that when fitted can still be looked at closer.
+        #expect(ZoomLimit.most(pixel: ZoomLimit.photoPixel, fitted: 6, density: 1, longestSide: 372, screenScale: 3) == ZoomLimit.least)
+        // And none is let grow past what can be drawn.
+        #expect(ZoomLimit.most(wanted: 50, longestSide: 1000, screenScale: 2) == 12)
     }
 
     @Test func aFittedPageIsUprightAndInTheMiddle() {

@@ -1,6 +1,42 @@
 import SwiftUI
 import UIKit
 
+/// How far in a picture or a page may be zoomed.
+///
+/// Two things set it. The first is use: past the point where one pixel of the picture is a
+/// fingertip across, there is nothing more to see, and the picture is only easier to get lost
+/// in. A drawing is made of its pixels and is let in until each is `sketchPixel` points; a
+/// photograph's are not for looking at and it stops at `photoPixel`.
+///
+/// The second is what can be drawn. Zooming scales a layer, and its shadow used to be worked
+/// out from the layer itself, drawn aside at the size it was zoomed to: past about 10,000
+/// pixels that gave out, and took the picture with it — a sketch in the slideshow left a black
+/// screen. The shadows are given their shape outright now and that no longer happens, as far
+/// in as was tried, which was 40,000 pixels on a simulator. `pixels` keeps well short of that.
+nonisolated enum ZoomLimit {
+    /// How large one pixel of a drawing may be on screen, in points.
+    static let sketchPixel: CGFloat = 8
+    /// How large one pixel of a photograph may be.
+    static let photoPixel: CGFloat = 2
+    /// The longest a zoomed picture's longest side may be on screen, in pixels.
+    static let pixels: CGFloat = 24000
+    /// However large the picture already is, it can be zoomed at least this far.
+    static let least: CGFloat = 2
+
+    /// The most a picture may be zoomed: `wanted`, or less where that would make it too large.
+    /// `longestSide` is its longest side in points before any zoom.
+    static func most(wanted: CGFloat, longestSide: CGFloat, screenScale: CGFloat) -> CGFloat {
+        let room = pixels / max(longestSide * max(screenScale, 1), 1)
+        return max(least, min(wanted, room))
+    }
+
+    /// The most a picture laid out at `fitted` points to each of its own may be zoomed, for
+    /// one of its pixels to come to `pixel` points; `density` is its pixels to a point.
+    static func most(pixel: CGFloat, fitted: CGFloat, density: CGFloat, longestSide: CGFloat, screenScale: CGFloat) -> CGFloat {
+        most(wanted: pixel * max(density, 1) / max(fitted, 0.001), longestSide: longestSide, screenScale: screenScale)
+    }
+}
+
 /// A picture to look closer at. Two fingers zoom it about the place between
 /// them and carry it along, and a double tap zooms in on the place tapped —
 /// which is a scroll view's zooming, the same the Photos app has, rather than
@@ -110,8 +146,17 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         contentSize = size
         contentOffset = CGPoint(x: -contentInset.left, y: -contentInset.top)
         minimumZoomScale = 1
-        // Far enough in to see a photograph's own pixels, and further for a drawing made of them.
-        maximumZoomScale = max(6, 4 / max(scale, 0.01))
+        // Far enough in to see a photograph's own pixels, and further for a drawing made of
+        // them, and no further (`ZoomLimit`).
+        let pixelated = pictureView.layer.magnificationFilter == .nearest
+        maximumZoomScale = ZoomLimit.most(pixel: pixelated ? ZoomLimit.sketchPixel : ZoomLimit.photoPixel,
+                                          fitted: scale, density: pictureView.image?.scale ?? 1,
+                                          longestSide: max(size.width, size.height),
+                                          screenScale: window?.screen.scale ?? traitCollection.displayScale)
+        // Said outright, so that the shadow is not worked out from the picture itself: that is
+        // done by drawing the picture aside at the size it is zoomed to, which is the first
+        // thing to give out as it grows.
+        holder.layer.shadowPath = UIBezierPath(roundedRect: holder.bounds, cornerRadius: pictureView.layer.cornerRadius).cgPath
     }
 
     /// A picture smaller than the view sits in the middle of it. Moving the picture, and not the
