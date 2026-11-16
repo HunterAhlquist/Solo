@@ -53,6 +53,14 @@ nonisolated enum BoardRow: Identifiable, Sendable {
         }
     }
 
+    /// The group a row is of: a title's own, and a lane's if it is in one.
+    var groupId: UUID? {
+        switch self {
+        case .group(let group, _): group.id
+        case .lane(let epic, _): epic.groupId
+        }
+    }
+
     /// The rows of a page, from its groups and loose epics in their order. A group's title is
     /// always a row; its epics follow as rows of their own unless it is folded.
     nonisolated static func rows(_ items: [BoardItem], epics: (EpicGroup) -> [Epic],
@@ -105,12 +113,25 @@ final class BoardModel {
         var token = UUID()
     }
 
+    /// A lane or a group that has just been put down, for the page to go to: the page opens
+    /// again around it, and what was put down among a few names may then be a long way off.
+    private(set) var laneLanded: Landed?
+
+    struct Landed: Equatable {
+        /// The epic, or the group.
+        var id: UUID
+        var token = UUID()
+    }
+
     /// The page has gone to the card: it flashes once to say which it was.
     func landingFollowed() {
         guard let landed else { return }
         self.landed = nil
         store.pulse(landed.taskId)
     }
+
+    /// What is in hand on this board, and where it would land.
+    let drag = CardDragWatch()
 
     private(set) var collapsedEpics: Set<UUID> = []
     private var groupCollapsed: [UUID: Bool] = [:]
@@ -124,6 +145,25 @@ final class BoardModel {
     init(session: Session) {
         self.session = session
         store = BoardStore(session: session)
+        drag.resolve = { [weak self] in self?.lift(named: $0) }
+    }
+
+    /// What a thing carried over the board is, from the name it goes by: one of this board's
+    /// cards, lanes or groups, and where it stands; or nothing, for anything else.
+    private func lift(named payload: String) -> CardDragWatch.Lift? {
+        guard canWrite else { return nil }
+        if let id = BoardDrag.id(payload, prefix: BoardDrag.epicPrefix) {
+            // A lane is carried whole, as it stands.
+            guard board?.epics.contains(where: { $0.id == id }) == true, let frame = drag.rows[id] else { return nil }
+            return .epic(id, frame: frame)
+        }
+        if let id = BoardDrag.id(payload, prefix: BoardDrag.groupPrefix) {
+            // A group by its title, and out by the padding of the outline that goes with it.
+            guard board?.groups?.contains(where: { $0.id == id }) == true, let frame = drag.rows[id] else { return nil }
+            return .group(id, frame: frame.insetBy(dx: -10, dy: -10))
+        }
+        guard let task = task(dropped: payload), let frame = drag.cards[task.id] else { return nil }
+        return .card(task.id, frame: frame)
     }
 
     // MARK: Layout
@@ -187,7 +227,17 @@ final class BoardModel {
         return board.epics.isEmpty && (board.groups ?? []).isEmpty && board.tasks.isEmpty
     }
 
-    func isCollapsed(_ epic: Epic) -> Bool { collapsedEpics.contains(epic.id) }
+    /// Every lane is folded while one is in hand, or a group is: what is being put in order is
+    /// then a short list of names, and not a page of cards to be carried past.
+    func isCollapsed(_ epic: Epic) -> Bool {
+        drag.foldsLanes || collapsedEpics.contains(epic.id)
+    }
+
+    /// Whether a lane shows only its header: an epic's that is folded, or the lane of tasks in
+    /// no epic while a lane or a group is in hand, which has no fold of its own to be in.
+    func isFolded(_ epic: Epic?) -> Bool {
+        epic.map(isCollapsed) ?? drag.foldsLanes
+    }
 
     func toggle(_ epic: Epic) {
         if collapsedEpics.remove(epic.id) == nil {
@@ -198,6 +248,8 @@ final class BoardModel {
     /// A group starts folded when nothing in it is left to do, and after that
     /// stays however the person left it.
     func isCollapsed(_ group: EpicGroup) -> Bool {
+        // Every group is folded while one is in hand.
+        if drag.foldsGroups { return true }
         if let known = groupCollapsed[group.id] { return known }
         let epicIds = Set(epics(in: group).map(\.id))
         return !(board?.tasks ?? []).contains { task in
@@ -350,16 +402,116 @@ final class BoardModel {
         await store.refresh()
     }
 
-    /// A lane dropped onto another lane's header lands just before it, in that lane's group.
-    func dropEpic(_ payload: String, before target: Epic) async {
-        guard canWrite, let id = BoardDrag.id(payload, prefix: BoardDrag.epicPrefix), id != target.id,
-              let epic = board?.epics.first(where: { $0.id == id }) else { return }
-        let ids = siblings(of: target).filter { $0 != epic.id }
-        let (preceding, following) = RankNeighbors.compute(ids, index: ids.firstIndex(of: target.id) ?? ids.count)
-        await session.save({
-            try await api.moveEpic(epic, groupId: target.groupId, preceding: preceding, following: following)
-        }, refresh: store.refresh)
-        await store.refresh()
+    /// Which berth the lane or the group in hand is over, for a place on the page.
+    func berth(at point: CGPoint) -> CardDragWatch.Berth? {
+        guard let carried = drag.epic ?? drag.group else { return nil }
+        let places = rows.filter { $0.id != carried }.map { LaneBerths.Row(id: $0.id, group: $0.groupId) }
+        return LaneBerths.berth(at: point.y, rows: places, frames: drag.rows, joins: drag.carriesEpic)
+    }
+
+    /// The lane or the group in hand was let go: it is put at the berth it was over. It is
+    /// shown there at once, as a card is, and the save settles its real rank; what is seen is
+    /// the thing in hand going to the room made for it, and then being the row that is there.
+    func landLane() -> Bool {
+        guard canWrite, let lifted = drag.lifted, let berth = drag.berth else { return false }
+        let save: (() async -> Void)?
+        let carried: UUID
+        switch lifted {
+        case .epic(let id, _):
+            guard let epic = board?.epics.first(where: { $0.id == id }) else { return false }
+            save = move(epic, to: berth)
+            carried = id
+        case .group(let id, _):
+            guard let group = board?.groups?.first(where: { $0.id == id }) else { return false }
+            save = move(group, to: berth)
+            carried = id
+        case .card:
+            return false
+        }
+        drag.settle()
+        if let save { Task { await save() } }
+        Task {
+            // As long as it takes to get there.
+            try? await Task.sleep(for: .milliseconds(240))
+            drag.landed()
+            laneLanded = Landed(id: carried)
+        }
+        return true
+    }
+
+    /// The rank of a row of the page, by the epic's id or the group's.
+    private func rank(of id: UUID?) -> Double? {
+        guard let id else { return nil }
+        return board?.epics.first { $0.id == id }?.rank ?? board?.groups?.first { $0.id == id }?.rank
+    }
+
+    /// Puts a lane at a berth, here and now, and gives back the save that makes it so; or
+    /// nothing when that is where it is.
+    private func move(_ epic: Epic, to berth: CardDragWatch.Berth) -> (() async -> Void)? {
+        let groupId: UUID?
+        let before: UUID?
+        switch berth {
+        case .before(let id):
+            // Before a lane is in that lane's group. Before a group's title is among the groups, in none.
+            groupId = board?.epics.first { $0.id == id }?.groupId
+            before = id
+        case .inside(let id):
+            groupId = id
+            before = nil
+        case .last:
+            groupId = nil
+            before = nil
+        }
+        let all = groupId.flatMap { id in board?.groups?.first { $0.id == id } }.map { epics(in: $0).map(\.id) }
+            ?? topLevel.map(\.id)
+        let others = all.filter { $0 != epic.id }
+        let index = before.flatMap { others.firstIndex(of: $0) } ?? others.count
+        if epic.groupId == groupId, all.firstIndex(of: epic.id) == index { return nil }
+        let (preceding, following) = RankNeighbors.compute(others, index: index)
+
+        var moved = epic
+        moved.groupId = groupId
+        moved.rank = Self.rank(between: rank(of: preceding), and: rank(of: following))
+        store.apply(moved)
+        // A group it was put into is open when the page opens again, or it would have vanished.
+        if let groupId { groupCollapsed[groupId] = false }
+        return { [self] in
+            if let saved = await session.save({
+                try await api.moveEpic(epic, groupId: groupId, preceding: preceding, following: following)
+            }, refresh: store.refresh) {
+                store.apply(saved)
+            } else {
+                await store.refresh()
+            }
+        }
+    }
+
+    /// Puts a group at a berth among the groups and the lanes in none, which are one list, and
+    /// gives back the save that makes it so; or nothing when that is where it is.
+    private func move(_ group: EpicGroup, to berth: CardDragWatch.Berth) -> (() async -> Void)? {
+        let all = topLevel.map(\.id)
+        let others = all.filter { $0 != group.id }
+        let index: Int
+        switch berth {
+        case .before(let id): index = others.firstIndex(of: id) ?? others.count
+        case .inside: return nil
+        case .last: index = others.count
+        }
+        if all.firstIndex(of: group.id) == index { return nil }
+        let (preceding, following) = RankNeighbors.compute(others, index: index)
+
+        var moved = group
+        moved.rank = Self.rank(between: rank(of: preceding), and: rank(of: following))
+        store.apply(moved)
+        return { [self] in
+            if let saved = await session.save({
+                try await api.rerankEpicGroup(group, preceding: preceding, following: following)
+            }, refresh: store.refresh) {
+                store.apply(saved)
+            } else {
+                await store.refresh()
+            }
+        }
     }
 
     func canMove(_ group: EpicGroup, by offset: Int) -> Bool {
@@ -385,6 +537,23 @@ final class BoardModel {
         guard let board, let reference = TaskReference(serial: payload),
               reference.projectAlias == board.projectAlias, reference.boardAlias == board.alias else { return nil }
         return board.tasks.first { $0.number == reference.number }
+    }
+
+    /// One of this board's tasks.
+    func task(_ id: UUID) -> TaskItem? {
+        board?.tasks.first { $0.id == id }
+    }
+
+    /// A card let go over a place in a zone: it is moved there, and when it is the card that
+    /// was in hand it is sent to where it now is, to be put down there.
+    func land(_ payload: String, epicId: UUID?, status: TaskState, index: Int?) -> Bool {
+        let carried = drag.card
+        guard drop([payload], epicId: epicId, status: status, index: index) else { return false }
+        if let carried, let task = task(carried),
+           let at = cards(epicId: task.epicId, status: task.status).firstIndex(where: { $0.id == carried }) {
+            drag.settle(at: CardDragWatch.Slot(epicId: task.epicId, status: task.status, index: at))
+        }
+        return true
     }
 
     /// A card let go over a zone. `index` counts the cards the zone was showing,

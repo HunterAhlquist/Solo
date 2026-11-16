@@ -253,9 +253,20 @@ struct ShowAllButton: View {
 /// text and this one resolves back to the task.
 enum BoardDrag {
     static let epicPrefix = "solo-epic:"
+    static let groupPrefix = "solo-group:"
     static let subTaskPrefix = "solo-subtask:"
 
     static func epic(_ id: UUID) -> String { epicPrefix + id.api }
+    static func group(_ id: UUID) -> String { groupPrefix + id.api }
+
+    /// What the system is handed to carry: the payload as text, for wherever it is let go, and
+    /// as the provider's name, which whoever it passes over can read without waiting to be
+    /// given the text (`CardDragWatch.offered`).
+    static func provider(_ payload: String) -> NSItemProvider {
+        let provider = NSItemProvider(object: payload as NSString)
+        provider.suggestedName = payload
+        return provider
+    }
     static func subTask(_ id: UUID) -> String { subTaskPrefix + id.api }
 
     static func id(_ payload: String, prefix: String) -> UUID? {

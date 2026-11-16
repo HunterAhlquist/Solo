@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The Kanban board: three fixed columns, with epics as lanes spanning them.
 ///
@@ -141,6 +142,8 @@ private struct BoardGrid: View {
         FillLayout {
             grid
         }
+        .catchesDrops(model.drag)
+        .environment(model.drag)
     }
 
     private var grid: some View {
@@ -153,12 +156,16 @@ private struct BoardGrid: View {
                     ForEach(model.rows) { row in
                         switch row {
                         case .group(let group, let piece):
-                            GroupHeader(model: model, group: group).groupPiece(piece, gap: 14)
+                            GroupRow(model: model, group: group, piece: piece, spacing: 14)
                         case .lane(let epic, let piece):
-                            GridLane(model: model, epic: epic).groupPiece(piece, gap: 14)
+                            LaneRow(model: model, epic: epic, piece: piece, spacing: 14) {
+                                GridLane(model: model, epic: epic)
+                            }
                         }
                     }
-                    GridLane(model: model, epic: nil)
+                    LaneRow(model: model, epic: nil, piece: nil, spacing: 14) {
+                        GridLane(model: model, epic: nil)
+                    }
                     if model.isEmpty {
                         EmptyBoard(model: model)
                     }
@@ -187,7 +194,9 @@ private struct BoardGrid: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
+            .boardPage(model)
         }
+        .followsLane(model.laneLanded)
     }
 }
 
@@ -203,11 +212,8 @@ private struct GridLane: View {
     var body: some View {
         VStack(spacing: 8) {
             LaneHeader(model: model, epic: epic, count: model.taskCount(epicId: epic?.id))
-            if let epic, model.isCollapsed(epic) {
-                Text("\(model.taskCount(epicId: epic.id)) task(s) hidden")
-                    .font(.caption)
-                    .foregroundStyle(theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if model.isFolded(epic) {
+                FoldedLaneNote(count: model.taskCount(epicId: epic?.id))
             } else {
                 // Every zone is as tall as the tallest, so a card can be let go
                 // anywhere under a short column and still land in it.
@@ -220,6 +226,8 @@ private struct GridLane: View {
         }
         .padding(10)
         .glassEffect(.regular, in: theme.cardShape)
+        // In hand, its header is what is carried and the lane has left its place.
+        .leaves(epic != nil && model.drag.epic == epic?.id)
     }
 }
 
@@ -304,11 +312,14 @@ private struct Zone: View {
     /// How tall the lane's active zones stand: an active zone says, and a Finished zone, whose
     /// cards may stand as tall and no taller, listens.
     var heights: LaneHeights
-    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
-    @State private var targeted = false
+    /// Where each of this zone's cards stands.
+    @State private var standing = ZoneStanding()
 
     var body: some View {
         let _ = Perf.count("zone")
+        let drag = model.drag
+        // Somewhere in this zone is where the card in hand would land.
+        let targeted = drag.slot.map { $0.epicId == epicId && $0.status == status } ?? false
         Group {
             if status == .finished {
                 // History does not get to stretch the lane: see `FinishedFold`.
@@ -321,6 +332,8 @@ private struct Zone: View {
                              open: model.isFinishedOpen(epicId),
                              onToggle: { model.toggleFinished(epicId) },
                              landing: landing,
+                             // The gap between cards is each card's own, and not the stack's: see `BoardCard`.
+                             spacing: 0,
                              sharedGlass: model.cards(epicId: epicId, status: status).count <= Self.sharedGlassLimit) { cards }
             } else {
                 Group {
@@ -334,7 +347,8 @@ private struct Zone: View {
                         stack
                     }
                 }
-                .padding(6)
+                // The last card's own gap is the room at the foot.
+                .padding([.top, .horizontal], 6)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { heights.set(status, $0) }
             }
         }
@@ -346,14 +360,30 @@ private struct Zone: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(theme.primary.opacity(0.6))
             }
         }
-        .dropDestination(for: String.self) { payloads, _ in
-            watch?.ended()
-            return model.drop(payloads, epicId: epicId, status: status, index: nil)
-        } isTargeted: {
-            targeted = $0
-            watch?.hover($0)
+        // What is left of the zone once its cards have taken what is over them: under the last
+        // card, or all of it when it is empty. A card let go here lands at the end.
+        .boardDrop(drag, place: { place(at: $0) }) { payload in
+            let aimed = drag.slot.flatMap { $0.epicId == epicId && $0.status == status ? $0.index : nil }
+            return model.land(payload, epicId: epicId, status: status, index: aimed)
         }
         .animation(.easeOut(duration: 0.15), value: targeted)
+    }
+
+    /// The place for a card that the finger is over: before the first card whose middle is
+    /// below it, or after the last.
+    ///
+    /// By the cards' middles as they stand, room and all, which holds still. The card the room
+    /// is made above has been moved down by it, so the finger in the room is above its middle
+    /// and the place is the same one; carried on down past that middle, the room moves to
+    /// under the card, which comes up and away from the finger, and the place is again settled.
+    private func place(at point: CGPoint) -> CardDragWatch.Slot {
+        let cards = model.cards(epicId: epicId, status: status)
+        let carried = model.drag.card
+        let index = cards.firstIndex { card in
+            guard card.id != carried, let frame = standing.cards[card.id] else { return false }
+            return point.y < frame.midY
+        }
+        return CardDragWatch.Slot(epicId: epicId, status: status, index: index ?? cards.count)
     }
 
     /// The most cards a zone can hold and still draw their glass as one.
@@ -366,11 +396,12 @@ private struct Zone: View {
         return landed.taskId
     }
 
+    /// No spacing: the gap between cards is each card's own (`BoardCard`).
     @ViewBuilder private var stack: some View {
         if whole {
-            VStack(spacing: 6) { cards }
+            VStack(spacing: 0) { cards }
         } else {
-            LazyVStack(spacing: 6) { cards }
+            LazyVStack(spacing: 0) { cards }
         }
     }
 
@@ -378,19 +409,53 @@ private struct Zone: View {
         let cards = model.cards(epicId: epicId, status: status)
         let hidden = model.hiddenCount(epicId: epicId, status: status)
         ForEach(Array(cards.enumerated()), id: \.element.id) { index, task in
-            BoardCard(model: model, task: task, epicId: epicId, status: status, index: index)
+            BoardCard(model: model, task: task, epicId: epicId, status: status, index: index, zone: standing)
         }
         if hidden > 0 {
             ShowAllButton(total: hidden + cards.count) { withAnimation { model.expandFinished(epicId) } }
         }
+        // The room for a card that would land after the last.
+        SlotGap(drag: model.drag, height: model.drag.gap(epicId: epicId, status: status, index: cards.count))
         if cards.isEmpty {
-            Color.clear.frame(height: 36)
+            Color.clear.frame(height: 42)
         }
     }
 }
 
-/// A card in its zone: tap opens it, a long press lifts it, and another card
-/// let go on top of it lands just above.
+/// The room left where the thing in hand would land: as tall as it is, with the gap that goes
+/// between any two of its kind, and marked faintly so that it reads as a place and not as
+/// nothing. It says where it is, which is where the thing goes when it is let go.
+private struct SlotGap: View {
+    @Environment(\.theme) private var theme
+    var drag: CardDragWatch
+    /// The height of the thing in hand, or nothing where it would not land.
+    var height: CGFloat
+    var radius: CGFloat = 12
+    /// The gap between the room and what it is made beside, which is under it unless said otherwise.
+    var spacing: CGFloat = BoardCard.gap
+    var above = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(theme.primary.opacity(0.10))
+            .strokeBorder(theme.primary.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+            .frame(height: height)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(BoardSpace.name)) } action: { frame in
+                if height > 0 { drag.room(at: frame) }
+            }
+            .onChange(of: height > 0) { _, open in
+                if !open, !drag.aimed { drag.room(at: nil) }
+            }
+            .padding(above ? .top : .bottom, height > 0 ? spacing : 0)
+            .opacity(height > 0 ? 1 : 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// A card in its zone: tap opens it, and a long press lifts it out of its place, which closes
+/// behind it. A card in hand that would land just above this one is left the room by this one
+/// moving down. The gap under a card is the card's own, so that it goes when the card does.
 private struct BoardCard: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
@@ -398,12 +463,17 @@ private struct BoardCard: View {
     var epicId: UUID?
     var status: TaskState
     var index: Int
-    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
-    @State private var targeted = false
+    /// Where the zone keeps where its cards stand, for working out which two a card in hand is between.
+    var zone: ZoneStanding
+
+    /// The gap under every card.
+    static let gap: CGFloat = 6
 
     var body: some View {
         let _ = Perf.count("card")
         let store = model.store
+        let drag = model.drag
+        let lifted = drag.card == task.id
         let card = TaskCardView(
             task: task,
             projectId: store.board?.projectId ?? UUID(),
@@ -414,55 +484,282 @@ private struct BoardCard: View {
             canWrite: model.canWrite,
             kitMount: store.board.map { BoardKitMount.id(for: $0.id) })
 
-        Button { model.open(task) } label: { card }
-            .buttonStyle(.plain)
-            .landingTarget(model.landed?.taskId == task.id)
-            .overlay(alignment: .top) {
-                if targeted {
-                    Capsule().fill(theme.primary).frame(height: 3).offset(y: -5)
+        VStack(spacing: 0) {
+            SlotGap(drag: drag, height: drag.gap(epicId: epicId, status: status, index: index))
+
+            Button { model.open(task) } label: { card }
+                .buttonStyle(.plain)
+                .standing {
+                    zone.cards[task.id] = $0
+                    drag.cards[task.id] = $0
                 }
-            }
-            .contextMenu {
-                Button("Open", systemImage: "arrow.up.forward.app") { model.open(task) }
-                if model.canWrite {
-                    Menu("Move to", systemImage: "arrow.left.arrow.right") {
-                        ForEach(TaskState.allCases.filter { $0 != task.status }) { status in
-                            Button(status.title, systemImage: status.symbol) { model.setStatus(task, status) }
+                .onDisappear {
+                    zone.cards[task.id] = nil
+                    drag.cards[task.id] = nil
+                }
+                .landingTarget(model.landed?.taskId == task.id)
+                .contextMenu {
+                    Button("Open", systemImage: "arrow.up.forward.app") { model.open(task) }
+                    if model.canWrite {
+                        Menu("Move to", systemImage: "arrow.left.arrow.right") {
+                            ForEach(TaskState.allCases.filter { $0 != task.status }) { status in
+                                Button(status.title, systemImage: status.symbol) { model.setStatus(task, status) }
+                            }
                         }
+                        Divider()
+                        Button("Delete", systemImage: "trash", role: .destructive) { model.confirmDelete(task) }
                     }
-                    Divider()
-                    Button("Delete", systemImage: "trash", role: .destructive) { model.confirmDelete(task) }
                 }
-            }
-            .modifier(CardDrag(enabled: model.canWrite, payload: store.serial(task), preview: card))
-            .dropDestination(for: String.self) { payloads, _ in
-                watch?.ended()
-                return model.drop(payloads, epicId: epicId, status: status, index: index)
-            } isTargeted: {
-                targeted = $0
-                watch?.hover($0)
-            }
-            .animation(.easeOut(duration: 0.12), value: targeted)
+                .modifier(CardDrag(enabled: model.canWrite, payload: store.serial(task)))
+                .leaves(lifted)
+                .padding(.bottom, lifted ? 0 : Self.gap)
+        }
     }
 }
 
-private struct CardDrag<Preview: View>: ViewModifier {
-    @Environment(\.theme) private var theme
-    @Environment(Session.self) private var session
+private struct CardDrag: ViewModifier {
     var enabled: Bool
     var payload: String
-    var preview: Preview
 
     func body(content: Content) -> some View {
         if enabled {
-            content.draggable(payload) {
-                // A drag preview is drawn outside the view tree, so it has none of
-                // the environment: everything a card reads has to be handed to it.
-                preview.frame(width: 240).environment(\.theme, theme).environment(session)
-                    .environment(session.navigator)
-            }
+            // A preview of nothing: what the system would show is the card shrunk, and the card
+            // in hand is drawn by the board (`CarriedCard`).
+            content.onDrag { BoardDrag.provider(payload) } preview: { NothingToShow() }
         } else {
             content
+        }
+    }
+}
+
+/// What the system is handed to show of a thing it carries: nothing, and shaped as nothing. The
+/// system backs whatever it carries with a pale plate cut to this shape, and at any size that
+/// plate shows.
+private struct NothingToShow: View {
+    var body: some View {
+        Color.clear.frame(width: 1, height: 1)
+            .contentShape(.dragPreview, Rectangle().size(width: 0.01, height: 0.01))
+    }
+}
+
+/// Where each card of a zone stands, in the board's space. Kept aside from any view's state,
+/// since it changes whenever anything above moves and nothing is drawn from it.
+private final class ZoneStanding {
+    var cards: [UUID: CGRect] = [:]
+}
+
+private extension View {
+    /// Says where this stands, in the board's space, whenever that changes: where it is picked
+    /// up from, how large it is drawn in hand, and which two of its kind a thing in hand is between.
+    func standing(_ tell: @escaping (CGRect) -> Void) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .named(BoardSpace.name)) } action: { frame in
+            // Not while it is in hand: it has no height then, and where it stood is what is wanted.
+            if frame.height > 1 { tell(frame) }
+        }
+    }
+
+    /// Something in hand has left its place: no height, and what there is of it far off to one
+    /// side. It is still there, because the system is carrying it by this view and gives up if
+    /// the view goes; and it is moved away and not only made clear, because the system goes on
+    /// drawing a view it has lifted whatever is said of its opacity.
+    func leaves(_ gone: Bool) -> some View {
+        frame(height: gone ? 0 : nil, alignment: .top)
+            .opacity(gone ? 0 : 1)
+            .offset(x: gone ? 3000 : 0)
+    }
+}
+
+/// The thing in hand: the card itself, or the lane, or the group, where the
+/// finger has it, a little larger than it stood and with a shadow under it, as a thing picked
+/// up off a table is. It is drawn in the page's scrolling content, which is the space the
+/// finger's place is said in, so it needs nothing worked out to be put there. A card let go
+/// goes to the room made for it and is then the card that is there.
+private struct CarriedCard: View {
+    @Environment(\.theme) private var theme
+    @Bindable var model: BoardModel
+    /// Raised: it is drawn first as it stood, and then comes up.
+    @State private var raised = false
+
+    var body: some View {
+        let drag = model.drag
+        if let lifted = drag.lifted, let spot = drag.spot {
+            let frame = lifted.frame
+            let held = CGPoint(x: spot.x - drag.grab.width, y: spot.y - drag.grab.height)
+            let at = drag.settling ? (drag.landing?.origin ?? held) : held
+            let up = raised && !drag.settling
+            thing(lifted)
+                // As wide as it stood, until it is let go into a place of another width: a
+                // lane put into a group, which is narrower than the page.
+                .frame(width: drag.settling ? (drag.landing?.width ?? frame.width) : frame.width)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded() } action: { drag.holds(height: $0) }
+                .scaleEffect(up ? 1.05 : 1)
+                .shadow(color: .black.opacity(up ? 0.35 : 0), radius: up ? 16 : 0, y: up ? 10 : 0)
+                .offset(x: at.x, y: at.y)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .onAppear { withAnimation(.snappy(duration: 0.25)) { raised = true } }
+                .onDisappear { raised = false }
+        }
+    }
+
+    @ViewBuilder private func thing(_ lifted: CardDragWatch.Lift) -> some View {
+        let store = model.store
+        switch lifted {
+        case .card(let id, _):
+            if let task = model.task(id) {
+                TaskCardView(
+                    task: task,
+                    projectId: store.board?.projectId ?? UUID(),
+                    label: store.label(task.labelId),
+                    assignees: store.members(task.assigneeIds),
+                    presence: store.editors(on: EntityTypes.task, task.id),
+                    canWrite: model.canWrite,
+                    kitMount: store.board.map { BoardKitMount.id(for: $0.id) })
+            }
+        case .epic(let id, _):
+            // A lane in hand is the lane, folded as every lane is while one is carried.
+            if let epic = model.board?.epics.first(where: { $0.id == id }) {
+                VStack(spacing: 8) {
+                    LaneHeader(model: model, epic: epic, count: model.taskCount(epicId: epic.id), carried: true)
+                    FoldedLaneNote(count: model.taskCount(epicId: epic.id))
+                }
+                .padding(10)
+                .glassEffect(.regular, in: theme.cardShape)
+            }
+        case .group(let id, _):
+            // And a group is its title in its outline, on glass: the outline alone is drawn
+            // on the page, and in hand it would be a line around whatever is under it.
+            if let group = model.board?.groups?.first(where: { $0.id == id }) {
+                GroupHeader(model: model, group: group, carried: true)
+                    .groupPiece(.whole, gap: 0)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: GroupOutline.radius, style: .continuous))
+            }
+        }
+    }
+}
+
+/// Somewhere on the board's page that a thing in hand can be let go, or pass over. Each says
+/// where the finger is while it is over it, in the board's space, which is what the thing in
+/// hand is drawn by; a zone says as well which of its places for a card that is.
+///
+/// Only things that stay where they are while a card is carried are these: a zone, a header,
+/// the page. A card is not, though it is cards that a card is put between. The finger's place
+/// is reckoned from the corner of whatever it is over, and a card it is over is at that moment
+/// moving out of its way: the two were a frame apart, and the card in hand shook.
+private struct BoardDrop: ViewModifier {
+    var drag: CardDragWatch
+    /// For a zone: the place for a card that the finger, here in the board's space, is over.
+    var place: ((CGPoint) -> CardDragWatch.Slot)?
+    /// For the page: the berth for a lane or a group that the finger is over.
+    var berth: ((CGPoint) -> CardDragWatch.Berth?)?
+    /// Somewhere that is not on the board's page, and so says where the finger is on the screen.
+    var onScreen = false
+    var targeted: ((Bool) -> Void)?
+    var perform: (String) -> Bool
+    /// This view's corner in the board's space, or on the screen: what turns a place in it
+    /// into a place there.
+    @State private var origin = CGPoint.zero
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGPoint.self) {
+                $0.frame(in: onScreen ? .global : .named(BoardSpace.name)).origin
+            } action: { origin = $0 }
+            .onDrop(of: [.plainText], delegate: Delegate(drag: drag, place: place, berth: berth, onScreen: onScreen,
+                                                         origin: origin, targeted: targeted, perform: perform))
+    }
+
+    struct Delegate: DropDelegate {
+        var drag: CardDragWatch
+        var place: ((CGPoint) -> CardDragWatch.Slot)?
+        var berth: ((CGPoint) -> CardDragWatch.Berth?)?
+        var onScreen: Bool
+        var origin: CGPoint
+        var targeted: ((Bool) -> Void)?
+        var perform: (String) -> Bool
+
+        func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) }
+
+        func dropEntered(info: DropInfo) {
+            targeted?(true)
+            over(info, true)
+        }
+
+        func dropUpdated(info: DropInfo) -> DropProposal? {
+            over(info, true)
+            // A move: the system then draws no badge beside the finger.
+            return DropProposal(operation: .move)
+        }
+
+        func dropExited(info: DropInfo) {
+            targeted?(false)
+            over(info, false)
+        }
+
+        private func over(_ info: DropInfo, _ over: Bool) {
+            let point = CGPoint(x: origin.x + info.location.x, y: origin.y + info.location.y)
+            if over {
+                // Whatever has just arrived says what it is, once: see `CardDragWatch.offered`.
+                if !drag.active { drag.offered(info.itemProviders(for: [.plainText]).first?.suggestedName) }
+                if let place { drag.aim(place(point), true) } else { drag.hover(true) }
+                if onScreen { drag.move(toScreen: point) } else { drag.move(to: point) }
+                if let berth { drag.steer(to: berth(point)) }
+            } else if place != nil, let aimed = drag.slot {
+                drag.aim(aimed, false)
+            } else {
+                drag.hover(false)
+            }
+        }
+
+        func performDrop(info: DropInfo) -> Bool {
+            targeted?(false)
+            // Something of this board's: what it is was kept when it was picked up.
+            if let payload = drag.payload {
+                let landed = perform(payload)
+                if !drag.settling { drag.ended() }
+                return landed
+            }
+            // Something from elsewhere, which has to be asked what it is.
+            drag.ended()
+            guard let provider = info.itemProviders(for: [.plainText]).first else { return false }
+            _ = provider.loadObject(ofClass: NSString.self) { text, _ in
+                guard let text = text as? String else { return }
+                Task { @MainActor in _ = perform(text) }
+            }
+            return true
+        }
+    }
+}
+
+extension View {
+    /// Takes any drop that nothing inside took, and refuses it: so that a card let go anywhere
+    /// on the page is known to have been let go (`CardDragWatch`).
+    /// A place on the board's page to let something go, or to carry it over.
+    func boardDrop(_ drag: CardDragWatch, place: ((CGPoint) -> CardDragWatch.Slot)? = nil,
+                   berth: ((CGPoint) -> CardDragWatch.Berth?)? = nil, onScreen: Bool = false,
+                   targeted: ((Bool) -> Void)? = nil, perform: @escaping (String) -> Bool) -> some View {
+        modifier(BoardDrop(drag: drag, place: place, berth: berth, onScreen: onScreen, targeted: targeted, perform: perform))
+    }
+
+    /// On the page's scrolling content: makes it the space everything on the board is placed
+    /// in, and draws the thing in hand over it all. It is also where a lane or a group in hand
+    /// is let go, wherever on the page that is: the rows it goes between are moving out of its
+    /// way, and the page is not (see `BoardDrop`). A card let go on the page and in no zone
+    /// goes nowhere.
+    func boardPage(_ model: BoardModel) -> some View {
+        contentShape(.rect)
+            .boardDrop(model.drag, berth: { model.berth(at: $0) }) { _ in model.landLane() }
+            .overlay(alignment: .topLeading) { CarriedCard(model: model) }
+            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { model.drag.pageOrigin = $0 }
+            .coordinateSpace(.named(BoardSpace.name))
+    }
+
+    func catchesDrops(_ drag: CardDragWatch) -> some View {
+        dropDestination(for: String.self) { _, _ in
+            drag.ended()
+            return false
+        } isTargeted: {
+            drag.hover($0)
         }
     }
 }
@@ -474,7 +771,8 @@ private struct LaneHeader: View {
     @Bindable var model: BoardModel
     var epic: Epic?
     var count: Int
-    @State private var targeted = false
+    /// Drawn in hand, where it is a picture of itself and picks nothing up.
+    var carried = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -526,32 +824,118 @@ private struct LaneHeader: View {
                 }
             }
         }
-        .overlay(alignment: .top) {
-            if targeted {
-                Capsule().fill(theme.primary).frame(height: 3).offset(y: -8)
-            }
-        }
-        .modifier(EpicDrag(model: model, epic: epic, targeted: $targeted))
+        .modifier(EpicDrag(model: model, epic: carried ? nil : epic))
     }
 }
 
-/// Lanes reorder by dragging one header onto another, or from the menu.
+/// What a folded lane says in place of its zones.
+private struct FoldedLaneNote: View {
+    @Environment(\.theme) private var theme
+    var count: Int
+
+    var body: some View {
+        Text("\(count) task(s) hidden")
+            .font(.caption)
+            .foregroundStyle(theme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A lane as a row of the page: the lane, and the room made beside it for a lane in hand —
+/// above it, or under it when it is the last of its group and the end of the group is where
+/// the lane in hand would go. All inside its piece of the group's outline, since that is
+/// where a lane put there will be. `epic` nil is the lane of tasks in no epic, which is last
+/// and has above it the place after everything.
+private struct LaneRow<Lane: View>: View {
+    @Environment(\.theme) private var theme
+    @Bindable var model: BoardModel
+    var epic: Epic?
+    var piece: GroupPiece?
+    /// The room the page leaves between rows.
+    var spacing: CGFloat
+    @ViewBuilder var lane: Lane
+
+    var body: some View {
+        let drag = model.drag
+        VStack(spacing: 0) {
+            SlotGap(drag: drag, height: drag.room(for: epic.map { .before($0.id) } ?? .last),
+                    radius: theme.cardShape.cornerSize.width, spacing: spacing)
+            if let epic {
+                lane
+                    .standing { drag.rows[epic.id] = $0 }
+                    .onDisappear { drag.rows[epic.id] = nil }
+                if piece == .bottom, let group = epic.groupId {
+                    // Under the lane by the page's usual gap; and where the lane has left, being
+                    // the one in hand, the row's own place is already that far under the one before.
+                    SlotGap(drag: drag, height: drag.room(for: .inside(group)), radius: theme.cardShape.cornerSize.width,
+                            spacing: drag.epic == epic.id ? 0 : spacing, above: true)
+                }
+            } else {
+                lane
+            }
+        }
+        .groupPiece(piece, gap: spacing)
+    }
+}
+
+/// A group's title as a row of the page, with the room made beside it: above it and outside
+/// its outline, for what would go before the group; under it and inside, when the group is
+/// folded or empty and a lane in hand would join it.
+private struct GroupRow: View {
+    @Bindable var model: BoardModel
+    var group: EpicGroup
+    var piece: GroupPiece
+    var spacing: CGFloat
+
+    var body: some View {
+        let drag = model.drag
+        VStack(spacing: 0) {
+            SlotGap(drag: drag, height: drag.room(for: .before(group.id)), radius: GroupOutline.radius, spacing: spacing)
+            VStack(spacing: 0) {
+                GroupHeader(model: model, group: group)
+                    .standing { drag.rows[group.id] = $0 }
+                    .onDisappear { drag.rows[group.id] = nil }
+                if piece == .whole {
+                    SlotGap(drag: drag, height: drag.room(for: .inside(group.id)),
+                            radius: 20, spacing: spacing, above: true)
+                }
+            }
+            .groupPiece(piece, gap: spacing)
+            .leaves(drag.group == group.id)
+        }
+    }
+}
+
+/// A lane is picked up by its header, and a group by its title, to be put in another place
+/// among the rows; the menu does the same a step at a time. While one is in hand every lane is
+/// folded (`BoardModel.isCollapsed`), and every group too when it is a group, so that it is
+/// carried over a short list of names, which part to make room for it as cards do for a card.
+///
+/// Neither is anywhere that something in hand is let go. A header moves as the room is made
+/// above it, and what is let go over one is the page's to place (`boardPage`).
 private struct EpicDrag: ViewModifier {
     @Bindable var model: BoardModel
     var epic: Epic?
-    @Binding var targeted: Bool
 
     func body(content: Content) -> some View {
         if let epic, model.canWrite {
+            content.onDrag { BoardDrag.provider(BoardDrag.epic(epic.id)) } preview: { NothingToShow() }
+        } else {
             content
-                .draggable(BoardDrag.epic(epic.id)) {
-                    Text(epic.name).font(.subheadline.weight(.semibold)).padding(10)
-                }
-                .dropDestination(for: String.self) { payloads, _ in
-                    guard let payload = payloads.first, payload.hasPrefix(BoardDrag.epicPrefix) else { return false }
-                    Task { await model.dropEpic(payload, before: epic) }
-                    return true
-                } isTargeted: { targeted = $0 }
+        }
+    }
+}
+
+private struct GroupDrag: ViewModifier {
+    @Bindable var model: BoardModel
+    var group: EpicGroup
+    var enabled = true
+
+    func body(content: Content) -> some View {
+        if enabled, model.canWrite {
+            content
+                .contentShape(.rect)
+                .onDrag { BoardDrag.provider(BoardDrag.group(group.id)) } preview: { NothingToShow() }
         } else {
             content
         }
@@ -603,6 +987,8 @@ private struct GroupHeader: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
     var group: EpicGroup
+    /// Drawn in hand, where it is a picture of itself and picks nothing up.
+    var carried = false
 
     var body: some View {
         let collapsed = model.isCollapsed(group)
@@ -644,14 +1030,17 @@ private struct GroupHeader: View {
                 .frame(width: 30, height: 30)
             }
         }
+        .modifier(GroupDrag(model: model, group: group, enabled: !carried))
     }
 }
 
 /// A group's outline, or the part of it one row carries: open at the bottom for the title,
 /// open at both ends for an epic in the middle, open at the top for the last.
 private nonisolated struct GroupOutline: Shape {
+    static let radius: CGFloat = 28
+
     var piece: GroupPiece
-    var radius: CGFloat = 28
+    var radius: CGFloat = GroupOutline.radius
 
     func path(in rect: CGRect) -> Path {
         let box = rect.insetBy(dx: 0.5, dy: 0.5)
@@ -736,12 +1125,13 @@ private struct EmptyBoard: View {
 private struct BoardPager: View {
     @Environment(\.theme) private var theme
     @Bindable var model: BoardModel
-    @State private var watch = CardDragWatch()
+    private var watch: CardDragWatch { model.drag }
 
     var body: some View {
         FillLayout {
             pages
         }
+        .catchesDrops(model.drag)
         // A card held at either side is carried to the column that way.
         .overlay {
             ColumnEdgeSensors(selection: $model.column, watch: watch) { payloads, status in
@@ -770,22 +1160,28 @@ private struct BoardPager: View {
                 ForEach(model.rows) { row in
                     switch row {
                     case .group(let group, let piece):
-                        GroupHeader(model: model, group: group).groupPiece(piece, gap: 12)
+                        GroupRow(model: model, group: group, piece: piece, spacing: 12)
                     case .lane(let epic, let piece):
-                        PagerLane(model: model, epic: epic).groupPiece(piece, gap: 12)
+                        LaneRow(model: model, epic: epic, piece: piece, spacing: 12) {
+                            PagerLane(model: model, epic: epic)
+                        }
                     }
                 }
-                PagerLane(model: model, epic: nil)
+                LaneRow(model: model, epic: nil, piece: nil, spacing: 12) {
+                    PagerLane(model: model, epic: nil)
+                }
                 if model.isEmpty {
                     EmptyBoard(model: model)
                 }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 24)
+            .boardPage(model)
         }
         .columnPaging($model.column)
         // A moved card is followed: to its column, then down the page to the card itself.
         .followsLanding(model.landed?.token) { model.landingFollowed() }
+        .followsLane(model.laneLanded)
         .onChange(of: model.landed) { _, landing in
             guard let landing else { return }
             withAnimation(.snappy(duration: 0.32)) { model.column = landing.status }
@@ -805,11 +1201,8 @@ private struct PagerLane: View {
     var body: some View {
         VStack(spacing: 8) {
             LaneHeader(model: model, epic: epic, count: model.taskCount(epicId: epic?.id))
-            if let epic, model.isCollapsed(epic) {
-                Text("\(model.taskCount(epicId: epic.id)) task(s) hidden")
-                    .font(.caption)
-                    .foregroundStyle(theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if model.isFolded(epic) {
+                FoldedLaneNote(count: model.taskCount(epicId: epic?.id))
             } else {
                 ColumnPages {
                     ForEach(TaskState.allCases) { status in
@@ -822,6 +1215,8 @@ private struct PagerLane: View {
         }
         .padding(10)
         .glassEffect(.regular, in: theme.cardShape)
+        // In hand, its header is what is carried and the lane has left its place.
+        .leaves(epic != nil && model.drag.epic == epic?.id)
     }
 }
 
@@ -884,12 +1279,8 @@ private struct ColumnSwitcherSegment: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .dropDestination(for: String.self) { payloads, _ in
-            watch?.ended()
-            return onDrop(payloads, status)
-        } isTargeted: { isTargeted in
+        .modifier(SegmentDrop(watch: watch, perform: { onDrop([$0], status) }) { isTargeted in
             targeted = isTargeted
-            watch?.hover(isTargeted)
             springLoad?.cancel()
             guard isTargeted, selection != status else { return }
             springLoad = Task {
@@ -897,8 +1288,24 @@ private struct ColumnSwitcherSegment: View {
                 guard !Task.isCancelled else { return }
                 withAnimation(.snappy) { selection = status }
             }
-        }
+        })
         .sensoryFeedback(.selection, trigger: selection)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// A column of the selector as somewhere a card is let go. It is not on the board's page, so it
+/// says where the finger is on the screen, and the card in hand comes up to it with the finger.
+private struct SegmentDrop: ViewModifier {
+    var watch: CardDragWatch?
+    var perform: (String) -> Bool
+    var targeted: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if let watch {
+            content.boardDrop(watch, onScreen: true, targeted: targeted, perform: perform)
+        } else {
+            content
+        }
     }
 }

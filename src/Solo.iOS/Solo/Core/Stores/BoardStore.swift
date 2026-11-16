@@ -207,6 +207,14 @@ final class BoardStore {
         board = current
     }
 
+    func apply(_ group: EpicGroup) {
+        guard var current = board, var groups = current.groups,
+              let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        groups[index] = group
+        current.groups = groups
+        board = current
+    }
+
     func removeTask(_ id: UUID) {
         guard var current = board else { return }
         current.tasks.removeAll { $0.id == id }

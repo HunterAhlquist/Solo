@@ -146,6 +146,23 @@ import UIKit
 }
 
 @Suite @MainActor struct CardDragWatchTests {
+    private let card = UUID(), epic = UUID(), group = UUID()
+    private let stood = CGRect(x: 20, y: 300, width: 340, height: 70)
+
+    /// A watch that knows three names: a card's, a lane's and a group's.
+    private func watch() -> CardDragWatch {
+        let watch = CardDragWatch()
+        watch.resolve = { [card, epic, group, stood] name in
+            switch name {
+            case "CARD": .card(card, frame: stood)
+            case "EPIC": .epic(epic, frame: stood)
+            case "GROUP": .group(group, frame: stood)
+            default: nil
+            }
+        }
+        return watch
+    }
+
     /// The edges of a phone's board only take touches while a card is in hand.
     @Test func aDragIsOnFromTheFirstTargetToTheDrop() {
         let watch = CardDragWatch()
@@ -158,6 +175,167 @@ import UIKit
         watch.hover(true)
         watch.ended()
         #expect(!watch.active)
+    }
+
+    @Test func whatIsInHandIsKnownByTheNameItArrivesWith() {
+        let watch = watch()
+        watch.offered("CARD")
+        watch.hover(true)
+        #expect(watch.card == card)
+        #expect(watch.payload == "CARD")
+        #expect(watch.carriesCard)
+        // The same thing goes on being reported by every place it passes over.
+        watch.offered("EPIC")
+        #expect(watch.card == card)
+        watch.ended()
+        #expect(watch.lifted == nil)
+        #expect(watch.payload == nil)
+    }
+
+    @Test func somethingFromElsewhereIsCarriedButIsNothingOfTheBoards() {
+        let watch = watch()
+        watch.offered("a line of text")
+        watch.offered(nil)
+        watch.hover(true)
+        #expect(watch.active)
+        #expect(watch.lifted == nil)
+        // Taken for a card, since a card is what could be let go here.
+        #expect(watch.carriesCard)
+    }
+
+    @Test func aCardStaysUnderTheFingerWhereItWasTakenHoldOf() {
+        let watch = watch()
+        watch.offered("CARD")
+        watch.move(to: CGPoint(x: 120, y: 320))
+        #expect(watch.grab == CGSize(width: 100, height: 20))
+        watch.move(to: CGPoint(x: 150, y: 500))
+        #expect(watch.grab == CGSize(width: 100, height: 20))
+        #expect(watch.spot == CGPoint(x: 150, y: 500))
+    }
+
+    @Test func somewhereOffThePageSaysWhereTheFingerIsOnTheScreen() {
+        let watch = watch()
+        watch.pageOrigin = CGPoint(x: 0, y: -400)
+        watch.offered("CARD")
+        watch.move(toScreen: CGPoint(x: 120, y: 60))
+        #expect(watch.spot == CGPoint(x: 120, y: 460))
+    }
+
+    @Test func roomIsMadeOnlyWhereTheCardInHandWouldLand() {
+        let watch = watch()
+        watch.offered("CARD")
+        let place = CardDragWatch.Slot(epicId: epic, status: .inProgress, index: 2)
+        watch.aim(place, true)
+        #expect(watch.gap(epicId: epic, status: .inProgress, index: 2) == 70)
+        #expect(watch.gap(epicId: epic, status: .inProgress, index: 3) == 0)
+        #expect(watch.gap(epicId: nil, status: .inProgress, index: 2) == 0)
+        #expect(watch.aimed)
+    }
+
+    @Test func aLaneInHandFoldsEveryLaneAndAGroupEveryGroupToo() {
+        let lane = watch()
+        lane.offered("EPIC")
+        lane.hover(true)
+        #expect(lane.foldsLanes)
+        #expect(!lane.foldsGroups)
+        // The arrows at the page's edges are for a card.
+        #expect(!lane.carriesCard)
+        lane.ended()
+        #expect(!lane.foldsLanes)
+
+        let groups = watch()
+        groups.offered("GROUP")
+        #expect(groups.foldsLanes)
+        #expect(groups.foldsGroups)
+    }
+
+    @Test func roomForALaneIsAsTallAsItIsDrawnInHand() {
+        let watch = watch()
+        watch.offered("EPIC")
+        watch.holds(height: 66)
+        let other = UUID()
+        watch.steer(to: .before(other))
+        #expect(watch.room(for: .before(other)) == 66)
+        #expect(watch.room(for: .inside(other)) == 0)
+        #expect(watch.room(for: .last) == 0)
+        // A card has no berth.
+        let cards = self.watch()
+        cards.offered("CARD")
+        cards.steer(to: .last)
+        #expect(cards.berth == nil)
+    }
+
+    @Test func aLaneLetGoWaitsInItsRoomAndThePageOpensAfterIt() async throws {
+        let watch = watch()
+        watch.offered("EPIC")
+        watch.hover(true)
+        watch.steer(to: .last)
+        watch.settle()
+        #expect(watch.settling)
+        #expect(!watch.active)
+        // Nothing moves it now.
+        watch.steer(to: .before(UUID()))
+        #expect(watch.berth == .last)
+        watch.landed()
+        #expect(watch.lifted == nil)
+        #expect(watch.berth == nil)
+        // Still folded for a moment: it is put down among the names it was carried over.
+        #expect(watch.foldsLanes)
+        // And then not: given time enough, however busy the tests beside this one are.
+        for _ in 0..<60 where watch.foldsLanes { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(!watch.foldsLanes)
+    }
+}
+
+@Suite struct LaneBerthTests {
+    private let g1 = UUID(), g2 = UUID(), a = UUID(), b = UUID(), loose = UUID()
+
+    /// A group's title over its two lanes, then a lane in no group, then a group that is folded.
+    private var rows: [LaneBerths.Row] {
+        [.init(id: g1, group: g1), .init(id: a, group: g1), .init(id: b, group: g1),
+         .init(id: loose, group: nil), .init(id: g2, group: g2)]
+    }
+
+    private var frames: [UUID: CGRect] {
+        [g1: CGRect(x: 0, y: 0, width: 300, height: 40), a: CGRect(x: 0, y: 50, width: 300, height: 60),
+         b: CGRect(x: 0, y: 120, width: 300, height: 60), loose: CGRect(x: 0, y: 200, width: 300, height: 60),
+         g2: CGRect(x: 0, y: 270, width: 300, height: 40)]
+    }
+
+    private func berth(_ y: CGFloat, joins: Bool = true) -> CardDragWatch.Berth {
+        LaneBerths.berth(at: y, rows: rows, frames: frames, joins: joins)
+    }
+
+    @Test func aLaneGoesBeforeTheFirstRowWhoseMiddleIsBelowTheFinger() {
+        #expect(berth(10) == .before(g1))
+        // Past the title's middle it is in the group, first.
+        #expect(berth(30) == .before(a))
+        #expect(berth(100) == .before(b))
+    }
+
+    @Test func levelWithAGroupsLastRowIsTheEndOfTheGroupAndPastItIsOutside() {
+        #expect(berth(170) == .inside(g1))
+        #expect(berth(190) == .before(loose))
+        // A folded group is its title, and the same goes for that.
+        #expect(berth(300) == .inside(g2))
+        #expect(berth(320) == .last)
+    }
+
+    @Test func betweenTwoLanesInNoGroupThereIsNoGroupToJoin() {
+        #expect(berth(240) == .before(g2))
+    }
+
+    @Test func aGroupGoesAmongTheGroupsAndIntoNone() {
+        #expect(berth(170, joins: false) == .before(loose))
+        #expect(berth(300, joins: false) == .last)
+    }
+
+    @Test func aRowThatIsNotBuiltIsPassedOver() {
+        var frames = frames
+        frames[b] = nil
+        // The end of the group is then judged by the last of its rows that stands somewhere.
+        #expect(LaneBerths.berth(at: 100, rows: rows, frames: frames) == .inside(g1))
+        #expect(LaneBerths.berth(at: 150, rows: rows, frames: frames) == .before(loose))
     }
 }
 
