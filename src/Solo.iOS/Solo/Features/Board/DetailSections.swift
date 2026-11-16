@@ -308,7 +308,7 @@ struct CommentsSection: View {
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.glass)
-                    Button("Comment", systemImage: "arrow.up") {
+                    Button("Comment", systemImage: "paperplane.fill") {
                         Task { await post(newBody) }
                     }
                     .labelStyle(.iconOnly)

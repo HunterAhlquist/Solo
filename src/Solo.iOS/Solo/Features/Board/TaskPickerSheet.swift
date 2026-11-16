@@ -117,6 +117,7 @@ struct TaskPickerSheet: View {
                         Toggle("Finished tasks", isOn: $includeFinished)
                         Toggle("Closed boards", isOn: $includeClosed)
                     }
+                    .menuToggles()
                 }
             }
             .task { await load() }

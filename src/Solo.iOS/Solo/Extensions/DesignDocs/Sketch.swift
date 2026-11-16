@@ -841,6 +841,7 @@ struct SketchEditor: View {
                                 // Off, one finger moves the page and only the Pencil draws, as on the web.
                                 Toggle("Draw with Finger", systemImage: "hand.draw",
                                        isOn: Binding(get: { fingerDraws }, set: { fingerChoice = $0 }))
+                                    .menuToggles()
                                 Divider()
                                 Button("Clear Sketch…", systemImage: "trash", role: .destructive) { confirmingClear = true }
                                     .disabled(model.clearing)

@@ -420,7 +420,7 @@ struct FieldValue: View {
     }
 }
 
-/// Who it is assigned to. Each tick is its own save.
+/// Who it is assigned to. Each tick is its own save, and "Nobody" takes everyone off at once.
 struct AssigneeField: View {
     @Environment(\.theme) private var theme
     var store: BoardStore
@@ -441,6 +441,12 @@ struct AssigneeField: View {
                             Task { await onChange(ids) }
                         }))
                 }
+                if !assigneeIds.isEmpty {
+                    Divider()
+                    Button("Nobody", systemImage: "person.slash") {
+                        Task { await onChange([]) }
+                    }
+                }
             } label: {
                 let assigned = store.members(assigneeIds)
                 HStack(spacing: 6) {
@@ -455,7 +461,9 @@ struct AssigneeField: View {
                     Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(theme.textSecondary)
                 }
             }
+            // Several people can be ticked without the menu being opened again for each.
             .menuActionDismissBehavior(.disabled)
+            .menuToggles()
             .disabled(!canWrite)
         }
         if embedded {

@@ -91,6 +91,7 @@ struct MembersSection: View {
                     Toggle("Owner", isOn: Binding(get: { member.isOwner }, set: { owner in
                         Task { await update(member, role: member.role, isOwner: owner) }
                     }))
+                    .menuToggles()
                     .disabled(isLastOwner)
                     if member.isPending, session.config.emailEnabled == true {
                         Button("Resend Invite", systemImage: "envelope.arrow.triangle.branch") {

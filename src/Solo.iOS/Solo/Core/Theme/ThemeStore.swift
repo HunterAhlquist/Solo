@@ -89,6 +89,13 @@ struct ThemedRoot<Content: View>: View {
     }
 }
 
+extension View {
+    /// On a menu that has toggles in it: they are the menu's own ticked rows, and not the
+    /// app's switch. The switch is set for the whole app above, a menu included, and a switch
+    /// in a menu is a row that is greyed out and does nothing when it is pressed.
+    func menuToggles() -> some View { toggleStyle(.automatic) }
+}
+
 /// The system's switch, on a track its knob shows up against.
 private struct AccentSwitchStyle: ToggleStyle {
     var fill: Color

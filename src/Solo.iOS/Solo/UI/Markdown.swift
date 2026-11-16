@@ -415,7 +415,10 @@ struct MarkdownCheatsheet: View {
     }
 }
 
-/// A read box that opens the editor when tapped, for descriptions.
+/// A read box that opens the editor when tapped, for descriptions. Tapped anywhere: the pencil
+/// in its corner only says that it can be, and is not the thing to aim for. What is written
+/// in it still answers for itself — a link opens, a picture is looked at — and a tap on
+/// anything else, or on nothing, is a tap on the box.
 struct MarkdownField: View {
     @Environment(\.theme) private var theme
     var text: String?
@@ -436,12 +439,19 @@ struct MarkdownField: View {
         .card()
         .overlay(alignment: .topTrailing) {
             if canWrite {
-                Button("Edit description", systemImage: "square.and.pencil", action: onEdit)
-                    .labelStyle(.iconOnly)
+                Image(systemName: "square.and.pencil")
                     .font(.footnote)
                     .padding(8)
                     .foregroundStyle(theme.textSecondary)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
+        .contentShape(.rect)
+        .onTapGesture {
+            if canWrite { onEdit() }
+        }
+        .accessibilityAddTraits(canWrite ? .isButton : [])
+        .accessibilityHint(canWrite ? "Opens the editor" : "")
     }
 }
