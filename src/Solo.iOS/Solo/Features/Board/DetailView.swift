@@ -460,7 +460,13 @@ struct AssigneeField: View {
                     }
                     Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(theme.textSecondary)
                 }
+                // As wide as the row has room for, whoever is in it. The menu hangs from this, and
+                // stays open while people are ticked: hung from a label that was only as wide as
+                // what it said, it moved across the row when the last name went and "Nobody" came.
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .contentShape(.rect)
             }
+            .layoutPriority(1)
             // Several people can be ticked without the menu being opened again for each.
             .menuActionDismissBehavior(.disabled)
             .menuToggles()
