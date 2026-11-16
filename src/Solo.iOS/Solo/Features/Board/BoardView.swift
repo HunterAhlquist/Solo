@@ -517,7 +517,7 @@ private struct BoardCard: View {
     }
 }
 
-private struct CardDrag: ViewModifier {
+struct CardDrag: ViewModifier {
     var enabled: Bool
     var payload: String
 
@@ -535,7 +535,7 @@ private struct CardDrag: ViewModifier {
 /// What the system is handed to show of a thing it carries: nothing, and shaped as nothing. The
 /// system backs whatever it carries with a pale plate cut to this shape, and at any size that
 /// plate shows.
-private struct NothingToShow: View {
+struct NothingToShow: View {
     var body: some View {
         Color.clear.frame(width: 1, height: 1)
             .contentShape(.dragPreview, Rectangle().size(width: 0.01, height: 0.01))
@@ -548,7 +548,7 @@ private final class ZoneStanding {
     var cards: [UUID: CGRect] = [:]
 }
 
-private extension View {
+extension View {
     /// Says where this stands, in the board's space, whenever that changes: where it is picked
     /// up from, how large it is drawn in hand, and which two of its kind a thing in hand is between.
     func standing(_ tell: @escaping (CGRect) -> Void) -> some View {
@@ -562,26 +562,44 @@ private extension View {
     /// side. It is still there, because the system is carrying it by this view and gives up if
     /// the view goes; and it is moved away and not only made clear, because the system goes on
     /// drawing a view it has lifted whatever is said of its opacity.
+    ///
+    /// Going off to the side and coming back are done at once, whatever is being animated
+    /// around it: left to animate, a card that was let go was seen flying in from off the
+    /// screen to where the card in hand had just been put down. How tall it is and how clear
+    /// are outside that, and go at the pace of what is around them: its place closes behind it
+    /// as the room for it opens elsewhere, and a card given back to its place comes into view
+    /// as the place opens, not all at once over the card below.
     func leaves(_ gone: Bool) -> some View {
-        frame(height: gone ? 0 : nil, alignment: .top)
+        offset(x: gone ? 3000 : 0)
+            .animation(nil, value: gone)
             .opacity(gone ? 0 : 1)
-            .offset(x: gone ? 3000 : 0)
+            .frame(height: gone ? 0 : nil, alignment: .top)
     }
 }
 
-/// The thing in hand: the card itself, or the lane, or the group, where the
-/// finger has it, a little larger than it stood and with a shadow under it, as a thing picked
-/// up off a table is. It is drawn in the page's scrolling content, which is the space the
-/// finger's place is said in, so it needs nothing worked out to be put there. A card let go
-/// goes to the room made for it and is then the card that is there.
-private struct CarriedCard: View {
-    @Environment(\.theme) private var theme
-    @Bindable var model: BoardModel
+/// On a card: it leaves its place while it is the one in hand. A modifier of its own so that
+/// only the cards are looked over again when one is picked up, and not the page that holds them.
+struct LeavesInHand: ViewModifier {
+    var drag: CardDragWatch
+    var id: UUID
+
+    func body(content: Content) -> some View {
+        content.leaves(drag.card == id)
+    }
+}
+
+/// The thing in hand, where the finger has it, a little larger than it stood and with a shadow
+/// under it, as a thing picked up off a table is. It is drawn in the page's scrolling content,
+/// which is the space the finger's place is said in, so it needs nothing worked out to be put
+/// there. Let go where room was made for it, it goes to the room and is then what is there.
+/// What it looks like is the page's to say: a board's card, lane or group, or a card of Your Tasks.
+struct CarriedThing<Thing: View>: View {
+    var drag: CardDragWatch
+    @ViewBuilder var thing: (CardDragWatch.Lift) -> Thing
     /// Raised: it is drawn first as it stood, and then comes up.
     @State private var raised = false
 
     var body: some View {
-        let drag = model.drag
         if let lifted = drag.lifted, let spot = drag.spot {
             let frame = lifted.frame
             let held = CGPoint(x: spot.x - drag.grab.width, y: spot.y - drag.grab.height)
@@ -600,6 +618,17 @@ private struct CarriedCard: View {
                 .onAppear { withAnimation(.snappy(duration: 0.25)) { raised = true } }
                 .onDisappear { raised = false }
         }
+    }
+}
+
+/// What a board's thing in hand looks like: the card itself, or the lane, or the group.
+private struct CarriedCard: View {
+    @Environment(\.theme) private var theme
+    @Bindable var model: BoardModel
+    var lifted: CardDragWatch.Lift
+
+    var body: some View {
+        thing(lifted)
     }
 
     @ViewBuilder private func thing(_ lifted: CardDragWatch.Lift) -> some View {
@@ -741,17 +770,26 @@ extension View {
         modifier(BoardDrop(drag: drag, place: place, berth: berth, onScreen: onScreen, targeted: targeted, perform: perform))
     }
 
-    /// On the page's scrolling content: makes it the space everything on the board is placed
-    /// in, and draws the thing in hand over it all. It is also where a lane or a group in hand
-    /// is let go, wherever on the page that is: the rows it goes between are moving out of its
-    /// way, and the page is not (see `BoardDrop`). A card let go on the page and in no zone
-    /// goes nowhere.
-    func boardPage(_ model: BoardModel) -> some View {
+    /// On a page's scrolling content: makes it the space everything on the page is placed in,
+    /// and draws the thing in hand over it all. It is also somewhere to let go, wherever on the
+    /// page that is, so that the thing in hand follows the finger between the places meant for
+    /// it; what is let go there goes nowhere unless the page says otherwise.
+    func carryingPage<Thing: View>(_ drag: CardDragWatch, berth: ((CGPoint) -> CardDragWatch.Berth?)? = nil,
+                                   perform: @escaping (String) -> Bool = { _ in false },
+                                   @ViewBuilder carried: @escaping (CardDragWatch.Lift) -> Thing) -> some View {
         contentShape(.rect)
-            .boardDrop(model.drag, berth: { model.berth(at: $0) }) { _ in model.landLane() }
-            .overlay(alignment: .topLeading) { CarriedCard(model: model) }
-            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { model.drag.pageOrigin = $0 }
+            .boardDrop(drag, berth: berth, perform: perform)
+            .overlay(alignment: .topLeading) { CarriedThing(drag: drag, thing: carried) }
+            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { drag.pageOrigin = $0 }
             .coordinateSpace(.named(BoardSpace.name))
+    }
+
+    /// A board's page. It is where a lane or a group in hand is let go: the rows it goes
+    /// between are moving out of its way, and the page is not (see `BoardDrop`).
+    func boardPage(_ model: BoardModel) -> some View {
+        carryingPage(model.drag, berth: { model.berth(at: $0) }, perform: { _ in model.landLane() }) {
+            CarriedCard(model: model, lifted: $0)
+        }
     }
 
     func catchesDrops(_ drag: CardDragWatch) -> some View {

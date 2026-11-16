@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// The landing page: one person's work across every project, laid out as a
-/// board. The same cards and the same columns, moved with the same drag — but
+/// board. The same cards and the same columns, moved with the same drag — a card is picked up
+/// as itself and carried, as on a board, though here it is only ever put in another column
+/// and no room is made for it among the cards: where it lands there is its board's to say. And
 /// nothing is created here. A task belongs to a board, and this page only
 /// shows where each one came from and lets the person move it along.
 struct DashboardView: View {
@@ -55,7 +57,7 @@ struct DashboardView: View {
         let store = session.assigned
         Group {
             if let work = store.work {
-                let cards = cards(from: work)
+                let cards = Self.cards(from: work)
                 if sizeClass == .regular {
                     // Neither the bars around the page nor the row of columns asks how tall
                     // every card is: see `FillLayout` and `ZoneRow`.
@@ -83,6 +85,7 @@ struct DashboardView: View {
                                 if cards.isEmpty { empty }
                             }
                             .padding(16)
+                            .carryingPage(watch) { carried($0, cards, work) }
                         }
                     }
                 } else {
@@ -119,6 +122,7 @@ struct DashboardView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.bottom, 24)
+                            .carryingPage(watch) { carried($0, cards, work) }
                             // Says which scroll view this is, for the header's effect to be asked of.
                             .background(ScrollViewFinder(found: pageScroll))
                         }
@@ -173,6 +177,13 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedBackground()
         .task {
+            // What a card carried over this page is, from the serial number it goes by.
+            watch.resolve = { [session, watch] serial in
+                guard let work = session.assigned.work,
+                      let card = Self.cards(from: work).first(where: { $0.serial == serial }), card.project.canWrite,
+                      let frame = watch.cards[card.task.id] else { return nil }
+                return .card(card.task.id, frame: frame)
+            }
             // What extensions with no native half add to cards, for every card here at once.
             session.kit.mount(BoardKitMount.assigned, .assignedCards)
             do {
@@ -201,7 +212,7 @@ struct DashboardView: View {
             .padding(.top, 24)
     }
 
-    private func cards(from work: AssignedTasks) -> [Card] {
+    private static func cards(from work: AssignedTasks) -> [Card] {
         let boards = Dictionary(uniqueKeysWithValues: work.boards.map { ($0.id, $0) })
         let projects = Dictionary(uniqueKeysWithValues: work.projects.map { ($0.id, $0) })
         let epics = Dictionary(uniqueKeysWithValues: (work.epics ?? []).map { ($0.id, $0) })
@@ -241,17 +252,14 @@ struct DashboardView: View {
                             open: finishedOpen, landing: landed?.status == .finished ? landed?.taskId : nil,
                             onToggle: { finishedOpen.toggle() })
             : nil
-        DashboardZone(status: status, lazy: !whole.contains(status), fold: fold, heights: heights,
+        DashboardZone(status: status, lazy: !whole.contains(status), fold: fold, heights: heights, watch: watch,
                       onDrop: { drop($0, status, all) }) {
             ForEach(shown) { card in
-                let view = TaskCardView(
-                    task: card.task, projectId: card.project.id,
-                    label: card.task.labelId.flatMap { id in work.labels.first { $0.id == id } },
-                    assignees: work.members.filter { member in member.userId.map(card.task.assigneeIds.contains) ?? false },
-                    pulse: session.assigned.pulsing.contains(card.task.id),
-                    origin: card.origin, canWrite: card.project.canWrite, kitMount: BoardKitMount.assigned)
-                Button { openTask = card.task.id } label: { view }
+                Button { openTask = card.task.id } label: { cardView(card, work) }
                     .buttonStyle(.plain)
+                    // Where it stands: where it is picked up from, and how wide it is in hand.
+                    .standing { watch.cards[card.task.id] = $0 }
+                    .onDisappear { watch.cards[card.task.id] = nil }
                     .landingTarget(landed?.taskId == card.task.id)
                     .contextMenu {
                         Button("Open", systemImage: "arrow.up.forward.app") { openTask = card.task.id }
@@ -266,14 +274,29 @@ struct DashboardView: View {
                             }
                         }
                     }
-                    .draggable(card.serial) {
-                        view.frame(width: 240).environment(\.theme, theme).environment(session)
-                            .environment(session.navigator)
-                    }
+                    .modifier(CardDrag(enabled: card.project.canWrite, payload: card.serial))
+                    .modifier(LeavesInHand(drag: watch, id: card.task.id))
             }
             if shown.count < inColumn.count {
                 ShowAllButton(total: inColumn.count) { withAnimation { finishedExpanded = true } }
             }
+        }
+    }
+
+    private func cardView(_ card: Card, _ work: AssignedTasks) -> TaskCardView {
+        TaskCardView(
+            task: card.task, projectId: card.project.id,
+            label: card.task.labelId.flatMap { id in work.labels.first { $0.id == id } },
+            assignees: work.members.filter { member in member.userId.map(card.task.assigneeIds.contains) ?? false },
+            pulse: session.assigned.pulsing.contains(card.task.id),
+            origin: card.origin, canWrite: card.project.canWrite, kitMount: BoardKitMount.assigned)
+    }
+
+    /// The card in hand, drawn as the card it is.
+    @ViewBuilder
+    private func carried(_ lift: CardDragWatch.Lift, _ cards: [Card], _ work: AssignedTasks) -> some View {
+        if case .card(let id, _) = lift, let card = cards.first(where: { $0.id == id }) {
+            cardView(card, work)
         }
     }
 
@@ -553,9 +576,9 @@ private struct DashboardZone<Content: View>: View {
     var fold: DashboardFold?
     /// How tall the active columns stand: they say, and the Finished one listens.
     var heights: LaneHeights
+    var watch: CardDragWatch
     var onDrop: ([String]) -> Bool
     @ViewBuilder var content: Content
-    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
     @State private var targeted = false
 
     var body: some View {
@@ -589,13 +612,8 @@ private struct DashboardZone<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .top)
         .padding(6)
         .glassEffect(targeted ? .regular.tint(theme.accentWash) : .regular, in: theme.cardShape)
-        .dropDestination(for: String.self) { payloads, _ in
-            watch?.ended()
-            return onDrop(payloads)
-        } isTargeted: {
-            targeted = $0
-            watch?.hover($0)
-        }
+        // The column is where a card is let go, and never the cards in it: see `BoardDrop`.
+        .boardDrop(watch, targeted: { targeted = $0 }) { onDrop([$0]) }
         .animation(.easeOut(duration: 0.15), value: targeted)
     }
 }

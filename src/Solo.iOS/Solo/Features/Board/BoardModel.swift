@@ -548,7 +548,10 @@ final class BoardModel {
     /// was in hand it is sent to where it now is, to be put down there.
     func land(_ payload: String, epicId: UUID?, status: TaskState, index: Int?) -> Bool {
         let carried = drag.card
-        guard drop([payload], epicId: epicId, status: status, index: index) else { return false }
+        let moved = drop([payload], epicId: epicId, status: status, index: index)
+        // Put back where it came from, it is put down there all the same, and not dropped.
+        let home = !moved && carried != nil && task(dropped: payload)?.id == carried
+        guard moved || home else { return false }
         if let carried, let task = task(carried),
            let at = cards(epicId: task.epicId, status: task.status).firstIndex(where: { $0.id == carried }) {
             drag.settle(at: CardDragWatch.Slot(epicId: task.epicId, status: task.status, index: at))

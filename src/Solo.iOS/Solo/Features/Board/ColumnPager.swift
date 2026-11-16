@@ -411,9 +411,13 @@ final class CardDragWatch {
             }
         } else {
             // Put down without a flourish, since the thing drawn in hand and the thing in its
-            // place are in the same spot and one is swapped for the other. The page opening
-            // again is a change to be seen, and so is made a moment after, by itself.
-            clear()
+            // place are in the same spot and one is swapped for the other: nothing is to
+            // animate, not even what a zone would animate of its own accord for no longer
+            // being aimed at. The page opening again is a change to be seen, and so is made a
+            // moment after, by itself.
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still, clear)
             guard foldsLanes || foldsGroups else { return }
             unfolding = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(40))
