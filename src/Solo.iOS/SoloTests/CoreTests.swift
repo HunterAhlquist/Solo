@@ -214,11 +214,80 @@ import UIKit
         try await settled(watch, closed: false)
     }
 
+    /// Let go somewhere that will not have it, a thing is carried back by the system, which
+    /// goes on saying what it is over on the way.
+    @Test func whatTheSystemSaysJustAfterALetGoPicksNothingUp() async throws {
+        let watch = watch()
+        watch.offered("CARD")
+        watch.hover(true)
+        watch.ended()
+        #expect(watch.justLetGo)
+        watch.offered("CARD")
+        watch.hover(true)
+        watch.aim(CardDragWatch.Slot(epicId: nil, status: .unstarted, index: 0), true)
+        #expect(watch.lifted == nil)
+        #expect(!watch.active)
+        #expect(watch.slot == nil)
+        // And a moment later a thing can be picked up again.
+        try await Task.sleep(for: .milliseconds(450))
+        #expect(!watch.justLetGo)
+        watch.offered("CARD")
+        #expect(watch.card == card)
+    }
+
+    /// Let go within a few points of the screen's edge, a thing is not said to have been.
+    @Test func aThingTheSystemStopsSpeakingOfHasBeenLetGo() async throws {
+        let watch = watch()
+        watch.offered("CARD")
+        watch.hover(true)
+        var letGo = false
+        // Said many times a second, the same place each time: it is being carried, and held still.
+        for _ in 0..<6 {
+            watch.alive(at: CGPoint(x: 10, y: 20)) { letGo = true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!letGo)
+        for _ in 0..<60 where !letGo { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(letGo)
+    }
+
+    @Test func oneThatLeavesAPlaceIsNotLetGoThere() async throws {
+        let watch = watch()
+        watch.offered("CARD")
+        watch.hover(true)
+        var letGo = false
+        for _ in 0..<6 {
+            watch.alive(at: CGPoint(x: 10, y: 20)) { letGo = true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        watch.quiet()
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(!letGo)
+        #expect(watch.card == card)
+    }
+
+    @Test func silenceIsNotTakenForAnythingUntilTheSystemIsHeardToRepeatItself() async throws {
+        let watch = watch()
+        watch.offered("CARD")
+        watch.hover(true)
+        var letGo = false
+        // Each time somewhere new: nothing says it would speak of a thing held still.
+        for step in 0..<6 {
+            watch.alive(at: CGPoint(x: 10 + CGFloat(step), y: 20)) { letGo = true }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await Task.sleep(for: .milliseconds(900))
+        #expect(!letGo)
+        #expect(watch.card == card)
+    }
+
     @Test func oneGivenBackIsBackWhenTheNextIsPickedUp() async throws {
         let watch = watch()
         watch.offered("CARD")
         try await settled(watch, closed: true)
         watch.ended()
+        // A press long enough to pick something up.
+        try await Task.sleep(for: .milliseconds(450))
         watch.offered("EPIC")
         // The card's place is not left closed behind the lane.
         #expect(watch.left == nil)

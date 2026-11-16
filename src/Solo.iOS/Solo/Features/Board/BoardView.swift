@@ -702,19 +702,35 @@ private struct BoardDrop: ViewModifier {
         func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) }
 
         func dropEntered(info: DropInfo) {
+            // Not a thing arriving, if one was let go a moment ago: `CardDragWatch.justLetGo`.
+            guard !drag.justLetGo else { return }
             targeted?(true)
             over(info, true)
         }
 
         func dropUpdated(info: DropInfo) -> DropProposal? {
-            over(info, true)
+            if !drag.justLetGo {
+                over(info, true)
+                // Still in hand, and still here: see `CardDragWatch.alive`. Somewhere off the
+                // page — an edge, a column of the selector — is somewhere a thing is let go
+                // on purpose, so one that goes quiet there is taken to have been.
+                drag.alive(at: info.location, lapse: onScreen ? { letGo() } : nil)
+            }
             // A move: the system then draws no badge beside the finger.
             return DropProposal(operation: .move)
         }
 
         func dropExited(info: DropInfo) {
+            drag.quiet()
             targeted?(false)
             over(info, false)
+        }
+
+        /// What is in hand is let go here.
+        private func letGo() {
+            targeted?(false)
+            if let payload = drag.payload { _ = perform(payload) }
+            if !drag.settling { drag.ended() }
         }
 
         private func over(_ info: DropInfo, _ over: Bool) {
@@ -733,14 +749,19 @@ private struct BoardDrop: ViewModifier {
         }
 
         func performDrop(info: DropInfo) -> Bool {
-            targeted?(false)
+            drag.quiet()
             // Something of this board's: what it is was kept when it was picked up.
-            if let payload = drag.payload {
-                let landed = perform(payload)
-                if !drag.settling { drag.ended() }
-                return landed
+            if drag.payload != nil {
+                letGo()
+                // Taken, whether or not it went anywhere. Refused, the system carries the thing
+                // back to where it came from, which there is nothing of to see, and goes on
+                // reporting it over whatever is under it on the way: a card let go on the edge
+                // of the column it was already in was back in hand, with no finger on it, and
+                // the edge went on turning the columns.
+                return true
             }
             // Something from elsewhere, which has to be asked what it is.
+            targeted?(false)
             drag.ended()
             guard let provider = info.itemProviders(for: [.plainText]).first else { return false }
             _ = provider.loadObject(ofClass: NSString.self) { text, _ in
@@ -1165,7 +1186,8 @@ private struct BoardPager: View {
         // A card held at either side is carried to the column that way.
         .overlay {
             ColumnEdgeSensors(selection: $model.column, watch: watch) { payloads, status in
-                // Let go on the edge itself, it joins the column showing — unless that is where it already is.
+                // Let go on the edge itself, it goes to the foot of its lane in the column beyond
+                // the edge — unless that is where it already is.
                 guard let task = model.task(dropped: payloads.first ?? ""), task.status != status else { return false }
                 return model.drop(payloads, epicId: task.epicId, status: status, index: nil)
             }
@@ -1315,7 +1337,7 @@ private struct ColumnSwitcherSegment: View {
             guard isTargeted, selection != status else { return }
             springLoad = Task {
                 try? await Task.sleep(for: .milliseconds(700))
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, watch?.stalled != true else { return }
                 withAnimation(.snappy) { selection = status }
             }
         })

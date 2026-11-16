@@ -203,6 +203,23 @@ final class CardDragWatch {
     @ObservationIgnored private var arriving: Task<Void, Never>?
     @ObservationIgnored private var unfolding: Task<Void, Never>?
     @ObservationIgnored private var parting: Task<Void, Never>?
+    /// When the thing in hand was last let go: see `justLetGo`.
+    @ObservationIgnored private var letGo: Date?
+    /// The last the system said of the thing in hand, and how often it has said the same twice
+    /// running: see `alive`.
+    @ObservationIgnored private var beat: (at: Date, location: CGPoint)?
+    @ObservationIgnored private var steady = 0
+    @ObservationIgnored private var lapse: (() -> Void)?
+    @ObservationIgnored private var pulse: Task<Void, Never>?
+
+    /// Whether something was let go a moment ago. The system does not always stop saying where
+    /// a thing is once it has been let go — let go somewhere that will not have it, it is
+    /// carried back, and passes over the page on the way — and what it says then is not a
+    /// thing being picked up. Nothing is picked up by hand this soon after: it takes a press
+    /// of half a second.
+    var justLetGo: Bool {
+        letGo.map { Date().timeIntervalSince($0) < 0.4 } ?? false
+    }
     /// What a thing in hand is, from what it is called: the board's to say, since it is the
     /// board's cards and lanes that are known by those names. See `offered`.
     @ObservationIgnored var resolve: ((String) -> Lift?)?
@@ -289,7 +306,7 @@ final class CardDragWatch {
     /// thing is, and moves that picture at whatever pace is going when the thing moves — so
     /// that a card put out of sight while its place was closing was seen flying off the screen.
     func offered(_ name: String?) {
-        guard lifted == nil, !settling, let name, let lift = resolve?(name) else { return }
+        guard lifted == nil, !settling, !justLetGo, let name, let lift = resolve?(name) else { return }
         payload = name
         unfolding?.cancel()
         parting?.cancel()
@@ -315,10 +332,60 @@ final class CardDragWatch {
         }
     }
 
+    /// Somewhere to let go says the thing in hand is still over it, and where.
+    ///
+    /// A thing let go is usually said to be: the place is told to take it. But not always. Let
+    /// go within a few points of the screen's edge, nothing is said at all — not that it was
+    /// let go, not that it left — and the thing stayed in hand with no finger on it, at an
+    /// edge that went on turning the columns. What can be told is that the system has stopped
+    /// talking: while a thing is carried it says where the thing is many times a second,
+    /// whether or not it has moved. So once it has been heard to do that — to say the same
+    /// place twice running, which it would not if it only spoke of movement — a silence is the
+    /// thing having been let go, and `lapse` is done, or it is given back.
+    func alive(at location: CGPoint, lapse: (() -> Void)? = nil) {
+        let now = Date()
+        if let beat, beat.location == location, now.timeIntervalSince(beat.at) < 0.06 { steady += 1 }
+        beat = (now, location)
+        self.lapse = lapse
+        guard pulse == nil else { return }
+        pulse = Task { [weak self] in
+            var quiet = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled, let self, let beat = self.beat else { return }
+                // Twice running, so that a moment when the app itself was too busy to listen
+                // is not taken for silence: what was said meanwhile is heard between the two.
+                quiet = self.steady >= 3 && Date().timeIntervalSince(beat.at) > 0.35 ? quiet + 1 : 0
+                guard quiet >= 2 else { continue }
+                let lapse = self.lapse
+                self.quiet()
+                if let lapse { lapse() } else { self.ended() }
+                return
+            }
+        }
+    }
+
+    /// Whether the system has gone quiet about the thing in hand, though not yet for long enough
+    /// to be sure of it. Whatever would act on a thing being held somewhere — an edge turning
+    /// the columns — waits while it is: a thing that has been let go is not being held.
+    var stalled: Bool {
+        guard steady >= 3, let beat else { return false }
+        return Date().timeIntervalSince(beat.at) > 0.15
+    }
+
+    /// The thing in hand has left the place that was listening for it, or been let go there.
+    func quiet() {
+        pulse?.cancel()
+        pulse = nil
+        beat = nil
+        lapse = nil
+    }
+
     /// A drop target reports a card arriving over it, or leaving.
     func hover(_ over: Bool) {
         idle?.cancel()
         if over {
+            guard !justLetGo else { return }
             // The first target a card is over is where it was picked up from.
             if !active { Haptics.shared.play(.pickUp) }
             // Said after what is in hand is known (`offered`). Said before, there is a moment
@@ -367,7 +434,7 @@ final class CardDragWatch {
     /// A place a card could land reports the card arriving over it, or leaving.
     func aim(_ place: Slot, _ over: Bool) {
         hover(over)
-        guard !settling else { return }
+        guard !settling, !(over && justLetGo) else { return }
         if over {
             leaving?.cancel()
             guard slot != place else { return }
@@ -391,6 +458,7 @@ final class CardDragWatch {
 
     /// The card was let go and has a place: it goes to it, and is then the card that is there.
     func settle(at place: Slot) {
+        letGo = Date()
         idle?.cancel()
         leaving?.cancel()
         Haptics.shared.play(.drop)
@@ -408,6 +476,7 @@ final class CardDragWatch {
     /// The lane or the group was let go over a berth. Its place there is the server's to give,
     /// which takes a moment: it goes to the room made for it and waits there, until `landed`.
     func settle() {
+        letGo = Date()
         idle?.cancel()
         leaving?.cancel()
         Haptics.shared.play(.drop)
@@ -422,6 +491,7 @@ final class CardDragWatch {
 
     /// Whatever was in hand was let go.
     func ended() {
+        letGo = Date()
         Haptics.shared.play(.drop)
         finish()
     }
@@ -432,6 +502,8 @@ final class CardDragWatch {
         arriving?.cancel()
         payload = nil
         active = false
+        quiet()
+        steady = 0
         guard lifted != nil || slot != nil || left != nil else { return }
         unfolding?.cancel()
         parting?.cancel()
@@ -492,7 +564,9 @@ final class CardDragWatch {
 struct ColumnEdgeSensors: View {
     @Binding var selection: TaskState
     var watch: CardDragWatch
-    /// A card let go on an edge lands in the column showing.
+    /// A card let go on an edge goes to the column beyond it: the one the edge's arrow points
+    /// to, which is what holding it there would have turned to. Where there is no column that
+    /// way, the column showing.
     var onDrop: ([String], TaskState) -> Bool
 
     var body: some View {
@@ -538,13 +612,14 @@ private struct EdgeSensor: View {
                     var pause = Duration.milliseconds(550)
                     while !Task.isCancelled {
                         try? await Task.sleep(for: pause)
-                        guard !Task.isCancelled, let neighbour else { return }
+                        // Not if it was let go a moment ago and that is not yet known: see `stalled`.
+                        guard !Task.isCancelled, !watch.stalled, let neighbour else { return }
                         withAnimation(.snappy(duration: 0.32)) { selection = neighbour }
                         pause = .milliseconds(1000)
                     }
                 }
             }) { payload in
-                onDrop([payload], selection)
+                onDrop([payload], neighbour ?? selection)
             }
             .overlay {
                 // Says the edge is somewhere to go, while there is a column that way.
