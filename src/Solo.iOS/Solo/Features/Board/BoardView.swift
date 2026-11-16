@@ -1281,9 +1281,9 @@ private struct PagerLane: View {
     }
 }
 
-/// The three columns as a switch: the system's own, so that what is chosen is a piece of glass
-/// that slides to where it is put and can be taken hold of and slid there, as on a project's
-/// page. Also where a dragged card goes to change column on a phone: let go over a column to
+/// The three columns as a switch: the system's own (`ColumnSegments`), so that what is chosen
+/// is a piece of glass that slides to where it is put and can be taken hold of and slid there,
+/// as on a project's page. Also where a dragged card goes to change column on a phone: let go over a column to
 /// send the card there, or hold over it to be taken there with the card still in hand.
 ///
 /// The system's control is one view and not three, so the column a card is over is worked out
@@ -1304,13 +1304,12 @@ struct ColumnSwitcher: View {
     @State private var springLoad: Task<Void, Never>?
 
     var body: some View {
-        Picker("Column", selection: $selection.animation(.snappy)) {
-            ForEach(TaskState.allCases) { status in
-                Text("\(status.title) \(count(status))").tag(status)
-            }
-        }
-        .pickerStyle(.segmented)
-        .controlSize(.large)
+        ColumnSegments(titles: TaskState.allCases.map { "\($0.title) \(count($0))" },
+                       index: Binding(get: { TaskState.allCases.firstIndex(of: selection) ?? 0 },
+                                      set: { index in withAnimation(.snappy) { selection = TaskState.allCases[index] } }),
+                       wash: UIColor(theme.accentWash), chosen: UIColor(theme.primary), plain: UIColor(theme.textPrimary))
+        .frame(height: 44)
+        .accessibilityLabel("Column")
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .overlay(alignment: .leading) {
             // Which column a card would go to, said over the control and not by it.
@@ -1366,6 +1365,62 @@ private struct SelectorDrop: ViewModifier {
             content.boardDrop(watch, onScreen: true, located: located, targeted: targeted, perform: perform)
         } else {
             content
+        }
+    }
+}
+
+/// The system's segmented control, as itself and not through a picker: a picker has no way to
+/// say what colour the chosen segment is — a tint on it does nothing — and the control does,
+/// as one of its own properties. The chosen column is washed in the theme's colour and written
+/// in it, as a chosen tab is.
+///
+/// Turned some other way — a swipe across the page, a card held at its edge — the glass goes to
+/// the new column at the control's own pace, which is not to be had by asking: told to take
+/// two seconds over it, here or through a picker, it was there within a quarter of one.
+private struct ColumnSegments: UIViewRepresentable {
+    var titles: [String]
+    @Binding var index: Int
+    var wash: UIColor
+    var chosen: UIColor
+    var plain: UIColor
+
+    func makeCoordinator() -> Coordinator { Coordinator(index: $index) }
+
+    func makeUIView(context: Context) -> UISegmentedControl {
+        let control = UISegmentedControl(items: titles)
+        control.selectedSegmentIndex = index
+        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        // Wide as it is given, and no wider for a long title.
+        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        control.apportionsSegmentWidthsByContent = false
+        return control
+    }
+
+    func updateUIView(_ control: UISegmentedControl, context: Context) {
+        context.coordinator.index = $index
+        for (segment, title) in titles.enumerated() where control.titleForSegment(at: segment) != title {
+            control.setTitle(title, forSegmentAt: segment)
+        }
+        if control.selectedSegmentIndex != index { control.selectedSegmentIndex = index }
+        control.selectedSegmentTintColor = wash
+        let font = UIFont.preferredFont(forTextStyle: .footnote)
+        control.setTitleTextAttributes([.foregroundColor: plain, .font: font], for: .normal)
+        control.setTitleTextAttributes([.foregroundColor: chosen, .font: UIFont.systemFont(ofSize: font.pointSize, weight: .semibold)],
+                                       for: .selected)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UISegmentedControl, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? uiView.intrinsicContentSize.width,
+               height: proposal.height ?? uiView.intrinsicContentSize.height)
+    }
+
+    final class Coordinator: NSObject {
+        var index: Binding<Int>
+        init(index: Binding<Int>) { self.index = index }
+
+        @objc func changed(_ control: UISegmentedControl) {
+            index.wrappedValue = control.selectedSegmentIndex
         }
     }
 }
