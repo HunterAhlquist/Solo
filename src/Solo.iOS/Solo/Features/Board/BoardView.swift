@@ -675,6 +675,9 @@ private struct BoardDrop: ViewModifier {
     var berth: ((CGPoint) -> CardDragWatch.Berth?)?
     /// Somewhere that is not on the board's page, and so says where the finger is on the screen.
     var onScreen = false
+    /// For somewhere that is several places in one — the selector's columns: where in it the
+    /// finger is, as it moves.
+    var located: ((CGPoint) -> Void)?
     var targeted: ((Bool) -> Void)?
     var perform: (String) -> Bool
     /// This view's corner in the board's space, or on the screen: what turns a place in it
@@ -687,7 +690,8 @@ private struct BoardDrop: ViewModifier {
                 $0.frame(in: onScreen ? .global : .named(BoardSpace.name)).origin
             } action: { origin = $0 }
             .onDrop(of: [.plainText], delegate: Delegate(drag: drag, place: place, berth: berth, onScreen: onScreen,
-                                                         origin: origin, targeted: targeted, perform: perform))
+                                                         origin: origin, located: located, targeted: targeted,
+                                                         perform: perform))
     }
 
     struct Delegate: DropDelegate {
@@ -696,6 +700,7 @@ private struct BoardDrop: ViewModifier {
         var berth: ((CGPoint) -> CardDragWatch.Berth?)?
         var onScreen: Bool
         var origin: CGPoint
+        var located: ((CGPoint) -> Void)?
         var targeted: ((Bool) -> Void)?
         var perform: (String) -> Bool
 
@@ -710,6 +715,7 @@ private struct BoardDrop: ViewModifier {
 
         func dropUpdated(info: DropInfo) -> DropProposal? {
             if !drag.justLetGo {
+                located?(info.location)
                 over(info, true)
                 // Still in hand, and still here: see `CardDragWatch.alive`. Somewhere off the
                 // page — an edge, a column of the selector — is somewhere a thing is let go
@@ -728,8 +734,9 @@ private struct BoardDrop: ViewModifier {
 
         /// What is in hand is let go here.
         private func letGo() {
-            targeted?(false)
             if let payload = drag.payload { _ = perform(payload) }
+            // After, and not before: where it was over may be what says where it goes.
+            targeted?(false)
             if !drag.settling { drag.ended() }
         }
 
@@ -779,8 +786,10 @@ extension View {
     /// A place on the board's page to let something go, or to carry it over.
     func boardDrop(_ drag: CardDragWatch, place: ((CGPoint) -> CardDragWatch.Slot)? = nil,
                    berth: ((CGPoint) -> CardDragWatch.Berth?)? = nil, onScreen: Bool = false,
-                   targeted: ((Bool) -> Void)? = nil, perform: @escaping (String) -> Bool) -> some View {
-        modifier(BoardDrop(drag: drag, place: place, berth: berth, onScreen: onScreen, targeted: targeted, perform: perform))
+                   located: ((CGPoint) -> Void)? = nil, targeted: ((Bool) -> Void)? = nil,
+                   perform: @escaping (String) -> Bool) -> some View {
+        modifier(BoardDrop(drag: drag, place: place, berth: berth, onScreen: onScreen, located: located,
+                           targeted: targeted, perform: perform))
     }
 
     /// On a page's scrolling content: makes it the space everything on the page is placed in,
@@ -1272,9 +1281,13 @@ private struct PagerLane: View {
     }
 }
 
-/// The three columns as a switch. Also where a dragged card goes to change
-/// column on a phone: let go over a column to send the card there, or hold
-/// over it to be taken there with the card still in hand.
+/// The three columns as a switch: the system's own, so that what is chosen is a piece of glass
+/// that slides to where it is put and can be taken hold of and slid there, as on a project's
+/// page. Also where a dragged card goes to change column on a phone: let go over a column to
+/// send the card there, or hold over it to be taken there with the card still in hand.
+///
+/// The system's control is one view and not three, so the column a card is over is worked out
+/// from how far across the finger is, and marked by a wash drawn over that third of it.
 struct ColumnSwitcher: View {
     /// The room a header leaves under the selector, so that its edge does not run along the selector's.
     static let footing: CGFloat = 8
@@ -1283,79 +1296,74 @@ struct ColumnSwitcher: View {
     @Binding var selection: TaskState
     var count: (TaskState) -> Int
     var onDrop: ([String], TaskState) -> Bool
-    @Namespace private var namespace
+    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
+    /// How wide the control is, for telling which column a finger is over.
+    @State private var width: CGFloat = 0
+    /// The column a card in hand is over.
+    @State private var over: TaskState?
+    @State private var springLoad: Task<Void, Never>?
 
     var body: some View {
-        GlassEffectContainer {
-            HStack(spacing: 4) {
-                ForEach(TaskState.allCases) { status in
-                    ColumnSwitcherSegment(status: status, count: count(status), selection: $selection, onDrop: onDrop)
-                }
+        Picker("Column", selection: $selection.animation(.snappy)) {
+            ForEach(TaskState.allCases) { status in
+                Text("\(status.title) \(count(status))").tag(status)
             }
-            .padding(4)
-            .glassEffect(.regular, in: .capsule)
         }
+        .pickerStyle(.segmented)
+        .controlSize(.large)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .overlay(alignment: .leading) {
+            // Which column a card would go to, said over the control and not by it.
+            if let over, let index = TaskState.allCases.firstIndex(of: over), width > 0 {
+                let each = width / CGFloat(TaskState.allCases.count)
+                Capsule()
+                    .fill(theme.accentWash)
+                    .padding(3)
+                    .frame(width: each)
+                    .offset(x: each * CGFloat(index))
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy(duration: 0.2), value: over)
+        .modifier(SelectorDrop(watch: watch, located: { point in
+            let all = TaskState.allCases
+            guard width > 0 else { return }
+            let index = min(max(Int(point.x / width * CGFloat(all.count)), 0), all.count - 1)
+            if over != all[index] { over = all[index] }
+        }, targeted: { isTargeted in
+            if !isTargeted { over = nil }
+        }) { payload in
+            guard let over else { return false }
+            return onDrop([payload], over)
+        })
+        .onChange(of: over) { _, status in
+            // Held over a column that is not showing, the page turns to it.
+            springLoad?.cancel()
+            guard let status, status != selection else { return }
+            springLoad = Task {
+                try? await Task.sleep(for: .milliseconds(700))
+                guard !Task.isCancelled, watch?.stalled != true, over == status else { return }
+                withAnimation(.snappy) { selection = status }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: selection)
         // Three names share one line, as a tab bar's do: past this size they would only truncate.
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
-private struct ColumnSwitcherSegment: View {
-    @Environment(\.theme) private var theme
-    var status: TaskState
-    var count: Int
-    @Binding var selection: TaskState
-    var onDrop: ([String], TaskState) -> Bool
-    @Environment(CardDragWatch.self) private var watch: CardDragWatch?
-    @State private var targeted = false
-    @State private var springLoad: Task<Void, Never>?
-
-    var body: some View {
-        let selected = selection == status
-        Button {
-            withAnimation(.snappy) { selection = status }
-        } label: {
-            HStack(spacing: 5) {
-                Text(status.title).lineLimit(1).minimumScaleFactor(0.7)
-                Text("\(count)").monospacedDigit().opacity(0.7)
-            }
-            .font(.footnote.weight(.semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .foregroundStyle(selected ? theme.primary : theme.textPrimary)
-            .background {
-                if selected || targeted {
-                    Capsule().fill(theme.accentWash)
-                }
-            }
-            .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .modifier(SegmentDrop(watch: watch, perform: { onDrop([$0], status) }) { isTargeted in
-            targeted = isTargeted
-            springLoad?.cancel()
-            guard isTargeted, selection != status else { return }
-            springLoad = Task {
-                try? await Task.sleep(for: .milliseconds(700))
-                guard !Task.isCancelled, watch?.stalled != true else { return }
-                withAnimation(.snappy) { selection = status }
-            }
-        })
-        .sensoryFeedback(.selection, trigger: selection)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// A column of the selector as somewhere a card is let go. It is not on the board's page, so it
-/// says where the finger is on the screen, and the card in hand comes up to it with the finger.
-private struct SegmentDrop: ViewModifier {
+/// The selector as somewhere a card is let go. It is not on the board's page, so it says where
+/// the finger is on the screen, and the card in hand comes up to it with the finger.
+private struct SelectorDrop: ViewModifier {
     var watch: CardDragWatch?
-    var perform: (String) -> Bool
+    var located: (CGPoint) -> Void
     var targeted: (Bool) -> Void
+    var perform: (String) -> Bool
 
     func body(content: Content) -> some View {
         if let watch {
-            content.boardDrop(watch, onScreen: true, targeted: targeted, perform: perform)
+            content.boardDrop(watch, onScreen: true, located: located, targeted: targeted, perform: perform)
         } else {
             content
         }
