@@ -93,7 +93,8 @@ struct TaskCardView: View {
         // The wash says what the outline said: it runs from the theme's colour to red as a deadline
         // nears, and a remote change deepens it for a moment where the outline used to flash.
         .glassEffect(.regular.tint(wash), in: cardShape)
-        .opacity(isFinished ? 0.75 : 1)
+        // Done work stands back: half strength, title struck through, still readable and openable.
+        .opacity(isFinished ? 0.5 : 1)
         // The whole card is the card: what a tap lands on as well as what is picked up. Left
         // unsaid, a tap between the things written on it found nothing there on a phone, and
         // only a tap on the title or a badge opened the task.
