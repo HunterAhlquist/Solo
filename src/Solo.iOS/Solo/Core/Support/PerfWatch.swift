@@ -1,6 +1,8 @@
 import QuartzCore
 #if canImport(UIKit)
 import UIKit
+#else
+import AppKit
 #endif
 
 /// Measurement for a debug build: how smoothly frames arrive, and how often the
@@ -16,21 +18,15 @@ import UIKit
 enum Perf {
     #if DEBUG || PERF
     private static var counts: [String: Int] = [:]
-    #if os(iOS)
     private static let watch = PerfWatch()
-    #endif
 
     @inline(__always) static func count(_ name: String, _ by: Int = 1) {
         counts[name, default: 0] += by
     }
 
-    /// Counting works on a Mac; the watch that writes the log is an iPhone's and an iPad's,
-    /// which are what it was written to measure.
     static func start() {
-        #if os(iOS)
         guard ProcessInfo.processInfo.environment["SOLO_PERF"] != nil else { return }
         watch.start()
-        #endif
     }
 
     fileprivate static func drain() -> String {
@@ -43,7 +39,8 @@ enum Perf {
     #endif
 }
 
-#if (DEBUG || PERF) && os(iOS)
+
+#if DEBUG || PERF
 private final class PerfWatch: NSObject {
     private var link: CADisplayLink?
     private var last: CFTimeInterval = 0
@@ -57,7 +54,17 @@ private final class PerfWatch: NSObject {
 
     func start() {
         guard link == nil else { return }
+        #if os(macOS)
+        // A Mac's link is its window's, and keeps time with whichever screen that is on: there
+        // is no window yet when the app starts, so it is waited for.
+        guard let view = NSApplication.shared.windows.first(where: \.isVisible)?.contentView else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.start() }
+            return
+        }
+        let link = view.displayLink(target: self, selector: #selector(tick))
+        #else
         let link = CADisplayLink(target: self, selector: #selector(tick))
+        #endif
         // As often as the screen will have it. On a phone that is 60 a second
         // unless the build's Info.plist has CADisableMinimumFrameDurationOnPhone.
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
@@ -97,7 +104,9 @@ private final class PerfWatch: NSObject {
         guard at != second else { return }
         // A run with nobody touching the screen must not end with it going dark. Said again each
         // second: said once while the app is still starting, it does not hold.
+        #if os(iOS)
         UIApplication.shared.isIdleTimerDisabled = true
+        #endif
         log += String(format: "t=%d frames=%d worst=%.0fms late=%.0fms ", second, frames, worst, late)
             + [heat, scroller?.note, Perf.drain()].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ") + "\n"
         second = at
@@ -114,7 +123,7 @@ private struct PerfScroller {
 
     private let speed: Double
     private var phase = Phase.waiting
-    private weak var page: UIScrollView?
+    private weak var page: PlatformScrollView?
     private var seen: CFTimeInterval?
     private var began: CFTimeInterval = 0
 
@@ -124,37 +133,75 @@ private struct PerfScroller {
     }
 
     var note: String {
-        "scroll=\(phase.rawValue)" + (page.map { String(format: " y=%.0f of=%.0f", $0.contentOffset.y, $0.contentSize.height) } ?? "")
+        "scroll=\(phase.rawValue)" + (page.map { String(format: " y=%.0f of=%.0f", $0.perfOffset, $0.perfLength) } ?? "")
     }
 
     mutating func step(_ seconds: CFTimeInterval, at now: CFTimeInterval) {
         switch phase {
         case .waiting:
             // Once there is a page worth scrolling, give it three seconds to finish arriving.
-            guard let found = Self.longestPage() else { seen = nil; return }
+            guard let found = PlatformScrollView.perfLongest() else { seen = nil; return }
             page = found
             if seen == nil { seen = now }
             if let seen, now - seen > 3 { phase = .down; began = now }
         case .down:
             guard let page else { phase = .done; return }
             // A lazy page only guesses its length, so the end is asked for again each step.
-            let end = page.contentSize.height - page.bounds.height + page.adjustedContentInset.bottom
-            let next = page.contentOffset.y + speed * seconds
-            page.contentOffset.y = min(next, end)
+            let end = page.perfEnd
+            let next = page.perfOffset + speed * seconds
+            page.perfScroll(to: min(next, end))
             if next >= end || now - began > 15 { phase = .up }
         case .up:
             guard let page else { phase = .done; return }
-            let top = -page.adjustedContentInset.top
-            let next = page.contentOffset.y - speed * 3 * seconds
-            page.contentOffset.y = max(next, top)
+            let top = page.perfTop
+            let next = page.perfOffset - speed * 3 * seconds
+            page.perfScroll(to: max(next, top))
             if next <= top { phase = .done }
         case .done:
             break
         }
     }
+}
+
+// What the scroller asks of a page, said once for each kit's scroll view.
+#if os(macOS)
+private extension NSScrollView {
+    var perfOffset: CGFloat { contentView.bounds.origin.y }
+    var perfLength: CGFloat { documentView?.frame.height ?? 0 }
+    var perfTop: CGFloat { -contentInsets.top }
+    var perfEnd: CGFloat { perfLength - contentView.bounds.height + contentInsets.bottom }
+
+    func perfScroll(to y: CGFloat) {
+        contentView.scroll(to: NSPoint(x: contentView.bounds.origin.x, y: y))
+        reflectScrolledClipView(contentView)
+    }
+
+    /// The scroll view in the main window with the furthest to go down.
+    static func perfLongest() -> NSScrollView? {
+        var best: (page: NSScrollView, room: CGFloat)?
+        func look(_ view: NSView) {
+            guard !view.isHidden else { return }
+            if let page = view as? NSScrollView {
+                let room = page.perfLength - page.contentView.bounds.height
+                if room > 300, room > best?.room ?? 0 { best = (page, room) }
+            }
+            view.subviews.forEach(look)
+        }
+        (NSApplication.shared.mainWindow ?? NSApplication.shared.windows.first(where: \.isVisible))?.contentView.map(look)
+        return best?.page
+    }
+}
+#else
+private extension UIScrollView {
+    var perfOffset: CGFloat { contentOffset.y }
+    var perfLength: CGFloat { contentSize.height }
+    var perfTop: CGFloat { -adjustedContentInset.top }
+    var perfEnd: CGFloat { contentSize.height - bounds.height + adjustedContentInset.bottom }
+
+    func perfScroll(to y: CGFloat) { contentOffset.y = y }
 
     /// The scroll view on screen with the furthest to go down.
-    private static func longestPage() -> UIScrollView? {
+    static func perfLongest() -> UIScrollView? {
         let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
         var best: (page: UIScrollView, room: CGFloat)?
         func look(_ view: UIView) {
@@ -169,4 +216,5 @@ private struct PerfScroller {
         return best?.page
     }
 }
+#endif
 #endif

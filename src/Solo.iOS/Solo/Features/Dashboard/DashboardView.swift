@@ -254,8 +254,8 @@ struct DashboardView: View {
         DashboardZone(status: status, lazy: !whole.contains(status), fold: fold, heights: heights, watch: watch,
                       onDrop: { drop($0, status, all) }) {
             ForEach(shown) { card in
-                Button { openTask = card.task.id } label: { cardView(card, work) }
-                    .buttonStyle(.plain)
+                cardView(card, work)
+                    .pressToOpen { openTask = card.task.id }
                     // Where it stands: where it is picked up from, and how wide it is in hand.
                     .standing { watch.stands(card.task.id, in: status, at: $0) }
                     .onDisappear { watch.stands(card.task.id, in: status, at: nil) }

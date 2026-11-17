@@ -493,8 +493,8 @@ private struct BoardCard: View {
         VStack(spacing: 0) {
             SlotGap(drag: drag, height: drag.gap(epicId: epicId, status: status, index: index))
 
-            Button { model.open(task) } label: { card }
-                .buttonStyle(.plain)
+            card
+                .pressToOpen { model.open(task) }
                 .standing {
                     zone.cards[task.id] = $0
                     drag.stands(task.id, in: column, at: $0)

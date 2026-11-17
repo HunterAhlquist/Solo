@@ -92,7 +92,7 @@ struct TaskCardView: View {
         // tab or a targeted column is, and edged by the glass itself rather than by a drawn line.
         // The wash says what the outline said: it runs from the theme's colour to red as a deadline
         // nears, and a remote change deepens it for a moment where the outline used to flash.
-        .glassEffect(.regular.tint(wash), in: cardShape)
+        .modifier(CardGlass(wash: wash, shape: cardShape, tabbed: origin != nil))
         // Done work stands back: half strength, title struck through, still readable and openable.
         .opacity(isFinished ? 0.5 : 1)
         // The whole card is the card: what a tap lands on as well as what is picked up. Left
@@ -207,6 +207,55 @@ struct TaskCardView: View {
         }
         let due = "Due \(deadline.formatted) — \(when)"
         return task.startAt.map { "Starts \($0.formatted). \(due)" } ?? due
+    }
+}
+
+/// A card's glass, in the colour of its wash.
+///
+/// On an iPhone and an iPad the wash is the glass's own tint. On a Mac that was measured as
+/// the dearer way to say it, scrolling a board of 580 tasks (README, "A big board on a
+/// Mac"): glass with a tint, and glass cut to a shape of the app's own, each took frames
+/// that plain glass in a plain rounded rectangle did not. So there the glass is plain, the
+/// wash is laid over it, and a card with no tab — every card of a board — is the system's
+/// rectangle.
+private struct CardGlass: ViewModifier {
+    var wash: Color
+    var shape: TabbedCardShape
+    var tabbed: Bool
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        if tabbed {
+            content
+                .background { shape.fill(wash) }
+                .glassEffect(.regular, in: shape)
+        } else {
+            let plain = RoundedRectangle(cornerRadius: shape.radius, style: .continuous)
+            content
+                .background(wash, in: plain)
+                .glassEffect(.regular, in: plain)
+        }
+        #else
+        content.glassEffect(.regular.tint(wash), in: shape)
+        #endif
+    }
+}
+
+extension View {
+    /// Makes a card something to press, which opens it.
+    ///
+    /// A button, except on a Mac. There each button around a card cost more to build than
+    /// the rest of the card's wrapping put together — a tenth of the frames of a big board
+    /// scrolling (README, "A big board on a Mac") — and a click is all it was for: so there
+    /// it is a click, and the card says to assistive technology that it can be pressed.
+    @ViewBuilder func pressToOpen(_ open: @escaping () -> Void) -> some View {
+        #if os(macOS)
+        onTapGesture(perform: open)
+            .accessibilityAction(.default, open)
+        #else
+        Button(action: open) { self }
+            .buttonStyle(.plain)
+        #endif
     }
 }
 
