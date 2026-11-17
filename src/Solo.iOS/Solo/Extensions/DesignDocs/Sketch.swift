@@ -694,24 +694,24 @@ struct SketchPointer: Equatable {
 /// One playing of the explosion over the page.
 struct SketchBlast: Equatable {
     var token = UUID()
-    var frames: [UIImage]
+    var frames: [PlatformImage]
     var duration: TimeInterval
 
     static func == (a: SketchBlast, b: SketchBlast) -> Bool { a.token == b.token }
 
     /// The explosion's frames and its sound, as fetched.
     final class Effect {
-        let frames: [UIImage]
+        let frames: [PlatformImage]
         let duration: TimeInterval
         private let player: AVAudioPlayer?
 
         init(gif: Data?, sound: Data?) {
-            var frames: [UIImage] = []
+            var frames: [PlatformImage] = []
             var duration: TimeInterval = 0
             if let gif, let source = CGImageSourceCreateWithData(gif as CFData, nil) {
                 for index in 0..<CGImageSourceGetCount(source) {
                     guard let image = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
-                    frames.append(UIImage(cgImage: image))
+                    frames.append(PlatformImage.picture(image))
                     let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
                     let timing = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
                     let delay = (timing?[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
@@ -778,7 +778,13 @@ struct SketchEditor: View {
     @State private var moved = false
     @State private var fitRequest = 0
 
-    private var fingerDraws: Bool { fingerChoice ?? !UIPencilInteraction.prefersPencilOnlyDrawing }
+    private var fingerDraws: Bool {
+        #if os(iOS)
+        fingerChoice ?? !UIPencilInteraction.prefersPencilOnlyDrawing
+        #else
+        true
+        #endif
+    }
 
     var body: some View {
         NavigationStack {
@@ -808,6 +814,9 @@ struct SketchEditor: View {
             }
                 .animation(.snappy, value: moved)
                 .themedBackground()
+                // What a Mac calls the window; the bar shows the name with who else is drawing.
+                .navigationTitle(model.sketch.name)
+                .titleIsInBar()
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -837,11 +846,13 @@ struct SketchEditor: View {
                                     Label("Portrait", systemImage: "rectangle.portrait").tag("portrait")
                                     Label("Landscape", systemImage: "rectangle").tag("landscape")
                                 }
+                                #if os(iOS)
                                 Divider()
                                 // Off, one finger moves the page and only the Pencil draws, as on the web.
                                 Toggle("Draw with Finger", systemImage: "hand.draw",
                                        isOn: Binding(get: { fingerDraws }, set: { fingerChoice = $0 }))
                                     .menuToggles()
+                                #endif
                                 Divider()
                                 Button("Clear Sketch…", systemImage: "trash", role: .destructive) { confirmingClear = true }
                                     .disabled(model.clearing)
@@ -895,6 +906,7 @@ struct SketchEditor: View {
                 Label("Eraser", systemImage: "eraser").tag("eraser")
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
             .labelStyle(.iconOnly)
             .frame(width: 104)
 
@@ -932,6 +944,7 @@ struct SketchEditor: View {
     }
 }
 
+#if os(iOS)
 /// The page itself: the picture of it, everyone else's pens over it, and the stroke being
 /// drawn. It takes no touches — the viewport around it does, and says which of them draw.
 final class SketchPageView: UIView {
@@ -1162,3 +1175,4 @@ final class SketchPointerView: UIView {
         CATransaction.commit()
     }
 }
+#endif

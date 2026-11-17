@@ -58,7 +58,9 @@ struct RootView: View {
                 }
             } else if phase == .background {
                 // Whatever was done here, the widgets should say so by the time the Home Screen shows them.
+                #if os(iOS)
                 WidgetCenter.shared.reloadAllTimelines()
+                #endif
             }
         }
         .onOpenURL { model.open($0) }

@@ -17,7 +17,7 @@ struct InboxView: View {
                     ContentUnavailableView("You're all caught up.", systemImage: "bell.slash",
                                            description: Text("Assignments and deadline reminders show up here."))
                 } else {
-                    List {
+                    GroupedList {
                         ForEach(inbox.items) { item in
                             Button { open(item) } label: { row(item) }
                                 .themedRow()
@@ -29,6 +29,16 @@ struct InboxView: View {
                                         .tint(theme.info)
                                     }
                                 }
+                                // The same by a secondary click, which is how a Mac gets at it.
+                                #if os(macOS)
+                                .contextMenu {
+                                    if item.isUnread {
+                                        Button("Mark as Read", systemImage: "envelope.open") {
+                                            Task { await store.markRead(item) }
+                                        }
+                                    }
+                                }
+                                #endif
                         }
                     }
                     .themedList()
@@ -131,7 +141,7 @@ struct NotificationSettingsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Notifications are blocked for Solo in Settings.")
                         Button("Open Settings") {
-                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+                            if let url = Platform.notificationSettingsURL { openURL(url) }
                         }
                     }
                 default:
@@ -274,7 +284,7 @@ private struct TimeZonePicker: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            GroupedList {
                 let device = TimeZone.current.identifier
                 if query.isEmpty, zones.contains(device) {
                     Section("This device") { row(device) }

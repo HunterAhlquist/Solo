@@ -81,10 +81,10 @@ private struct NoteMediaPicture<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     var embed: NoteEmbed
     var store: DocVaultStore
-    var onLoad: (UIImage) -> Void = { _ in }
-    @ViewBuilder var content: (UIImage?, Bool) -> Content
+    var onLoad: (PlatformImage) -> Void = { _ in }
+    @ViewBuilder var content: (PlatformImage?, Bool) -> Content
 
-    @State private var picture: UIImage?
+    @State private var picture: PlatformImage?
     @State private var failed = false
 
     /// The embed as the vault has it now: a replaced image has a new version, a redrawn sketch a new revision.
@@ -105,7 +105,7 @@ private struct NoteMediaPicture<Content: View>: View {
     var body: some View {
         content(picture, failed)
             .task(id: key) {
-                let loaded: UIImage? = switch current {
+                let loaded: PlatformImage? = switch current {
                 case .image(let image): await store.picture(image)
                 case .sketch(let sketch): await store.sketchPicture(sketch, dark: colorScheme == .dark)
                 }
@@ -161,7 +161,7 @@ struct NoteMediaStack: View {
                     NoteMediaPicture(embed: entry.embed, store: context.store) { picture, failed in
                         ZStack {
                             if let picture {
-                                Image(uiImage: picture)
+                                Image(platform: picture)
                                     .interpolation(entry.embed.isSketch ? .none : .medium)
                                     .resizable()
                                     .scaledToFit()
@@ -223,7 +223,7 @@ struct NoteMediaViewer: View {
     /// Told which print is in view, so the stack keeps it on top.
     var onSelect: (String) -> Void
 
-    @State private var pictures: [String: UIImage] = [:]
+    @State private var pictures: [String: PlatformImage] = [:]
     @State private var editing: SketchModel?
     @State private var replacing = false
     @State private var photo: PhotosPickerItem?
@@ -240,6 +240,34 @@ struct NoteMediaViewer: View {
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
+                #if os(macOS)
+                // A Mac has no pages to swipe between: the one in view, and the arrow keys or
+                // the arrows at its sides for the ones beside it.
+                ZStack {
+                    if let entry {
+                        NoteMediaPage(embed: entry.embed, store: context.store, bars: proxy.safeAreaInsets) {
+                            pictures[entry.id] = $0
+                        }
+                        .id(entry.id)
+                        .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    if entries.count > 1 {
+                        HStack {
+                            turn(-1, "chevron.left", "Previous")
+                            Spacer()
+                            turn(1, "chevron.right", "Next")
+                        }
+                        .padding(.horizontal, 12)
+                    }
+                }
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress(.leftArrow) { step(-1) ? .handled : .ignored }
+                .onKeyPress(.rightArrow) { step(1) ? .handled : .ignored }
+                #else
                 TabView(selection: $current) {
                     ForEach(entries) { entry in
                         NoteMediaPage(embed: entry.embed, store: context.store, bars: proxy.safeAreaInsets) {
@@ -251,8 +279,15 @@ struct NoteMediaViewer: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 // Pictures run under the bars, which are glass; each is fitted clear of them.
                 .ignoresSafeArea()
+                #endif
             }
             .navigationBarTitleDisplayMode(.inline)
+            #if os(macOS)
+            // A window of its own on a Mac, with nothing behind it to show through.
+            .themedBackground()
+            .navigationTitle(entry?.embed.name ?? "")
+            .titleIsInBar()
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", systemImage: "xmark") { dismiss() }
@@ -271,7 +306,9 @@ struct NoteMediaViewer: View {
         // The page it rose from is gone while this is up, so there is nothing for a material to
         // blur: the app's own background stands in, which keeps the theme's wash behind the picture.
         .presentationBackground { AppBackground() }
+        #if os(iOS)
         .navigationTransition(.zoom(sourceID: current, in: zoom))
+        #endif
         .onChange(of: current, initial: true) { _, id in onSelect(id) }
         .photosPicker(isPresented: $replacing, selection: $photo, matching: .images)
         .onChange(of: photo) { _, item in
@@ -281,6 +318,26 @@ struct NoteMediaViewer: View {
         }
         .fullScreenCover(item: $editing, onDismiss: { context.store.sketchChanged() }) { SketchEditor(model: $0) }
     }
+
+    #if os(macOS)
+    /// To the picture `by` places along, if there is one.
+    @discardableResult
+    private func step(_ by: Int) -> Bool {
+        guard let index = entries.firstIndex(where: { $0.id == current }), entries.indices.contains(index + by) else { return false }
+        withAnimation(.smooth(duration: 0.2)) { current = entries[index + by].id }
+        return true
+    }
+
+    private func turn(_ by: Int, _ symbol: String, _ title: String) -> some View {
+        let index = entries.firstIndex { $0.id == current } ?? 0
+        return Button(title, systemImage: symbol) { step(by) }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.clearGlass)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .disabled(!entries.indices.contains(index + by))
+    }
+    #endif
 
     @ViewBuilder
     private var actions: some View {
@@ -296,7 +353,7 @@ struct NoteMediaViewer: View {
             }
             if let picture = pictures[entry.id] {
                 let name = entry.embed.isSketch ? entry.embed.name.replacingOccurrences(of: ".sketch", with: ".png") : entry.embed.name
-                ShareLink(item: Image(uiImage: picture), preview: SharePreview(name, image: Image(uiImage: picture)))
+                ShareLink(item: Image(platform: picture), preview: SharePreview(name, image: Image(platform: picture)))
             }
             if let owner {
                 Button("Open \u{201C}\(owner.name)\u{201D}", systemImage: "arrow.up.forward.square") {
@@ -381,7 +438,7 @@ private struct NoteMediaPage: View {
     var embed: NoteEmbed
     var store: DocVaultStore
     var bars: EdgeInsets
-    var onLoad: (UIImage) -> Void
+    var onLoad: (PlatformImage) -> Void
 
     var body: some View {
         NoteMediaPicture(embed: embed, store: store, onLoad: onLoad) { picture, failed in
@@ -404,17 +461,15 @@ private struct NoteMediaPage: View {
 /// Makes a photo something the instance takes: PNG, JPEG or WebP, no larger than 2,560 pixels a side.
 enum DocImageEncoder {
     static func jpeg(from data: Data) -> Data? {
-        guard let picture = UIImage(data: data) else { return nil }
-        let longest = max(picture.size.width, picture.size.height) * picture.scale
-        let scale = min(1, 2560 / max(longest, 1))
-        let size = CGSize(width: max(1, (picture.size.width * picture.scale * scale).rounded(.down)),
-                          height: max(1, (picture.size.height * picture.scale * scale).rounded(.down)))
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
+        guard let picture = PlatformImage.photo(data) else { return nil }
+        let pixels = picture.pixelSize
+        let scale = min(1, 2560 / max(pixels.width, pixels.height, 1))
+        let size = CGSize(width: max(1, (pixels.width * scale).rounded(.down)),
+                          height: max(1, (pixels.height * scale).rounded(.down)))
         // Redrawn rather than re-encoded, which also settles a photo's orientation.
-        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            picture.draw(in: CGRect(origin: .zero, size: size))
-        }
-        .jpegData(compressionQuality: 0.85)
+        return PlatformImage.render(size: size, opaque: true) { context in
+            picture.draw(in: CGRect(origin: .zero, size: size), of: context)
+        }?
+        .jpegRepresentation(quality: 0.85)
     }
 }

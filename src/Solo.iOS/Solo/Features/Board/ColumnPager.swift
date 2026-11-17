@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit.UIGestureRecognizerSubclass
+#endif
 
 // A phone shows one column of a board at a time. The three columns are not
 // three pages with a scroll position each, though: they are one page that
@@ -83,6 +85,8 @@ private struct ColumnPaging: ViewModifier {
         let last = TaskState.allCases.count - 1
         content
             .environment(\.columnPage, min(max(CGFloat(index) + carried, -0.12), CGFloat(last) + 0.12))
+            // A phone's page, turned by a finger: a Mac shows every column at once.
+            #if os(iOS)
             .gesture(ColumnPan(index: index, last: last) { pages in
                 carried = pages
             } onEnd: { target in
@@ -91,6 +95,7 @@ private struct ColumnPaging: ViewModifier {
                     selection = TaskState.allCases[target]
                 }
             })
+            #endif
             .sensoryFeedback(.selection, trigger: selection)
     }
 }
@@ -764,6 +769,7 @@ private struct LandingTarget: ViewModifier {
     }
 }
 
+#if os(iOS)
 private struct ColumnPan: UIGestureRecognizerRepresentable {
     var index: Int
     var last: Int
@@ -846,6 +852,7 @@ private struct ColumnPan: UIGestureRecognizerRepresentable {
         }
     }
 }
+#endif
 
 
 /// Which berth a lane or a group in hand is over, from where the page's rows stand.

@@ -90,6 +90,12 @@ final class Navigator {
         paths[tab] = path
     }
 
+    /// One page back along what is showing, as the bar's Back is.
+    func back() {
+        guard paths[tab]?.isEmpty == false else { return }
+        paths[tab]?.removeLast()
+    }
+
     /// Pushes onto whatever is showing, for a link followed from inside a page.
     func push(_ route: Route) {
         paths[tab, default: []].append(route)

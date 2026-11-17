@@ -1,6 +1,10 @@
 import Foundation
 import Testing
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 @testable import Solo
 
 // The rules the app shares with the server and the web client. Each of these
@@ -140,7 +144,7 @@ import UIKit
     /// A name the system doesn't have draws nothing at all, silently.
     @Test func everyMappedSymbolExists() {
         for icon in SoloIcons.all {
-            #expect(UIImage(systemName: icon.symbol) != nil, "\(icon.name) maps to \(icon.symbol), which isn't a system symbol")
+            #expect(symbolExists(icon.symbol), "\(icon.name) maps to \(icon.symbol), which isn't a system symbol")
         }
     }
 }
@@ -653,4 +657,13 @@ import UIKit
         #expect(FinishedColumn.guess(from: [(height: 48, cards: 0)], extra: 12, spacing: 6) == FinishedColumn.guess)
         #expect(FinishedColumn.guess(from: [], extra: 12, spacing: 6) == FinishedColumn.guess)
     }
+}
+
+/// Whether the system has a symbol of this name, on whichever kit the tests are running.
+private func symbolExists(_ name: String) -> Bool {
+    #if canImport(UIKit)
+    UIImage(systemName: name) != nil
+    #else
+    NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
+    #endif
 }

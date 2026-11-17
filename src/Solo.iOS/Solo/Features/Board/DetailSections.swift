@@ -307,12 +307,12 @@ struct CommentsSection: View {
                         }
                     }
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     Button("Comment", systemImage: "paperplane.fill") {
                         Task { await post(newBody) }
                     }
                     .labelStyle(.iconOnly)
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     .disabled(newBody.nilIfBlank == nil || posting)
                 }
             }

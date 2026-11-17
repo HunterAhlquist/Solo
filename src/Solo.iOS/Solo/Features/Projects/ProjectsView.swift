@@ -23,7 +23,7 @@ struct ProjectsView: View {
                     }
                 } actions: {
                     if session.user.isSuperAdmin {
-                        Button("Create One") { creating = true }.buttonStyle(.glass)
+                        Button("Create One") { creating = true }.buttonStyle(.clearGlass)
                     }
                 }
                 .padding(.top, 60)
@@ -51,7 +51,7 @@ struct ProjectsView: View {
                 await nav.ensureBoards(project.id)
             }
         }
-        .refreshable {
+        .reloads {
             await nav.refreshProjects()
             for project in nav.projects {
                 await nav.refreshBoards(project.id)

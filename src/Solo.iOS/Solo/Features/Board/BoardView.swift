@@ -88,6 +88,10 @@ private struct BoardContent: View {
         }
         .navigationTitle(board.name)
         .navigationBarTitleDisplayMode(.inline)
+        .titleIsInBar()
+        #if os(macOS)
+        .focusedSceneValue(\.newTask, model.canWrite ? { model.promptNewTask(epicId: nil) } : nil)
+        #endif
         .toolbar {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
@@ -1172,8 +1176,8 @@ private struct EmptyBoard: View {
             Label("This board is empty.", systemImage: "rectangle.split.3x1")
         } actions: {
             if model.canWrite {
-                Button("Add a Task") { model.promptNewTask(epicId: nil) }.buttonStyle(.glass)
-                Button("Add an Epic") { model.promptNewEpic() }.buttonStyle(.glass)
+                Button("Add a Task") { model.promptNewTask(epicId: nil) }.buttonStyle(.clearGlass)
+                Button("Add an Epic") { model.promptNewEpic() }.buttonStyle(.clearGlass)
             }
         }
         .padding(.top, 24)
@@ -1307,7 +1311,7 @@ struct ColumnSwitcher: View {
         ColumnSegments(titles: TaskState.allCases.map { "\($0.title) \(count($0))" },
                        index: Binding(get: { TaskState.allCases.firstIndex(of: selection) ?? 0 },
                                       set: { index in withAnimation(.snappy) { selection = TaskState.allCases[index] } }),
-                       wash: UIColor(theme.accentWash), chosen: UIColor(theme.primary), plain: UIColor(theme.textPrimary))
+                       wash: theme.accentWash, chosen: theme.primary, plain: theme.textPrimary)
         .frame(height: 44)
         .accessibilityLabel("Column")
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -1377,12 +1381,13 @@ private struct SelectorDrop: ViewModifier {
 /// Turned some other way — a swipe across the page, a card held at its edge — the glass goes to
 /// the new column at the control's own pace, which is not to be had by asking: told to take
 /// two seconds over it, here or through a picker, it was there within a quarter of one.
+#if os(iOS)
 private struct ColumnSegments: UIViewRepresentable {
     var titles: [String]
     @Binding var index: Int
-    var wash: UIColor
-    var chosen: UIColor
-    var plain: UIColor
+    var wash: Color
+    var chosen: Color
+    var plain: Color
 
     func makeCoordinator() -> Coordinator { Coordinator(index: $index) }
 
@@ -1403,10 +1408,10 @@ private struct ColumnSegments: UIViewRepresentable {
             control.setTitle(title, forSegmentAt: segment)
         }
         if control.selectedSegmentIndex != index { control.selectedSegmentIndex = index }
-        control.selectedSegmentTintColor = wash
+        control.selectedSegmentTintColor = UIColor(wash)
         let font = UIFont.preferredFont(forTextStyle: .footnote)
-        control.setTitleTextAttributes([.foregroundColor: plain, .font: font], for: .normal)
-        control.setTitleTextAttributes([.foregroundColor: chosen, .font: UIFont.systemFont(ofSize: font.pointSize, weight: .semibold)],
+        control.setTitleTextAttributes([.foregroundColor: UIColor(plain), .font: font], for: .normal)
+        control.setTitleTextAttributes([.foregroundColor: UIColor(chosen), .font: UIFont.systemFont(ofSize: font.pointSize, weight: .semibold)],
                                        for: .selected)
     }
 
@@ -1424,3 +1429,22 @@ private struct ColumnSegments: UIViewRepresentable {
         }
     }
 }
+#else
+/// A Mac shows every column side by side, so this is only seen in a window made very narrow —
+/// where the system's own picker does.
+private struct ColumnSegments: View {
+    var titles: [String]
+    @Binding var index: Int
+    var wash: Color
+    var chosen: Color
+    var plain: Color
+
+    var body: some View {
+        Picker("Column", selection: $index) {
+            ForEach(titles.indices, id: \.self) { Text(titles[$0]).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+}
+#endif

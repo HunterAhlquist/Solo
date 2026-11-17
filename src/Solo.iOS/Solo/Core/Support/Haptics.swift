@@ -1,5 +1,7 @@
 import CoreHaptics
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// The app's few haptics, the same three the Capacitor app plays: a tap as a
 /// drag takes hold of a card, a bump as it lands, and an explosion when a
@@ -10,19 +12,28 @@ final class Haptics {
     enum Kind { case pickUp, drop, explosion }
 
     private let supported = CHHapticEngine.capabilitiesForHardware().supportsHaptics
+    #if os(iOS)
     private let pickUp = UIImpactFeedbackGenerator(style: .light)
     private let drop = UIImpactFeedbackGenerator(style: .medium)
+    #endif
     private var engine: CHHapticEngine?
 
     func play(_ kind: Kind) {
         guard supported else { return }
         switch kind {
+        #if os(iOS)
         case .pickUp:
             pickUp.impactOccurred()
             // The drop usually follows within seconds; ready, it plays without the engine's spin-up.
             drop.prepare()
         case .drop:
             drop.impactOccurred(intensity: 1)
+        #else
+        // A Mac's trackpad has a tap of its own for things that snap into place, and the
+        // system plays it; the app's are the phone's.
+        case .pickUp, .drop:
+            break
+        #endif
         case .explosion:
             explode()
         }

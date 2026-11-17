@@ -51,7 +51,7 @@ struct TaskPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            GroupedList {
                 if let boards {
                     let results = filter(boards)
                     if results.isEmpty {

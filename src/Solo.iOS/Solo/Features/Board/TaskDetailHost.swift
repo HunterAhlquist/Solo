@@ -167,15 +167,19 @@ struct DetailPanelColumn: View {
             if let panel = center.panel {
                 let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
                 panel.view
+                    // A Mac gives a menu an arrow of its own, beside the one these labels draw.
+                    .menuIndicator(Platform.isMac ? .hidden : .automatic)
                     // The pane runs up behind the status bar; what is in it does not.
-                    .padding(.top, max(proxy.safeAreaInsets.top - margin, 0))
+                    .padding(.top, Platform.isMac ? 0 : max(proxy.safeAreaInsets.top - margin, 0))
                     .frame(width: center.width - margin * 2)
                     .frame(maxHeight: .infinity)
                     .clipShape(shape)
                     .glassEffect(.regular, in: shape)
                     .padding(margin)
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                    .ignoresSafeArea(.container, edges: .vertical)
+                    // A window's bar is the window's, and stays above whatever is in it: on a
+                    // Mac the pane starts under the bar, as an inspector does.
+                    .ignoresSafeArea(.container, edges: Platform.isMac ? .bottom : .vertical)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }

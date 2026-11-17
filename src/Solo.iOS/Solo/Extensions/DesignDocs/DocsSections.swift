@@ -247,7 +247,7 @@ struct LinkedDocsSection: View {
                             } label: {
                                 Label(link.name, systemImage: "doc.text").font(.caption.weight(.medium))
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.clearGlass)
                         }
                     }
                 }

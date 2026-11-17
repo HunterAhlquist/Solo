@@ -63,7 +63,7 @@ struct McpAccessView: View {
         .navigationTitle("MCP Access")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
-        .refreshable { await load() }
+        .reloads { await load() }
         .confirmation($confirmation)
         .textPrompt($prompt)
     }
@@ -92,7 +92,7 @@ struct McpAccessView: View {
                         Spacer()
                         Button("Copy token", systemImage: "doc.on.doc") { copy(secret) }
                             .labelStyle(.iconOnly)
-                            .buttonStyle(.glass)
+                            .buttonStyle(.clearGlass)
                     }
                 }
                 .padding(12)
@@ -117,7 +117,7 @@ struct McpAccessView: View {
                             message: "Your current token will stop working immediately. Connected assistants need the "
                                 + "new token to regain access.", action: "Regenerate") { await mint() }
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     Button("Revoke", systemImage: "nosign", role: .destructive) {
                         confirmation = Confirmation(
                             title: "Revoke token",
@@ -131,7 +131,7 @@ struct McpAccessView: View {
                             busy = false
                         }
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     .tint(theme.error)
                 }
                 .disabled(busy)
@@ -144,7 +144,7 @@ struct McpAccessView: View {
                     .font(.caption)
                     .foregroundStyle(theme.textSecondary)
                 Button("Generate Token", systemImage: "key") { Task { await mint() } }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     .disabled(busy)
             }
         }
@@ -255,7 +255,7 @@ struct McpAccessView: View {
                 Text("All tokens").font(.headline)
                 Spacer()
                 Button("Revoke All", systemImage: "nosign", role: .destructive) { confirmRevokeAll(live) }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     .tint(theme.error)
                     .disabled(live == 0)
             }
@@ -393,7 +393,7 @@ struct McpAccessView: View {
     }
 
     private func copy(_ text: String) {
-        UIPasteboard.general.string = text
+        Platform.copy(text)
         session.toasts.show("Copied.", .success)
     }
 

@@ -86,6 +86,10 @@ struct ThemedRoot<Content: View>: View {
             .tint(theme.primary)
             // A switch's knob is white whatever its track is, so the track is the fill white reads on.
             .toggleStyle(AccentSwitchStyle(fill: theme.fill))
+            // A Mac draws a field its own bezel; the app's fields already sit in something.
+            #if os(macOS)
+            .textFieldStyle(.plain)
+            #endif
     }
 }
 

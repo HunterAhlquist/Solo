@@ -36,8 +36,9 @@ struct MembersSection: View {
                             Text("Read/write").tag(ProjectRole.readWrite)
                         }
                         .pickerStyle(.segmented)
+                        .labelsHidden()
                         Button("Invite") { Task { await invite() } }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.clearGlass)
                             .disabled(inviteEmail.nilIfBlank == nil || busy)
                     }
                 }
@@ -257,7 +258,7 @@ struct LabelsSection: View {
                             await load()
                         }
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                 }
             } else {
                 ProgressView()
@@ -390,7 +391,7 @@ struct LabelEditorSheet: View {
             }
             .onChange(of: colour) { _, value in
                 // Stored as #rrggbb, whatever colour space the picker worked in.
-                let resolved = UIColor(value).cgColor.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!,
+                let resolved = PlatformColor(value).cgColor.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!,
                                                                 intent: .defaultIntent, options: nil)
                 if let parts = resolved?.components, parts.count >= 3 {
                     draft.color = CSSColor(red: parts[0], green: parts[1], blue: parts[2]).hex
@@ -612,7 +613,7 @@ struct ProjectSettingsSection: View {
                         }
                     }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.clearGlass)
                 .tint(theme.error)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

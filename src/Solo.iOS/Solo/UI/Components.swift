@@ -30,7 +30,7 @@ struct AppBackground: View {
 
     var body: some View {
         ZStack {
-            Color(uiColor: .systemGroupedBackground)
+            Color.groupedBackground
             LinearGradient(
                 colors: [theme.primary.opacity(theme.isDark ? 0.16 : 0.12), theme.secondary.opacity(0.05), .clear],
                 startPoint: .topLeading, endPoint: .bottom)
@@ -53,13 +53,19 @@ extension View {
 
     /// A grouped list or form over the app's page background; its rows stay the system's.
     func themedList() -> some View {
+        #if os(macOS)
+        // Grouped, as System Settings is: left to itself a Mac's form is two columns, which
+        // these pages were not laid out for.
+        formStyle(.grouped).macControls().scrollContentBackground(.hidden).background { AppBackground() }
+        #else
         scrollContentBackground(.hidden).background { AppBackground() }
+        #endif
     }
 
     /// A list row that lets the page's wash through, so a list reads as a
     /// frosted panel over the background rather than a solid slab on it.
     func themedRow() -> some View {
-        listRowBackground(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.55))
+        listRowBackground(Color.groupedRowBackground.opacity(0.55))
     }
 }
 
@@ -91,6 +97,48 @@ struct SectionTitle: View {
         .accessibilityAddTraits(.isHeader)
     }
 }
+
+/// A list of sections of rows, as Settings has. On an iPhone that is a list; on a Mac it is a
+/// grouped form, which is what draws sections as panels there — a Mac's list is a plain table.
+struct GroupedList<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        #if os(macOS)
+        Form { content }
+        #else
+        List { content }
+        #endif
+    }
+}
+
+/// A glass button whose label is in the accent. An iPhone's glass button is that already; a
+/// Mac's takes the accent as its fill, which is the accent painted solid over glass.
+#if os(macOS)
+struct ClearGlassButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.controlSize) private var size
+
+    func makeBody(configuration: Configuration) -> some View {
+        let large = size == .large || size == .extraLarge, small = size == .small || size == .mini
+        configuration.label
+            .foregroundStyle(.tint)
+            .padding(.horizontal, large ? 14 : small ? 8 : 10)
+            .padding(.vertical, large ? 8 : small ? 4 : 6)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.45)
+            .contentShape(.capsule)
+    }
+}
+
+extension ButtonStyle where Self == ClearGlassButtonStyle {
+    static var clearGlass: ClearGlassButtonStyle { ClearGlassButtonStyle() }
+}
+#else
+extension PrimitiveButtonStyle where Self == GlassButtonStyle {
+    static var clearGlass: GlassButtonStyle { .glass }
+}
+#endif
 
 // MARK: - Labels
 

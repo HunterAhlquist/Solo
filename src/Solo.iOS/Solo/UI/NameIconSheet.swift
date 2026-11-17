@@ -136,7 +136,7 @@ struct IconImagePicker: View {
                     PhotosPicker(selection: $photo, matching: .images) {
                         Label(imageId == nil ? "Use a Picture" : "Change Picture", systemImage: "photo")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     if imageId != nil {
                         Button("Remove Picture", systemImage: "xmark", role: .destructive) { imageId = nil }
                             .font(.footnote)
@@ -181,17 +181,17 @@ struct IconImagePicker: View {
     private func upload(_ item: PhotosPickerItem) async {
         uploading = true
         defer { uploading = false; photo = nil }
-        guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
+        let side: CGFloat = 256
+        guard let data = try? await item.loadTransferable(type: Data.self), let image = PlatformImage.photo(data),
+              let png = PlatformImage.png(size: CGSize(width: side, height: side), { context in
+                  let scale = max(side / image.size.width, side / image.size.height)
+                  let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                  image.draw(in: CGRect(x: (side - size.width) / 2, y: (side - size.height) / 2,
+                                        width: size.width, height: size.height), of: context)
+              })
+        else {
             session.toasts.show("That picture couldn't be read.", .error)
             return
-        }
-        let side: CGFloat = 256
-        let scale = max(side / image.size.width, side / image.size.height)
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        let png = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).pngData { _ in
-            image.draw(in: CGRect(x: (side - size.width) / 2, y: (side - size.height) / 2, width: size.width, height: size.height))
         }
         if let asset = await session.save({
             try await session.api.uploadImage(png, fileName: "icon.png", contentType: "image/png")

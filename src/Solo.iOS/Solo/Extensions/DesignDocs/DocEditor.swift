@@ -1,5 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// The smallest edit that turns one text into another, in UTF-16 units — the
 /// units both Yjs and a text view count in.
@@ -31,6 +35,7 @@ nonisolated struct TextChange: Equatable, Sendable {
     }
 }
 
+#if os(iOS)
 /// What the buttons around the editor ask of it. The text view is UIKit's, so
 /// the formatting commands reach it through this rather than through state.
 final class NoteEditorProxy {
@@ -118,7 +123,7 @@ struct SyncedTextEditor: UIViewRepresentable {
     var editable: Bool
     /// What to show until the shared document arrives: the note's last saved copy.
     var fallback: String
-    var accent: UIColor
+    var accent: PlatformColor
     var media: NoteEditorMedia
     /// Changes when what the rows of pictures show may have: an upload, a deletion, who may write.
     var mediaRevision: Int
@@ -658,6 +663,8 @@ final class PeerCaretView: UIView {
     }
 }
 
+#endif
+
 /// The formatting a touch keyboard makes awkward, one tap away. It rides above
 /// the keyboard as its own glass bar rather than as a row of the keyboard.
 struct NoteFormatBar: View {
@@ -687,8 +694,11 @@ struct NoteFormatBar: View {
             button("New sketch", "scribble.variable") { onSketch() }
             button("Add image", "photo.badge.plus") { onImage() }
             button("Attachments", "paperclip") { onAttachments() }
+            // A Mac's keyboard is not on the screen to be put away.
+            #if os(iOS)
             Divider().frame(height: 22)
             button("Done", "keyboard.chevron.compact.down") { proxy.dismissKeyboard() }
+            #endif
         }
     }
 

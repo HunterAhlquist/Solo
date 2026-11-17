@@ -354,7 +354,7 @@ struct RoadmapMembershipsSection: View {
                                 Label(roadmap.title, systemImage: "chart.line.uptrend.xyaxis")
                                     .font(.caption.weight(.medium))
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.clearGlass)
                         }
                     }
                 }
@@ -423,6 +423,7 @@ struct RoadmapSettingsPanel: View {
 
     private func number(_ value: Binding<Int>) -> some View {
         TextField("Days", value: value, format: .number.grouping(.never))
+            .labelsHidden()
             .keyboardType(.numberPad)
             .multilineTextAlignment(.trailing)
     }

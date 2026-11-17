@@ -11,7 +11,7 @@ struct AccountView: View {
 
     var body: some View {
         @Bindable var themes = themes
-        List {
+        GroupedList {
             Section {
                 HStack(spacing: 14) {
                     UserAvatar(user: session.user, size: 56)
@@ -114,7 +114,7 @@ struct DevicesView: View {
     @State private var busy = false
 
     var body: some View {
-        List {
+        GroupedList {
             if let sessions {
                 Section {
                     ForEach(sessions) { item in
@@ -180,7 +180,7 @@ struct DevicesView: View {
         .navigationTitle("Signed-in Devices")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
-        .refreshable { await load() }
+        .reloads { await load() }
     }
 
     private func symbol(_ item: AuthSession) -> String {
@@ -222,7 +222,7 @@ struct AboutView: View {
     @State private var confirmation: Confirmation?
 
     var body: some View {
-        List {
+        GroupedList {
             Section("Instance") {
                 LabeledContent("Name", value: session.siteName)
                 LabeledContent("Address", value: session.api.host)

@@ -142,7 +142,7 @@ struct DesignDocsView: View {
                 Text(editable ? "Add the first note to start this design doc." : "Nothing has been written here yet.")
             } actions: {
                 if editable {
-                    Button("New Note", systemImage: "plus") { addNote(store) }.buttonStyle(.glass)
+                    Button("New Note", systemImage: "plus") { addNote(store) }.buttonStyle(.clearGlass)
                 }
             }
         } else {

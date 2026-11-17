@@ -48,6 +48,7 @@ struct AdminSettingsView: View {
                 Section {
                     LabeledContent("Days") {
                         TextField("Days", value: $retentionDays, format: .number)
+                            .labelsHidden()
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .focused($retentionFocused)
@@ -141,7 +142,7 @@ struct AdminThemesView: View {
     @State private var rescanning = false
 
     var body: some View {
-        List {
+        GroupedList {
             if let document = themes.document, document.isFallback == true {
                 Section {
                     Label("Theme '\(document.requestedThemeId ?? "?")' is selected for this instance but is not installed. "
@@ -242,7 +243,7 @@ struct AdminUsersView: View {
     @State private var confirmation: Confirmation?
 
     var body: some View {
-        List {
+        GroupedList {
             if let users {
                 Section {
                     ForEach(users) { user in
@@ -293,7 +294,7 @@ struct AdminUsersView: View {
         .navigationTitle("Users")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
-        .refreshable { await load() }
+        .reloads { await load() }
         .confirmation($confirmation)
     }
 
@@ -383,6 +384,7 @@ struct AdminEmailView: View {
                     field("SMTP server", \.smtpHost, prompt: "smtp.example.com", keyboard: .URL)
                     LabeledContent("Port") {
                         TextField("Port", value: $form.smtpPort, format: .number.grouping(.never))
+                            .labelsHidden()
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
@@ -443,10 +445,11 @@ struct AdminEmailView: View {
     }
 
     private func field(_ title: String, _ keyPath: WritableKeyPath<UpdateEmailSettingsRequest, String?>, prompt: String,
-                       keyboard: UIKeyboardType = .default) -> some View {
+                       keyboard: TouchKeyboardType = .default) -> some View {
         LabeledContent(title) {
             TextField(title, text: Binding(get: { form[keyPath: keyPath] ?? "" }, set: { form[keyPath: keyPath] = $0 }),
                       prompt: Text(prompt))
+                .labelsHidden()
                 .keyboardType(keyboard)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -527,7 +530,7 @@ struct AdminUpdatesView: View {
     @State private var checkError: String?
 
     var body: some View {
-        List {
+        GroupedList {
             Section("This instance") {
                 LabeledContent("Version", value: running)
                 LabeledContent("Extension contract", value: session.serverVersion?.extensionApiVersion ?? "—")
@@ -546,7 +549,7 @@ struct AdminUpdatesView: View {
                         }
                         if let image = update.image {
                             Button {
-                                UIPasteboard.general.string = image
+                                Platform.copy(image)
                                 session.toasts.show("Image reference copied.", .success)
                             } label: {
                                 LabeledContent("Image") { Text(image).font(.caption.monospaced()).lineLimit(2) }
@@ -627,7 +630,7 @@ struct AdminExtensionsView: View {
     private var available: [ExtensionUpdate] { (updates?.extensions ?? []).filter(\.compatible) }
 
     var body: some View {
-        List {
+        GroupedList {
             if let admin {
                 if let updates, !updates.enabled {
                     Section { Text("Update checks are disabled on this instance (Updates__Enabled).").font(.footnote) }.themedRow()
@@ -675,7 +678,7 @@ struct AdminExtensionsView: View {
             }
         }
         .task { await load() }
-        .refreshable { await load() }
+        .reloads { await load() }
         .confirmation($confirmation)
         .textPrompt($prompt)
     }
@@ -706,7 +709,7 @@ struct AdminExtensionsView: View {
                     Text("Version \(update.availableVersion) is available (\(Self.size(update.sizeBytes))).")
                         .font(.caption).foregroundStyle(theme.info)
                     Button("Update and Restart") { confirmUpdate([update]) }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.clearGlass)
                         .disabled(updating)
                 } else {
                     Text("Version \(update.availableVersion) is available, but this instance can't load it: "
@@ -716,7 +719,7 @@ struct AdminExtensionsView: View {
             }
             if item.canPurge {
                 Button("Delete Data…", role: .destructive) { confirmPurge(item) }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.clearGlass)
                     .tint(theme.error)
             }
         }

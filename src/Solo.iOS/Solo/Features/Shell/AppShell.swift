@@ -226,7 +226,9 @@ private struct TabShell: View {
                 SectionStack(tab: .account).animatesTabChanges()
             }
         }
+        #if os(iOS)
         .tabBarMinimizeBehavior(.onScrollDown)
+        #endif
     }
 }
 
@@ -255,13 +257,16 @@ private struct SplitShell: View {
         // A swipe in from the screen's edge brings the sidebar back, as the system's own sidebars
         // do — instead of going back a page, which is what a stack in the detail column would
         // otherwise make of it. With the sidebar showing, the edge is the sidebar's and this does nothing.
+        #if os(iOS)
         .gesture(SidebarEdgeSwipe {
             withAnimation { columns = .all }
         })
+        #endif
         .environment(panels)
     }
 }
 
+#if os(iOS)
 /// A pan in from the screen's leading edge. Every other pan — the stack's
 /// swipe back among them — waits for it to fail, so the screen's edge is its
 /// alone. A pan that starts anywhere else fails it at once and is unaffected.
@@ -284,6 +289,7 @@ private struct SidebarEdgeSwipe: UIGestureRecognizerRepresentable {
         }
     }
 }
+#endif
 
 /// The app's map: every project, and inside each one its open boards and
 /// whatever its extensions add. Creating things happens where they live.
@@ -339,6 +345,7 @@ struct SidebarView: View {
 
         }
         .listStyle(.sidebar)
+        .macControls()
         // What is always wanted stays put at the foot of the column, as the title does at its
         // head; the projects scroll between the two.
         .safeAreaBar(edge: .bottom, spacing: 0) {
@@ -368,7 +375,7 @@ struct SidebarView: View {
             }
         }
 
-        .refreshable {
+        .reloads {
             await nav.refreshProjects()
             for id in nav.expanded {
                 await nav.refreshBoards(id)

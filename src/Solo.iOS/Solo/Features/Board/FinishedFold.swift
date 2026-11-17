@@ -197,21 +197,21 @@ struct FinishedFold<Cards: View>: View {
 /// A scroll view that bounces keeps every drag that starts on it, so at its end the drag pulls
 /// at the column and the page stays where it is — and on a phone the column is most of the
 /// screen. One that does not bounce lets a drag past its end go on to the page.
-private struct PassesOnAtEnds: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView { Probe() }
-    func updateUIView(_ view: UIView, context: Context) {}
+private struct PassesOnAtEnds: PlatformViewRepresentable {
+    func makeView(context: Context) -> Probe { Probe() }
+    func updateView(_ view: Probe, context: Context) {}
 
-    private final class Probe: UIView {
+    final class Probe: PlatformView {
+        #if os(macOS)
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            enclosingPlatformScrollView?.verticalScrollElasticity = .none
+        }
+        #else
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            var view = superview
-            while let current = view {
-                if let scroll = current as? UIScrollView {
-                    scroll.bounces = false
-                    return
-                }
-                view = current.superview
-            }
+            enclosingPlatformScrollView?.bounces = false
         }
+        #endif
     }
 }

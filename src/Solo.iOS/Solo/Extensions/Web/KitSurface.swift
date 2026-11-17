@@ -167,8 +167,11 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     override init() {
         super.init()
+        // A Mac pages memory out before it asks anything of an app, and says nothing here.
+        #if os(iOS)
         NotificationCenter.default.addObserver(self, selector: #selector(memoryIsShort),
                                                name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+        #endif
     }
 
     // MARK: Places
@@ -262,8 +265,10 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         // Wide enough that nothing in the page lays out as for a phone; nobody sees it either way.
         let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
         view.navigationDelegate = self
+        #if os(iOS)
         view.isUserInteractionEnabled = false
         view.accessibilityElementsHidden = true
+        #endif
         #if DEBUG
         view.isInspectable = true
         #endif
@@ -493,7 +498,7 @@ extension Session {
         if let url = URL(string: path), let scheme = url.scheme?.lowercased() {
             guard ["http", "https"].contains(scheme), HostedWeb.address(of: url) == HostedWeb.address(of: api.baseURL) else {
                 // Somewhere off the instance is the browser's, as a link in a page of the web's would be.
-                if ["http", "https", "mailto"].contains(scheme) { UIApplication.shared.open(url) }
+                if ["http", "https", "mailto"].contains(scheme) { Platform.open(url) }
                 return
             }
             // The instance's own address written out in full: the same place as the path alone.
@@ -511,20 +516,26 @@ extension Session {
 
 /// Keeps the kit surface's web view in the window, where its page runs as a visible one does,
 /// at a size nobody can see or touch.
-struct KitSurfaceAnchor: UIViewRepresentable {
+struct KitSurfaceAnchor: PlatformViewRepresentable {
     var webView: WKWebView?
     /// While the page is being shown for a dialog it is in the sheet, not here.
     var lent = false
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeView(context: Context) -> Untouched {
+        let view = Untouched()
+        #if os(macOS)
+        view.wantsLayer = true
+        view.layer?.masksToBounds = true
+        view.setAccessibilityElement(false)
+        #else
         view.clipsToBounds = true
         view.isUserInteractionEnabled = false
         view.accessibilityElementsHidden = true
+        #endif
         return view
     }
 
-    func updateUIView(_ view: UIView, context: Context) {
+    func updateView(_ view: Untouched, context: Context) {
         guard let webView, !lent else {
             view.subviews.forEach { $0.removeFromSuperview() }
             return
@@ -534,29 +545,59 @@ struct KitSurfaceAnchor: UIViewRepresentable {
             view.addSubview(webView)
         }
         webView.frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+        #if os(macOS)
+        webView.alphaValue = 0.01
+        #else
         webView.alpha = 0.01
         webView.isUserInteractionEnabled = false
+        #endif
+    }
+
+    /// A view nothing in it can be clicked through to.
+    final class Untouched: PlatformView {
+        #if os(macOS)
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        #endif
     }
 }
 
 /// The page itself, shown: for a dialog one of its contributions opened. Nothing else on the
 /// page can be seen, so what the sheet shows is that dialog on the app's own background.
-struct KitSurfaceDialog: UIViewRepresentable {
+struct KitSurfaceDialog: PlatformViewRepresentable {
     var webView: WKWebView
 
-    func makeUIView(context: Context) -> UIView { UIView() }
+    func makeView(context: Context) -> PlatformView { PlatformView() }
 
-    func updateUIView(_ view: UIView, context: Context) {
+    func updateView(_ view: PlatformView, context: Context) {
         if webView.superview !== view {
             view.addSubview(webView)
         }
         webView.frame = view.bounds
+        #if os(macOS)
+        webView.autoresizingMask = [.width, .height]
+        webView.alphaValue = 1
+        #else
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         webView.alpha = 1
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
         webView.isUserInteractionEnabled = true
+        #endif
+        webView.showsThrough()
+    }
+}
+
+extension WKWebView {
+    /// Draws no ground of its own: whatever is behind the page shows until it has drawn, and
+    /// around it where it is shorter than its view.
+    func showsThrough() {
+        #if os(macOS)
+        // AppKit's web view has no word for this but the one its own apps use.
+        setValue(false, forKey: "drawsBackground")
+        underPageBackgroundColor = .clear
+        #else
+        isOpaque = false
+        backgroundColor = .clear
+        scrollView.backgroundColor = .clear
+        #endif
     }
 }
 
@@ -777,11 +818,11 @@ struct KitNodeView: View {
             default:
                 if node.flag("destructive") {
                     Button(role: role, action: pressed) { label }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.clearGlass)
                         .tint(theme.error)
                 } else {
                     Button(role: role, action: pressed) { label }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.clearGlass)
                 }
             }
         }
@@ -1083,7 +1124,7 @@ struct KitTaskMenu: View {
             }
             // Only the dots: the task's own actions are beside it and need the room for their words.
             .labelStyle(.iconOnly)
-            .buttonStyle(.glass)
+            .buttonStyle(.clearGlass)
         }
     }
 }
@@ -1114,6 +1155,6 @@ struct KitPageView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         // Reading it again starts the page over, as reloading it on the web would.
-        .refreshable { session.kit.refresh(mount) }
+        .reloads { session.kit.refresh(mount) }
     }
 }

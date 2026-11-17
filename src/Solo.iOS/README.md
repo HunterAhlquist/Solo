@@ -1,4 +1,4 @@
-# Solo for iPhone and iPad — native client (experiment)
+# Solo for iPhone, iPad and Mac — native client (experiment)
 
 A SwiftUI client for a Solo instance. It talks to the same REST API and the same SignalR hub as the Blazor client in `src/Solo.Client`, so nothing on the server changes for it: point it at an instance and sign in.
 
@@ -6,17 +6,17 @@ It is an experiment and lives on its own branch. It is not part of `Solo.slnx`, 
 
 ## Running it
 
-Requires Xcode 26 and an iOS 26 simulator or device (the deployment target is iOS 26, for Liquid Glass).
+Requires Xcode 26 and an iOS 26 simulator or device, or a Mac on macOS 26 (the deployment targets are iOS 26 and macOS 26, for Liquid Glass).
 
 ```bash
 open src/Solo.iOS/Solo.xcodeproj
 ```
 
-Choose the `Solo` scheme and an iPhone or iPad destination, and run. The packages resolve on the first build.
+Choose the `Solo` scheme and an iPhone or iPad destination, or **My Mac**, and run. The packages resolve on the first build. The one target builds for all three; the Mac's is a native app (AppKit under SwiftUI), not the iPad's running on a Mac — that way of running it is switched off.
 
 On first launch the app asks for the instance's address, then signs in through the instance's own sign-in page in a system sheet. It keeps the session token in the Keychain and the instance in its settings, so later launches go straight in.
 
-The tests are in the `SoloTests` target (`⌘U`, or `xcodebuild test`). They cover the rules the app has to share with the server and the web client — dates, serial numbers, rank neighbours, the roadmap's sprint arithmetic, note addresses and heading slugs, the Design Docs sync batch format, and the sketch rasterizer against values taken from the web one.
+The tests are in the `SoloTests` target (`⌘U`, or `xcodebuild test`), and run on a simulator or on the Mac. They cover the rules the app has to share with the server and the web client — dates, serial numbers, rank neighbours, the roadmap's sprint arithmetic, note addresses and heading slugs, the Design Docs sync batch format, and the sketch rasterizer against values taken from the web one.
 
 ### Debug hooks
 
@@ -30,7 +30,7 @@ Debug builds read three environment variables, which is how the app was driven o
 | `SOLO_PERF` | Writes a line a second to `Documents/perf.log`: frames drawn, the longest wait between two, how much of the second was spent late, and how many zones and cards were built. |
 | `SOLO_PERF_SCROLL` | With `SOLO_PERF`, a speed in points a second: once the screen has settled the app scrolls its longest page down at that speed and back up at three times it, and the log says where it is. The same swipe every run, and the only way to scroll a device from here. It also keeps the screen awake. |
 
-With `simctl`, prefix each with `SIMCTL_CHILD_`. None of this is compiled into a release build — unless it is built with `PERF` among its compilation conditions (`SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) PERF'`), which is how the app is measured optimised: a debug build's timings say little about a release build's.
+With `simctl`, prefix each with `SIMCTL_CHILD_`; for the Mac's build, `open -n Solo.app --env SOLO_OPEN=…`. The perf log is an iPhone's and an iPad's: `SOLO_PERF` does nothing on a Mac. None of this is compiled into a release build — unless it is built with `PERF` among its compilation conditions (`SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) PERF'`), which is how the app is measured optimised: a debug build's timings say little about a release build's.
 
 ## How it is put together
 
@@ -56,6 +56,7 @@ SoloTests         unit tests
 - **Theme.** The system's materials, backgrounds and type throughout, with Liquid Glass for panels and bars. The instance's theme contributes its primary and secondary colours — as the tint, and as a faint wash behind the page — and nothing else.
 
 - **Widgets.** Three, one of each size, showing what the Capacitor app's show: how much is assigned to you, the same as a small board, and what is due this week. A widget runs in its own process, so the app and the extension share one keychain access group (it needs nothing registered, unlike an app group): the app leaves the instance, a copy of the session and the theme's accent there, and a widget keeps the last summary it drew for when the instance can't be reached. The summary is worked out from `GET api/users/me/tasks`, which every instance serves. A tap opens the app at Your Tasks or at a task, by the app's own URL scheme.
+- **A Mac runs the iPad's layout.** The sidebar, the stack beside it and the task panel down the trailing edge are the same views; a Mac's size class is always the wide one, so the phone's shell is compiled but never shown. Where the two kits differ the difference is in one place, `Core/Support/Platform.swift`: one name for a picture, a colour and a font; `PlatformViewRepresentable`, so a small view of UIKit's or AppKit's is written once; and the few things an iPhone's pages say that a Mac has no use for — how a bar holds its title, which keyboard a field wants — declared there under the same names, so that the pages need not say them twice. What is drawn differently is drawn through a name of the app's own: a grouped list is a `List` on an iPhone and a grouped form on a Mac (`GroupedList`), since a Mac's list is a plain table and its form left to itself is two columns; a glass button is `clearGlass`, since a Mac's glass button takes the accent as a solid fill; and a sheet is given a size to start from, since a Mac's is otherwise as small as what is in it. Four things are a Mac's own. What covers the whole screen on an iPhone — a sketch being drawn, the pictures of a note — is a window (`CoverWindow`), with its own bar, to put beside the note. The note editor is AppKit's text view (`DocEditorMac.swift`) around the same styler and layout manager, where a click on a link follows it unless the caret is already inside it; someone else's edit clears Undo there, because AppKit's Undo remembers places in the text. The sketch's page is layers (`SketchViewportMac.swift`): a drag on the page draws, a drag off it or with the secondary button carries it, two fingers on the trackpad scroll, pinch and turn it, and Undo and Redo are the Edit menu's. And there is a menu bar (`SoloCommands`): New Task on the board showing, a Go menu with ⌘1 to ⌘5 and Back, and Reload, which is what pulling a page down is on a touch screen. The app is one window, as it is one session looking at one place; it is sandboxed, and keeps its session in the login keychain. A Mac's build has no widgets and plays no haptics.
 - **Local network.** The first connection to an instance on the LAN fails while iOS asks whether Solo may use the local network. The app waits for the answer and tries again rather than showing that failure; a refusal has its own screen, with the way to Settings.
 - **Accent as a fill.** The instance's accent is whatever the theme says, and may be a bright yellow. Where the app draws on it, the label is black or white by contrast — set on the label, since a prominent button's style overrides one set on the button. Where the system draws white on it and gives no say (a switch's knob, a swipe action's icon), the fill is the nearest shade of the accent that white reads on.
 

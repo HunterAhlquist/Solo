@@ -246,6 +246,17 @@ struct MarkdownEditorSheet: View {
                         Button("Markdown") { showingCheatsheet = true }
                             .font(.footnote)
                         Spacer()
+                        // A Mac's sheet has no bar across its top for the switch to sit in.
+                        #if os(macOS)
+                        Picker("Mode", selection: $previewing) {
+                            Text("Write").tag(false)
+                            Text("Preview").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 160)
+                        Spacer()
+                        #endif
                         Text("\(text.count.formatted()) / \(draft.limit.formatted())")
                             .font(.footnote.monospacedDigit())
                             .foregroundStyle(text.count > draft.limit ? theme.error : theme.textSecondary)
@@ -387,7 +398,7 @@ struct MarkdownCheatsheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            GroupedList {
                 Section {
                     ForEach(Self.rows, id: \.0) { syntax, result in
                         HStack {

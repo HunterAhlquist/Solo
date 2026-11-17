@@ -1,5 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 
 // The display half of live editing: LiveMarkdown says what each run of a note
 // is, and this turns that into what TextKit draws. The text view's text is
@@ -21,7 +25,7 @@ nonisolated extension NSAttributedString.Key {
 /// block's background across the whole line rather than behind its glyphs.
 nonisolated final class NoteLayoutManager: NSLayoutManager, NSLayoutManagerDelegate {
     /// Set and read on the main thread only, which is where a text view lays out and draws.
-    nonisolated(unsafe) var accent: UIColor = .tintColor
+    nonisolated(unsafe) var accent: PlatformColor = .tintColor
 
     override init() {
         super.init()
@@ -36,7 +40,7 @@ nonisolated final class NoteLayoutManager: NSLayoutManager, NSLayoutManagerDeleg
     /// caret and the shared document are untouched.
     func layoutManager(_ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
                        properties: UnsafePointer<NSLayoutManager.GlyphProperty>, characterIndexes: UnsafePointer<Int>,
-                       font: UIFont, forGlyphRange glyphRange: NSRange) -> Int {
+                       font: PlatformFont, forGlyphRange glyphRange: NSRange) -> Int {
         guard let storage = textStorage else { return 0 }
         var swapped: [CGGlyph]?
         for index in 0..<glyphRange.length {
@@ -58,7 +62,7 @@ nonisolated final class NoteLayoutManager: NSLayoutManager, NSLayoutManagerDeleg
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
-        guard let storage = textStorage, let container = textContainers.first, let context = UIGraphicsGetCurrentContext()
+        guard let storage = textStorage, let container = textContainers.first, let context = PlatformGraphics.current
         else { return }
         let padding = container.lineFragmentPadding
         let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
@@ -68,7 +72,7 @@ nonisolated final class NoteLayoutManager: NSLayoutManager, NSLayoutManagerDeleg
             enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in
                 let row = rect.offsetBy(dx: origin.x, dy: origin.y)
                 if block < 0 {
-                    context.setFillColor(UIColor.tertiarySystemFill.cgColor)
+                    context.setFillColor(PlatformColor.tertiarySystemFill.cgColor)
                     context.fill(CGRect(x: row.minX + padding, y: row.minY, width: row.width - padding * 2, height: row.height))
                 } else {
                     context.setFillColor(self.accent.withAlphaComponent(0.6).cgColor)
@@ -91,12 +95,12 @@ nonisolated enum NoteMetrics {
 final class NoteStyler {
     private static let headingScale: [CGFloat] = [1.7, 1.42, 1.22, 1.1, 1, 1]
 
-    var accent: UIColor = .tintColor
-    private(set) var body = UIFont.preferredFont(forTextStyle: .body)
+    var accent: PlatformColor = .tintColor
+    private(set) var body = PlatformFont.writing
 
     /// Dynamic Type changed: the next pass uses the new size.
     func refreshFonts() {
-        body = .preferredFont(forTextStyle: .body)
+        body = .writing
     }
 
     private func paragraph() -> NSMutableParagraphStyle {
@@ -108,12 +112,12 @@ final class NoteStyler {
 
     /// What plain text looks like, and what is typed before the next pass styles it.
     var base: [NSAttributedString.Key: Any] {
-        [.font: body, .foregroundColor: UIColor.label, .paragraphStyle: paragraph()]
+        [.font: body, .foregroundColor: PlatformColor.label, .paragraphStyle: paragraph()]
     }
 
     /// Syntax folded away: too small to see or to take room, without changing the text.
     private var hidden: [NSAttributedString.Key: Any] {
-        [.font: UIFont.systemFont(ofSize: 0.1), .foregroundColor: UIColor.clear]
+        [.font: PlatformFont.systemFont(ofSize: 0.1), .foregroundColor: PlatformColor.clear]
     }
 
     private func rank(_ kind: LiveSpan.Kind) -> Int {
@@ -137,18 +141,16 @@ final class NoteStyler {
                 result.addAttribute(.paragraphStyle, value: style, range: part)
             }
         }
-        func traits(_ added: UIFontDescriptor.SymbolicTraits, _ range: NSRange) {
+        func traits(_ added: FontTrait, _ range: NSRange) {
             result.enumerateAttribute(.font, in: range) { value, part, _ in
-                guard let font = value as? UIFont else { return }
-                let wanted = font.fontDescriptor.symbolicTraits.union(added)
-                let descriptor = font.fontDescriptor.withSymbolicTraits(wanted) ?? font.fontDescriptor
-                result.addAttribute(.font, value: UIFont(descriptor: descriptor, size: font.pointSize), range: part)
+                guard let font = value as? PlatformFont else { return }
+                result.addAttribute(.font, value: font.adding(added), range: part)
             }
         }
         func monospaced(_ range: NSRange, scale: CGFloat) {
             result.enumerateAttribute(.font, in: range) { value, part, _ in
-                let size = ((value as? UIFont)?.pointSize ?? body.pointSize) * scale
-                result.addAttribute(.font, value: UIFont.monospacedSystemFont(ofSize: size, weight: .regular), range: part)
+                let size = ((value as? PlatformFont)?.pointSize ?? body.pointSize) * scale
+                result.addAttribute(.font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular), range: part)
             }
         }
 
@@ -159,7 +161,7 @@ final class NoteStyler {
             switch span.kind {
             case .heading(let level):
                 let size = body.pointSize * Self.headingScale[min(max(level, 1), 6) - 1]
-                result.addAttribute(.font, value: UIFont.systemFont(ofSize: size, weight: .bold), range: range)
+                result.addAttribute(.font, value: PlatformFont.systemFont(ofSize: size, weight: .bold), range: range)
                 paragraphs(range) { $0.paragraphSpacingBefore = self.body.pointSize * 0.35 }
             case .codeBlock:
                 monospaced(range, scale: 0.9)
@@ -174,7 +176,7 @@ final class NoteStyler {
                 monospaced(range, scale: 0.9)
             case .quote(let depth):
                 result.addAttribute(.noteBlock, value: NSNumber(value: depth), range: range)
-                result.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: range)
+                result.addAttribute(.foregroundColor, value: PlatformColor.secondaryLabel, range: range)
                 paragraphs(range) {
                     $0.firstLineHeadIndent = NoteMetrics.quoteIndent * CGFloat(depth)
                     $0.headIndent = NoteMetrics.quoteIndent * CGFloat(depth)
@@ -185,31 +187,35 @@ final class NoteStyler {
                 let width = (lead as NSString).size(withAttributes: [.font: body]).width
                 paragraphs(range) { $0.headIndent = $0.firstLineHeadIndent + width }
             case .strong:
-                traits(.traitBold, range)
+                traits(.bold, range)
             case .emphasis:
-                traits(.traitItalic, range)
+                traits(.italic, range)
             case .strike:
                 result.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-                result.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: range)
+                result.addAttribute(.foregroundColor, value: PlatformColor.secondaryLabel, range: range)
             case .highlight:
-                result.addAttribute(.backgroundColor, value: UIColor.systemYellow.withAlphaComponent(0.35), range: range)
+                result.addAttribute(.backgroundColor, value: PlatformColor.systemYellow.withAlphaComponent(0.35), range: range)
             case .code:
                 monospaced(range, scale: 0.92)
-                result.addAttribute(.backgroundColor, value: UIColor.tertiarySystemFill, range: range)
+                result.addAttribute(.backgroundColor, value: PlatformColor.tertiarySystemFill, range: range)
             case .link:
                 result.addAttribute(.foregroundColor, value: accent, range: range)
                 result.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
             case .destination(let address):
                 result.addAttribute(.noteLink, value: address as NSString, range: range)
+                // A Mac's pointer says what it is over.
+                #if os(macOS)
+                result.addAttribute(.cursor, value: NSCursor.pointingHand, range: range)
+                #endif
             case .bullet:
                 result.addAttribute(.foregroundColor, value: accent, range: range)
             case .dot:
                 result.addAttribute(.noteBullet, value: true, range: range)
             case .syntax:
-                result.addAttribute(.foregroundColor, value: UIColor.tertiaryLabel, range: range)
+                result.addAttribute(.foregroundColor, value: PlatformColor.tertiaryLabel, range: range)
             case .embed:
                 monospaced(range, scale: 0.85)
-                result.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: range)
+                result.addAttribute(.foregroundColor, value: PlatformColor.secondaryLabel, range: range)
             case .hidden:
                 result.removeAttribute(.underlineStyle, range: range)
                 result.removeAttribute(.strikethroughStyle, range: range)
@@ -225,7 +231,7 @@ final class NoteStyler {
             case .media(let target):
                 guard let size = mediaSize(target) else {
                     monospaced(range, scale: 0.85)
-                    result.addAttribute(.foregroundColor, value: UIColor.secondaryLabel, range: range)
+                    result.addAttribute(.foregroundColor, value: PlatformColor.secondaryLabel, range: range)
                     continue
                 }
                 // The row's text folds away and its line is made as tall as
@@ -263,6 +269,7 @@ final class NoteStyler {
     }
 }
 
+#if os(iOS)
 /// A text view that says when its width changes, which is when embeds have
 /// to be measured again, and remembers where it was last touched — which is
 /// how a tap on a link is told from a tap to start typing.
@@ -335,6 +342,7 @@ final class NoteTextView: UITextView {
         restoring = false
     }
 }
+#endif
 
 /// Where the editor gets a row of pictures from: how much room one takes,
 /// and the view that draws it. Both are asked with the row's own text — a

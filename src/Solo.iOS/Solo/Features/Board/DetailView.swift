@@ -56,7 +56,7 @@ struct DetailView: View {
                         Spacer()
                         Button("Close", systemImage: "xmark", action: onClose)
                             .labelStyle(.iconOnly)
-                            .buttonStyle(.glass)
+                            .buttonStyle(.clearGlass)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -170,12 +170,12 @@ struct DetailView: View {
                     if canWrite {
                         if task != nil {
                             Button("Move to Board", systemImage: "arrow.right.doc.on.clipboard") { moving = true }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.clearGlass)
                         }
                         Button("Delete \(task != nil ? "Task" : "Epic")", systemImage: "trash", role: .destructive) {
                             confirmDelete()
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.clearGlass)
                         .tint(theme.error)
                     }
                     // What extensions add to the task's menu. Theirs to offer whoever is looking,
@@ -468,7 +468,9 @@ struct AssigneeField: View {
             }
             .layoutPriority(1)
             // Several people can be ticked without the menu being opened again for each.
+            #if os(iOS)
             .menuActionDismissBehavior(.disabled)
+            #endif
             .menuToggles()
             .disabled(!canWrite)
         }

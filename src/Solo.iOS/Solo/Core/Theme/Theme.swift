@@ -23,11 +23,11 @@ nonisolated struct Theme: Equatable, Sendable {
     // Everything else is the system's, named for what it is used for.
     var textPrimary: Color { .primary }
     var textSecondary: Color { .secondary }
-    var textDisabled: Color { Color(uiColor: .tertiaryLabel) }
-    var divider: Color { Color(uiColor: .separator) }
+    var textDisabled: Color { .tertiaryLabel }
+    var divider: Color { .separator }
     /// A quiet fill for a chip, a well, a card resting on glass.
-    var backgroundGray: Color { Color(uiColor: .tertiarySystemFill) }
-    var surface: Color { Color(uiColor: .quaternarySystemFill) }
+    var backgroundGray: Color { .tertiaryFill }
+    var surface: Color { .quaternaryFill }
     var success: Color { .green }
     var warning: Color { .orange }
     var error: Color { .red }

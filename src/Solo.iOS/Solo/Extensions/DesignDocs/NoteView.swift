@@ -45,7 +45,7 @@ struct NoteView: View {
             if let sync {
                 // Edge to edge, under the bars: the note is one sheet that passes behind their glass.
                 SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite, fallback: note.markdown,
-                                 accent: UIColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision,
+                                 accent: PlatformColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision,
                                  presence: sync.awareness.revision, header: AnyView(header.environment(\.theme, theme).environment(session)), insets: geometry.safeAreaInsets,
                                  onLink: follow) {
                     typing = $0
@@ -330,7 +330,7 @@ struct NotePresence: View {
 
     private func ring(_ userId: UUID) -> Color {
         guard let slot = slots[userId] else { return theme.textSecondary }
-        return Color(uiColor: PresenceColor.color(PresenceColor.css(slot: slot), dark: colorScheme == .dark))
+        return Color(platform: PresenceColor.color(PresenceColor.css(slot: slot), dark: colorScheme == .dark))
     }
 }
 
@@ -359,7 +359,7 @@ struct DocLinkPicker: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            GroupedList {
                 if let vaults {
                     if vaults.isEmpty {
                         Text("This project has no open design docs.").foregroundStyle(theme.textSecondary)
@@ -472,7 +472,7 @@ struct DocAttachmentsSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            GroupedList {
                 if let items {
                     let here = items.filter { $0.ownerId == note.id || $0.embeddedIn.contains(note.id) }
                     let elsewhere = items.filter { !($0.ownerId == note.id || $0.embeddedIn.contains(note.id)) }
@@ -630,7 +630,7 @@ private struct DocPictureLoader: View {
     var image: DocImage
     var store: DocVaultStore
 
-    @State private var picture: UIImage?
+    @State private var picture: PlatformImage?
     @State private var failed = false
 
     var body: some View {
@@ -643,7 +643,7 @@ private struct DocPictureLoader: View {
                     if failed {
                         VStack(spacing: 12) {
                             Text("That image couldn't load.").foregroundStyle(.white)
-                            Button("Close") { dismiss() }.buttonStyle(.glass)
+                            Button("Close") { dismiss() }.buttonStyle(.clearGlass)
                         }
                     } else {
                         ProgressView().tint(.white)

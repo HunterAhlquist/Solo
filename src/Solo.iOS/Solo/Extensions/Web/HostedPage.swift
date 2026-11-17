@@ -96,9 +96,7 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
         view.navigationDelegate = self
         view.uiDelegate = self
         // The app's background shows until the page has drawn, and around a page shorter than the screen.
-        view.isOpaque = false
-        view.backgroundColor = .clear
-        view.scrollView.backgroundColor = .clear
+        view.showsThrough()
         view.allowsBackForwardNavigationGestures = false
         #if DEBUG
         view.isInspectable = true
@@ -175,7 +173,7 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
         if isInstance(url) { return .allow }
         // A link that leaves the instance opens in the browser; nothing else may take the page elsewhere.
         if action.navigationType == .linkActivated, ["http", "https", "mailto"].contains(url.scheme ?? "") {
-            await UIApplication.shared.open(url)
+            Platform.open(url)
         }
         return .cancel
     }
@@ -187,7 +185,7 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
         if isInstance(url) {
             webView.load(URLRequest(url: url))
         } else if ["http", "https", "mailto"].contains(url.scheme ?? "") {
-            UIApplication.shared.open(url)
+            Platform.open(url)
         }
         return nil
     }
@@ -220,11 +218,11 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
 }
 
 /// The page's web view, as it is.
-private struct HostedWebView: UIViewRepresentable {
+private struct HostedWebView: PlatformViewRepresentable {
     var webView: WKWebView
 
-    func makeUIView(context: Context) -> WKWebView { webView }
-    func updateUIView(_ view: WKWebView, context: Context) {}
+    func makeView(context: Context) -> WKWebView { webView }
+    func updateView(_ view: WKWebView, context: Context) {}
 }
 
 /// An extension's page. Drawn by the app when the page is built from the kit, and otherwise

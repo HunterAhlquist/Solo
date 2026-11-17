@@ -642,6 +642,21 @@ private struct RoadmapBar: View {
 }
 
 /// A click of a pointer's secondary button — a right click on a trackpad or a mouse — and where it was.
+#if os(macOS)
+private struct SecondaryClick: NSGestureRecognizerRepresentable {
+    var action: (CGPoint) -> Void
+
+    func makeNSGestureRecognizer(context: Context) -> NSClickGestureRecognizer {
+        let recognizer = NSClickGestureRecognizer()
+        recognizer.buttonMask = 0x2
+        return recognizer
+    }
+
+    func handleNSGestureRecognizerAction(_ recognizer: NSClickGestureRecognizer, context: Context) {
+        if recognizer.state == .ended { action(context.converter.localLocation) }
+    }
+}
+#else
 private struct SecondaryClick: UIGestureRecognizerRepresentable {
     var action: (CGPoint) -> Void
 
@@ -656,3 +671,4 @@ private struct SecondaryClick: UIGestureRecognizerRepresentable {
         if recognizer.state == .ended { action(context.converter.localLocation) }
     }
 }
+#endif

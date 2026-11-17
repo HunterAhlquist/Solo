@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // How the page of a sketch sits in the editor, and how hands move it. This is
 // the web editor's arithmetic (js/sketch/viewport.js): the page is placed by a
@@ -130,6 +132,7 @@ nonisolated struct SketchTouchTap {
     }
 }
 
+#if os(iOS)
 /// The page under the hand. The Pencil draws, and a finger does too where
 /// fingers are for drawing; otherwise one finger moves the page, and two move,
 /// zoom and turn it. A trackpad scrolls, pinches and turns it the same way.
@@ -521,3 +524,4 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
         }
     }
 }
+#endif

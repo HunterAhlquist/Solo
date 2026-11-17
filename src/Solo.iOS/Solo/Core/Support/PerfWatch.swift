@@ -1,5 +1,7 @@
 import QuartzCore
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// Measurement for a debug build: how smoothly frames arrive, and how often the
 /// expensive parts of a screen are worked out. With `SOLO_PERF` set, a line a
@@ -14,15 +16,21 @@ import UIKit
 enum Perf {
     #if DEBUG || PERF
     private static var counts: [String: Int] = [:]
+    #if os(iOS)
     private static let watch = PerfWatch()
+    #endif
 
     @inline(__always) static func count(_ name: String, _ by: Int = 1) {
         counts[name, default: 0] += by
     }
 
+    /// Counting works on a Mac; the watch that writes the log is an iPhone's and an iPad's,
+    /// which are what it was written to measure.
     static func start() {
+        #if os(iOS)
         guard ProcessInfo.processInfo.environment["SOLO_PERF"] != nil else { return }
         watch.start()
+        #endif
     }
 
     fileprivate static func drain() -> String {
@@ -35,7 +43,7 @@ enum Perf {
     #endif
 }
 
-#if DEBUG || PERF
+#if (DEBUG || PERF) && os(iOS)
 private final class PerfWatch: NSObject {
     private var link: CADisplayLink?
     private var last: CFTimeInterval = 0

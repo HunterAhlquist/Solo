@@ -1,5 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// How far in a picture or a page may be zoomed.
 ///
@@ -37,13 +41,14 @@ nonisolated enum ZoomLimit {
     }
 }
 
+#if os(iOS)
 /// A picture to look closer at. Two fingers zoom it about the place between
 /// them and carry it along, and a double tap zooms in on the place tapped —
 /// which is a scroll view's zooming, the same the Photos app has, rather than
 /// a size worked out from a pinch: a size alone grows from a corner, and
 /// cannot know where the fingers are.
 struct ZoomablePicture: UIViewRepresentable {
-    var picture: UIImage
+    var picture: PlatformImage
     /// Pixels stay pixels when zoomed, for a sketch; a photograph is smoothed.
     var pixelated = false
     /// Room left around the picture while it is fitted.
@@ -184,3 +189,149 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         zoom(to: CGRect(x: at.x - size.width / 2, y: at.y - size.height / 2, width: size.width, height: size.height), animated: true)
     }
 }
+#else
+/// A picture to look closer at, on a Mac: a pinch on the trackpad zooms it about the pointer,
+/// two fingers carry it along, and a double click zooms in on the place clicked — a scroll
+/// view's magnification, as Preview has, for the reason a scroll view's zooming is used on an
+/// iPhone: it knows where the hand is.
+struct ZoomablePicture: NSViewRepresentable {
+    var picture: PlatformImage
+    /// Pixels stay pixels when zoomed, for a sketch; a photograph is smoothed.
+    var pixelated = false
+    /// Room left around the picture while it is fitted.
+    var margin: CGFloat = 0
+    var cornerRadius: CGFloat = 0
+    var shadow = false
+    /// The bars over the view, which the picture is fitted clear of.
+    var bars = EdgeInsets()
+
+    func makeNSView(context: Context) -> ZoomScrollView { ZoomScrollView() }
+
+    func updateNSView(_ view: ZoomScrollView, context: Context) {
+        view.margin = margin + max(bars.top, bars.bottom)
+        view.pictureLayer.cornerRadius = cornerRadius
+        view.pictureLayer.cornerCurve = .continuous
+        view.pictureLayer.masksToBounds = cornerRadius > 0
+        view.pictureLayer.magnificationFilter = pixelated ? .nearest : .linear
+        view.holder.layer?.shadowOpacity = shadow ? 0.25 : 0
+        view.show(picture)
+    }
+}
+
+final class ZoomScrollView: NSScrollView {
+    /// What is zoomed: the picture, and the shadow under it.
+    let holder = Holder()
+    let pictureLayer = CALayer()
+    var margin: CGFloat = 0 {
+        didSet { if margin != oldValue { fittedIn = .zero; needsLayout = true } }
+    }
+
+    /// The room the picture was last fitted to.
+    private var fittedIn: CGSize = .zero
+    private var pictureSize: CGSize = .zero
+    private weak var shown: PlatformImage?
+
+    init() {
+        super.init(frame: .zero)
+        contentView = Centred()
+        drawsBackground = false
+        contentView.drawsBackground = false
+        hasVerticalScroller = false
+        hasHorizontalScroller = false
+        allowsMagnification = true
+        automaticallyAdjustsContentInsets = false
+
+        holder.wantsLayer = true
+        holder.layer?.masksToBounds = false
+        holder.layer?.shadowColor = NSColor.black.cgColor
+        holder.layer?.shadowRadius = 16
+        holder.layer?.shadowOffset = CGSize(width: 0, height: 6)
+        holder.layer?.shadowOpacity = 0
+        pictureLayer.contentsGravity = .resize
+        holder.layer?.addSublayer(pictureLayer)
+        documentView = holder
+
+        let twice = NSClickGestureRecognizer(target: self, action: #selector(clickedTwice))
+        twice.numberOfClicksRequired = 2
+        addGestureRecognizer(twice)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func show(_ picture: PlatformImage) {
+        guard shown !== picture else { return }
+        shown = picture
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pictureLayer.contents = picture.bitmap
+        CATransaction.commit()
+        // A sketch being drawn on arrives as a new picture of the same page: the zoom is kept.
+        if picture.pixelSize != pictureSize {
+            pictureSize = picture.pixelSize
+            fittedIn = .zero
+            needsLayout = true
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        if fittedIn != bounds.size { fit() }
+    }
+
+    /// Lays the picture out as large as it fits, which is what a magnification of one means.
+    private func fit() {
+        fittedIn = bounds.size
+        magnification = 1
+        let room = CGSize(width: max(1, bounds.width - margin * 2), height: max(1, bounds.height - margin * 2))
+        let scale = pictureSize.width > 0 && pictureSize.height > 0
+            ? min(room.width / pictureSize.width, room.height / pictureSize.height) : 1
+        let size = CGSize(width: max(1, pictureSize.width * scale), height: max(1, pictureSize.height * scale))
+        holder.frame = CGRect(origin: .zero, size: size)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        pictureLayer.frame = holder.bounds
+        // Said outright, so that the shadow is not worked out from the picture itself (`ZoomLimit`).
+        holder.layer?.shadowPath = CGPath(roundedRect: holder.bounds, cornerWidth: pictureLayer.cornerRadius,
+                                          cornerHeight: pictureLayer.cornerRadius, transform: nil)
+        CATransaction.commit()
+        minMagnification = 1
+        maxMagnification = ZoomLimit.most(pixel: pictureLayer.magnificationFilter == .nearest ? ZoomLimit.sketchPixel : ZoomLimit.photoPixel,
+                                          fitted: scale, density: 1, longestSide: max(size.width, size.height),
+                                          screenScale: window?.backingScaleFactor ?? 2)
+        contentView.scroll(to: contentView.constrainBoundsRect(contentView.bounds).origin)
+        reflectScrolledClipView(contentView)
+    }
+
+    /// In on the place clicked, or back out to the whole picture.
+    @objc private func clickedTwice(_ recognizer: NSClickGestureRecognizer) {
+        let at = recognizer.location(in: holder)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            context.allowsImplicitAnimation = true
+            if magnification > minMagnification * 1.01 {
+                animator().magnification = minMagnification
+            } else {
+                animator().setMagnification(min(2.5, maxMagnification), centeredAt: at)
+            }
+        }
+    }
+
+    /// Top-down, as the picture is.
+    final class Holder: NSView {
+        override var isFlipped: Bool { true }
+    }
+
+    /// A picture smaller than the view sits in the middle of it.
+    private final class Centred: NSClipView {
+        override func constrainBoundsRect(_ proposed: NSRect) -> NSRect {
+            var rect = super.constrainBoundsRect(proposed)
+            guard let document = documentView else { return rect }
+            if rect.width > document.frame.width { rect.origin.x = (document.frame.width - rect.width) / 2 }
+            if rect.height > document.frame.height { rect.origin.y = (document.frame.height - rect.height) / 2 }
+            return rect
+        }
+    }
+}
+#endif

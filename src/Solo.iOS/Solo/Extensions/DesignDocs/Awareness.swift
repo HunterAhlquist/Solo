@@ -292,8 +292,8 @@ nonisolated enum PresenceColor {
                 encoded(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s))
     }
 
-    static func color(_ css: String?, dark: Bool) -> UIColor {
+    static func color(_ css: String?, dark: Bool) -> PlatformColor {
         let rgb = components(css, dark: dark)
-        return UIColor(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+        return PlatformColor(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
     }
 }

@@ -1,5 +1,5 @@
+import Foundation
 import Network
-import UIKit
 
 // An instance on the local network is behind iOS's local network privacy: the
 // first connection to it fails, and the system asks whether Solo may use the
@@ -16,12 +16,12 @@ enum LocalNetworkAccess {
     /// the person takes to answer.
     static func alertCameAndWent() async -> Bool {
         var waited = 0
-        while UIApplication.shared.applicationState == .active, waited < 6 {
+        while Platform.isActive, waited < 6 {
             try? await Task.sleep(for: .milliseconds(100))
             waited += 1
         }
-        guard UIApplication.shared.applicationState != .active else { return false }
-        while UIApplication.shared.applicationState != .active {
+        guard !Platform.isActive else { return false }
+        while !Platform.isActive {
             try? await Task.sleep(for: .milliseconds(150))
         }
         // The answer takes a moment to reach the network stack.

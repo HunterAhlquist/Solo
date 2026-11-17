@@ -1,7 +1,11 @@
 import AuthenticationServices
 import CryptoKit
 import Network
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// Signs in through the instance's own `/desktop-auth` page, shown in the
 /// system sign-in sheet. Whatever the provider is, the page runs its flow on
@@ -33,7 +37,7 @@ final class SignInFlow: NSObject, ASWebAuthenticationPresentationContextProvidin
     func run() async throws -> SessionGrant? {
         let verifier = Self.base64URL(Data((0..<32).map { _ in UInt8.random(in: .min ... .max) }))
         let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
-        let description = "Solo for \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone")"
+        let description = "Solo for \(Platform.deviceKind)"
 
         var listener: LoopbackListener?
         let flow: DesktopAuthFlow
@@ -65,8 +69,12 @@ final class SignInFlow: NSObject, ASWebAuthenticationPresentationContextProvidin
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        #if os(macOS)
+        return NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
+        #else
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         return scenes.flatMap(\.windows).first(where: \.isKeyWindow) ?? ASPresentationAnchor(windowScene: scenes[0])
+        #endif
     }
 
     /// Shows the sheet and waits for the way home, whichever way that is: the

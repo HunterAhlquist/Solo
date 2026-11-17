@@ -154,7 +154,7 @@ struct UnreachableView: View {
                 Button("Use a Different Instance") {
                     Task { await model.changeInstance() }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.clearGlass)
             }
         }
     }
@@ -181,7 +181,7 @@ struct LocalNetworkDeniedView: View {
             } actions: {
                 Button {
                     wentToSettings = true
-                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    if let url = Platform.settingsURL { openURL(url) }
                 } label: {
                     Text("Open Settings").onAccent()
                 }
@@ -189,11 +189,11 @@ struct LocalNetworkDeniedView: View {
                 Button("Try Again") {
                     Task { await model.retry() }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.clearGlass)
                 Button("Use a Different Instance") {
                     Task { await model.changeInstance() }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.clearGlass)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -233,11 +233,11 @@ struct SetupRequiredView: View {
                 Button("Check Again") {
                     Task { await model.retry() }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.clearGlass)
                 Button("Use a Different Instance") {
                     Task { await model.changeInstance() }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.clearGlass)
             }
         }
     }

@@ -372,11 +372,11 @@ private struct SelectorInHeader<Content: View>: View {
 
 /// A scroll view that a view inside it has found and said.
 @Observable private final class FoundScrollView {
-    @ObservationIgnored weak var view: UIScrollView?
+    @ObservationIgnored weak var view: PlatformScrollView?
     /// Counts up each time `view` is set: what a reader depends on, since `view` itself is not watched.
     private(set) var changes = 0
 
-    func found(_ scroll: UIScrollView?) {
+    func found(_ scroll: PlatformScrollView?) {
         guard scroll !== view else { return }
         view = scroll
         changes += 1
@@ -384,35 +384,38 @@ private struct SelectorInHeader<Content: View>: View {
 }
 
 /// In a scroll view's content: finds the scroll view it is in.
-private struct ScrollViewFinder: UIViewRepresentable {
+private struct ScrollViewFinder: PlatformViewRepresentable {
     var found: FoundScrollView
 
-    func makeUIView(context: Context) -> Probe {
+    func makeView(context: Context) -> Probe {
         let probe = Probe()
         probe.found = found
+        #if os(iOS)
         probe.isUserInteractionEnabled = false
+        #endif
         return probe
     }
 
-    func updateUIView(_ probe: Probe, context: Context) {
+    func updateView(_ probe: Probe, context: Context) {
         probe.found = found
     }
 
-    final class Probe: UIView {
+    final class Probe: PlatformView {
         var found: FoundScrollView?
 
+        #if os(macOS)
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil, let scroll = enclosingPlatformScrollView { found?.found(scroll) }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        #else
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            guard window != nil else { return }
-            var view = superview
-            while let current = view {
-                if let scroll = current as? UIScrollView {
-                    found?.found(scroll)
-                    return
-                }
-                view = current.superview
-            }
+            if window != nil, let scroll = enclosingPlatformScrollView { found?.found(scroll) }
         }
+        #endif
     }
 }
 
@@ -426,6 +429,7 @@ private struct ScrollViewFinder: UIViewRepresentable {
 /// as that size stands — not an animation of it, which it skips to the end of — and only while
 /// what is inside fills that view: a label growing inside a band of fixed size got no effect
 /// until it was whole. So it is the band itself that is walked from nothing to its full height.
+#if os(iOS)
 private struct ScrollEdgeBand: UIViewRepresentable {
     var scroll: FoundScrollView
     var on: Bool
@@ -553,6 +557,14 @@ private final class BandReach: NSObject {
         }
     }
 }
+#else
+/// The band is behind a phone's column selector, which a Mac never holds at the top of a page.
+private struct ScrollEdgeBand: View {
+    var scroll: FoundScrollView
+    var on: Bool
+    var body: some View { EmptyView() }
+}
+#endif
 
 /// What the Finished column is told, to hold itself to the height of the others.
 private struct DashboardFold {

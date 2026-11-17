@@ -178,6 +178,8 @@ final class AppModel {
     /// with — or, signed out, takes both away. Called whenever either changes, and when the
     /// theme does, since the widgets wear its accent.
     func publishToWidgets() {
+        // The widgets are an iPhone's and an iPad's: a Mac's build has none to tell.
+        #if os(iOS)
         if let instanceURL, let token = api?.token, session != nil {
             let palette = themes.document
             WidgetStore.instance = WidgetInstance(
@@ -190,6 +192,7 @@ final class AppModel {
             if instanceURL == nil { WidgetStore.instance = nil }
         }
         WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     /// A widget was tapped. Before sign-in has finished there is nowhere to go yet, so the

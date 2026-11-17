@@ -90,6 +90,7 @@ struct ProjectHomeView: View {
                         ForEach(sections) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
                     .frame(maxWidth: 560)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
@@ -105,6 +106,7 @@ struct ProjectHomeView: View {
         .themedBackground()
         .navigationTitle(project?.name ?? "Project")
         .navigationBarTitleDisplayMode(.inline)
+        .titleIsInBar()
         .toolbar {
             if let project {
                 ToolbarItem(placement: .principal) {
@@ -116,7 +118,7 @@ struct ProjectHomeView: View {
             }
         }
         .task(id: alias) { await load() }
-        .refreshable { await load() }
+        .reloads { await load() }
     }
 
     private func load() async {
@@ -228,10 +230,10 @@ struct BoardsSection: View {
                                     Spacer()
                                     if canManage {
                                         Button("Reopen") { Task { await setOpen(board, true) } }
-                                            .buttonStyle(.glass)
+                                            .buttonStyle(.clearGlass)
                                     }
                                     Button("View") { navigator.open(.board(project: project.alias, board: board.alias)) }
-                                        .buttonStyle(.glass)
+                                        .buttonStyle(.clearGlass)
                                 }
                                 .font(.subheadline)
                                 .padding(.vertical, 8)

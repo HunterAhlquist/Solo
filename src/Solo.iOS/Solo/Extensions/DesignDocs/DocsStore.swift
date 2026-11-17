@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Told when this device changes a project's design docs, so every list of them reloads at once.
 enum DocLists {
@@ -101,7 +100,7 @@ final class DocVaultStore {
 
     @ObservationIgnored private let session: Session
     @ObservationIgnored private var subscriptions: [EventSubscription] = []
-    @ObservationIgnored private var pictures: [String: UIImage] = [:]
+    @ObservationIgnored private var pictures: [String: PlatformImage] = [:]
     @ObservationIgnored private var started = false
 
     init(session: Session, projectId: UUID, vaultId: UUID) {
@@ -290,24 +289,24 @@ final class DocVaultStore {
 
     // MARK: Pictures
 
-    func picture(_ image: DocImage) async -> UIImage? {
+    func picture(_ image: DocImage) async -> PlatformImage? {
         let key = "\(image.id.compact):\(image.version)"
         if let cached = pictures[key] { return cached }
-        guard let data = try? await session.api.docImageData(projectId, vaultId, image.id), let decoded = UIImage(data: data)
+        guard let data = try? await session.api.docImageData(projectId, vaultId, image.id), let decoded = PlatformImage(data: data)
         else { return nil }
         pictures[key] = decoded
         return decoded
     }
 
     /// A sketch as a picture: its page, replayed from its stored strokes.
-    func sketchPicture(_ sketch: DocSketch, dark: Bool) async -> UIImage? {
+    func sketchPicture(_ sketch: DocSketch, dark: Bool) async -> PlatformImage? {
         let key = "\(sketch.id.compact):\(sketch.version):\(sketchRevision):\(dark)"
         if let cached = pictures[key] { return cached }
         guard let state = try? await session.api.docState(projectId, sketch.id) else { return nil }
         let snapshot = await SketchSnapshot.load(state.updates.map(\.data), sketch: sketch)
         let colors = dark ? SketchColors.dark : SketchColors.light
         guard let drawn = snapshot.raster.image(page: snapshot.page, paper: colors.paper, themeInk: colors.ink) else { return nil }
-        let picture = UIImage(cgImage: drawn)
+        let picture = PlatformImage.picture(drawn)
         pictures[key] = picture
         return picture
     }

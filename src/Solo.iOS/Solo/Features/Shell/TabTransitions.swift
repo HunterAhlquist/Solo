@@ -1,4 +1,5 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
 
 // A tab view swaps its pages with no transition at all: one is there, then the
@@ -113,3 +114,9 @@ private final class TabSlide: NSObject, UIViewControllerAnimatedTransitioning {
         animator.startAnimation()
     }
 }
+#else
+extension View {
+    /// A Mac has a sidebar and no tab bar: there is nothing to animate.
+    func animatesTabChanges() -> some View { self }
+}
+#endif

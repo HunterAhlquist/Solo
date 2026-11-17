@@ -172,9 +172,9 @@ struct RoadmapPage: View {
             if store.isPersonal {
                 HStack {
                     Button("Add Task", systemImage: "plus") { picking = PickTarget(day: store.today) }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.clearGlass)
                     Button("Today", systemImage: "calendar") { scrollRequest = .init(day: store.today) }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.clearGlass)
                     Spacer()
                 }
             }

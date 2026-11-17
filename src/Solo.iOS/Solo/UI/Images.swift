@@ -33,7 +33,11 @@ nonisolated private struct SVGDecoder: ImageDecoding {
         let longest = max(svg.size.width, svg.size.height, 1)
         let factor = min(max(longest, 512), 2400) / longest
         let size = CGSize(width: svg.size.width * factor, height: svg.size.height * factor)
+        #if os(macOS)
+        return ImageContainer(image: svg.rasterize(with: size))
+        #else
         return ImageContainer(image: svg.rasterize(size: size, scale: 1))
+        #endif
     }
 }
 
