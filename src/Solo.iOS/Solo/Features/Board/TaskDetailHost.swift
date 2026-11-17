@@ -168,15 +168,15 @@ struct DetailPanelColumn: View {
             // page has given this end of the window up: over the pane the bar had nothing
             // behind it, and its backing stopped short where the page did. Something that
             // scrolls, with nothing in it, stands here behind the pane and is backed the same.
+            // It is always there, and as wide as what the page has given up: it widens and
+            // narrows in the one animation the page's own room does, so the two meet at every
+            // moment of the pane's coming and going, and not only once it has come.
             #if os(macOS)
-            if center.panel != nil {
-                ScrollView { Color.clear.frame(height: 1) }
-                    .frame(width: center.width)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-                    .transition(.opacity)
-            }
+            ScrollView { Color.clear.frame(height: 1) }
+                .frame(width: center.panel == nil ? 0 : center.width)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             #endif
             if let panel = center.panel {
                 let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
