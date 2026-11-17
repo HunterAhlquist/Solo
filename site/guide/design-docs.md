@@ -75,6 +75,20 @@ Each button turns a style on for the selection, or off when the whole selection 
 **Link** asks for an address; on a link it removes the link and keeps the text.
 `==highlight==` is extended Markdown: Obsidian renders it, but some other Markdown apps show the equals signs.
 
+### Tick off tasks
+
+A list item that starts with `[ ]` or `[x]` and a space is a task, and shows as a checkbox:
+
+```markdown
+- [ ] Block out the level
+- [x] Pick a palette
+1. [ ] Numbered steps work too
+```
+
+Click or tap the checkbox to tick or untick it. This changes the `x` in the stored Markdown and leaves the caret where it is.
+Move the caret into the box to see `- [ ]` as text again and edit or remove it.
+In a note you can only read, the checkboxes show but don't change.
+
 ## Link notes and tasks
 
 Drag a note title from the hierarchy into the editor to insert a link at the drop position.

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
-import { livePreview } from './preview.js';
+import { livePreview, taskToggle } from './preview.js';
 import { markdownEditing } from './commands.js';
 
 function widgets(doc, anchor = 0) {
@@ -98,4 +98,73 @@ test('block quotes draw one bar per nesting level and hide their markers off the
     assert.deepEqual(away.depths,[[1,'--design-docs-quote-depth:1'],[2,'--design-docs-quote-depth:1'],[4,'--design-docs-quote-depth:2']]);
     assert.deepEqual(away.hidden,['> ','> ','> ']);
     assert.deepEqual(decorate(3).hidden,['> ','> '],'the caret line shows its marker');
+});
+
+// What is drawn in place of the text: each task box and list marker, with the source it stands for.
+function drawn(doc,anchor){
+    const field=livePreview({},{}),state=EditorState.create({doc,selection:{anchor},extensions:[markdownEditing(),EditorView.editable.of(true),field]});
+    const boxes=[],markers=[];
+    state.field(field).between(0,doc.length,(from,to,value)=>{
+        if(value.spec.task)boxes.push([doc.slice(from,to),value.spec.widget.checked]);
+        else if(value.spec.listMarker)markers.push(doc.slice(from,to));
+    });
+    return {boxes,markers};
+}
+test('a task is drawn as a box away from the caret',()=>{
+    const doc='- [ ] buy milk\n- [x] feed cat\n* [X] water\n1. [X] numbered\n- [ ]not a task\n- [y] nor this\n\nbody';
+    const away=drawn(doc,doc.length);
+    // The box is the bullet: it stands for the list mark and the brackets. A numbered task keeps its number.
+    assert.deepEqual(away.boxes,[['- [ ]',false],['- [x]',true],['* [X]',true],['[X]',true]]);
+    assert.deepEqual(away.markers,['1.','-','-']);
+});
+test('a task is its text while the caret is in its box',()=>{
+    const doc='- [ ] buy milk\n\n1. [x] numbered';
+    // Anywhere from the list's mark to the end of the box: `- [ ]`, before the space after it.
+    for(let caret=0;caret<=5;caret++){
+        const on=drawn(doc,caret);
+        assert.deepEqual(on.boxes,[['[x]',true]],`caret at ${caret}`);assert.deepEqual(on.markers,['1.'],`caret at ${caret}`);
+    }
+    // At the start of what the task says, and anywhere in it, the box is a box.
+    for(const caret of [6,9,14])assert.equal(drawn(doc,caret).boxes.length,2,`caret at ${caret}`);
+    const numbered=doc.indexOf('1.');
+    for(let caret=numbered;caret<=numbered+6;caret++)assert.deepEqual(drawn(doc,caret),{boxes:[['- [ ]',false]],markers:[]},`caret at ${caret}`);
+    assert.equal(drawn(doc,numbered+7).boxes.length,2);
+});
+test('a selection reaching into a task\'s box shows its text',()=>{
+    const doc='- [ ] one\n- [ ] two',field=livePreview({},{});
+    const state=EditorState.create({doc,selection:{anchor:8,head:doc.indexOf('two')-1},extensions:[markdownEditing(),EditorView.editable.of(true),field]});
+    const boxes=[];state.field(field).between(0,doc.length,(from,_to,value)=>{if(value.spec.task)boxes.push(from);});
+    assert.deepEqual(boxes,[0]);
+});
+test('task syntax in code is left as written',()=>{
+    for(const doc of ['```\n- [ ] in a fence\n```\n\nbody','- `[ ] inline`\n\nbody','-     [ ] indented code\n\nbody','    - [ ] indented code\n\nbody'])
+        assert.deepEqual(drawn(doc,doc.length).boxes,[],doc);
+});
+test('tasks are drawn inside quotes and nested lists',()=>{
+    const doc='> - [ ] quoted\n\n- parent\n    - [x] child\n\nbody';
+    assert.deepEqual(drawn(doc,doc.length).boxes,[['- [ ]',false],['- [x]',true]]);
+});
+test('a read-only note draws its tasks as boxes that are marked as not for ticking',()=>{
+    const doc='- [ ] buy milk',field=livePreview({},{});
+    const box=extensions=>{let found;EditorState.create({doc,extensions:[markdownEditing(),field,...extensions]}).field(field).between(0,doc.length,(_from,_to,value)=>{if(value.spec.task)found=value.spec.widget;});return found;};
+    // Not editable, so the caret at the start doesn't turn the box back into text.
+    assert.equal(box([EditorState.readOnly.of(true),EditorView.editable.of(false)]).locked,true);
+    assert.equal(box([EditorView.editable.of(true)]),undefined);
+});
+test('ticking a task changes the one character in its brackets and leaves the caret alone',()=>{
+    const doc='- [ ] buy milk\n* [x] feed cat\n12. [X] numbered\nplain';
+    const state=EditorState.create({doc,selection:{anchor:doc.length},extensions:[markdownEditing()]});
+    // A bulleted task's box starts at its list mark, a numbered one's at its bracket.
+    const toggled=pos=>{const next=state.update(taskToggle(state,pos));assert.equal(next.state.selection.main.head,doc.length);assert.ok(next.isUserEvent('input'));return next.state.doc.toString();};
+    assert.equal(toggled(0),doc.replace('- [ ]','- [x]'));
+    assert.equal(toggled(doc.indexOf('*')),doc.replace('* [x]','* [ ]'));
+    assert.equal(toggled(doc.indexOf('[X]')),doc.replace('[X]','[ ]'));
+    // Ticking and unticking gets back what was written.
+    const once=state.update(taskToggle(state,0)).state;assert.equal(once.update(taskToggle(once,0)).state.doc.toString(),doc);
+    assert.equal(taskToggle(state,doc.indexOf('plain')),null);
+    assert.equal(taskToggle(state,doc.indexOf('buy')),null);
+});
+test('a task in a read-only note is not ticked',()=>{
+    const state=EditorState.create({doc:'- [ ] buy milk',extensions:[markdownEditing(),EditorState.readOnly.of(true)]});
+    assert.equal(taskToggle(state,0),null);
 });
