@@ -1115,16 +1115,34 @@ struct KitTaskMenu: View {
         let _ = lifetime.keep(on: session.kit, .taskMenu, project: project, task: task, revision: revision)
         let sections = session.kit.box(mount: lifetime.id).sections
         if !sections.isEmpty {
-            Menu("More Actions", systemImage: "ellipsis") {
+            Menu {
                 ForEach(sections) { section in
                     Section {
                         ForEach(section.nodes) { KitNodeView(node: $0) }
                     }
                 }
+            } label: {
+                // The dots on a line of the height of the words beside them: a glyph alone
+                // makes a button shorter than the ones it stands with.
+                Text("M").hidden()
+                    .overlay { Image(systemName: "ellipsis") }
+                    #if os(macOS)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .contentShape(.capsule)
+                    #endif
+                    .accessibilityLabel("More Actions")
             }
             // Only the dots: the task's own actions are beside it and need the room for their words.
-            .labelStyle(.iconOnly)
+            #if os(macOS)
+            // A Mac's menu takes no button style, and left to itself is a flat pill around
+            // the dots: it is drawn as the glass buttons beside it are.
+            .bareControl()
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .help("More Actions")
+            #else
             .buttonStyle(.clearGlass)
+            #endif
         }
     }
 }

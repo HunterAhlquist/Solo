@@ -152,6 +152,8 @@ struct MarkdownDraft: Identifiable {
     let id = UUID()
     var title: String
     var text: String
+    /// Where the caret starts, in characters from the start, when it is not to be left to the editor.
+    var caret: Int?
     var limit: Int
     var saveLabel = "Save"
     var placeholder = "Write markdown…"
@@ -179,6 +181,10 @@ struct MarkdownEditorSheet: View {
     init(draft: MarkdownDraft) {
         self.draft = draft
         _text = State(initialValue: draft.text)
+        if let caret = draft.caret,
+           let index = draft.text.index(draft.text.startIndex, offsetBy: caret, limitedBy: draft.text.endIndex) {
+            _selection = State(initialValue: TextSelection(insertionPoint: index))
+        }
     }
 
     var body: some View {

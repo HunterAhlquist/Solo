@@ -271,9 +271,15 @@ struct CommentsSection: View {
 
     @State private var comments: [Comment]?
     @State private var newBody = ""
+    /// Where the caret is in what is being typed: where Shift-Return's new line goes.
+    @State private var selection: TextSelection?
+    @FocusState private var composing: Bool
     @State private var draft: MarkdownDraft?
     @State private var confirmation: Confirmation?
     @State private var posting = false
+    /// How tall the box a comment is typed in stands at one line, which is how tall and how
+    /// wide the buttons beside it are.
+    @ScaledMetric(relativeTo: .subheadline) private var composerHeight: CGFloat = 40
 
     private var api: APIClient { session.api }
     private var canComment: Bool { store.isOpen }
@@ -297,28 +303,33 @@ struct CommentsSection: View {
 
             if canComment {
                 HStack(alignment: .bottom, spacing: 8) {
-                    TextField("Leave a comment…", text: $newBody, axis: .vertical)
+                    let box = RoundedRectangle(cornerRadius: composerHeight / 2, style: .continuous)
+                    TextField("Leave a comment…", text: $newBody, selection: $selection, axis: .vertical)
                         .lineLimit(1...6)
                         .font(.subheadline)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(theme.divider))
-                    Button("Open the full editor", systemImage: "arrow.up.left.and.arrow.down.right") {
-                        draft = MarkdownDraft(title: "Comment", text: newBody, limit: FieldLimits.comment,
-                                              saveLabel: "Comment", placeholder: "Leave a comment…",
-                                              projectId: store.board?.projectId) { body in
-                            await post(body)
+                        .focused($composing)
+                        // Return sends, as it does wherever a message is typed in a box like this.
+                        .submitLabel(.send)
+                        .onSubmit { send() }
+                        // Shift-Return is a new line everywhere else, and a comment with more than
+                        // one line is one for the editor: it opens with what is typed and the new
+                        // line where the caret was.
+                        .onKeyPress(.return, phases: .down) { press in
+                            guard press.modifiers.contains(.shift) else { return .ignored }
+                            openEditor(newLine: true)
+                            return .handled
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: composerHeight)
+                        .background(theme.surface, in: box)
+                        .overlay(box.strokeBorder(theme.divider))
+                    ComposerButton(title: "Open the full editor", symbol: "arrow.up.left.and.arrow.down.right",
+                                   side: composerHeight) {
+                        openEditor(newLine: false)
                     }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.clearGlass)
-                    Button("Comment", systemImage: "paperplane.fill") {
-                        Task { await post(newBody) }
-                    }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.clearGlass)
-                    .disabled(newBody.nilIfBlank == nil || posting)
+                    ComposerButton(title: "Comment", symbol: "paperplane.fill", side: composerHeight) { send() }
+                        .disabled(newBody.nilIfBlank == nil || posting)
                 }
             }
         }
@@ -330,39 +341,107 @@ struct CommentsSection: View {
         .confirmation($confirmation)
     }
 
+    /// A comment, as a message is drawn: a bubble with its tail towards the face of whoever
+    /// wrote it, which stands outside it. The reader's own are on the trailing side and
+    /// everyone else's on the leading one.
     private func commentView(_ comment: Comment) -> some View {
         let isMine = comment.authorId == session.user.id
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                UserAvatar(userId: comment.authorId, name: comment.authorDisplayName,
-                           hasPicture: comment.authorAvatarUrl?.nilIfBlank != nil, size: 24)
-                Text(comment.authorDisplayName ?? "Unknown")
-                    .font(.footnote.weight(.semibold))
-                Text(comment.createdAt.stamp)
-                    .font(.caption)
-                    .foregroundStyle(theme.textSecondary)
-                Spacer()
-                if canComment, isMine || store.access.canModerate {
-                    Menu("Comment actions", systemImage: "ellipsis") {
-                        if isMine {
-                            Button("Edit", systemImage: "pencil") { edit(comment) }
-                        }
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            confirmation = Confirmation(title: "Delete comment", message: "Delete this comment?") {
-                                await session.perform { try await api.deleteComment(comment.id) }
-                                await load()
-                            }
-                        }
+        let canAct = canComment && (isMine || store.access.canModerate)
+        let face = UserAvatar(userId: comment.authorId, name: comment.authorDisplayName,
+                              hasPicture: comment.authorAvatarUrl?.nilIfBlank != nil, size: 28)
+        return HStack(alignment: .bottom, spacing: 2) {
+            if !isMine { face }
+            VStack(alignment: isMine ? .trailing : .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if isMine, canAct { actions(comment, isMine: isMine) }
+                    // Whose it is goes without saying on the reader's own.
+                    if !isMine {
+                        Text(comment.authorDisplayName ?? "Unknown")
+                            .font(.caption.weight(.semibold))
                     }
-                    .labelStyle(.iconOnly)
-                    .foregroundStyle(theme.textSecondary)
+                    Text(comment.createdAt.stamp)
+                        .font(.caption)
+                    if !isMine, canAct { actions(comment, isMine: isMine) }
                 }
+                .foregroundStyle(theme.textSecondary)
+                .padding(.horizontal, CommentBubble.tail + 10)
+
+                SoloMarkdown(text: comment.body)
+                    .font(.subheadline)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .padding(isMine ? .trailing : .leading, CommentBubble.tail)
+                    .glassEffect(isMine ? .regular.tint(theme.accentWash) : .regular,
+                                 in: CommentBubble(trailing: isMine))
+                    .contextMenu {
+                        if canAct { actionItems(comment, isMine: isMine) }
+                    }
             }
-            SoloMarkdown(text: comment.body)
-                .font(.subheadline)
+            if isMine { face }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card(padding: 10)
+        // Never the whole width: which side a comment is on is who wrote it.
+        .padding(isMine ? .leading : .trailing, 28)
+        .frame(maxWidth: .infinity, alignment: isMine ? .trailing : .leading)
+    }
+
+    /// What can be done with a comment, behind a button beside its date and on the bubble's own menu.
+    private func actions(_ comment: Comment, isMine: Bool) -> some View {
+        Menu {
+            actionItems(comment, isMine: isMine)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.footnote)
+                .contentShape(.rect)
+        }
+        // The glyph alone: a Mac would draw it a bezel, a flat pill around three dots.
+        .bareControl()
+        .tint(theme.textSecondary)
+        .accessibilityLabel("Comment actions")
+    }
+
+    @ViewBuilder
+    private func actionItems(_ comment: Comment, isMine: Bool) -> some View {
+        if isMine {
+            Button("Edit", systemImage: "pencil") { edit(comment) }
+        }
+        Button("Delete", systemImage: "trash", role: .destructive) {
+            confirmation = Confirmation(title: "Delete comment", message: "Delete this comment?") {
+                await session.perform { try await api.deleteComment(comment.id) }
+                await load()
+            }
+        }
+    }
+
+    /// Sends what is typed, and leaves the caret in the box on a Mac, where the next thing
+    /// typed is as likely another comment. On a touch screen the keyboard goes, so that what
+    /// was sent can be seen.
+    private func send() {
+        Task {
+            await post(newBody)
+            if Platform.isMac { composing = true }
+        }
+    }
+
+    /// Opens the editor on what is typed. From Shift-Return, with the new line that was asked
+    /// for put where the caret was — in place of whatever was selected — and the caret after it.
+    private func openEditor(newLine: Bool) {
+        var text = newBody
+        var caret: Int?
+        if newLine {
+            var range = text.endIndex..<text.endIndex
+            if let selection, case .selection(let chosen) = selection.indices,
+               chosen.lowerBound >= text.startIndex, chosen.upperBound <= text.endIndex {
+                range = chosen
+            }
+            let before = text.distance(from: text.startIndex, to: range.lowerBound)
+            text.replaceSubrange(range, with: "\n")
+            caret = before + 1
+        }
+        draft = MarkdownDraft(title: "Comment", text: text, caret: caret, limit: FieldLimits.comment,
+                              saveLabel: "Comment", placeholder: "Leave a comment…",
+                              projectId: store.board?.projectId) { body in
+            await post(body)
+        }
     }
 
     private func load() async {
@@ -400,6 +479,68 @@ struct CommentsSection: View {
             await session.save({ try await api.updateComment(comment, body: body) }, refresh: load)
             await load()
         }
+    }
+}
+
+/// One of the buttons beside the box a comment is typed in: a circle of glass as tall as the
+/// box stands at one line.
+private struct ComposerButton: View {
+    var title: String
+    var symbol: String
+    var side: CGFloat
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.body.weight(.medium))
+                .frame(width: side, height: side)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.tint)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel(title)
+        .help(title)
+    }
+}
+
+/// A comment's bubble: a rounded rectangle with a tail at the foot of one side, which is the
+/// side its writer's face is on. The tail is outside the rectangle, so what is written keeps
+/// clear of it by `tail` on that side.
+nonisolated struct CommentBubble: Shape {
+    /// How far the tail reaches past the bubble's side.
+    static let tail: CGFloat = 6
+
+    /// The tail is on the trailing side, for the reader's own; otherwise on the leading one.
+    var trailing: Bool
+    var radius: CGFloat = 17
+
+    func path(in rect: CGRect) -> Path {
+        // Drawn with the tail on the right, and turned over for the left.
+        let side = rect.maxX - Self.tail
+        let radius = min(radius, rect.height / 2, (side - rect.minX) / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
+        path.addLine(to: CGPoint(x: side - radius, y: rect.minY))
+        path.addArc(tangent1End: CGPoint(x: side, y: rect.minY), tangent2End: CGPoint(x: side, y: rect.minY + radius),
+                    radius: radius)
+        // Down the side to where the tail leaves it, out to the tail's point at the foot,
+        // and back in under the bubble.
+        path.addLine(to: CGPoint(x: side, y: rect.maxY - radius * 0.7))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.maxY), control: CGPoint(x: side, y: rect.maxY - 1))
+        path.addQuadCurve(to: CGPoint(x: side - radius * 0.75, y: rect.maxY - 1.5),
+                          control: CGPoint(x: side - 2, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: side - radius, y: rect.maxY), control: CGPoint(x: side - radius * 0.9, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY), tangent2End: CGPoint(x: rect.minX, y: rect.maxY - radius),
+                    radius: radius)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.minY), tangent2End: CGPoint(x: rect.minX + radius, y: rect.minY),
+                    radius: radius)
+        path.closeSubpath()
+        guard !trailing else { return path }
+        return path.applying(CGAffineTransform(translationX: rect.minX + rect.maxX, y: 0).scaledBy(x: -1, y: 1))
     }
 }
 
