@@ -164,12 +164,35 @@ struct DesignDocsView: View {
                 }
                 if canManage, let vault = store.vault {
                     Button("Rename Design Doc", systemImage: "pencil") { rename(store, vault) }
-                    Button(vault.isClosed ? "Reopen Design Doc" : "Close Design Doc",
-                           systemImage: vault.isClosed ? "arrow.uturn.backward" : "archivebox") {
-                        Task { await store.changeVault(name: vault.name, isClosed: !vault.isClosed) }
-                    }
                     if vault.isClosed {
-                        Button("Delete Design Doc", systemImage: "trash", role: .destructive) { confirmDelete(store) }
+                        Button("Reopen Design Doc", systemImage: "arrow.uturn.backward") {
+                            Task { await store.changeVault(name: vault.name, isClosed: false) }
+                        }
+                    }
+                }
+            }
+        }
+        // The one button that takes a design doc away stands apart from the ones that add to
+        // it or rename it, in the colour of something that takes away. It closes the design
+        // doc, and on one that is closed it is what deletes it: the two steps the instance
+        // asks for, in the one place. A gap, or a bar draws the two groups as one.
+        ToolbarSpacer(.fixed, placement: .secondaryAction)
+        ToolbarItem(placement: .secondaryAction) {
+            if let store, canManage, let vault = store.vault {
+                if vault.isClosed {
+                    Button(role: .destructive) {
+                        confirmDelete(store)
+                    } label: {
+                        // The colour is said on the label: a bar's button takes no tint.
+                        Label("Delete Design Doc", systemImage: "trash").foregroundStyle(theme.error)
+                    }
+                } else {
+                    // The role is for where the bar folds its buttons into a menu, as an
+                    // iPad's does: a menu's row takes no colour from its label, only from this.
+                    Button(role: .destructive) {
+                        Task { await store.changeVault(name: vault.name, isClosed: true) }
+                    } label: {
+                        Label("Close Design Doc", systemImage: "archivebox").foregroundStyle(theme.error)
                     }
                 }
             }
@@ -240,9 +263,11 @@ struct DesignDocsView: View {
     }
 
     private func confirmDelete(_ store: DocVaultStore) {
+        guard let vault = store.vault else { return }
         confirmation = Confirmation(
-            title: "Delete design doc",
-            message: "Permanently delete every note, image and sketch in this closed design doc?") {
+            title: "Delete \(vault.name)?",
+            message: "Every note, image and sketch in this closed design doc is deleted permanently, for everyone. This cannot be undone.",
+            action: "Delete Design Doc") {
             if await store.deleteVault() {
                 navigator.open(.project(alias: projectAlias))
             }
