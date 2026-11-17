@@ -19,6 +19,32 @@ struct SoloCommands: Commands {
                 .disabled(newTask == nil)
         }
 
+        // The instances kept on this Mac, the one showing ticked: the Settings window's list,
+        // a key away. The first nine are on Control and their number.
+        CommandGroup(after: .newItem) {
+            Divider()
+            Menu("Switch Instance") {
+                ForEach(Array(model.instances.enumerated()), id: \.element.id) { index, instance in
+                    Toggle(isOn: Binding(get: { instance.url == model.instanceURL },
+                                         set: { _ in Task { await model.switchTo(instance.url) } })) {
+                        let unread = instance.url == model.instanceURL ? 0 : model.unreadElsewhere[instance.url] ?? 0
+                        Text(unread > 0 ? "\(model.label(for: instance)) — \(unread) unread" : model.label(for: instance))
+                    }
+                    .keyboardShortcut(index < 9
+                        ? KeyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .control) : nil)
+                }
+                if model.instances.isEmpty {
+                    Text("No Instances")
+                }
+                Divider()
+                Button("Add Instance…") {
+                    openWindow(id: "main")
+                    model.addingInstance = true
+                }
+                .disabled(model.instances.isEmpty)
+            }
+        }
+
         CommandGroup(after: .sidebar) {
             Button("Reload") { Task { await ReloadCenter.shared.reload() } }
                 .keyboardShortcut("r")

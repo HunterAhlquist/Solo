@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// First launch, or after choosing to change instance: where is your Solo?
+/// First launch, or adding an instance to the ones already kept: where is your Solo?
 struct InstanceEntryView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
+    @Environment(\.dismiss) private var dismiss
+    /// True in the sheet that adds an instance. The address is asked whether it answers
+    /// before anything is left for it, and the sheet closes once it has.
+    var adding = false
     @State private var address = ""
     @State private var problem: String?
     @State private var connecting = false
@@ -23,11 +27,11 @@ struct InstanceEntryView: View {
                             .glassEffect(.regular.tint(theme.primary.opacity(0.12)), in: .rect(cornerRadius: 28))
                         Text("Solo")
                             .font(.largeTitle.weight(theme.headingWeight))
-                        Text("Connect to your team's instance.")
+                        Text(adding ? "Connect to another instance." : "Connect to your team's instance.")
                             .font(.callout)
                             .foregroundStyle(theme.textSecondary)
                     }
-                    .padding(.top, 48)
+                    .padding(.top, adding ? 20 : 48)
 
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 10) {
@@ -41,6 +45,12 @@ struct InstanceEntryView: View {
                                 .submitLabel(.go)
                                 .focused($focused)
                                 .onSubmit { connect(address) }
+                                // The capsule around it is the field: a Mac's own bezel and
+                                // focus ring inside that are a second one.
+                                #if os(macOS)
+                                .textFieldStyle(.plain)
+                                .focusEffectDisabled()
+                                #endif
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
@@ -68,16 +78,19 @@ struct InstanceEntryView: View {
                             .onAccent()
                         }
                         .buttonStyle(.glassProminent)
+                        // The field above it is a capsule; a Mac's button is a rounded box unless told.
+                        .buttonBorderShape(.capsule)
                         .disabled(connecting || address.nilIfBlank == nil)
                     }
 
-                    if !model.recentInstances.isEmpty {
+                    let recents = model.recentsToOffer
+                    if !recents.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Recent")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(theme.textSecondary)
                                 .padding(.horizontal, 6)
-                            ForEach(model.recentInstances, id: \.self) { recent in
+                            ForEach(recents, id: \.self) { recent in
                                 Button {
                                     address = recent
                                     connect(recent)
@@ -85,7 +98,7 @@ struct InstanceEntryView: View {
                                     HStack {
                                         Image(systemName: "clock.arrow.circlepath")
                                             .foregroundStyle(theme.textSecondary)
-                                        Text(URL(string: recent)?.host() ?? recent)
+                                        Text(URL(string: recent).map { SavedInstance(url: $0, name: "").address } ?? recent)
                                             .foregroundStyle(theme.textPrimary)
                                         Spacer()
                                         Image(systemName: "chevron.right")
@@ -96,6 +109,8 @@ struct InstanceEntryView: View {
                                     .padding(.vertical, 13)
                                     .glassEffect(.regular.interactive(), in: theme.cardShape)
                                 }
+                                // As it is drawn, with no bezel of a Mac's behind the glass.
+                                .buttonStyle(.plain)
                                 .contextMenu {
                                     Button("Forget", systemImage: "trash", role: .destructive) {
                                         model.forgetRecent(recent)
@@ -122,7 +137,19 @@ struct InstanceEntryView: View {
         connecting = true
         focused = false
         Task {
-            await model.connect(to: url)
+            if adding {
+                if model.instances.contains(where: { $0.url == url }) {
+                    // Already kept: adding it again is going to it.
+                } else if let failure = await model.probe(url) {
+                    problem = failure
+                    connecting = false
+                    return
+                }
+                dismiss()
+                await model.switchTo(url)
+            } else {
+                await model.connect(to: url)
+            }
             connecting = false
         }
     }
@@ -151,10 +178,8 @@ struct UnreachableView: View {
                     Text("Try Again").onAccent()
                 }
                 .buttonStyle(.glassProminent)
-                Button("Use a Different Instance") {
-                    Task { await model.changeInstance() }
-                }
-                .buttonStyle(.clearGlass)
+                InstanceChoice { Text("Use a Different Instance") }
+                    .buttonStyle(.clearGlass)
             }
         }
     }
@@ -190,10 +215,8 @@ struct LocalNetworkDeniedView: View {
                     Task { await model.retry() }
                 }
                 .buttonStyle(.clearGlass)
-                Button("Use a Different Instance") {
-                    Task { await model.changeInstance() }
-                }
-                .buttonStyle(.clearGlass)
+                InstanceChoice { Text("Use a Different Instance") }
+                    .buttonStyle(.clearGlass)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -234,10 +257,8 @@ struct SetupRequiredView: View {
                     Task { await model.retry() }
                 }
                 .buttonStyle(.clearGlass)
-                Button("Use a Different Instance") {
-                    Task { await model.changeInstance() }
-                }
-                .buttonStyle(.clearGlass)
+                InstanceChoice { Text("Use a Different Instance") }
+                    .buttonStyle(.clearGlass)
             }
         }
     }

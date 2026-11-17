@@ -37,9 +37,12 @@ final class ThemeStore {
     private static let preferenceKey = "solo.colorScheme"
     private static let documentKey = "solo.theme.document"
 
-    /// The instance's active theme. Kept across launches so the first frame
-    /// already wears it, instead of flashing the fallback while it loads.
+    /// The theme of the instance showing. Kept across launches, and for each instance apart,
+    /// so the first frame of one already wears it instead of flashing the fallback — or the
+    /// last instance's — while it loads.
     private(set) var document: ThemeDocument?
+    /// Where the instance showing keeps its theme, or nil when none is.
+    @ObservationIgnored private var key: String?
 
     var preference: SchemePreference {
         didSet { UserDefaults.standard.set(preference.rawValue, forKey: Self.preferenceKey) }
@@ -47,9 +50,28 @@ final class ThemeStore {
 
     init() {
         preference = UserDefaults.standard.string(forKey: Self.preferenceKey).flatMap(SchemePreference.init) ?? .system
-        if let data = UserDefaults.standard.data(forKey: Self.documentKey) {
-            document = try? JSONDecoder().decode(ThemeDocument.self, from: data)
+    }
+
+    private static func key(_ instance: URL) -> String { "\(documentKey).\(instance.absoluteString)" }
+
+    /// Turns to an instance: its theme as last seen, until `load` says what it is now.
+    func use(_ instance: URL?) {
+        key = instance.map(Self.key)
+        let defaults = UserDefaults.standard
+        var data = key.flatMap(defaults.data)
+        // From before themes were kept by instance: the one that was kept is the theme of
+        // whichever instance was showing, which is the first to ask.
+        if let key, data == nil, let legacy = defaults.data(forKey: Self.documentKey) {
+            defaults.set(legacy, forKey: key)
+            defaults.removeObject(forKey: Self.documentKey)
+            data = legacy
         }
+        document = data.flatMap { try? JSONDecoder().decode(ThemeDocument.self, from: $0) }
+    }
+
+    /// An instance was removed: its theme goes with it.
+    func forget(_ instance: URL) {
+        UserDefaults.standard.removeObject(forKey: Self.key(instance))
     }
 
     func theme(for scheme: ColorScheme) -> Theme {
@@ -58,10 +80,11 @@ final class ThemeStore {
 
     func apply(_ document: ThemeDocument?) {
         self.document = document
+        guard let key else { return }
         if let document, let data = try? JSONEncoder().encode(document) {
-            UserDefaults.standard.set(data, forKey: Self.documentKey)
+            UserDefaults.standard.set(data, forKey: key)
         } else {
-            UserDefaults.standard.removeObject(forKey: Self.documentKey)
+            UserDefaults.standard.removeObject(forKey: key)
         }
     }
 

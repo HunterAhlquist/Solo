@@ -14,7 +14,7 @@ open src/Solo.iOS/Solo.xcodeproj
 
 Choose the `Solo` scheme and an iPhone or iPad destination, or **My Mac**, and run. The packages resolve on the first build. The one target builds for all three; the Mac's is a native app (AppKit under SwiftUI), not the iPad's running on a Mac — that way of running it is switched off.
 
-On first launch the app asks for the instance's address, then signs in through the instance's own sign-in page in a system sheet. It keeps the session token in the Keychain and the instance in its settings, so later launches go straight in.
+On first launch the app asks for the instance's address, then signs in through the instance's own sign-in page in a system sheet. It keeps the session token in the Keychain and the instance in its settings, so later launches go straight in. More instances can be added beside the first — see [Several instances](#several-instances).
 
 The tests are in the `SoloTests` target (`⌘U`, or `xcodebuild test`), and run on a simulator or on the Mac. They cover the rules the app has to share with the server and the web client — dates, serial numbers, rank neighbours, the roadmap's sprint arithmetic, note addresses and heading slugs, the Design Docs sync batch format, and the sketch rasterizer against values taken from the web one.
 
@@ -26,6 +26,7 @@ Debug builds read three environment variables, which is how the app was driven o
 |---|---|
 | `SOLO_INSTANCE_URL` | The instance to use, skipping the address screen. |
 | `SOLO_SESSION_TOKEN` | A `solo_…` session token to resume with, skipping sign-in. |
+| `SOLO_OTHER_INSTANCE_URL`, `SOLO_OTHER_SESSION_TOKEN` | A second instance, kept beside the first and signed in the same way, to switch to. |
 | `SOLO_OPEN` | Where to start: a tab (`work`, `projects`, `inbox`, `account`), a project (`DMD`), a board (`DMD-PW26`), a task (`DMD-PW26-2`), `roadmap:DMD:<id>`, `docs:DMD:<vault id>[:<note id>]`, or `route:<mcp\|admin\|devices\|notifications\|extensions\|themes\|users\|email\|updates\|about>`. |
 | `SOLO_PERF` | Writes a line a second to `Documents/perf.log`: frames drawn, the longest wait between two, how much of the second was spent late, and how many zones and cards were built. |
 | `SOLO_PERF_SCROLL` | With `SOLO_PERF`, a speed in points a second: once the screen has settled the app scrolls its longest page down at that speed and back up at three times it, and the log says where it is. The same swipe every run, and the only way to scroll a device from here. It also keeps the screen awake. |
@@ -149,6 +150,18 @@ Not here — use the web client for these:
 - **Design Docs:** importing and exporting an Obsidian vault as a zip; downloading a vault to edit offline; dragging pictures between rows; and, in sketches, text boxes — which are **not drawn at all**, so a sketch with text on it shows without it, though clearing the sketch removes them and Undo brings them back — and the selection, lasso and shape tools. Tables and inline pictures are shown as their Markdown rather than drawn.
 - **Third-party extensions' screens**, for the reason above.
 - **Push notifications.** There are none: nothing is registered with Apple and the instance has nothing to send through. The inbox is live while the app is running, and "Allow Notifications" only lets the app raise a banner itself, on the device, for a notification that arrives over the live connection in the moments after it is put in the background. Once the system suspends it, nothing arrives until it is opened again.
+
+## Several instances
+
+The app keeps any number of instances and shows one. Each has its own session, in the Keychain under its address, so going from one to another signs nobody out and asks nobody to sign in: the one that was showing has its live connection put down, and the next is opened with the session it already has. What an instance is — its provider, its theme, its extensions — is read from it each time it is shown, so two instances that sign in differently are no different to the app; an address signs in through its own `/desktop-auth` page, once, when it is added.
+
+- **Where they are.** On an iPhone and an iPad, a list on the Account page: the one showing ticked, a tap to change, a swipe to remove, and Add Instance. An iPad's sidebar title — the instance's name — is a menu of them as well, once there is more than one. On a Mac they are a section of the Settings window and **File ▸ Switch Instance**, the first nine on ⌃1 to ⌃9. The sign-in page, and the pages that say an instance can't be reached or isn't set up, have the same menu, so a signed-out or unreachable instance is never a dead end.
+- **Adding one** asks the address whether it answers before anything is left for it (`AppModel.probe`), in a sheet over whatever is showing: a mistyped address costs nothing.
+- **Removing one** revokes its session on that instance, and drops the token, the cached answers and the theme kept for it. Its address stays under Recent in the sheet.
+- **What isn't showing isn't live.** Only the instance showing has a hub connection. The others are asked for their unread count when the app comes forward, when the instance showing changes, and every five minutes; the total is the badge on the Account tab (an iPad's account row, a Mac's Instances row in Settings and its menu). A notification on an instance that isn't showing raises no banner.
+- **What is kept apart.** The theme (so an instance's first frame wears its own, not the last one's), the response cache, and the sidebar's project order and recents, each by address. The colour scheme preference is the device's.
+- **Widgets** show the instance that is showing in the app.
+- **One at a time, on a Mac too.** The desktop shell gives each instance a window; here there is one window and one session, and the instance is changed in it.
 
 ## Signing in
 

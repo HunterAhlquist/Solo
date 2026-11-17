@@ -22,11 +22,18 @@ final class ProjectNavStore {
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var autoExpanded = false
+    /// Each instance's arrangement is its own: the keys end in its address.
+    @ObservationIgnored private let orderStore: String
+    @ObservationIgnored private let recentStore: String
 
     init(api: APIClient) {
         self.api = api
-        order = Self.ids(Self.orderKey)
-        recent = Self.ids(Self.recentKey)
+        orderStore = "\(Self.orderKey).\(api.baseURL.absoluteString)"
+        recentStore = "\(Self.recentKey).\(api.baseURL.absoluteString)"
+        // From before they were kept by instance. A project's id is its instance's alone, so
+        // an arrangement read by the wrong one places nothing.
+        order = Self.ids(orderStore) ?? Self.ids(Self.orderKey) ?? []
+        recent = Self.ids(recentStore) ?? Self.ids(Self.recentKey) ?? []
     }
 
     var ordered: [ProjectSummary] {
@@ -83,17 +90,17 @@ final class ProjectNavStore {
         var list = ordered.map(\.id)
         list.move(fromOffsets: source, toOffset: destination)
         order = list
-        UserDefaults.standard.set(list.map(\.uuidString), forKey: Self.orderKey)
+        UserDefaults.standard.set(list.map(\.uuidString), forKey: orderStore)
     }
 
     /// Remembers a project as just visited, so the sidebar can unfold recent work.
     func recordVisit(_ projectId: UUID) {
         guard recent.first != projectId else { return }
         recent = [projectId] + recent.filter { $0 != projectId }.prefix(9)
-        UserDefaults.standard.set(recent.map(\.uuidString), forKey: Self.recentKey)
+        UserDefaults.standard.set(recent.map(\.uuidString), forKey: recentStore)
     }
 
-    private static func ids(_ key: String) -> [UUID] {
-        (UserDefaults.standard.stringArray(forKey: key) ?? []).compactMap(UUID.init)
+    private static func ids(_ key: String) -> [UUID]? {
+        UserDefaults.standard.stringArray(forKey: key)?.compactMap(UUID.init)
     }
 }

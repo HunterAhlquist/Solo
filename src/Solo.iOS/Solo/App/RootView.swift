@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var day = Day.today
 
     var body: some View {
+        @Bindable var model = model
         ThemedRoot {
             ZStack {
                 switch model.phase {
@@ -36,10 +37,29 @@ struct RootView: View {
                             .overlay { RestartOverlay(session: session) }
                             .overlay { ToastOverlay().environment(session.toasts) }
                             .id([AnyHashable(ObjectIdentifier(session)), AnyHashable(day)])
+                            // Going from one instance to another, the last one's shell is still
+                            // fading out as the next one's arrives. A Mac's window has one bar and
+                            // one title, which the two then both lay claim to — and the one that
+                            // goes takes them with it, leaving the page and the sidebar under the
+                            // window's buttons. There a shell goes at once, before the next comes.
+                            .transition(Platform.isMac ? .identity : .opacity)
                     }
                 }
             }
             .animation(.smooth(duration: 0.3), value: model.phase)
+            // Adding an instance, from wherever it was asked for: over whatever is showing,
+            // which is left alone until the new address has answered.
+            .sheet(isPresented: $model.addingInstance) {
+                AddInstanceSheet()
+            }
+        }
+        // The instances that aren't showing have no live connection: they are asked what is
+        // unread now and then, for as long as the app is up.
+        .task {
+            while !Task.isCancelled {
+                await model.refreshElsewhere()
+                try? await Task.sleep(for: .seconds(300))
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
             day = .today
@@ -50,6 +70,7 @@ struct RootView: View {
                 model.session?.hub.resume()
                 Task {
                     await model.session?.notifications.refresh()
+                    await model.refreshElsewhere()
                     // A theme change isn't announced to anyone, so coming back to the app is when it is noticed.
                     if let api = model.session?.api {
                         await model.themes.load(from: api)

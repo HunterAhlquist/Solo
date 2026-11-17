@@ -70,12 +70,10 @@ struct SignInView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Button {
-                    Task { await model.changeInstance() }
-                } label: {
+                InstanceChoice {
                     HStack(spacing: 6) {
                         Image(systemName: "server.rack")
-                        Text(model.instanceURL?.host() ?? "")
+                        Text(model.current?.address ?? model.instanceURL?.host() ?? "")
                             .lineLimit(2)
                             .minimumScaleFactor(0.75)
                         Text("· Change").fixedSize()
@@ -83,6 +81,7 @@ struct SignInView: View {
                     .font(.footnote)
                     .foregroundStyle(theme.textSecondary)
                 }
+                .buttonStyle(.plain)
             }
             .padding(28)
             .frame(maxWidth: 400)

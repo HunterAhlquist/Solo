@@ -140,6 +140,30 @@ import AppKit
     }
 }
 
+@Suite struct SavedInstanceTests {
+    @Test func anAddressIsTheHostAndAPortThatIsNotTheUsualOne() throws {
+        let hosted = SavedInstance(url: try #require(URL(string: "https://solo.example.com")), name: "Studio")
+        let local = SavedInstance(url: try #require(URL(string: "http://localhost:5155")), name: "Studio")
+        #expect(hosted.address == "solo.example.com")
+        #expect(local.address == "localhost:5155")
+        // Two addresses of one machine are two instances: each keeps its own session.
+        #expect(hosted.id != local.id)
+    }
+
+    @Test func theListReadsBackAsItWasKept() throws {
+        let url = try #require(URL(string: "https://solo.example.com"))
+        let kept = [SavedInstance(url: url, name: "Studio", signedInAs: "Ada"), SavedInstance(url: url, name: "Studio")]
+        let read = try JSONDecoder().decode([SavedInstance].self, from: JSONEncoder().encode(kept))
+        #expect(read == kept)
+        #expect(read[1].signedInAs == nil)
+    }
+
+    @Test func whatIsTypedBecomesTheSameAddressHoweverItIsTyped() {
+        #expect(AppModel.normalize("solo.example.com/") == AppModel.normalize("https://solo.example.com"))
+        #expect(AppModel.normalize("localhost:5155")?.absoluteString == "http://localhost:5155")
+    }
+}
+
 @Suite struct IconTests {
     /// A name the system doesn't have draws nothing at all, silently.
     @Test func everyMappedSymbolExists() {

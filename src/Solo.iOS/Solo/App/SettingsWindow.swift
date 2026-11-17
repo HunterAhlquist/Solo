@@ -2,7 +2,8 @@
 import SwiftUI
 
 /// What the Settings scene shows: the signed-in app's settings (`SettingsShell`), with the
-/// environment a page of the app expects — a window starts with none of the main one's.
+/// environment a page of the app expects — a window starts with none of the main one's. With
+/// nobody signed in it is the list of instances alone.
 struct SettingsWindow: View {
     static let scene = "settings"
 
@@ -21,8 +22,11 @@ struct SettingsWindow: View {
                 // Another session is another instance's settings from the top.
                 .id(ObjectIdentifier(session))
             } else {
-                ContentUnavailableView("Not signed in", systemImage: "person.crop.circle",
-                                       description: Text("Sign in to an instance to see its settings."))
+                // Nobody signed in, or the moment between one instance and the next: the one
+                // section that needs no session, which is also the way to one.
+                ThemedRoot {
+                    InstancesOnlySettings()
+                }
             }
         }
         .environment(model)

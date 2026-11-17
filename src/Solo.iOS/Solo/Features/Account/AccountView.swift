@@ -27,6 +27,11 @@ struct AccountView: View {
             }
             .themedRow()
 
+            // On a Mac the instances are a section of the Settings window, beside this one.
+            #if os(iOS)
+            InstancesSection()
+            #endif
+
             Section("Appearance") {
                 Picker("Colour scheme", selection: $themes.preference) {
                     ForEach(SchemePreference.allCases) { preference in
@@ -222,10 +227,8 @@ struct DevicesView: View {
 }
 
 struct AboutView: View {
-    @Environment(AppModel.self) private var model
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
-    @State private var confirmation: Confirmation?
 
     var body: some View {
         GroupedList {
@@ -235,13 +238,6 @@ struct AboutView: View {
                 if let version = session.serverVersion {
                     LabeledContent("Server", value: version.serverVersion.split(separator: "+").first.map(String.init) ?? "")
                     LabeledContent("Extension contract", value: version.extensionApiVersion)
-                }
-                Button("Use a Different Instance", systemImage: "server.rack") {
-                    confirmation = Confirmation(title: "Change instance?",
-                                                message: "You'll be signed out of \(session.siteName) on this device.",
-                                                action: "Sign Out and Change") {
-                        await model.changeInstance()
-                    }
                 }
             }
             .themedRow()
@@ -279,6 +275,5 @@ struct AboutView: View {
         .themedList()
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmation($confirmation)
     }
 }

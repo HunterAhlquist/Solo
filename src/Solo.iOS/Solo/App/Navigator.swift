@@ -17,6 +17,8 @@ nonisolated enum Route: Hashable, Sendable {
     case adminUpdates
     case adminThemes
     case about
+    /// The instances kept on this device: a page on a Mac, where it is a section of Settings.
+    case instances
     /// A page of an extension the app has no native half for: the web client's, shown inside the
     /// app. `path` is relative to the instance; `project` is the project it belongs to, if any.
     case pluginPage(path: String, title: String, project: String? = nil)
@@ -90,7 +92,7 @@ final class Navigator {
              .pluginPage(_, _, let project?):
             show(.projects, [.project(alias: project), route])
         case .mcpAccess, .notificationSettings, .devices, .appearance, .admin, .adminUsers, .adminEmail,
-             .adminExtensions, .adminUpdates, .adminThemes, .about, .pluginPage:
+             .adminExtensions, .adminUpdates, .adminThemes, .about, .instances, .pluginPage:
             show(.account, [route])
         }
     }

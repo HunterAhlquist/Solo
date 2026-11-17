@@ -54,6 +54,7 @@ private struct OpensSettings: ViewModifier {
 /// pages they lead to. It is the same section of the app, shown by a navigator of its own
 /// (`Session.settingsNavigator`), so every page in it is the page an iPad shows.
 struct SettingsShell: View {
+    @Environment(AppModel.self) private var model
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
 
@@ -64,7 +65,7 @@ struct SettingsShell: View {
     private var section: Route? {
         guard let first = navigator[.account].first else { return nil }
         switch first {
-        case .mcpAccess, .admin, .pluginPage(_, _, nil): return first
+        case .mcpAccess, .admin, .instances, .pluginPage(_, _, nil): return first
         default: return nil
         }
     }
@@ -77,6 +78,10 @@ struct SettingsShell: View {
             List {
                 SidebarRow(title: "Account", symbol: "person.crop.circle", selected: section == nil) {
                     navigator.popToRoot(.account)
+                }
+                SidebarRow(title: "Instances", symbol: "server.rack", badge: model.unreadElsewhereTotal,
+                           selected: section == .instances) {
+                    navigator.open(.instances)
                 }
                 InstanceExtensionLinks(inSidebar: true)
                 if session.user.isSuperAdmin {
@@ -111,6 +116,34 @@ struct SettingsShell: View {
         // the window with no bar at all, only a title; the next page, with a Back button, has
         // one, and everything in the window moves down to make room for it. Something that
         // takes no room and shows nothing keeps the bar there for both.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+    }
+}
+
+/// The Settings window with no session to show the settings of: its side and its bar as
+/// they are signed in, so the window doesn't change shape as an instance is changed, and
+/// the one section that is there either way.
+struct InstancesOnlySettings: View {
+    var body: some View {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            List {
+                SidebarRow(title: "Instances", symbol: "server.rack", selected: true) {}
+            }
+            .listStyle(.sidebar)
+            .buttonStyle(.plain)
+            .labelStyle(AsWrittenLabelStyle())
+            .toolbar(removing: .sidebarToggle)
+            .navigationSplitViewColumnWidth(240)
+        } detail: {
+            NavigationStack {
+                InstancesView()
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
@@ -164,6 +197,8 @@ struct RouteView: View {
             AdminThemesView()
         case .about:
             AboutView()
+        case .instances:
+            InstancesView()
         case .pluginPage(let path, let title, _):
             PluginPageView(path: path, title: title)
         case .mcpAccess:
@@ -293,6 +328,7 @@ struct RouteLink<Content: View>: View {
 // MARK: - iPhone
 
 private struct TabShell: View {
+    @Environment(AppModel.self) private var model
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
 
@@ -312,6 +348,8 @@ private struct TabShell: View {
             Tab(AppTab.account.title, systemImage: AppTab.account.symbol, value: AppTab.account) {
                 SectionStack(tab: .account).animatesTabChanges()
             }
+            // What is waiting on the instances that aren't showing: the account page is the way to them.
+            .badge(model.unreadElsewhereTotal)
         }
         #if os(iOS)
         .tabBarMinimizeBehavior(.onScrollDown)
@@ -426,6 +464,7 @@ private struct SidebarEdgeSwipe: UIGestureRecognizerRepresentable {
 /// The app's map: every project, and inside each one its open boards and
 /// whatever its extensions add. Creating things happens where they live.
 struct SidebarView: View {
+    @Environment(AppModel.self) private var model
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
     @Environment(\.theme) private var theme
@@ -493,7 +532,7 @@ struct SidebarView: View {
         .safeAreaBar(edge: .bottom, spacing: 0) {
             VStack(spacing: 2) {
                 InstanceExtensionLinks(inSidebar: true)
-                SidebarRow(title: session.user.name, symbol: "person.crop.circle",
+                SidebarRow(title: session.user.name, symbol: "person.crop.circle", badge: model.unreadElsewhereTotal,
                            selected: navigator.tab == .account && navigator.current == nil) {
                     navigator.popToRoot(.account)
                 }
@@ -512,6 +551,27 @@ struct SidebarView: View {
         }
         #endif
         .navigationTitle(session.siteName)
+        // With more than one instance kept, the title that names the one showing is also the
+        // way to the others. A Mac has that in its menu bar and its Settings window.
+        #if os(iOS)
+        .toolbarTitleMenu {
+            if model.instances.count > 1 {
+                ForEach(model.instances) { instance in
+                    let unread = model.unreadElsewhere[instance.url] ?? 0
+                    Button {
+                        Task { await model.switchTo(instance.url) }
+                    } label: {
+                        Label(model.label(for: instance), systemImage: instance.url == model.instanceURL ? "checkmark" : "server.rack")
+                        if instance.url != model.instanceURL, unread > 0 {
+                            Text("\(unread) unread")
+                        }
+                    }
+                }
+                Divider()
+                Button("Add Instance…", systemImage: "plus") { model.addingInstance = true }
+            }
+        }
+        #endif
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ConnectionIndicator()
