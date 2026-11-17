@@ -8,6 +8,7 @@ struct NoteView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
     @Environment(\.openURL) private var openURL
+    @Environment(\.horizontalSizeClass) private var sizeClass
     var store: DocVaultStore
     var note: DocNote
     var mayWrite: Bool
@@ -21,7 +22,8 @@ struct NoteView: View {
     @State private var prompt: TextPrompt?
     @State private var pickingNote = false
     @State private var pickingTask = false
-    @State private var showingAttachments = false
+    /// The page's to say, since on a phone what asks for them is in the page's menu.
+    @Binding var showingAttachments: Bool
     @State private var pickingPhoto = false
     @State private var photo: PhotosPickerItem?
     @State private var uploading = false
@@ -66,19 +68,28 @@ struct NoteView: View {
         }
         .animation(.snappy(duration: 0.25), value: typing)
         .toolbar {
+            // A phone's bar has room for little, and a menu of everything else at its end: there
+            // the note's attachments are in that menu (`DesignDocsView.toolbar`), and this one
+            // is the outline and nothing more — and is not there for a note with no headings
+            // to go to.
+            let narrow = sizeClass == .compact
             ToolbarItemGroup(placement: .primaryAction) {
                 let outline = DocMarkdown.outline(text)
-                Menu("Note", systemImage: "list.bullet.indent") {
-                    if !outline.isEmpty {
-                        Section("Outline") {
-                            ForEach(Array(outline.enumerated()), id: \.offset) { _, entry in
-                                Button(String(repeating: "   ", count: max(0, entry.heading.level - 1)) + entry.heading.text) {
-                                    proxy.scroll(toLine: entry.line)
+                if !narrow || !outline.isEmpty {
+                    Menu(narrow ? "Outline" : "Note", systemImage: "list.bullet.indent") {
+                        if !outline.isEmpty {
+                            Section("Outline") {
+                                ForEach(Array(outline.enumerated()), id: \.offset) { _, entry in
+                                    Button(String(repeating: "   ", count: max(0, entry.heading.level - 1)) + entry.heading.text) {
+                                        proxy.scroll(toLine: entry.line)
+                                    }
                                 }
                             }
                         }
+                        if !narrow {
+                            Button("Attachments", systemImage: "paperclip") { showingAttachments = true }
+                        }
                     }
-                    Button("Attachments", systemImage: "paperclip") { showingAttachments = true }
                 }
                 if typing {
                     // Also the way out with a hardware keyboard, which has nothing to dismiss.

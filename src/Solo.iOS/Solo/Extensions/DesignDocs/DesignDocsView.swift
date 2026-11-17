@@ -26,6 +26,9 @@ struct DesignDocsView: View {
     @State private var reviewing = false
     /// Its recovery archive, asked for from the bar.
     @State private var exporting = false
+    /// The open note's attachments, which the note shows (`NoteView`) and, on a phone, this
+    /// page's menu asks for.
+    @State private var showingAttachments = false
 
     private var wide: Bool { sizeClass == .regular }
 
@@ -141,7 +144,7 @@ struct DesignDocsView: View {
     private func page(_ store: DocVaultStore, _ note: DocNote?, editable: Bool) -> some View {
         if let note {
             NoteView(store: store, note: note, mayWrite: editable, author: note.lastEditedBy.map { authors[$0] ?? "a former member" },
-                     onOpenNote: open)
+                     onOpenNote: open, showingAttachments: $showingAttachments)
                 .id(note.id)
         } else if store.tree?.notes.isEmpty == true {
             ContentUnavailableView {
@@ -167,6 +170,11 @@ struct DesignDocsView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .secondaryAction) {
             if let store, let project {
+                // What is the note's comes first, where a phone has it in this menu: on anything
+                // wider it is in the note's own (`NoteView`).
+                if !wide, noteId != nil, currentNote(store) != nil {
+                    Button("Attachments", systemImage: "paperclip") { showingAttachments = true }
+                }
                 if canEdit(project, store) {
                     Button("New Note", systemImage: "doc.badge.plus") { addNote(store) }
                 }
@@ -206,7 +214,8 @@ struct DesignDocsView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            if let store, let project, let vault = store.vault {
+            // On a phone it is on the page that lists the notes, and not again on each of them.
+            if let store, let project, let vault = store.vault, wide || noteId == nil {
                 DocDownloadControl(projectId: project.id, projectAlias: project.alias, vault: vault,
                                    review: { reviewing = true }, export: { exporting = true }, confirm: { confirmation = $0 })
             }
@@ -218,7 +227,9 @@ struct DesignDocsView: View {
                         withAnimation(.snappy) { treeShown.toggle() }
                     }
                     .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
-                } else if noteId != nil {
+                } else if noteId != nil, !underNotes {
+                    // Only where Back is not the way to them: a note come to by a link from
+                    // somewhere else, with that somewhere under it.
                     Button("Notes", systemImage: "folder") { treeSheet = true }
                 }
             }
@@ -253,6 +264,14 @@ struct DesignDocsView: View {
         } else {
             navigator.push(.designDocs(project: projectAlias, vaultId: vaultId, noteId: id))
         }
+    }
+
+    /// Whether the page under this note is this design doc's — its list of notes, or a note
+    /// that was come from. Then Back leads to the notes, and nothing else needs to.
+    private var underNotes: Bool {
+        let path = navigator[navigator.tab]
+        guard path.count >= 2, case .designDocs(_, let under, _) = path[path.count - 2] else { return false }
+        return under == vaultId
     }
 
     /// Picking from the tree while already in a note swaps the note rather than stacking another.
@@ -556,6 +575,20 @@ struct DocTreeView: View {
     /// True while something dragged is over the heading, which stands for the top of the design doc.
     @State private var overTop = false
 
+    @ViewBuilder
+    private func headingButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        #if os(macOS)
+        Button(title, systemImage: symbol, action: action)
+        #else
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
+        }
+        #endif
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
@@ -569,14 +602,18 @@ struct DocTreeView: View {
                 }
                 Spacer(minLength: 0)
                 if canEdit {
-                    Button("New note", systemImage: "doc.badge.plus") { add(folder: false, in: nil) }
-                    Button("New folder", systemImage: "folder.badge.plus") { add(folder: true, in: nil) }
+                    // Under a finger each is a finger's size, with an icon to match: at the
+                    // size of the text beside them they were two marks a few points apart.
+                    HStack(spacing: Platform.isMac ? 4 : 0) {
+                        headingButton("New note", "doc.badge.plus") { add(folder: false, in: nil) }
+                        headingButton("New folder", "folder.badge.plus") { add(folder: true, in: nil) }
+                    }
                 }
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
             .padding(.leading, 18)
-            .padding(.trailing, 10)
+            .padding(.trailing, Platform.isMac ? 10 : 8)
             .frame(height: 48)
             .background {
                 if overTop {
