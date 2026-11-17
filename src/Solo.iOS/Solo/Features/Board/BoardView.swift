@@ -186,6 +186,8 @@ private struct BoardGrid: View {
                                 }
                             }
                             .font(.footnote.weight(.semibold))
+                            // In a narrow window a name is cut short before it takes a second line.
+                            .lineLimit(1)
                             .frame(maxWidth: .infinity)
                         }
                     }

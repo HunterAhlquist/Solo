@@ -278,19 +278,27 @@ struct MarkdownEditorSheet: View {
 
     @ViewBuilder
     private var formatButtons: some View {
-        Button("Bold", systemImage: "bold") { wrap("**", "**") }
-        Button("Italic", systemImage: "italic") { wrap("*", "*") }
-        Button("Code", systemImage: "chevron.left.forwardslash.chevron.right") { wrap("`", "`") }
-        Button("List", systemImage: "list.bullet") { prefixLine("- ") }
-        Button("Checklist", systemImage: "checklist") { prefixLine("- [ ] ") }
-        Button("Heading", systemImage: "number") { prefixLine("## ") }
-        Button("Link", systemImage: "link") { wrap("[", "](https://)") }
-        Button("Task link", systemImage: "rectangle.stack.badge.plus") { pickingTask = true }
+        tool("Bold", "bold") { wrap("**", "**") }
+        tool("Italic", "italic") { wrap("*", "*") }
+        tool("Code", "chevron.left.forwardslash.chevron.right") { wrap("`", "`") }
+        tool("List", "list.bullet") { prefixLine("- ") }
+        tool("Checklist", "checklist") { prefixLine("- [ ] ") }
+        tool("Heading", "number") { prefixLine("## ") }
+        tool("Link", "link") { wrap("[", "](https://)") }
+        tool("Task link", "rectangle.stack.badge.plus") { pickingTask = true }
         MarkdownEditorExtensions(projectId: draft.projectId) { insert($0) }
+        // A Mac's keyboard is not on the screen to be put away.
+        #if os(iOS)
         if focused {
             Divider().frame(height: 22)
-            Button("Hide keyboard", systemImage: "keyboard.chevron.compact.down") { focused = false }
+            tool("Hide keyboard", "keyboard.chevron.compact.down") { focused = false }
         }
+        #endif
+    }
+
+    /// A button of the bar. Its name is what a pointer resting on it is told, the bar showing only icons.
+    private func tool(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(title, systemImage: symbol, action: action).help(title)
     }
 
     private var selectedRange: Range<String.Index> {

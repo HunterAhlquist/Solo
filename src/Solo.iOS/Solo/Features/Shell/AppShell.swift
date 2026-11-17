@@ -238,6 +238,13 @@ private struct SplitShell: View {
     @Environment(Navigator.self) private var navigator
     @State private var columns: NavigationSplitViewVisibility = .automatic
     @State private var panels = DetailPanelCenter()
+    #if os(macOS)
+    @State private var width: CGFloat = 0
+    /// True while the sidebar is put away to make room for the task panel, and is to come back.
+    /// Kept between launches, as the window keeps whether its sidebar is showing: the app quit
+    /// with a task open would otherwise come back with its sidebar gone and nothing to say why.
+    @AppStorage("solo.sidebar.tucked") private var tucked = false
+    #endif
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
@@ -252,8 +259,36 @@ private struct SplitShell: View {
         .overlay { DetailPanelColumn() }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
             // Never more than two fifths of the screen: beside an open sidebar there is little to share.
+            #if os(macOS)
+            // A third of a window, which may be a good deal narrower than any iPad: at its
+            // narrowest the page beside the panel still has to hold three columns of cards.
+            panels.width = min(448, max(320, width * 0.33))
+            self.width = width
+            #else
             panels.width = min(448, max(320, width * 0.4))
+            #endif
         }
+        // An iPad held upright puts its sidebar away by itself, so the page and the task panel
+        // share the screen. A Mac's window can be any width and keeps its sidebar at all of
+        // them: in one too narrow for the three, the sidebar gives way while the panel is
+        // open, and comes back when it closes or the window is made wide enough.
+        #if os(macOS)
+        .onAppear {
+            if tucked, !crowded {
+                tucked = false
+                columns = .all
+            }
+        }
+        .onChange(of: crowded) { _, crowded in
+            if crowded, columns != .detailOnly {
+                tucked = true
+                withAnimation { columns = .detailOnly }
+            } else if !crowded, tucked {
+                tucked = false
+                withAnimation { columns = .all }
+            }
+        }
+        #endif
         // A swipe in from the screen's edge brings the sidebar back, as the system's own sidebars
         // do — instead of going back a page, which is what a stack in the detail column would
         // otherwise make of it. With the sidebar showing, the edge is the sidebar's and this does nothing.
@@ -264,6 +299,16 @@ private struct SplitShell: View {
         #endif
         .environment(panels)
     }
+
+    #if os(macOS)
+    /// Whether the sidebar, a page wide enough to read and the task panel are more than the
+    /// window holds. Wide enough is a board's three columns with a card's foot — its ring,
+    /// its sub-tasks, its people — on one line in each. The sidebar is reckoned at its usual
+    /// width, since its own is not said.
+    private var crowded: Bool {
+        panels.panel != nil && width > 0 && width - 300 - panels.width < 580
+    }
+    #endif
 }
 
 #if os(iOS)
@@ -346,6 +391,11 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .macControls()
+        // On an iPad the rows that scroll under the foot of the column go out of focus behind
+        // it. A Mac's sidebar leaves them legible there, written over by the rows of the foot.
+        #if os(macOS)
+        .scrollEdgeEffectStyle(.hard, for: .bottom)
+        #endif
         // What is always wanted stays put at the foot of the column, as the title does at its
         // head; the projects scroll between the two.
         .safeAreaBar(edge: .bottom, spacing: 0) {
@@ -511,7 +561,8 @@ struct SidebarRow<Icon: View>: View {
                 }
             }
             .padding(.horizontal, standsAlone ? 12 : 0)
-            .frame(minHeight: standsAlone ? 44 : nil)
+            // A finger's height on a touch screen; a pointer needs less.
+            .frame(minHeight: standsAlone ? (Platform.isMac ? 30 : 44) : nil)
             .background {
                 if standsAlone, selected {
                     RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.accentWash)

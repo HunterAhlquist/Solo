@@ -703,6 +703,7 @@ struct NoteFormatBar: View {
     }
 
     private func button(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: symbol, action: action)
+        // The bar shows only icons: a pointer resting on one is told its name.
+        Button(title, systemImage: symbol, action: action).help(title)
     }
 }
