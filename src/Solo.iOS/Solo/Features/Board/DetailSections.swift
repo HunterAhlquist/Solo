@@ -107,26 +107,9 @@ struct SubTaskSection: View {
             }
 
             if canWrite {
-                Menu {
-                    Picker("Label", selection: Binding(get: { subTask.labelId }, set: { setLabel(subTask, $0) })) {
-                        Text("No label").tag(UUID?.none)
-                        ForEach(store.labels(.subTask)) { label in
-                            Text(label.name).tag(UUID?.some(label.id))
-                        }
-                    }
-                    .listedInMenu()
-                } label: {
-                    if let label {
-                        LabelChip(label: label, compact: true)
-                    } else {
-                        Image(systemName: "tag").foregroundStyle(theme.textDisabled).frame(width: 28, height: 28)
-                            .contentShape(.rect)
-                    }
+                LabelMenu(labels: store.labels(.subTask), selection: subTask.labelId, label: label, compact: true) {
+                    setLabel(subTask, $0)
                 }
-                .menuToggles()
-                // A tag, or the label's own chip, and nothing around either.
-                .bareControl()
-                .accessibilityLabel(label.map { "Label: \($0.name)" } ?? "Set label")
             } else if let label {
                 LabelChip(label: label, compact: true)
             }
@@ -631,5 +614,41 @@ struct MoveTaskSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// How a label is chosen, for a task and for a sub-task alike: the label's own chip — or a
+/// tag, where there is none — and under it a menu of the labels there are.
+struct LabelMenu: View {
+    @Environment(\.theme) private var theme
+    var labels: [SoloLabel]
+    var selection: UUID?
+    /// The label chosen, where it is one that still exists.
+    var label: SoloLabel?
+    /// A sub-task's is the smaller chip, beside its name.
+    var compact = false
+    var onChange: (UUID?) -> Void
+
+    var body: some View {
+        Menu {
+            Picker("Label", selection: Binding(get: { selection }, set: onChange)) {
+                Text("No label").tag(UUID?.none)
+                ForEach(labels) { label in
+                    Text(label.name).tag(UUID?.some(label.id))
+                }
+            }
+            .listedInMenu()
+        } label: {
+            if let label {
+                LabelChip(label: label, compact: compact)
+            } else {
+                Image(systemName: "tag").foregroundStyle(theme.textDisabled).frame(width: 28, height: 28)
+                    .contentShape(.rect)
+            }
+        }
+        .menuToggles()
+        // A tag, or the label's own chip, and nothing around either.
+        .bareControl()
+        .accessibilityLabel(label.map { "Label: \($0.name)" } ?? "Set label")
     }
 }

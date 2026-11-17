@@ -219,23 +219,16 @@ struct DetailView: View {
             }
             Divider().overlay(theme.divider)
             FieldRow(title: "Label", symbol: "tag") {
-                Menu {
-                    Picker("Label", selection: Binding(get: { task.labelId }, set: { setLabel(task, $0) })) {
-                        Text("No label").tag(UUID?.none)
-                        ForEach(store.labels(.task)) { label in
-                            Text(label.name).tag(UUID?.some(label.id))
-                        }
-                    }
-                    .listedInMenu()
-                } label: {
-                    if let label = store.label(task.labelId) {
-                        LabelChip(label: label)
-                    } else {
-                        FieldValue(text: "None", dimmed: true)
-                    }
+                // The control a sub-task's label has (`LabelMenu`): the chip itself is what is
+                // pressed, with nothing drawn round it.
+                let label = store.label(task.labelId)
+                if canWrite {
+                    LabelMenu(labels: store.labels(.task), selection: task.labelId, label: label) { setLabel(task, $0) }
+                } else if let label {
+                    LabelChip(label: label)
+                } else {
+                    Text("None").foregroundStyle(theme.textSecondary)
                 }
-                .menuToggles()
-                .disabled(!canWrite)
             }
             Divider().overlay(theme.divider)
             AssigneeField(store: store, assigneeIds: task.assigneeIds, canWrite: canWrite, embedded: true) { ids in
