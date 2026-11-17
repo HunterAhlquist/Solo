@@ -391,6 +391,22 @@ extension View {
     }
 }
 
+extension View {
+    /// On a window's content. A Mac's bar has no backing of its own: a page scrolls up under
+    /// it only faintly dimmed, and is given something behind it when the pointer comes over
+    /// the bar — so a title or a button with a card behind it was hard to read until then.
+    /// The hard edge is the system's other way of drawing it: what is under the bar is
+    /// frosted, down to a line, whenever anything is there. Asking the bar itself to show a
+    /// background does nothing here; the edge is the scroll view's to draw.
+    func windowBarBacked() -> some View {
+        #if os(macOS)
+        scrollEdgeEffectStyle(.hard, for: .top)
+        #else
+        self
+        #endif
+    }
+}
+
 extension ToolbarContent {
     /// On a page's own title in the middle of the bar. A Mac's bar puts glass behind each of
     /// its items, as behind a button; a title is not something to press, and stands bare.

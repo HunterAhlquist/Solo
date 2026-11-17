@@ -33,6 +33,7 @@ struct SettingsWindow: View {
         .environment(model.themes)
         .preferredColorScheme(model.themes.preference.colorScheme)
         .frame(minWidth: 760, minHeight: 500)
+        .windowBarBacked()
     }
 }
 #endif
