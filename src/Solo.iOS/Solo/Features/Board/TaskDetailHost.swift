@@ -164,6 +164,20 @@ struct DetailPanelColumn: View {
 
     var body: some View {
         GeometryReader { proxy in
+            // A Mac's bar is backed by whatever scrolls under it (`windowBarBacked`), and the
+            // page has given this end of the window up: over the pane the bar had nothing
+            // behind it, and its backing stopped short where the page did. Something that
+            // scrolls, with nothing in it, stands here behind the pane and is backed the same.
+            #if os(macOS)
+            if center.panel != nil {
+                ScrollView { Color.clear.frame(height: 1) }
+                    .frame(width: center.width)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .transition(.opacity)
+            }
+            #endif
             if let panel = center.panel {
                 let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
                 panel.view
