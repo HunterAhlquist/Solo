@@ -203,6 +203,7 @@ struct DashboardView: View {
         .navigationTitle("Your Tasks")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { ConnectionIndicator() }
+                .bareOnMac()
         }
     }
 

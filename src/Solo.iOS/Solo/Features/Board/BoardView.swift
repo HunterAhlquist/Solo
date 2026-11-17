@@ -107,10 +107,13 @@ private struct BoardContent: View {
                 }
             }
             .bareOnMac()
+            // Things to read, not to press: bare, where a Mac's bar would put a button's glass
+            // behind them.
             ToolbarItemGroup(placement: .topBarTrailing) {
                 ConnectionIndicator()
                 PresenceCluster(entries: model.store.presence(on: EntityTypes.board, board.id), max: 4)
             }
+            .bareOnMac()
             if model.canWrite {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 ToolbarItem(placement: .topBarTrailing) {

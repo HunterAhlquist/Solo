@@ -576,6 +576,7 @@ struct SidebarView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 ConnectionIndicator()
             }
+            .bareOnMac()
         }
 
         .reloads {
