@@ -175,6 +175,7 @@ struct SyncedTextEditor: NSViewRepresentable {
         view.onFocus = { [weak coordinator] in coordinator?.focused($0) }
         view.linkAt = { [weak coordinator] in coordinator?.link(at: $0) }
         view.tickAt = { [weak coordinator] in coordinator?.tick(at: $0) ?? false }
+        view.boxAt = { [weak coordinator] in coordinator?.box(at: $0) != nil }
         view.onLink = { [weak coordinator] in coordinator?.onLink($0) }
         NotificationCenter.default.addObserver(coordinator, selector: #selector(Coordinator.scrolled),
                                                name: NSView.boundsDidChangeNotification, object: scroll.contentView)
@@ -520,17 +521,25 @@ struct SyncedTextEditor: NSViewRepresentable {
 
         // MARK: Task boxes
 
+        /// The task box under a point that a click would tick: its `[ ]` in the text. Nil in a
+        /// note that can't be written in, where a box is only a picture of one.
+        func box(at point: CGPoint) -> NSRange? {
+            guard let view = textView, view.isEditable, sync.canWrite, let manager = view.layoutManager as? NoteLayoutManager,
+                  let storage = view.textStorage else { return nil }
+            let origin = view.textContainerOrigin
+            guard let box = manager.checkbox(at: CGPoint(x: point.x - origin.x, y: point.y - origin.y), slop: 3),
+                  NSMaxRange(box) <= storage.length else { return nil }
+            let text = storage.string as NSString
+            guard text.character(at: box.location) == 91, text.character(at: box.location + 2) == 93 else { return nil }
+            return box
+        }
+
         /// Ticks or clears the task box under a point, by changing what it is written as, in
         /// a note that may be written in. True if there was one: the click was for it, and
         /// the caret stays where it is.
         func tick(at point: CGPoint) -> Bool {
-            guard let view = textView, view.isEditable, sync.canWrite, let manager = view.layoutManager as? NoteLayoutManager,
-                  let storage = view.textStorage else { return false }
-            let origin = view.textContainerOrigin
-            guard let box = manager.checkbox(at: CGPoint(x: point.x - origin.x, y: point.y - origin.y), slop: 3),
-                  NSMaxRange(box) <= storage.length else { return false }
+            guard let view = textView, let storage = view.textStorage, let box = box(at: point) else { return false }
             let text = storage.string as NSString
-            guard text.character(at: box.location) == 91, text.character(at: box.location + 2) == 93 else { return false }
             let selection = view.selectedRange()
             // Through the input system rather than the storage, so Undo takes it back.
             view.insertText(text.character(at: box.location + 1) == 32 ? "x" : " ",
@@ -637,6 +646,27 @@ final class NoteTextView: NSTextView {
     var onLink: ((String) -> Void)?
     /// Ticks the task box under a point; true if there was one.
     var tickAt: ((CGPoint) -> Bool)?
+    /// Whether there is a task box under a point that a click would tick.
+    var boxAt: ((CGPoint) -> Bool)?
+
+    // Over a box that ticks the pointer is a hand, as it is over a link. A link's is an
+    // attribute of its text; a box is drawn where its text has been folded to nothing, so
+    // there is no text under most of it to carry one, and the pointer is set here.
+    override func mouseMoved(with event: NSEvent) {
+        if boxAt?(convert(event.locationInWindow, from: nil)) == true {
+            NSCursor.pointingHand.set()
+            return
+        }
+        super.mouseMoved(with: event)
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        if boxAt?(convert(event.locationInWindow, from: nil)) == true {
+            NSCursor.pointingHand.set()
+            return
+        }
+        super.cursorUpdate(with: event)
+    }
     let placeholder = NSTextField(labelWithString: "")
     private var lastWidth: CGFloat = 0
 
