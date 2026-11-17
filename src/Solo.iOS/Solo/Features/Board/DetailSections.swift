@@ -114,13 +114,18 @@ struct SubTaskSection: View {
                             Text(label.name).tag(UUID?.some(label.id))
                         }
                     }
+                    .listedInMenu()
                 } label: {
                     if let label {
                         LabelChip(label: label, compact: true)
                     } else {
                         Image(systemName: "tag").foregroundStyle(theme.textDisabled).frame(width: 28, height: 28)
+                            .contentShape(.rect)
                     }
                 }
+                .menuToggles()
+                // A tag, or the label's own chip, and nothing around either.
+                .bareControl()
                 .accessibilityLabel(label.map { "Label: \($0.name)" } ?? "Set label")
             } else if let label {
                 LabelChip(label: label, compact: true)

@@ -140,6 +140,17 @@ extension PrimitiveButtonStyle where Self == GlassButtonStyle {
 }
 #endif
 
+/// A label as an icon beside a name and nothing more, in whatever colour it is given. The
+/// icon has the room a sidebar row gives its own (`SidebarRow`), so the two stand in line.
+struct AsWrittenLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 10) {
+            configuration.icon.frame(width: 24)
+            configuration.title
+        }
+    }
+}
+
 // MARK: - Labels
 
 struct LabelChip: View {

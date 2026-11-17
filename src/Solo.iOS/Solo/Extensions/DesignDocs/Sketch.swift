@@ -832,6 +832,7 @@ struct SketchEditor: View {
                             NotePresence(entries: model.sync.present, slots: model.sync.colorSlots)
                         }
                     }
+                    .bareOnMac()
                     if model.sync.canWrite {
                         ToolbarItemGroup(placement: .primaryAction) {
                             Menu("Page", systemImage: "doc.badge.gearshape") {
@@ -932,10 +933,12 @@ struct SketchEditor: View {
                 Picker("Width", selection: $level) {
                     ForEach(0..<5, id: \.self) { Text("\(SketchRaster.widths[$0]) px").tag($0) }
                 }
+                .listedInMenu()
             } label: {
                 Label("\(SketchRaster.widths[level]) px", systemImage: "lineweight")
                     .font(.subheadline.weight(.medium))
             }
+            .menuToggles()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

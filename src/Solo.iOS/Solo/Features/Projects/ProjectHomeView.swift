@@ -115,6 +115,7 @@ struct ProjectHomeView: View {
                         Text(project.name).font(.headline).lineLimit(1)
                     }
                 }
+                .bareOnMac()
             }
         }
         .task(id: alias) { await load() }

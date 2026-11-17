@@ -246,7 +246,10 @@ import AppKit
         watch.hover(true)
         var letGo = false
         // Said many times a second, the same place each time: it is being carried, and held still.
-        for _ in 0..<6 {
+        // For half a second, and not a few times only: the tests run inside the app, which on a
+        // Mac is drawing a board as it starts, and a few sayings in a row can each arrive late
+        // enough not to count as the same thing said twice.
+        for _ in 0..<25 {
             watch.alive(at: CGPoint(x: 10, y: 20)) { letGo = true }
             try await Task.sleep(for: .milliseconds(20))
         }

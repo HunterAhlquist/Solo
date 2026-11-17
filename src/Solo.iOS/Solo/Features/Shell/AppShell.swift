@@ -390,7 +390,14 @@ struct SidebarView: View {
 
         }
         .listStyle(.sidebar)
-        .macControls()
+        // A Mac gives a button in a list a bezel, and a sidebar's label an icon in the system's
+        // accent, whatever colour the row asks for: the quiet rows, Add Board and New Design
+        // Doc, had a bright plus. Plain, and with a label that is only its icon beside its
+        // name, a row is drawn as it is written.
+        #if os(macOS)
+        .buttonStyle(.plain)
+        .labelStyle(AsWrittenLabelStyle())
+        #endif
         // On an iPad the rows that scroll under the foot of the column go out of focus behind
         // it. A Mac's sidebar leaves them legible there, written over by the rows of the foot.
         #if os(macOS)

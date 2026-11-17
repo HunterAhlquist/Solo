@@ -300,6 +300,7 @@ struct NoteMediaViewer: View {
                         }
                     }
                 }
+                .bareOnMac()
                 ToolbarItemGroup(placement: .bottomBar) { actions }
             }
         }

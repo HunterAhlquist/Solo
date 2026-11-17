@@ -202,9 +202,11 @@ struct DetailView: View {
                             Label(status.title, systemImage: status.symbol).tag(status)
                         }
                     }
+                    .listedInMenu()
                 } label: {
                     FieldValue(text: task.status.title)
                 }
+                .menuToggles()
                 .disabled(!canWrite || !task.subTasks.isEmpty)
             }
             if !task.subTasks.isEmpty {
@@ -224,6 +226,7 @@ struct DetailView: View {
                             Text(label.name).tag(UUID?.some(label.id))
                         }
                     }
+                    .listedInMenu()
                 } label: {
                     if let label = store.label(task.labelId) {
                         LabelChip(label: label)
@@ -231,6 +234,7 @@ struct DetailView: View {
                         FieldValue(text: "None", dimmed: true)
                     }
                 }
+                .menuToggles()
                 .disabled(!canWrite)
             }
             Divider().overlay(theme.divider)

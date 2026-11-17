@@ -391,6 +391,42 @@ extension View {
     }
 }
 
+extension ToolbarContent {
+    /// On a page's own title in the middle of the bar. A Mac's bar puts glass behind each of
+    /// its items, as behind a button; a title is not something to press, and stands bare.
+    func bareOnMac() -> some ToolbarContent {
+        #if os(macOS)
+        sharedBackgroundVisibility(.hidden)
+        #else
+        self
+        #endif
+    }
+}
+
+extension View {
+    /// On a small control drawn as its glyph alone — the add and the more of a lane's header,
+    /// the tag of a sub-task. An iPad draws a button and a menu that way unasked; a Mac
+    /// gives each a bezel, and a menu an arrow, that the glyph was not drawn to sit in.
+    func bareControl() -> some View {
+        #if os(macOS)
+        buttonStyle(.plain).menuStyle(.button).menuIndicator(.hidden).foregroundStyle(.tint)
+        #else
+        self
+        #endif
+    }
+
+    /// On a picker that is the whole of a menu. An iPad lists its choices in the menu; a Mac
+    /// makes of it a menu within the menu, under the picker's name, for the one thing there
+    /// is to choose.
+    func listedInMenu() -> some View {
+        #if os(macOS)
+        pickerStyle(.inline).labelsHidden()
+        #else
+        self
+        #endif
+    }
+}
+
 // MARK: - Reading a page again
 
 /// The pages that are read once when they are opened, and how each reads itself again. A

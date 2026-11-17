@@ -216,6 +216,9 @@ final class CardDragWatch {
     @ObservationIgnored private var steady = 0
     @ObservationIgnored private var lapse: (() -> Void)?
     @ObservationIgnored private var pulse: Task<Void, Never>?
+    #if os(macOS)
+    @ObservationIgnored private var buttonWatch: Task<Void, Never>?
+    #endif
 
     /// Whether something was let go a moment ago. The system does not always stop saying where
     /// a thing is once it has been let go — let go somewhere that will not have it, it is
@@ -335,6 +338,31 @@ final class CardDragWatch {
                 self.foldsGroups = self.carriesGroup
             }
         }
+    }
+
+    /// On a Mac, a thing is in hand for as long as the mouse's button is down, and that can be
+    /// asked. A drag given up — Escape, or let go over another app — is not always said to
+    /// have ended to the place it was last over, and the thing would stay in hand with nothing
+    /// holding it. So while something is, the button is looked at; up twice running, with
+    /// nothing having taken the thing meanwhile, it is given back. Asked for by the place the
+    /// thing arrived over, which is where a mouse is known to be what carries it.
+    func watchButton() {
+        #if os(macOS)
+        guard lifted != nil, buttonWatch == nil else { return }
+        buttonWatch = Task { [weak self] in
+            defer { self?.buttonWatch = nil }
+            var up = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled, let self, self.lifted != nil, !self.settling else { return }
+                up = NSEvent.pressedMouseButtons & 1 == 0 ? up + 1 : 0
+                if up >= 2 {
+                    self.ended()
+                    return
+                }
+            }
+        }
+        #endif
     }
 
     /// Somewhere to let go says the thing in hand is still over it, and where.

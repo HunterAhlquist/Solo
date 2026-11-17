@@ -106,6 +106,7 @@ private struct BoardContent: View {
                     }
                 }
             }
+            .bareOnMac()
             ToolbarItemGroup(placement: .topBarTrailing) {
                 ConnectionIndicator()
                 PresenceCluster(entries: model.store.presence(on: EntityTypes.board, board.id), max: 4)
@@ -726,7 +727,11 @@ private struct BoardDrop: ViewModifier {
                 // Still in hand, and still here: see `CardDragWatch.alive`. Somewhere off the
                 // page — an edge, a column of the selector — is somewhere a thing is let go
                 // on purpose, so one that goes quiet there is taken to have been.
+                // A Mac always says when a thing is let go, and is watched another way for
+                // one given up (`CardDragWatch.watchButton`).
+                #if os(iOS)
                 drag.alive(at: info.location, lapse: onScreen ? { letGo() } : nil)
+                #endif
             }
             // A move: the system then draws no badge beside the finger.
             return DropProposal(operation: .move)
@@ -750,7 +755,10 @@ private struct BoardDrop: ViewModifier {
             let point = CGPoint(x: origin.x + info.location.x, y: origin.y + info.location.y)
             if over {
                 // Whatever has just arrived says what it is, once: see `CardDragWatch.offered`.
-                if !drag.active { drag.offered(info.itemProviders(for: [.plainText]).first?.suggestedName) }
+                if !drag.active {
+                    drag.offered(Self.name(of: info))
+                    drag.watchButton()
+                }
                 if let place { drag.aim(place(point), true) } else { drag.hover(true) }
                 if onScreen { drag.move(toScreen: point) } else { drag.move(to: point) }
                 if let berth { drag.steer(to: berth(point)) }
@@ -759,6 +767,18 @@ private struct BoardDrop: ViewModifier {
             } else {
                 drag.hover(false)
             }
+        }
+
+        /// What the thing arriving calls itself. On an iPhone that is the name its provider
+        /// was given when it was picked up. A Mac hands a place a provider made afresh from
+        /// the pasteboard, which has the text and not the name — and the text, which is the
+        /// same thing, can be read from the pasteboard the drag is carried on.
+        private static func name(of info: DropInfo) -> String? {
+            #if os(macOS)
+            NSPasteboard(name: .drag).string(forType: .string)
+            #else
+            info.itemProviders(for: [.plainText]).first?.suggestedName
+            #endif
         }
 
         func performDrop(info: DropInfo) -> Bool {
@@ -873,6 +893,8 @@ private struct LaneHeader: View {
                     Button("Add task", systemImage: "plus") { model.promptNewTask(epicId: epic.id) }
                         .labelStyle(.iconOnly)
                         .frame(width: 30, height: 30)
+                        .contentShape(.rect)
+                        .bareControl()
                     EpicMenu(model: model, epic: epic)
                 }
             } else {
@@ -887,6 +909,8 @@ private struct LaneHeader: View {
                     Button("Add task", systemImage: "plus") { model.promptNewTask(epicId: nil) }
                         .labelStyle(.iconOnly)
                         .frame(width: 30, height: 30)
+                        .contentShape(.rect)
+                        .bareControl()
                 }
             }
         }
@@ -1044,6 +1068,8 @@ private struct EpicMenu: View {
         }
         .labelStyle(.iconOnly)
         .frame(width: 30, height: 30)
+        .contentShape(.rect)
+        .bareControl()
     }
 }
 
@@ -1081,6 +1107,8 @@ private struct GroupHeader: View {
                 Button("Add epic to group", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
                     .labelStyle(.iconOnly)
                     .frame(width: 30, height: 30)
+                    .contentShape(.rect)
+                    .bareControl()
                 Menu("Group actions", systemImage: "ellipsis") {
                     Button("Rename", systemImage: "pencil") { model.promptRename(group) }
                     Button("Add Epic", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
@@ -1094,6 +1122,8 @@ private struct GroupHeader: View {
                 }
                 .labelStyle(.iconOnly)
                 .frame(width: 30, height: 30)
+                .contentShape(.rect)
+                .bareControl()
             }
         }
         .modifier(GroupDrag(model: model, group: group, enabled: !carried))

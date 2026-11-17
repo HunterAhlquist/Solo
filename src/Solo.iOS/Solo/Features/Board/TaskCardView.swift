@@ -75,30 +75,13 @@ struct TaskCardView: View {
                 }
 
                 if hasFooter {
-                    HStack(spacing: 8) {
-                        if showDeadline {
-                            deadlineRing
-                        }
-                        if let kitMount {
-                            KitItemContributions(mount: kitMount, item: task.id.uuidString)
-                        }
-                        Spacer(minLength: 0)
-                        if !task.subTasks.isEmpty {
-                            HStack(spacing: 4) {
-                                ProgressRing(value: Double(task.finishedSubTasks) / Double(task.subTasks.count),
-                                             color: task.finishedSubTasks == task.subTasks.count ? theme.success : theme.primary,
-                                             size: 16, lineWidth: 2.5)
-                                Text("\(task.finishedSubTasks)/\(task.subTasks.count)")
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(theme.textSecondary)
-                            }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("\(task.finishedSubTasks) of \(task.subTasks.count) sub-tasks done")
-                        }
-                        PresenceCluster(entries: presence, max: 2, size: 20)
-                        if !assignees.isEmpty {
-                            AvatarStack(members: assignees, max: 3, size: 22)
-                        }
+                    // A card in a narrow column has less room than its foot wants. It is never
+                    // let run onto a second line, nor past the card's edge: it says less — the
+                    // sub-tasks as their ring alone, then one face for everyone — until it fits.
+                    ViewThatFits(in: .horizontal) {
+                        footer(counts: true, faces: 3)
+                        footer(counts: false, faces: 3)
+                        footer(counts: false, faces: 1)
                     }
                 }
             }
@@ -162,6 +145,42 @@ struct TaskCardView: View {
     }
 
     private var deadlineColor: Color { Theme.deadlineColor(elapsed: elapsed) }
+
+    /// The card's foot: what is due, what extensions add, how far its sub-tasks are, and who is
+    /// on it. `counts` writes the sub-tasks out beside their ring; `faces` is how many people
+    /// are shown before the rest are a number.
+    private func footer(counts: Bool, faces: Int) -> some View {
+        HStack(spacing: 8) {
+            if showDeadline {
+                deadlineRing
+            }
+            if let kitMount {
+                KitItemContributions(mount: kitMount, item: task.id.uuidString)
+            }
+            Spacer(minLength: 0)
+            if !task.subTasks.isEmpty {
+                HStack(spacing: 4) {
+                    ProgressRing(value: Double(task.finishedSubTasks) / Double(task.subTasks.count),
+                                 color: task.finishedSubTasks == task.subTasks.count ? theme.success : theme.primary,
+                                 size: 16, lineWidth: 2.5)
+                    if counts {
+                        Text("\(task.finishedSubTasks)/\(task.subTasks.count)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(theme.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(task.finishedSubTasks) of \(task.subTasks.count) sub-tasks done")
+            }
+            PresenceCluster(entries: presence, max: 2, size: 20)
+            if !assignees.isEmpty {
+                AvatarStack(members: assignees, max: faces, size: 22)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
 
     private var deadlineRing: some View {
         ZStack {
