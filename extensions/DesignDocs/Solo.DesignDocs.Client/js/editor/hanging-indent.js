@@ -1,16 +1,20 @@
 import { StateEffect } from '@codemirror/state';
 import { Decoration, ViewPlugin } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
+import { taskBox, inCode } from './markdown.js';
 
 const leadingSpace = text => /^[ \t]*/.exec(text)[0].length;
 
-// Where a line's text begins once its indentation, quote markers and list
-// marker are skipped. Returns line.from when there is nothing to hang wrapped rows from.
+// Where a line's text begins once its indentation, quote markers, list marker
+// and task box are skipped. Returns line.from when there is nothing to hang wrapped rows from.
 export function hangingStart(state, line) {
     const tree = syntaxTree(state);
     let start = line.from + leadingSpace(line.text);
-    for (let node; start < line.to && (node = tree.resolveInner(start, 1)).from === start && /^(QuoteMark|ListMark)$/.test(node.name);)
-        start = node.to + leadingSpace(state.doc.sliceString(node.to, line.to));
+    for (let node; start < line.to && (node = tree.resolveInner(start, 1)).from === start && /^(QuoteMark|ListMark)$/.test(node.name);) {
+        const rest = state.doc.sliceString(node.to, line.to), box = node.name === 'ListMark' && taskBox(rest);
+        const skipped = box && !inCode(tree, node.to + box.from) ? box.to : 0;
+        start = node.to + skipped + leadingSpace(rest.slice(skipped));
+    }
     return start < line.to ? start : line.from;
 }
 

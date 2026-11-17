@@ -191,6 +191,12 @@
 .design-docs-offline-button.mud-icon-button:disabled { color:var(--mud-palette-action-default) !important; }
 .design-docs-list-marker { display:inline-block; text-align:center; min-width:1ch; color:inherit; }
 .design-docs-list-marker.is-ordered { font-variant-numeric:tabular-nums; text-align:right; }
+/* A task's box (editor/preview.js), drawn where `- [ ]` is written. The ::before widens what a finger can hit. */
+.design-docs-task-box { display:inline-block; box-sizing:border-box; position:relative; width:1.05em; height:1.05em; vertical-align:-.17em; border:1.5px solid var(--mud-palette-text-secondary); border-radius:3px; cursor:pointer; }
+.design-docs-task-box::before { content:''; position:absolute; inset:-6px; }
+.design-docs-task-box.is-checked { border-color:var(--mud-palette-primary); background:var(--mud-palette-primary); }
+.design-docs-task-box.is-checked::after { content:''; position:absolute; left:50%; top:44%; width:30%; height:60%; border:solid var(--mud-palette-primary-text); border-width:0 .13em .13em 0; transform:translate(-50%,-50%) rotate(45deg); }
+.design-docs-task-box[aria-disabled=true] { cursor:default; }
 /* Hanging indent for wrapped rows (editor/hanging-indent.js). The 6px is CodeMirror's own .cm-line
    padding; padding rather than margin keeps its selection layers lined up. Inline blocks inherit text-indent. */
 .design-docs-editor .cm-line.design-docs-hanging { padding-left:calc(6px + var(--design-docs-hang)); text-indent:calc(-1 * var(--design-docs-hang)); }

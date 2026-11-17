@@ -35,9 +35,10 @@ with its version in parentheses).
 #### Roadmaps (1.10.2)
 - Rebuilt on contract 1.16.0.
 
-#### Design Docs (1.5.4)
+#### Design Docs (1.5.5)
 - Rebuilt on contract 1.16.0.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
+- In a note, a task item (`- [ ] buy milk`, `- [x] done`, `1. [ ] numbered`) shows as a checkbox. Click or tap it to tick or untick it; put the caret in the box to edit it as text. Notes you can only read show the boxes but don't tick.
 
 ## v1.20.1 (2026-11-05)
 

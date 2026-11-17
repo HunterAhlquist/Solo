@@ -28,6 +28,17 @@ export function isSafeUrl(url) {
     const text = trimSpace(url ?? ''), colon = text.indexOf(':');
     return colon < 0 || /[/?#]/u.test(text.slice(0, colon)) || ['http','https','mailto'].includes(text.slice(0, colon).toLowerCase());
 }
+// A task's box, looked for in what follows a list mark on its line: `[ ]`, `[x]` or `[X]` with white space on both
+// sides, as GFM has it. Found by pattern because the editor's parser is CommonMark, which has no task node.
+// Offsets are into `rest`. An item indented far enough to be a code block matches too, so callers check inCode.
+export function taskBox(rest) {
+    const match=/^([ \t]+)\[([ xX])\](?=[ \t])/.exec(rest);
+    return match&&{from:match[1].length,to:match[0].length,checked:match[2]!==' '};
+}
+export function inCode(tree,pos) {
+    for(let node=tree.resolveInner(pos,1);node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name))return true;
+    return false;
+}
 export function headings(markdown) {
     const used=new Map(),result=[];
     parser.parse(markdown).iterate({enter(node){
