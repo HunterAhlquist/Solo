@@ -251,12 +251,13 @@ private struct SectionStack: View {
             TabRoot(tab: root)
                 .id(root)
                 .saysWhenOffline()
+                .barBackedAcross()
                 // Beside a sidebar a large title is a blank band above the page; the bar carries it
                 // instead. On a phone the title stays large but shares its row with the bar's buttons,
                 // which gives the page a row back.
                 .toolbarTitleDisplayMode(sizeClass == .regular ? .inline : .inlineLarge)
                 // Each route is its own page: a board is not the last board shown something new.
-                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0).saysWhenOffline() }
+                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0).saysWhenOffline().barBackedAcross() }
         }
         // A phone's tabs are sections that need the instance. Out of reach they are put away,
         // from over a design doc that was open when the connection went and is left where it is.
@@ -309,6 +310,39 @@ private struct SectionStack: View {
 }
 
 private extension View {
+    /// On every page of the main window's stack, on a Mac: what the bar has behind it. A
+    /// Mac's bar is backed by what scrolls under it (`windowBarBacked`), which is each
+    /// page's own scrolling — and a page gives the task panel's end of the window up
+    /// (`DetailPanel`), so with a task open the backing stopped where the page did, short
+    /// of the window's edge. Backing the rest with something else that scrolls never held:
+    /// the system sizes the two a frame apart, and a sliver of bar with nothing behind it
+    /// travelled between them for as long as the panel was moving.
+    ///
+    /// So here the bar's backing is not the system's. The page's own is turned off and one
+    /// is drawn in its place, the bar's material down to a line, as wide as the page's
+    /// column — which the panel stands over and takes nothing from. It is part of the
+    /// page, and goes where the column goes; there is no second piece of it to fall out of
+    /// step. On the page and not on the stack: a Mac draws nothing that is put on the stack.
+    func barBackedAcross() -> some View {
+        #if os(macOS)
+        scrollEdgeEffectHidden(true, for: .top)
+            .overlay(alignment: .top) {
+                GeometryReader { proxy in
+                    VStack(spacing: 0) {
+                        Rectangle().fill(.thinMaterial)
+                        Divider()
+                    }
+                    .frame(height: proxy.safeAreaInsets.top)
+                    .ignoresSafeArea(.container, edges: .top)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        #else
+        self
+        #endif
+    }
+
     /// On every page of the main window's stack, on a Mac: the mark that the live feed is
     /// being reconnected (`ConnectionIndicator` — the instance being out of reach altogether
     /// is no longer said here, but by the window: OfflineMode.swift). An iPad's sidebar and
