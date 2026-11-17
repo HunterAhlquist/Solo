@@ -19,8 +19,9 @@ import YSwift
 //   commands.json          what was done to a design doc's tree and is still to send
 //   commands/<id>.data     a new or replaced picture's bytes, to go with its command
 //
-// What is done to the tree is in OfflineChanges.swift. What the web's has and this has not:
-// the recovery archive, and importing notes into a downloaded design doc.
+// What is done to the tree is in OfflineChanges.swift, and the archive of all of it in
+// OfflineRecovery.swift. What the web's has and this has not: importing notes into a
+// downloaded design doc.
 
 /// What the app does to a Yjs document's stored state without opening it in an editor.
 nonisolated enum YStates {
@@ -67,6 +68,9 @@ nonisolated struct OfflineVault: Codable, Identifiable, Sendable {
     /// Its tree, sketches and pictures as the instance last had them. What is shown is this
     /// with whatever is still to send done to it (`OfflineVaults.view`).
     var base: OfflineBase?
+    /// Rows the instance no longer has, set aside as they were: the names and places of
+    /// notes deleted there, for an archive of what is on the device (OfflineRecovery.swift).
+    var recovery: OfflineBase?
     /// The version of each picture that is kept.
     var images: [String: UInt32] = [:]
     /// What the tree, the documents and the pictures amounted to when the app's own reads of
@@ -798,6 +802,59 @@ final class OfflineVaults {
         viewChanged.send(vault.id)
     }
 
+    // MARK: Taking it away
+
+    /// Everything of a downloaded design doc that is on the device, as a zip (see
+    /// OfflineRecovery.swift): what to take before giving up work the instance refused.
+    /// `dark` is the paper its sketches' pictures are drawn on.
+    func recoveryArchive(_ vaultId: UUID, dark: Bool) async throws -> (name: String, data: Data) {
+        guard let vault = vault(vaultId), let base = vault.base else { throw OfflineRefusal.gone }
+        let queued = commands.filter { $0.vaultId == vaultId }
+        // What the instance no longer has is still what was on the device.
+        let source = OfflineTree.projected(OfflineRecovery.restoring(base, vault.recovery), queued)
+        let kept = documents.values.filter { $0.vaultId == vaultId }
+
+        var files = OfflineRecovery.notes(of: source) { note in
+            disk.read(note.id, .local).map(YStates.markdown) ?? note.markdown
+        }
+        for image in source.images {
+            if let data = disk.readImage(image.id) { files[image.path] = data }
+        }
+        let colors = dark ? SketchColors.dark : SketchColors.light
+        for sketch in source.sketches {
+            guard let state = disk.read(sketch.id, .local) else { continue }
+            let snapshot = await SketchSnapshot.load([Data(state).base64EncodedString()], sketch: sketch)
+            if let drawn = snapshot.raster.image(page: snapshot.page, paper: colors.paper, themeInk: colors.ink),
+               let png = PlatformImage.picture(drawn).pngRepresentation {
+                files[sketch.path + ".png"] = png
+            }
+        }
+
+        let record = OfflineRecoveryRecord(
+            vault: vault,
+            documents: kept.compactMap { document in
+                disk.read(document.id, .local).map {
+                    .init(id: document.id, vaultId: vaultId, seq: document.seq, deleted: document.deletedOnline, state: Data($0))
+                }
+            },
+            queue: queued.map {
+                .init(id: $0.id, vaultId: vaultId, created: $0.created, documentId: nil, data: nil,
+                      command: OfflineCommandWire($0, data: $0.hasData ? disk.readCommandData($0.id) : nil), error: $0.error)
+            } + kept.filter(owes).compactMap { document in
+                // What was being sent, or what would have been: the document less what the instance has.
+                let data = disk.read(document.id, .outbox) ?? disk.read(document.id, .local).map {
+                    YStates.missing(from: disk.read(document.id, .server) ?? [], in: $0)
+                }
+                return data.map {
+                    .init(id: document.outbox?.id ?? document.id, vaultId: vaultId, created: nil, documentId: document.id,
+                          data: Data($0), command: nil, error: document.outbox?.error)
+                }
+            })
+        // Written as it would have been sent, so a command in it is the request the instance never got.
+        files["solo-recovery.json"] = try SoloJSON.encoder.encode(record)
+        return (OfflineRecovery.archiveName(source.tree.vault.name), try OfflineRecovery.zip(files))
+    }
+
     // MARK: Keeping in step
 
     /// Reads what has changed on the instance and sends what has changed here. Asked for again
@@ -933,8 +990,9 @@ final class OfflineVaults {
                 documents[id]?.outbox?.error = "It was deleted on the instance. What was written here is kept until you discard it."
                 open[id]?.sync?.setKeptWritable(false)
             } else {
-                disk.removeDocument(id)
-                documents[id] = nil
+                // Kept, as the web keeps it: what was read of it is still on the device, and
+                // goes in an archive of the design doc. It goes when the download does.
+                documents[id]?.deletedOnline = true
                 derived[id] = nil
             }
         }
@@ -956,7 +1014,9 @@ final class OfflineVaults {
 
         let signature = manifest.signature
         let stale = vault.signature != signature
+        let aside = vault.base.flatMap { OfflineRecovery.settingAside($0, gone: manifest.base, into: vault.recovery) } ?? vault.recovery
         change(vaultId) {
+            $0.recovery = aside
             $0.name = manifest.tree.vault.name
             $0.canWrite = manifest.canWrite
             $0.unavailable = false
@@ -1122,9 +1182,13 @@ final class OfflineVaults {
             let base = vault(command.vaultId)?.base
             let there = Set((base?.tree.notes.map(\.id) ?? []) + (base?.sketches.map(\.id) ?? []))
             for (id, document) in documents where document.vaultId == command.vaultId && !there.contains(id) {
-                if commands.contains(where: { $0.action == .create && $0.targetId == id }) { continue }
-                disk.removeDocument(id)
-                documents[id] = nil
+                if commands.contains(where: { $0.action == .create && $0.targetId == id }) || document.deletedOnline { continue }
+                // Still on the device, for an archive, and no longer anything to send.
+                disk.remove(id, .outbox)
+                documents[id]?.outbox = nil
+                documents[id]?.dirty = false
+                documents[id]?.copyOwed = nil
+                documents[id]?.deletedOnline = true
                 derived[id] = nil
                 open[id]?.sync?.discardedHere()
             }

@@ -13,7 +13,8 @@
 	     which is listening. -->
 	<key>com.apple.security.network.server</key>
 	<true/>
-	<!-- A picture chosen for an icon or a note, or saved from one. -->
+	<!-- A picture chosen for an icon or a note, or saved from one; a design doc's archive,
+	     saved where it is asked to be. -->
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 </dict>

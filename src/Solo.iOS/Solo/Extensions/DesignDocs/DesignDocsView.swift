@@ -22,6 +22,10 @@ struct DesignDocsView: View {
     @State private var problem: String?
     @State private var prompt: TextPrompt?
     @State private var confirmation: Confirmation?
+    /// The changes to a downloaded design doc that the instance refused, being gone through.
+    @State private var reviewing = false
+    /// Its recovery archive, asked for from the bar.
+    @State private var exporting = false
 
     private var wide: Bool { sizeClass == .regular }
 
@@ -74,6 +78,10 @@ struct DesignDocsView: View {
         }
         .textPrompt($prompt)
         .confirmation($confirmation)
+        .sheet(isPresented: $reviewing) {
+            if let vault = store?.vault { OfflineProblemsSheet(vault: vault) }
+        }
+        .exportsRecovery(of: store?.vault?.id, when: $exporting)
     }
 
     @ViewBuilder
@@ -199,7 +207,8 @@ struct DesignDocsView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             if let store, let project, let vault = store.vault {
-                DocDownloadControl(projectId: project.id, projectAlias: project.alias, vault: vault)
+                DocDownloadControl(projectId: project.id, projectAlias: project.alias, vault: vault,
+                                   review: { reviewing = true }, export: { exporting = true }, confirm: { confirmation = $0 })
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -291,8 +300,11 @@ private struct DocDownloadControl: View {
     var projectId: UUID
     var projectAlias: String
     var vault: DocVault
-    @State private var reviewing = false
-    @State private var confirmation: Confirmation?
+    // What these open is the page's to present, with the rest of what it presents: a bar's
+    // item comes and goes with the bar, and takes what it is presenting with it.
+    var review: () -> Void
+    var export: () -> Void
+    var confirm: (Confirmation) -> Void
 
     var body: some View {
         let offline = session.docsOffline
@@ -308,16 +320,17 @@ private struct DocDownloadControl: View {
                     Section(summary(pending: pending, problems: problems, reachable: offline.reachable)) {
                         Button("Sync Now", systemImage: "arrow.triangle.2.circlepath") { offline.sync() }
                         if problems > 0 {
-                            Button("Review Changes…", systemImage: "exclamationmark.triangle") { reviewing = true }
+                            Button("Review Changes…", systemImage: "exclamationmark.triangle", action: review)
                         }
                     }
+                    Button("Export Recovery Zip…", systemImage: "archivebox", action: export)
                     Button("Remove Download", systemImage: "trash", role: .destructive) {
-                        confirmation = Confirmation(
+                        confirm(Confirmation(
                             title: "Remove download?",
                             message: "\(vault.name) is taken off this device. The instance keeps its copy.",
                             action: "Remove") {
                             if let refusal = offline.remove(vault.id) { session.toasts.show(refusal, .warning) }
-                        }
+                        })
                     }
                 } label: {
                     Label("Downloaded", systemImage: symbol(pending: pending, problems: problems, reachable: offline.reachable))
@@ -337,10 +350,6 @@ private struct DocDownloadControl: View {
                 .help("Download this design doc to read and write it offline")
             }
         }
-        .sheet(isPresented: $reviewing) {
-            OfflineProblemsSheet(vault: vault)
-        }
-        .confirmation($confirmation)
     }
 
     private func summary(pending: Int, problems: Int, reachable: Bool) -> String {
@@ -365,6 +374,7 @@ private struct OfflineProblemsSheet: View {
     @Environment(\.theme) private var theme
     var vault: DocVault
     @State private var confirmation: Confirmation?
+    @State private var exporting = false
 
     var body: some View {
         let offline = session.docsOffline
@@ -400,6 +410,13 @@ private struct OfflineProblemsSheet: View {
                     }
                     .themedRow()
                 }
+                // Last, as the web has it: everything on the device, to take before giving any of it up.
+                Section {
+                    Button("Export Recovery Zip…", systemImage: "archivebox") { exporting = true }
+                } footer: {
+                    Text("These changes are still on this device. Export them before discarding work you need.")
+                }
+                .themedRow()
             }
             .themedList()
             .navigationTitle("Changes Not Sent")
@@ -410,7 +427,72 @@ private struct OfflineProblemsSheet: View {
                 }
             }
             .confirmation($confirmation)
+            .exportsRecovery(of: vault.id, when: $exporting)
         }
+    }
+}
+
+/// A recovery archive, as something the system can be asked to save.
+struct RecoveryArchive: FileDocument {
+    static let readableContentTypes: [UTType] = [.zip]
+    var name: String
+    var data: Data
+
+    init(name: String, data: Data) {
+        self.name = name
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        name = configuration.file.filename ?? "recovery.zip"
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
+/// Makes the archive of a downloaded design doc when asked, then asks where to put it. It is
+/// on the page or the sheet that was asked: a sheet can't have the page under it present
+/// anything.
+private struct RecoveryExport: ViewModifier {
+    @Environment(Session.self) private var session
+    @Environment(\.theme) private var theme
+    var vaultId: UUID?
+    @Binding var requested: Bool
+    @State private var archive: RecoveryArchive?
+    @State private var saving = false
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: requested) { _, asked in
+                guard asked else { return }
+                requested = false
+                guard let vaultId else { return }
+                Task {
+                    do {
+                        let made = try await session.docsOffline.recoveryArchive(vaultId, dark: theme.isDark)
+                        archive = RecoveryArchive(name: made.name, data: made.data)
+                        saving = true
+                    } catch {
+                        session.toasts.error(error, fallback: "The archive couldn't be made.")
+                    }
+                }
+            }
+            .fileExporter(isPresented: $saving, document: archive, contentType: .zip,
+                          defaultFilename: archive?.name ?? "recovery.zip") { result in
+                archive = nil
+                if case .failure(let error) = result {
+                    session.toasts.error(error, fallback: "The archive couldn't be saved.")
+                }
+            }
+    }
+}
+
+private extension View {
+    func exportsRecovery(of vault: UUID?, when requested: Binding<Bool>) -> some View {
+        modifier(RecoveryExport(vaultId: vault, requested: requested))
     }
 }
 

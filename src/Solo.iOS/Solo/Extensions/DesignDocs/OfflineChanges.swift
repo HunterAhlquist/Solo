@@ -350,7 +350,11 @@ nonisolated enum OfflineTree {
     /// Changes every embed of one stored path into another, in a note's text: `![[path]]`
     /// and `![alt](path)`, left alone inside code. Returns the edits, last first, as UTF-16
     /// offsets — the order they can be made in without moving one another.
-    static func embedEdits(in markdown: String, from old: String, to new: String) -> [(start: Int, length: Int, text: String)] {
+    ///
+    /// `spelled` says how the new path is written where it goes — it is given whether the embed
+    /// is a `![[wiki]]` one, which takes a path as it is, or a link, which wants it encoded.
+    static func embedEdits(in markdown: String, from old: String, to new: String,
+                           spelled: ((_ wiki: Bool, _ path: String) -> String)? = nil) -> [(start: Int, length: Int, text: String)] {
         guard old != new else { return [] }
         var edits: [(Int, Int, String)] = []
         let pattern = /!\[\[([^\]]+)\]\]|!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)/
@@ -361,7 +365,8 @@ nonisolated enum OfflineTree {
             let target = written.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
             guard (target.removingPercentEncoding ?? target) == old else { continue }
             let start = markdown.utf16.distance(from: markdown.utf16.startIndex, to: written.startIndex)
-            let replacement = match.output.1 != nil ? new : (new.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? new)
+            let wiki = match.output.1 != nil
+            let replacement = spelled?(wiki, new) ?? (wiki ? new : (new.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? new))
             edits.append((start, target.utf16.count, replacement))
         }
         return edits.reversed()

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import ZIPFoundation
 @testable import Solo
 
 @Suite struct RoadmapRuleTests {
@@ -160,6 +161,66 @@ import Testing
         let removed = OfflineTree.removed(by: delete, from: base)
         #expect(removed.versions == [folder.api: 1, inner.api: 2, filed.api: 4, deep.api: 5, drawing.api: 6])
         #expect(Set(removed.documents) == [filed, deep, drawing])
+    }
+
+    // MARK: The recovery archive
+
+    @Test func aNoteIsAFileUnderTheFoldersItIsIn() {
+        var view = base
+        // One made here with a name the instance has already, in the same folder.
+        let twin = UUID()
+        view.tree.notes.append(note(twin, "Filed", in: folder, version: 0))
+        let files = OfflineRecovery.notes(of: view) { $0.name + " text" }
+        #expect(Set(files.keys) == ["Loose.md", "World/Filed.md", "World/Filed-\(twin.api).md", "World/Towns/Deep.md"])
+        #expect(files["World/Towns/Deep.md"].map { String(decoding: $0, as: UTF8.self) } == "Deep text")
+    }
+
+    @Test func aSketchIsEmbeddedAsThePictureTheArchiveHasOfIt() {
+        let sketch = base.sketches[0]
+        let text = """
+        ![[attachments/x/Map.sketch]] and ![[Map.sketch|300]]
+        ![the map](attachments/x/Map.sketch) but not `![[Map.sketch]]`
+        ![[attachments/x/Photo.jpg]]
+        """
+        // A wiki embed is found from the vault's top wherever the note is; a link is relative to the note.
+        #expect(OfflineRecovery.exporting(text, sketches: [sketch], notePath: "World/Towns/Deep.md") == """
+        ![[attachments/x/Map.sketch.png]] and ![[attachments/x/Map.sketch.png|300]]
+        ![the map](../../attachments/x/Map.sketch.png) but not `![[Map.sketch]]`
+        ![[attachments/x/Photo.jpg]]
+        """)
+        #expect(OfflineRecovery.exporting("![m](attachments/x/Map.sketch)", sketches: [sketch], notePath: "Loose.md")
+                == "![m](attachments/x/Map.sketch.png)")
+    }
+
+    @Test func whatTheInstanceDeletedIsStillInTheArchive() {
+        var current = base
+        current.tree.notes.removeAll { $0.id == deep }
+        current.sketches = []
+        let aside = OfflineRecovery.settingAside(base, gone: current, into: nil)
+        #expect(aside?.tree.notes.contains { $0.id == deep } == true)
+        // Nothing gone, nothing set aside.
+        #expect(OfflineRecovery.settingAside(base, gone: base, into: nil) == nil)
+
+        let whole = OfflineRecovery.restoring(current, aside)
+        #expect(whole.tree.notes.count == 3)
+        #expect(whole.sketches.map(\.id) == [drawing])
+        #expect(whole.tree.folders.count == 2)
+        #expect(OfflineRecovery.notes(of: whole) { _ in "" }.keys.contains("World/Towns/Deep.md"))
+    }
+
+    @Test func theArchiveIsAZipOfItsFiles() throws {
+        let files = ["World/Filed.md": Data("# Filed\n".utf8), "solo-recovery.json": Data("{}".utf8),
+                     "attachments/x/Photo.jpg": Data((0..<4000).map { UInt8($0 % 251) })]
+        let data = try OfflineRecovery.zip(files)
+        let archive = try Archive(data: data, accessMode: .read)
+        #expect(archive.map(\.path).sorted() == files.keys.sorted())
+        for (path, expected) in files {
+            var read = Data()
+            _ = try archive.extract(try #require(archive[path])) { read.append($0) }
+            #expect(read == expected)
+        }
+        #expect(OfflineRecovery.archiveName("Design") == "Design-recovery.zip")
+        #expect(OfflineRecovery.archiveName("") == "vault-recovery.zip")
     }
 
     @Test func aDeletedDesignDocTakesEverything() {
