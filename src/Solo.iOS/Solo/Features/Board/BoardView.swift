@@ -196,6 +196,12 @@ private struct BoardGrid: View {
                     .padding(.horizontal, 16)
                     .glassEffect(.regular, in: .capsule)
                     .padding(.bottom, 2)
+                    // A Mac's page starts flush under the window's bar, where an iPad's bar
+                    // leaves a little room of its own: without some here the header touches it,
+                    // at rest and pinned alike.
+                    #if os(macOS)
+                    .padding(.top, 8)
+                    #endif
                 }
             }
             .padding(.horizontal, 16)
