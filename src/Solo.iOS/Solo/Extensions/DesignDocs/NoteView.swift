@@ -180,35 +180,42 @@ struct NoteView: View {
 
     // MARK: Header
 
+    /// When the note was last edited, and by whom, where it has been.
+    private var edited: String? {
+        note.lastEditedAt.map { "Edited \($0.relative)\(author.map { " by \($0)" } ?? "")" }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(note.name)
                 .font(.title.weight(.bold))
                 .foregroundStyle(theme.textPrimary)
                 .lineLimit(2)
-            HStack(spacing: 8) {
-                // One line, whatever it says: how the note stands changes as it is typed in —
-                // saved, sending, saved — and a status that wrapped on a narrow screen moved
-                // the whole note down a line and back under the hand writing it. It is said
-                // in full, and who edited it last gives way.
-                if let sync {
-                    Label(sync.statusText, systemImage: statusSymbol(sync))
-                        .labelStyle(.titleAndIcon)
-                        .lineLimit(1)
-                        .layoutPriority(1)
+            // How the note stands changes as it is typed in — saved, sending, saved — and a
+            // status that wrapped on a narrow screen moved the whole note down a line and
+            // back under the hand writing it. So each thing said here is a line of its own
+            // and there are always two of them, each behind an icon: how it stands, then who
+            // last edited it and when, with room for a name.
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    if let sync {
+                        Label(sync.statusText, systemImage: statusSymbol(sync))
+                            .lineLimit(1)
+                    }
+                    if uploading {
+                        ProgressView().controlSize(.mini)
+                    }
+                    Spacer(minLength: 0)
+                    if let sync { NotePresence(entries: sync.present, slots: sync.colorSlots) }
                 }
-                if let edited = note.lastEditedAt {
-                    Text("·")
-                    Text("Edited \(edited.relative)\(author.map { " by \($0)" } ?? "")")
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                if uploading {
-                    ProgressView().controlSize(.mini)
-                }
-                Spacer(minLength: 0)
-                if let sync { NotePresence(entries: sync.present, slots: sync.colorSlots) }
+                // There before anyone has edited the note, unseen: the line it will be said
+                // on is already taken.
+                Label(edited ?? " ", systemImage: "clock")
+                    .lineLimit(1)
+                    .opacity(edited == nil ? 0 : 1)
+                    .accessibilityHidden(edited == nil)
             }
+            .labelStyle(NoteStatusLabelStyle())
             .font(.caption)
             .foregroundStyle(theme.textSecondary)
         }
@@ -216,6 +223,17 @@ struct NoteView: View {
         // In line with the text below, which sits this far in.
         .padding(.horizontal, 19)
         .padding(.top, 8)
+    }
+
+    /// An icon in a column of its own width, so the two lines of a note's status start in
+    /// line with one another whatever their icons are.
+    private struct NoteStatusLabelStyle: LabelStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            HStack(spacing: 6) {
+                configuration.icon.frame(width: 16)
+                configuration.title
+            }
+        }
     }
 
     private func statusSymbol(_ sync: DocSync) -> String {
