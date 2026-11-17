@@ -92,6 +92,9 @@ final class APIClient {
     var onUnauthorized: (() -> Void)?
     /// Raised as requests succeed or fail to connect, for the connection indicator.
     var onReachabilityChanged: ((Bool) -> Void)?
+    /// How the last request fared: whether it got to the instance at all. Nil until one is made.
+    /// A session that starts on what was kept from last time reads this to know that it did.
+    private(set) var reachable: Bool?
 
     init(baseURL: URL, token: String? = nil) {
         // A trailing slash makes relative composition behave: without it the
@@ -160,6 +163,22 @@ final class APIClient {
         await cache.clear()
     }
 
+    /// Asks the instance whether it is there, and nothing else: never answered from what is
+    /// kept, and not waited on for long. Any answer at all is a yes.
+    func ping() async -> Bool {
+        var request = request("GET", "api/config/version")
+        request.timeoutInterval = 6
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        do {
+            _ = try await perform(request)
+            return true
+        } catch is ConnectionError {
+            return false
+        } catch {
+            return true
+        }
+    }
+
     // MARK: Plumbing
 
     func request(_ method: String, _ path: String, body: (any Encodable & Sendable)? = nil) -> URLRequest {
@@ -202,6 +221,7 @@ final class APIClient {
         do {
             (data, response) = try await session.data(for: request)
         } catch let error as URLError where error.code != .cancelled {
+            reachable = false
             onReachabilityChanged?(false)
             throw ConnectionError(host: host)
         }
@@ -209,6 +229,7 @@ final class APIClient {
         guard let http = response as? HTTPURLResponse else {
             throw ConnectionError(host: host)
         }
+        reachable = true
         onReachabilityChanged?(true)
 
         guard (200..<300).contains(http.statusCode) else {

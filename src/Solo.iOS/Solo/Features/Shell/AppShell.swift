@@ -164,6 +164,7 @@ struct TabRoot: View {
         case .projects: ProjectsView()
         case .inbox: InboxView()
         case .account: AccountView()
+        case .offline: OfflineHome()
         }
     }
 }
@@ -221,6 +222,7 @@ struct RouteView: View {
 /// inherits those pages, loses one of its own, and reports that as the reader
 /// having gone back.
 private struct SectionStack: View {
+    @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
     @Environment(\.horizontalSizeClass) private var sizeClass
     /// The section wanted. The one showing follows it — see `show`.
@@ -256,6 +258,11 @@ private struct SectionStack: View {
                 // Each route is its own page: a board is not the last board shown something new.
                 .navigationDestination(for: Route.self) { RouteView(route: $0).id($0).saysWhenOffline() }
         }
+        // A phone's tabs are sections that need the instance. Out of reach they are put away,
+        // from over a design doc that was open when the connection went and is left where it is.
+        #if os(iOS)
+        .toolbarVisibility(session.offlineMode ? .hidden : .automatic, for: .tabBar)
+        #endif
         .onChange(of: Target(tab: tab, routes: navigator[tab]), initial: true) { _, target in
             show(target)
         }
@@ -302,9 +309,10 @@ private struct SectionStack: View {
 }
 
 private extension View {
-    /// On every page of the main window's stack, on a Mac. An iPad's sidebar and page each
-    /// have a bar, and each says when the instance is out of reach, since either may be all
-    /// that is showing. A Mac's window has one bar for both, where that was said twice: so
+    /// On every page of the main window's stack, on a Mac: the mark that the live feed is
+    /// being reconnected (`ConnectionIndicator` — the instance being out of reach altogether
+    /// is no longer said here, but by the window: OfflineMode.swift). An iPad's sidebar and
+    /// page each have a bar, and each has the mark, since either may be all that is showing. A Mac's window has one bar for both, where that was said twice: so
     /// there the sidebar and the pages leave it unsaid, and each page of the stack is given
     /// it here, once. On the page and not on the stack, whose own bar items a Mac leaves out.
     func saysWhenOffline() -> some View {
@@ -352,8 +360,18 @@ private struct TabShell: View {
     @Environment(Navigator.self) private var navigator
 
     var body: some View {
+        // Out of reach there are no sections to choose between: one stack, of what can be
+        // worked on (OfflineMode.swift).
+        if session.shownTab == .offline {
+            SectionStack(tab: .offline)
+        } else {
+            tabs
+        }
+    }
+
+    private var tabs: some View {
         @Bindable var navigator = navigator
-        TabView(selection: $navigator.tab) {
+        return TabView(selection: $navigator.tab) {
             Tab(AppTab.work.title, systemImage: AppTab.work.symbol, value: AppTab.work) {
                 SectionStack(tab: .work).animatesTabChanges()
             }
@@ -379,6 +397,7 @@ private struct TabShell: View {
 // MARK: - iPad
 
 private struct SplitShell: View {
+    @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
     @State private var columns: NavigationSplitViewVisibility = .automatic
     @State private var panels = DetailPanelCenter()
@@ -392,10 +411,17 @@ private struct SplitShell: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            SidebarView()
-                .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
+            Group {
+                // Out of reach, only what can be worked on without the instance (OfflineMode.swift).
+                if session.offlineMode {
+                    OfflineSidebar().transition(.opacity)
+                } else {
+                    SidebarView().transition(.opacity)
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
         } detail: {
-            SectionStack(tab: navigator.tab)
+            SectionStack(tab: session.shownTab)
         }
         .navigationSplitViewStyle(.balanced)
         // Over the whole split view rather than the detail column: the panel stands above the

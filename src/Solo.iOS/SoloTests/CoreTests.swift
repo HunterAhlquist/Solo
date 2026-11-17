@@ -140,6 +140,83 @@ import AppKit
     }
 }
 
+@MainActor @Suite struct OfflineNavigationTests {
+    private let doc = Route.designDocs(project: "DMD", vaultId: UUID())
+    private let board = Route.board(project: "DMD", board: "PW26")
+
+    /// A navigator that has been somewhere, with one design doc on the device.
+    private func navigator() -> (Navigator, refused: () -> [Route]) {
+        let navigator = Navigator()
+        var refused: [Route] = []
+        navigator.worksOffline = { $0 == doc || $0 == .designDocs(project: "DMD", vaultId: doc.vault, noteId: doc.vault) }
+        navigator.refused = { refused.append($0) }
+        return (navigator, { refused })
+    }
+
+    @Test func outOfReachOnlyWhatIsOnTheDeviceOpens() {
+        let (navigator, refused) = navigator()
+        navigator.open(board)
+        navigator.offline = true
+        // Where it was is kept, to come back to.
+        #expect(navigator.tab == .projects)
+
+        navigator.open(.board(project: "DMD", board: "OTHER"))
+        navigator.open(.admin)
+        navigator.push(.project(alias: "DMD"))
+        #expect(refused().count == 3)
+        #expect(navigator[.projects] == [.project(alias: "DMD"), board])
+
+        // On its own under the list of what there is, not under a project's page.
+        navigator.open(doc)
+        #expect(navigator.tab == .offline)
+        #expect(navigator[.offline] == [doc])
+        // A section's first page, or a project's, is that list.
+        navigator.popToRoot(.work)
+        #expect(navigator.tab == .offline)
+        #expect(navigator[.offline].isEmpty)
+    }
+
+    @Test func backInReachItIsWhereItWas() {
+        let (navigator, _) = navigator()
+        navigator.open(board)
+        navigator.offline = true
+        navigator.popToRoot(.projects)
+        #expect(navigator.tab == .offline)
+        navigator.offline = false
+        #expect(navigator.tab == .projects)
+        #expect(navigator.current == board)
+    }
+
+    @Test func aDesignDocOpenedOutOfReachStaysOpenUntilItIsLeft() {
+        let (navigator, _) = navigator()
+        navigator.popToRoot(.inbox)
+        navigator.offline = true
+        navigator.open(doc)
+        navigator.offline = false
+        // Still the page it was: someone may be writing in it.
+        #expect(navigator.tab == .offline)
+        #expect(navigator.current == doc)
+        // Back from it is no longer to a list of what works without the instance.
+        navigator[.offline] = []
+        #expect(navigator.tab == .inbox)
+    }
+
+    @Test func aDesignDocOpenWhenTheConnectionGoesIsNotMoved() {
+        let (navigator, _) = navigator()
+        navigator.open(doc)
+        navigator.offline = true
+        #expect(navigator.tab == .projects)
+        #expect(navigator[.projects] == [.project(alias: "DMD"), doc])
+    }
+}
+
+private extension Route {
+    var vault: UUID {
+        if case .designDocs(_, let id, _) = self { return id }
+        return UUID()
+    }
+}
+
 @Suite struct SavedInstanceTests {
     @Test func anAddressIsTheHostAndAPortThatIsNotTheUsualOne() throws {
         let hosted = SavedInstance(url: try #require(URL(string: "https://solo.example.com")), name: "Studio")

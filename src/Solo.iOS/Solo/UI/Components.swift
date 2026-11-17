@@ -220,18 +220,15 @@ struct InfoBanner: View {
 }
 
 /// Shown where the hub is down while a live page is open. Says nothing while
-/// connected: an always-on "connected" badge is noise.
+/// connected: an always-on "connected" badge is noise. And nothing with the instance out of
+/// reach, which is no longer a mark in the bar: the window itself changes, and says so down
+/// its side and on its first page (OfflineMode.swift).
 struct ConnectionIndicator: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
 
     var body: some View {
-        if session.isOffline {
-            Label("Offline", systemImage: "icloud.slash")
-                .labelStyle(.iconOnly)
-                .foregroundStyle(theme.warning)
-                .accessibilityLabel("Offline — showing what was last loaded")
-        } else if session.hub.phase == .reconnecting {
+        if !session.isOffline, session.hub.phase == .reconnecting {
             Image(systemName: "arrow.trianglehead.2.clockwise")
                 .foregroundStyle(theme.warning)
                 .symbolEffect(.rotate, isActive: true)

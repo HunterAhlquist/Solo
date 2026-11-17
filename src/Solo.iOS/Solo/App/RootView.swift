@@ -70,6 +70,8 @@ struct RootView: View {
                 model.session?.hub.resume()
                 model.session?.docsOffline.sync()
                 Task {
+                    // Out of reach when it was last in front: it may not be now.
+                    if model.session?.offlineMode == true { await model.session?.checkConnection() }
                     await model.session?.notifications.refresh()
                     await model.refreshElsewhere()
                     // A theme change isn't announced to anyone, so coming back to the app is when it is noticed.

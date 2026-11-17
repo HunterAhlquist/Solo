@@ -30,6 +30,9 @@ nonisolated enum Route: Hashable, Sendable {
 
 nonisolated enum AppTab: String, Hashable, CaseIterable, Sendable {
     case work, projects, inbox, account
+    /// What can be worked on with the instance out of reach (OfflineMode.swift). Not a tab
+    /// anyone chooses: it is where the app is while there is nothing else it can show.
+    case offline
 
     var title: String {
         switch self {
@@ -37,6 +40,7 @@ nonisolated enum AppTab: String, Hashable, CaseIterable, Sendable {
         case .projects: "Projects"
         case .inbox: "Inbox"
         case .account: "Account"
+        case .offline: "Offline"
         }
     }
 
@@ -46,6 +50,7 @@ nonisolated enum AppTab: String, Hashable, CaseIterable, Sendable {
         case .projects: "square.grid.2x2"
         case .inbox: "bell"
         case .account: "person.crop.circle"
+        case .offline: "icloud.slash"
         }
     }
 }
@@ -69,10 +74,35 @@ final class Navigator {
     private(set) var settingsAsked = 0
     #endif
 
+    /// True while the instance is out of reach (`Session.offlineMode`). Then the only places
+    /// to go are the ones `worksOffline` allows, and they are under `.offline`, whose first
+    /// page lists them; anywhere else is refused, and said to be through `refused`.
+    var offline = false {
+        didSet {
+            // Back in reach with nothing open that was opened out of it: where it was before.
+            if !offline, tab == .offline, self[.offline].isEmpty { leaveOffline() }
+        }
+    }
+    @ObservationIgnored var worksOffline: (Route) -> Bool = { _ in false }
+    @ObservationIgnored var refused: (Route) -> Void = { _ in }
+    /// The section that was showing when the app went to `.offline`, to go back to.
+    @ObservationIgnored private var resume: AppTab?
+
     /// A tab's stack, empty until something is pushed.
     subscript(tab: AppTab) -> [Route] {
         get { paths[tab] ?? [] }
-        set { paths[tab] = newValue }
+        set {
+            paths[tab] = newValue
+            // The last page that was opened out of reach, gone back from once back in reach:
+            // what is under it is a list of what to do without the instance.
+            if tab == .offline, self.tab == .offline, !offline, newValue.isEmpty { leaveOffline() }
+        }
+    }
+
+    private func leaveOffline() {
+        paths[.offline] = nil
+        tab = resume ?? .work
+        resume = nil
     }
 
     /// The route on top of the visible stack, which is what the sidebar highlights.
@@ -105,8 +135,27 @@ final class Navigator {
             return
         }
         #endif
+        if offline {
+            // The one page of it that works, on its own: what is under it online is not there.
+            if let last = path.last, worksOffline(last) {
+                showOffline([last])
+            } else if let last = path.last, tab != .projects || path.count > 1 {
+                refused(last)
+            } else {
+                // A section's first page, or a project's: the nearest there is to either.
+                showOffline([])
+            }
+            return
+        }
+        if tab != .offline { paths[.offline] = nil }
         self.tab = tab
         paths[tab] = path
+    }
+
+    private func showOffline(_ path: [Route]) {
+        if tab != .offline { resume = tab }
+        tab = .offline
+        paths[.offline] = path
     }
 
     /// One page back along what is showing, as the bar's Back is.
@@ -117,6 +166,10 @@ final class Navigator {
 
     /// Pushes onto whatever is showing, for a link followed from inside a page.
     func push(_ route: Route) {
+        guard !offline || worksOffline(route) else {
+            refused(route)
+            return
+        }
         paths[tab, default: []].append(route)
     }
 

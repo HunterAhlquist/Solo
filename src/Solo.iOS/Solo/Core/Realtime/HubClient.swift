@@ -62,6 +62,8 @@ final class HubClient {
     @ObservationIgnored let topicPresenceChanged = EventSource<TopicPresenceSnapshot>()
     /// Fires after a reconnect has restated everything: whatever happened while away was missed.
     @ObservationIgnored let reconnected = EventSource<Void>()
+    /// Fires when the connection is lost, which is often the first sign the instance is gone.
+    @ObservationIgnored let dropped = EventSource<Void>()
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var connection: HubConnection?
@@ -315,6 +317,7 @@ final class HubClient {
         connection = nil
         api.connectionId = nil
         phase = .reconnecting
+        dropped.send(())
         scheduleRetry(after: 1)
     }
 

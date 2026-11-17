@@ -1,3 +1,4 @@
+import Network
 import SwiftUI
 
 /// Everything that exists only while someone is signed in to an instance.
@@ -25,6 +26,14 @@ final class Session {
 
     /// True while requests are failing to reach the instance.
     private(set) var isOffline = false
+    /// True once the instance is known to be out of reach: a request failed, and so did asking
+    /// it whether it is there. One request failing is a slow page; this is no instance, and
+    /// while it lasts the window shows only what can be worked on without one (OfflineMode.swift).
+    private(set) var offlineMode = false
+    /// Asking the instance whether it is back, for as long as it is not.
+    @ObservationIgnored private var watch: Task<Void, Never>?
+    /// The device's own connection changing, which is when to ask at once.
+    @ObservationIgnored private var network: NWPathMonitor?
     private(set) var serverVersion: InstanceVersion?
     /// A newer server release, when there is one and this person is the one who could install it.
     private(set) var serverUpdate: ServerUpdate?
@@ -47,13 +56,81 @@ final class Session {
         settingsNavigator.tab = .account
         navigator.settings = settingsNavigator
         #endif
-        api.onReachabilityChanged = { [weak self] reachable in
-            guard let self, self.isOffline == reachable else { return }
-            self.isOffline = !reachable
-            if reachable {
-                self.hub.resume()
+        api.onReachabilityChanged = { [weak self] reachable in self?.heard(reachable) }
+        navigator.worksOffline = { [weak self] in self?.worksOffline($0) ?? false }
+        navigator.refused = { [weak self] _ in
+            guard let self else { return }
+            self.toasts.show("That needs \(self.siteName), which is out of reach.", .info)
+        }
+        // Signed in on what was kept from last time, the instance not having answered: the
+        // window opens as it is with no instance, without first being drawn as if it had one.
+        if api.reachable == false {
+            isOffline = true
+            setOfflineMode(true)
+        }
+    }
+
+    // MARK: Out of reach
+
+    private func heard(_ reachable: Bool) {
+        if reachable {
+            watch?.cancel()
+            watch = nil
+            if isOffline {
+                isOffline = false
+                hub.resume()
+            }
+            setOfflineMode(false)
+        } else {
+            isOffline = true
+            watchForInstance()
+        }
+    }
+
+    private func setOfflineMode(_ offline: Bool) {
+        // An instance restarting to load an extension is out of reach on purpose, and says
+        // so over the whole window (`awaitRestart`): that is not this.
+        guard offlineMode != offline, !(offline && restarting) else { return }
+        withAnimation(.smooth(duration: 0.3)) {
+            offlineMode = offline
+            navigator.offline = offline
+        }
+    }
+
+    /// Asks until the instance answers. The first time it doesn't is what makes this offline;
+    /// its answering is heard like any other request's, and ends this.
+    private func watchForInstance() {
+        guard watch == nil else { return }
+        watch = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, await !self.api.ping(), !Task.isCancelled else { return }
+                self.setOfflineMode(true)
+                try? await Task.sleep(for: .seconds(8))
             }
         }
+    }
+
+    /// Asks now, for someone who has asked to, or because something says the answer may have
+    /// changed. True if the instance answered.
+    @discardableResult
+    func checkConnection() async -> Bool {
+        if await api.ping() { return true }
+        setOfflineMode(true)
+        return false
+    }
+
+    /// Whether a page can be worked on with the instance out of reach: a design doc that is
+    /// on this device, and has not been deleted here.
+    func worksOffline(_ route: Route?) -> Bool {
+        guard case .designDocs(_, let vault, _)? = route else { return false }
+        return docsOffline.isDownloaded(vault) && docsOffline.view(vault)?.deleted != true
+    }
+
+    /// The section the window's stack shows. Out of reach, that is `.offline` — unless what
+    /// was showing is a design doc that is on the device, which is left exactly as it is:
+    /// someone writing in it when the connection went is still writing in it.
+    var shownTab: AppTab {
+        navigator.tab == .offline || (offlineMode && !worksOffline(navigator.current)) ? .offline : navigator.tab
     }
 
     var siteName: String { config.siteName }
@@ -65,6 +142,15 @@ final class Session {
         async let version = try? api.instanceVersion()
         _ = await (extensions, projects)
         docsOffline.start(hub: hub)
+        // The device joining or leaving a network says nothing of the instance — one on this
+        // Mac is there with no network at all — but it is when to ask.
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] _ in
+            Task { @MainActor in await self?.checkConnection() }
+        }
+        monitor.start(queue: .main)
+        network = monitor
+        if offlineMode { watchForInstance() }
         serverVersion = await version
         await notifications.start()
         if let fresh = try? await api.currentUser() {
@@ -83,6 +169,11 @@ final class Session {
                     await self?.extensions.load()
                     await self?.projects.refreshProjects()
                 }
+            },
+            // The live feed going is the first anyone hears of the instance going, where
+            // nothing else was being asked of it: so it is asked.
+            hub.dropped.subscribe { [weak self] in
+                Task { await self?.checkConnection() }
             },
         ]
 
@@ -127,6 +218,8 @@ final class Session {
     }
 
     func stop() async {
+        watch?.cancel()
+        network?.cancel()
         docsOffline.stop()
         kit.reset()
         await hub.shutDown()

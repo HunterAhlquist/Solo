@@ -63,12 +63,17 @@ struct SoloCommands: Commands {
                     .keyboardShortcut("[")
                     .disabled(navigator?.current == nil)
                 Divider()
-                Button("Your Tasks") { navigator?.popToRoot(.work) }
-                    .keyboardShortcut("1")
-                Button("All Projects") { navigator?.popToRoot(.projects) }
-                    .keyboardShortcut("2")
-                Button("Inbox") { navigator?.popToRoot(.inbox) }
-                    .keyboardShortcut("3")
+                // Places that need the instance: with it out of reach there is nowhere to go
+                // but what is on this Mac, which the window is already showing.
+                Group {
+                    Button("Your Tasks") { navigator?.popToRoot(.work) }
+                        .keyboardShortcut("1")
+                    Button("All Projects") { navigator?.popToRoot(.projects) }
+                        .keyboardShortcut("2")
+                    Button("Inbox") { navigator?.popToRoot(.inbox) }
+                        .keyboardShortcut("3")
+                }
+                .disabled(model.session?.offlineMode == true)
             }
             .disabled(navigator == nil)
         }
