@@ -201,10 +201,12 @@ struct DashboardView: View {
         .taskDetail($openTask)
         // Outside the detail panel: a title set within an inspector's content never reaches the bar.
         .navigationTitle("Your Tasks")
+        // On a Mac the window's bar says this once, for every page: see `saysWhenOffline`.
+        #if os(iOS)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { ConnectionIndicator() }
-                .bareOnMac()
         }
+        #endif
     }
 
     private var empty: some View {

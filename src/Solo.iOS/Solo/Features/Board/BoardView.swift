@@ -110,7 +110,10 @@ private struct BoardContent: View {
             // Things to read, not to press: bare, where a Mac's bar would put a button's glass
             // behind them.
             ToolbarItemGroup(placement: .topBarTrailing) {
+                // On a Mac the window's bar says this once, for every page: see `saysWhenOffline`.
+                #if os(iOS)
                 ConnectionIndicator()
+                #endif
                 PresenceCluster(entries: model.store.presence(on: EntityTypes.board, board.id), max: 4)
             }
             .bareOnMac()

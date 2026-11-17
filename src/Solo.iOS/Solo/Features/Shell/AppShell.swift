@@ -248,12 +248,13 @@ private struct SectionStack: View {
         NavigationStack(path: $path) {
             TabRoot(tab: root)
                 .id(root)
+                .saysWhenOffline()
                 // Beside a sidebar a large title is a blank band above the page; the bar carries it
                 // instead. On a phone the title stays large but shares its row with the bar's buttons,
                 // which gives the page a row back.
                 .toolbarTitleDisplayMode(sizeClass == .regular ? .inline : .inlineLarge)
                 // Each route is its own page: a board is not the last board shown something new.
-                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0) }
+                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0).saysWhenOffline() }
         }
         .onChange(of: Target(tab: tab, routes: navigator[tab]), initial: true) { _, target in
             show(target)
@@ -297,6 +298,24 @@ private struct SectionStack: View {
             }
             DispatchQueue.main.async { settling = false }
         }
+    }
+}
+
+private extension View {
+    /// On every page of the main window's stack, on a Mac. An iPad's sidebar and page each
+    /// have a bar, and each says when the instance is out of reach, since either may be all
+    /// that is showing. A Mac's window has one bar for both, where that was said twice: so
+    /// there the sidebar and the pages leave it unsaid, and each page of the stack is given
+    /// it here, once. On the page and not on the stack, whose own bar items a Mac leaves out.
+    func saysWhenOffline() -> some View {
+        #if os(macOS)
+        toolbar {
+            ToolbarItem(placement: .topBarTrailing) { ConnectionIndicator() }
+                .bareOnMac()
+        }
+        #else
+        self
+        #endif
     }
 }
 
@@ -572,12 +591,14 @@ struct SidebarView: View {
             }
         }
         #endif
+        // On a Mac the window's one bar says this once, for every page: see `saysWhenOffline`.
+        #if os(iOS)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ConnectionIndicator()
             }
-            .bareOnMac()
         }
+        #endif
 
         .reloads {
             await nav.refreshProjects()
