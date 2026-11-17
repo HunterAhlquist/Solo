@@ -31,11 +31,20 @@ nonisolated struct NoteCheckbox {
     var side: CGFloat
     var capHeight: CGFloat
 
+    /// The round mark Notes has for a checklist, the same on a phone, an iPad and a Mac: a
+    /// good deal bigger than the text's capitals, with some room after it.
+    private static let scale: CGFloat = 1.85
+    /// What is left between the mark and the text, beyond the space that is written there.
+    static let gap: CGFloat = 4
+
     init(checked: Bool, font: PlatformFont) {
         self.checked = checked
-        side = ceil(font.capHeight * 1.45)
+        side = ceil(font.capHeight * Self.scale)
         capHeight = font.capHeight
     }
+
+    /// How much of the line the mark takes.
+    var advance: CGFloat { side + Self.gap }
 
     init?(_ value: Any?) {
         guard let numbers = value as? [NSNumber], numbers.count == 3 else { return nil }
@@ -115,8 +124,7 @@ nonisolated final class NoteLayoutManager: NSLayoutManager, NSLayoutManagerDeleg
     }
 
     private func draw(_ box: NoteCheckbox, in rect: CGRect, context: CGContext) {
-        let shape = CGPath(roundedRect: rect.insetBy(dx: 1.25, dy: 1.25), cornerWidth: rect.width * 0.24, cornerHeight: rect.width * 0.24,
-                           transform: nil)
+        let shape = CGPath(ellipseIn: rect.insetBy(dx: 1.25, dy: 1.25), transform: nil)
         context.saveGState()
         defer { context.restoreGState() }
         guard box.checked else {
@@ -301,15 +309,20 @@ final class NoteStyler {
                 // As a list item's, with the box in place of what it is written as.
                 let lead = source.substring(with: NSRange(location: range.location, length: min(shown, range.length)))
                 let width = (lead as NSString).size(withAttributes: [.font: body]).width
-                    + NoteCheckbox(checked: false, font: body).side + (" " as NSString).size(withAttributes: [.font: body]).width
-                paragraphs(range) { $0.headIndent = $0.firstLineHeadIndent + width }
+                    + NoteCheckbox(checked: false, font: body).advance + (" " as NSString).size(withAttributes: [.font: body]).width
+                paragraphs(range) {
+                    $0.headIndent = $0.firstLineHeadIndent + width
+                    // The mark is taller than its line's text: one task under another needs a
+                    // little more between them, or the marks touch.
+                    $0.paragraphSpacing += 4
+                }
             case .checkbox(let checked):
                 // Its three characters fold away, and the last of them is given the box's
                 // width to stand in: the layout manager draws the box there.
                 let box = NoteCheckbox(checked: checked, font: body)
                 result.addAttributes(hidden, range: range)
                 result.addAttribute(.noteCheckbox, value: box.value, range: range)
-                result.addAttribute(.kern, value: box.side, range: NSRange(location: NSMaxRange(range) - 1, length: 1))
+                result.addAttribute(.kern, value: box.advance, range: NSRange(location: NSMaxRange(range) - 1, length: 1))
             case .syntax:
                 result.addAttribute(.foregroundColor, value: PlatformColor.tertiaryLabel, range: range)
             case .embed:
