@@ -100,6 +100,139 @@ import Testing
     }
 }
 
+// What is done to a downloaded design doc's tree is shown before the instance has heard of
+// it, and sent with enough said for the instance to refuse it if its ground has moved.
+@Suite struct OfflineTreeTests {
+    private let vault = UUID(), folder = UUID(), inner = UUID(), loose = UUID(), filed = UUID(), deep = UUID()
+    private let drawing = UUID(), picture = UUID()
+
+    private func note(_ id: UUID, _ name: String, in folder: UUID?, version: UInt32) -> DocNote {
+        DocNote(id: id, vaultId: vault, folderId: folder, name: name, markdown: "", seq: "0", headings: [], lastEditedBy: nil,
+                lastEditedAt: nil, version: version)
+    }
+
+    /// A folder with a folder in it, a note in each and one in neither; a sketch on the deep
+    /// note, and a picture.
+    private var base: OfflineBase {
+        OfflineBase(
+            tree: DocTree(vault: DocVault(id: vault, name: "Design", isClosed: false, closedAt: nil, version: 7),
+                          folders: [DocFolder(id: folder, parentId: nil, name: "World", version: 1),
+                                    DocFolder(id: inner, parentId: folder, name: "Towns", version: 2)],
+                          notes: [note(loose, "Loose", in: nil, version: 3), note(filed, "Filed", in: folder, version: 4),
+                                  note(deep, "Deep", in: inner, version: 5)]),
+            sketches: [DocSketch(id: drawing, noteId: deep, name: "Map", pageSize: "A4", orientation: "portrait", pattern: "empty",
+                                 lastEditedBy: nil, lastEditedAt: nil, version: 6, path: "attachments/x/Map.sketch")],
+            images: [DocImage(id: picture, path: "attachments/x/Photo.jpg", contentType: "image/jpeg", width: 1, height: 1, bytes: 9,
+                              version: 8)],
+            canWrite: true, canManage: true, projectWrite: true)
+    }
+
+    private func command(_ entity: OfflineCommand.Entity, _ action: OfflineCommand.Action, _ target: UUID, at second: Double,
+                         name: String? = nil, parent: UUID? = nil) -> OfflineCommand {
+        OfflineCommand(vaultId: vault, created: Date(timeIntervalSince1970: second), entity: entity, action: action, targetId: target,
+                       name: name, parentId: parent)
+    }
+
+    @Test func whatIsStillToSendIsShownInTheOrderItWasDone() {
+        let made = UUID()
+        // Given out of order: a note made, then renamed and moved, then a folder renamed.
+        let view = OfflineTree.projected(base, [
+            command(.folder, .update, folder, at: 3, name: "Places"),
+            command(.note, .update, made, at: 2, name: "Second name", parent: inner),
+            command(.note, .create, made, at: 1, name: "First name"),
+        ])
+        #expect(view.tree.notes.first { $0.id == made }?.name == "Second name")
+        #expect(view.tree.notes.first { $0.id == made }?.folderId == inner)
+        #expect(view.tree.folders.first { $0.id == folder }?.name == "Places")
+        #expect(view.tree.notes.count == 4)
+    }
+
+    @Test func aFolderTakesWhatIsInItWithIt() {
+        let delete = command(.folder, .delete, folder, at: 1)
+        let view = OfflineTree.projected(base, [delete])
+        #expect(view.tree.folders.isEmpty)
+        #expect(view.tree.notes.map(\.id) == [loose])
+        #expect(view.sketches.isEmpty)
+        // A picture belongs to no folder, and stays.
+        #expect(view.images.count == 1)
+
+        // What the instance is told it takes: each row with its version, and the documents among them.
+        let removed = OfflineTree.removed(by: delete, from: base)
+        #expect(removed.versions == [folder.api: 1, inner.api: 2, filed.api: 4, deep.api: 5, drawing.api: 6])
+        #expect(Set(removed.documents) == [filed, deep, drawing])
+    }
+
+    @Test func aDeletedDesignDocTakesEverything() {
+        let delete = command(.vault, .delete, vault, at: 1)
+        #expect(OfflineTree.projected(base, [delete]).deleted)
+        let removed = OfflineTree.removed(by: delete, from: base)
+        #expect(removed.versions.count == 7)
+        #expect(removed.versions[picture.api] == 8)
+        #expect(Set(removed.documents) == [loose, filed, deep, drawing])
+    }
+
+    @Test func closingADesignDocStopsWritingAndOpeningItAgainAllowsIt() {
+        var close = command(.vault, .update, vault, at: 1, name: "Design")
+        close.isClosed = true
+        var view = OfflineTree.projected(base, [close])
+        #expect(view.tree.vault.isClosed)
+        #expect(!view.canWrite)
+        view = OfflineTree.projected(base, [close, command(.vault, .update, vault, at: 2, name: "Renamed")])
+        #expect(view.canWrite)
+        #expect(view.tree.vault.name == "Renamed")
+    }
+
+    @Test func whatTheInstanceMadeOfItIsWhatIsKept() {
+        var kept = base
+        let made = UUID()
+        // The name was taken there meanwhile, so the instance gave it another.
+        let answer = note(made, "Notes (conflict 2)", in: nil, version: 41)
+        OfflineTree.apply(command(.note, .create, made, at: 1, name: "Notes"), to: &kept, result: .note(answer))
+        #expect(kept.tree.notes.last?.name == "Notes (conflict 2)")
+        #expect(kept.tree.notes.last?.version == 41)
+    }
+
+    @Test func aRenamedSketchIsStoredUnderItsNewName() {
+        let view = OfflineTree.projected(base, [command(.sketch, .update, drawing, at: 1, name: "Plan")])
+        #expect(view.sketches.first?.name == "Plan")
+        #expect(view.sketches.first?.path == DocMarkdown.attachmentPath(noteId: deep, name: "Plan.sketch"))
+        #expect(view.sketches.first?.noteId == deep)
+    }
+
+    @Test func namesAreJudgedAsTheInstanceJudgesThem() {
+        #expect(OfflineTree.validName("Level 3 — lighting"))
+        for bad in ["", "   ", ".", "..", "a/b", "a\\b", "a:b", "a#b", "[[a]]", "a|b", "tab\there", String(repeating: "x", count: 201)] {
+            #expect(!OfflineTree.validName(bad), "\(bad)")
+        }
+        #expect(!OfflineTree.validName(nil))
+    }
+
+    @Test func embedsFollowAThingToWhereItWasStored() {
+        let text = """
+        ![[attachments/x/Map.sketch]] and ![[attachments/x/Map.sketch|300]]
+        ![alt](attachments/x/Map.sketch) but not `![[attachments/x/Map.sketch]]`
+        ```
+        ![[attachments/x/Map.sketch]]
+        ```
+        ![[attachments/x/Other.sketch]]
+        """
+        let doc = SharedDoc()
+        doc.replaceText(start: 0, length: 0, with: text)
+        let edits = OfflineTree.embedEdits(in: text, from: "attachments/x/Map.sketch", to: "attachments/x/Map (conflict 2).sketch")
+        #expect(edits.count == 3)
+        edits.forEach { doc.replaceText(start: $0.start, length: $0.length, with: $0.text) }
+        #expect(doc.string() == """
+        ![[attachments/x/Map (conflict 2).sketch]] and ![[attachments/x/Map (conflict 2).sketch|300]]
+        ![alt](attachments/x/Map%20(conflict%202).sketch) but not `![[attachments/x/Map.sketch]]`
+        ```
+        ![[attachments/x/Map.sketch]]
+        ```
+        ![[attachments/x/Other.sketch]]
+        """)
+        #expect(OfflineTree.embedEdits(in: text, from: "attachments/x/Map.sketch", to: "attachments/x/Map.sketch").isEmpty)
+    }
+}
+
 @Suite struct DocSyncTests {
     private func packed(_ updates: [[UInt8]]) -> Data {
         func int(_ value: Int) -> [UInt8] { (0..<4).map { UInt8((value >> ($0 * 8)) & 0xff) } }

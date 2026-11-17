@@ -260,11 +260,8 @@ struct NoteView: View {
 
     private func newSketchPrompt() {
         prompt = TextPrompt(title: "New sketch", placeholder: "Name") { name in
-            guard let sketch = await session.save({
-                try await session.api.createDocSketch(store.projectId, store.vaultId, noteId: note.id, name: name)
-            }) else { return }
+            guard let sketch = await store.createSketch(in: note.id, name: name) else { return }
             proxy.insert("![[\(sketch.path)]]", ownLine: true)
-            await store.load()
             newSketch = SketchModel(session: session, projectId: store.projectId, vaultId: store.vaultId, sketch: sketch,
                                     mayWrite: mayWrite)
         }
@@ -279,11 +276,8 @@ struct NoteView: View {
             session.toasts.show("That image couldn't be read.", .warning)
             return
         }
-        guard let stored = await session.save({
-            try await session.api.uploadDocImage(store.projectId, store.vaultId, noteId: note.id, path: "Photo.jpg",
-                                                 data: encoded, contentType: "image/jpeg")
-        }) else { return }
-        await store.load()
+        guard let stored = await store.uploadImage(to: note.id, name: "Photo.jpg", data: encoded, contentType: "image/jpeg")
+        else { return }
         proxy.insert("![[\(stored.path)]]", ownLine: true)
     }
 
@@ -574,8 +568,7 @@ struct DocAttachmentsSheet: View {
 
     private func load() async {
         await store.load()
-        let list = try? await session.api.docAttachments(store.projectId, store.vaultId)
-        var embeds = list?.embeds ?? [:]
+        var embeds = await store.embeds()
         embeds[note.id] = DocMarkdown.embedTargets(liveText)
 
         var found: [UUID: AttachmentItem] = [:]
@@ -612,12 +605,11 @@ struct DocAttachmentsSheet: View {
             title: item.sketch == nil ? "Delete image" : "Delete sketch",
             message: "Delete \"\(item.name)\" permanently? It is deleted from the design doc and cannot be recovered. \(consequence)",
             action: "Delete permanently") {
-            let done = await session.perform {
-                if let image = item.image {
-                    try await session.api.deleteDocImage(store.projectId, store.vaultId, image)
-                } else if let sketch = item.sketch {
-                    try await session.api.deleteDocSketch(store.projectId, store.vaultId, sketch)
-                }
+            var done = false
+            if let image = item.image {
+                done = await store.deleteImage(image.id)
+            } else if let sketch = item.sketch {
+                done = await store.deleteSketch(sketch.id)
             }
             if done { onDeleted(item.targets) }
             await load()

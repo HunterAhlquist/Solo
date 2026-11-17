@@ -379,13 +379,20 @@ private struct OfflineProblemsSheet: View {
                         Text(problem.message)
                             .font(.footnote)
                             .foregroundStyle(theme.textSecondary)
-                        Button("Send Again", systemImage: "arrow.up.circle") { offline.retry(problem.id) }
-                        Button("Discard What I Wrote", systemImage: "trash", role: .destructive) {
+                        Button("Send Again", systemImage: "arrow.up.circle") {
+                            Task {
+                                do { try await offline.retry(problem) } catch { session.toasts.error(error, fallback: "That couldn't be sent again.") }
+                            }
+                        }
+                        Button(problem.isCommand ? "Discard This Change" : "Discard What I Wrote", systemImage: "trash",
+                               role: .destructive) {
                             confirmation = Confirmation(
-                                title: "Discard changes to \(problem.name)?",
-                                message: "What was written on this device and never sent is lost, and the document is shown as the instance has it.",
+                                title: problem.isCommand ? "Discard “\(problem.name)”?" : "Discard changes to \(problem.name)?",
+                                message: problem.isCommand
+                                    ? "This change is given up, with anything made on this device that depended on it, and the design doc is shown as the instance has it."
+                                    : "What was written on this device and never sent is lost, and the document is shown as the instance has it.",
                                 action: "Discard") {
-                                await offline.discard(problem.id)
+                                await offline.discard(problem)
                             }
                         }
                     } header: {

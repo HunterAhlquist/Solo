@@ -4,8 +4,12 @@ private enum DocCreator {
     /// A new design doc starts empty here; importing an Obsidian vault stays on the web.
     static func prompt(session: Session, project: ProjectSummary) -> TextPrompt {
         TextPrompt(title: "New design doc in \(project.name)", placeholder: "Name", limit: 200) { name in
-            guard let created = await session.save({ try await session.api.createDocVault(project.id, name: name) })
-            else { return }
+            // Made on the device where the project already has a design doc downloaded, and sent
+            // after; otherwise by the instance.
+            guard let created = await session.save({
+                if let made = try session.docsOffline.createVault(projectId: project.id, name: name) { return made }
+                return try await session.api.createDocVault(project.id, name: name)
+            }) else { return }
             DocLists.changed(project.id)
             session.navigator.open(.designDocs(project: project.alias, vaultId: created.id))
         }
@@ -170,7 +174,11 @@ struct DocsHomeSection: View {
     private func change(_ vault: DocVault, name: String, closed: Bool) {
         Task {
             do {
-                _ = try await session.api.changeDocVault(project.id, vault, name: name, isClosed: closed)
+                if session.docsOffline.isDownloaded(vault.id) {
+                    try session.docsOffline.changeVault(vault.id, name: name, isClosed: closed)
+                } else {
+                    _ = try await session.api.changeDocVault(project.id, vault, name: name, isClosed: closed)
+                }
             } catch let error as APIError where error.isConflict {
                 session.toasts.show("Someone else changed this design doc first. It's been refreshed; try again.", .warning)
             } catch {

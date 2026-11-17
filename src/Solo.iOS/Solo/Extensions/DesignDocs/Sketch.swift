@@ -675,6 +675,12 @@ final class SketchModel: Identifiable {
         rebuild()
         Task {
             await session.perform {
+                // A downloaded design doc's sketch is told on the device, and the instance after.
+                if session.docsOffline.isDownloaded(vaultId) {
+                    try session.docsOffline.changeSketch(vaultId, sketch.id, pageSize: wanted["pageSize"]!,
+                                                         orientation: wanted["orientation"]!, pattern: wanted["pattern"]!)
+                    return
+                }
                 guard let current = try await session.api.docSketches(projectId, vaultId).first(where: { $0.id == sketch.id })
                 else { return }
                 _ = try await session.api.changeDocSketch(projectId, vaultId, current, pageSize: wanted["pageSize"]!,

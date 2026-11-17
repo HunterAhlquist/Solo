@@ -39,6 +39,11 @@ final class DocVaultListModel {
                 guard let self, changed == self.projectId else { return }
                 Task { await self.load() }
             },
+            // A downloaded design doc renamed, closed, deleted or made on this device is listed
+            // as it stands here, before the instance has heard of it.
+            session.docsOffline.viewChanged.subscribe { [weak self] _ in
+                Task { await self?.load() }
+            },
         ]
         if live {
             self.live = true
@@ -60,7 +65,7 @@ final class DocVaultListModel {
 
     func load() async {
         do {
-            list = try await session.api.docVaults(projectId)
+            list = session.docsOffline.listed(try await session.api.docVaults(projectId), projectId: projectId)
             failed = false
         } catch {
             failed = list == nil
@@ -138,10 +143,16 @@ final class DocVaultStore {
                 if message.kind == "sketch" {
                     self.sketchRevision += 1
                 }
+                // A downloaded design doc is shown from the device, which is told to go and read.
+                self.session.docsOffline.sync()
                 Task { await self.load() }
             },
             session.hub.reconnected.subscribe { [weak self] in
                 Task { await self?.load() }
+            },
+            session.docsOffline.viewChanged.subscribe { [weak self] changed in
+                guard let self, changed == self.vaultId else { return }
+                Task { await self.load() }
             },
         ]
         await session.hub.subscribe(projectId: projectId, topic: topic)
@@ -155,7 +166,23 @@ final class DocVaultStore {
         await session.hub.unsubscribe(projectId: projectId, topic: DocTopics.vault(vaultId))
     }
 
+    /// True where this design doc is downloaded. Then it is shown from the device, and what
+    /// is done to it is done there first and sent after (OfflineChanges.swift) — with the
+    /// instance in reach or out of it.
+    private var kept: Bool { session.docsOffline.isDownloaded(vaultId) }
+
     func load() async {
+        if let view = session.docsOffline.view(vaultId) {
+            guard !view.deleted else {
+                loadError = "This design doc isn't available."
+                return
+            }
+            tree = view.tree
+            images = view.images
+            sketches = view.sketches
+            loadError = nil
+            return
+        }
         do {
             let fresh = try await session.api.docTree(projectId, vaultId)
             tree = fresh
@@ -292,9 +319,10 @@ final class DocVaultStore {
     func picture(_ image: DocImage) async -> PlatformImage? {
         let key = "\(image.id.compact):\(image.version)"
         if let cached = pictures[key] { return cached }
-        // From the instance, or from the device where the design doc is downloaded and the instance out of reach.
-        var data = try? await session.api.docImageData(projectId, vaultId, image.id)
-        if data == nil { data = session.docsOffline.image(image.id) }
+        // From the device where the design doc is downloaded: what is there is what is shown,
+        // and may be a picture the instance has not got yet.
+        var data = kept ? session.docsOffline.image(image.id) : nil
+        if data == nil { data = try? await session.api.docImageData(projectId, vaultId, image.id) }
         guard let data, let decoded = PlatformImage(data: data) else { return nil }
         pictures[key] = decoded
         return decoded
@@ -336,31 +364,57 @@ final class DocVaultStore {
     }
 
     func addFolder(name: String, parent: UUID?) async {
-        if await run({ _ = try await session.api.addDocFolder(projectId, vaultId, name: name, parentId: parent) }), let parent {
-            openFolders.insert(parent)
+        let done = await run {
+            if kept {
+                _ = try session.docsOffline.addFolder(vaultId, name: name, parent: parent)
+            } else {
+                _ = try await session.api.addDocFolder(projectId, vaultId, name: name, parentId: parent)
+            }
         }
+        if done, let parent { openFolders.insert(parent) }
     }
 
     func addNote(name: String, parent: UUID?) async -> DocNote? {
-        let created = await session.save({ try await session.api.addDocNote(projectId, vaultId, name: name, parentId: parent) })
+        let created = await session.save {
+            kept ? try session.docsOffline.addNote(vaultId, name: name, parent: parent)
+                : try await session.api.addDocNote(projectId, vaultId, name: name, parentId: parent)
+        }
         await load()
         if let parent, created != nil { openFolders.insert(parent) }
         return created
     }
 
     func rename(_ node: DocNode, to name: String) async {
-        _ = await run { try await session.api.changeDocItem(projectId, vaultId, node.kind, node.id, name: name,
-                                                             parentId: node.parentId, version: node.version) }
+        _ = await run {
+            if kept {
+                try session.docsOffline.changeItem(vaultId, node.kind, node.id, name: name, parent: node.parentId)
+            } else {
+                try await session.api.changeDocItem(projectId, vaultId, node.kind, node.id, name: name,
+                                                    parentId: node.parentId, version: node.version)
+            }
+        }
     }
 
     func move(_ node: DocNode, to parent: UUID?) async {
         if let parent { openFolders.insert(parent) }
-        _ = await run { try await session.api.changeDocItem(projectId, vaultId, node.kind, node.id, name: node.name,
-                                                             parentId: parent, version: node.version) }
+        _ = await run {
+            if kept {
+                try session.docsOffline.changeItem(vaultId, node.kind, node.id, name: node.name, parent: parent)
+            } else {
+                try await session.api.changeDocItem(projectId, vaultId, node.kind, node.id, name: node.name,
+                                                    parentId: parent, version: node.version)
+            }
+        }
     }
 
     func delete(_ node: DocNode) async {
-        _ = await run { try await session.api.deleteDocItem(projectId, vaultId, node.kind, node.id, version: node.version) }
+        _ = await run {
+            if kept {
+                try session.docsOffline.deleteItem(vaultId, node.kind, node.id)
+            } else {
+                try await session.api.deleteDocItem(projectId, vaultId, node.kind, node.id, version: node.version)
+            }
+        }
     }
 
     /// How many notes link to this one by name; renaming it leaves those links pointing nowhere.
@@ -370,15 +424,102 @@ final class DocVaultStore {
 
     func changeVault(name: String, isClosed: Bool) async {
         guard let vault else { return }
-        _ = await run { _ = try await session.api.changeDocVault(projectId, vault, name: name, isClosed: isClosed) }
+        _ = await run {
+            if kept {
+                try session.docsOffline.changeVault(vaultId, name: name, isClosed: isClosed)
+            } else {
+                _ = try await session.api.changeDocVault(projectId, vault, name: name, isClosed: isClosed)
+            }
+        }
         DocLists.changed(projectId)
     }
 
     func deleteVault() async -> Bool {
         guard let vault else { return false }
-        let done = await session.perform { try await session.api.deleteDocVault(projectId, vault) }
+        let done = await session.perform {
+            if kept {
+                try session.docsOffline.deleteVault(vaultId)
+            } else {
+                try await session.api.deleteDocVault(projectId, vault)
+            }
+        }
         if done { DocLists.changed(projectId) }
         return done
+    }
+
+    // MARK: Sketches and pictures
+
+    func createSketch(in noteId: UUID, name: String) async -> DocSketch? {
+        let made = await session.save {
+            kept ? try session.docsOffline.addSketch(vaultId, noteId: noteId, name: name)
+                : try await session.api.createDocSketch(projectId, vaultId, noteId: noteId, name: name)
+        }
+        await load()
+        return made
+    }
+
+    func uploadImage(to noteId: UUID, name: String, data: Data, contentType: String) async -> DocImage? {
+        let stored = await session.save {
+            kept ? try session.docsOffline.addImage(vaultId, noteId: noteId, name: name, data: data, contentType: contentType)
+                : try await session.api.uploadDocImage(projectId, vaultId, noteId: noteId, path: name, data: data, contentType: contentType)
+        }
+        await load()
+        return stored
+    }
+
+    /// Puts a new picture in an image's place; every embed of it shows the new one.
+    func replaceImage(_ id: UUID, data: Data, contentType: String) async -> Bool {
+        await load()
+        guard let stored = images.first(where: { $0.id == id }) else { return false }
+        let done = await session.perform {
+            if kept {
+                _ = try session.docsOffline.replaceImage(vaultId, id, data: data, contentType: contentType)
+            } else {
+                _ = try await session.api.replaceDocImage(projectId, vaultId, stored, data: data, contentType: contentType)
+            }
+        }
+        // Its version only moves once the instance has it: until then the old picture would be shown from memory.
+        pictures = pictures.filter { !$0.key.hasPrefix(id.compact) }
+        await load()
+        return done
+    }
+
+    /// Asked for afresh first: the version the design doc has now is the one a delete has to name.
+    func deleteImage(_ id: UUID) async -> Bool {
+        await load()
+        guard let current = images.first(where: { $0.id == id }) else { return true }
+        let done = await session.perform {
+            if kept {
+                try session.docsOffline.deleteImage(vaultId, id)
+            } else {
+                try await session.api.deleteDocImage(projectId, vaultId, current)
+            }
+        }
+        await load()
+        return done
+    }
+
+    func deleteSketch(_ id: UUID) async -> Bool {
+        await load()
+        guard let current = sketches.first(where: { $0.id == id }) else { return true }
+        let done = await session.perform {
+            if kept {
+                try session.docsOffline.deleteSketch(vaultId, id)
+            } else {
+                try await session.api.deleteDocSketch(projectId, vaultId, current)
+            }
+        }
+        await load()
+        return done
+    }
+
+    /// What each note embeds, by the raw targets its text writes. From the notes as they
+    /// stand on the device where the design doc is downloaded; otherwise the instance's list.
+    func embeds() async -> [UUID: [String]] {
+        if kept {
+            return Dictionary((tree?.notes ?? []).map { ($0.id, DocMarkdown.embedTargets($0.markdown)) }) { first, _ in first }
+        }
+        return (try? await session.api.docAttachments(projectId, vaultId))?.embeds ?? [:]
     }
 }
 

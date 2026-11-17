@@ -389,17 +389,9 @@ struct NoteMediaViewer: View {
             if deleting {
                 busy = true
                 defer { busy = false }
-                // Asked for afresh: the version the vault has now is the one a delete has to name.
-                await context.store.load()
-                let done = await session.perform {
-                    switch entry.embed {
-                    case .image(let image):
-                        guard let current = context.store.images.first(where: { $0.id == image.id }) else { return }
-                        try await session.api.deleteDocImage(context.store.projectId, context.store.vaultId, current)
-                    case .sketch(let sketch):
-                        guard let current = context.store.sketches.first(where: { $0.id == sketch.id }) else { return }
-                        try await session.api.deleteDocSketch(context.store.projectId, context.store.vaultId, current)
-                    }
+                let done = switch entry.embed {
+                case .image(let image): await context.store.deleteImage(image.id)
+                case .sketch(let sketch): await context.store.deleteSketch(sketch.id)
                 }
                 guard done else { return }
             }
@@ -424,13 +416,7 @@ struct NoteMediaViewer: View {
             session.toasts.show("That image couldn't be read.", .warning)
             return
         }
-        await context.store.load()
-        guard let stored = context.store.images.first(where: { $0.id == image.id }) else { return }
-        await session.perform {
-            _ = try await session.api.replaceDocImage(context.store.projectId, context.store.vaultId, stored, data: encoded,
-                                                      contentType: "image/jpeg")
-        }
-        await context.store.load()
+        _ = await context.store.replaceImage(image.id, data: encoded, contentType: "image/jpeg")
     }
 }
 
