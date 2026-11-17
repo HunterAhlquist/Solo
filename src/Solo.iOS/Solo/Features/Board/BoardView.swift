@@ -890,12 +890,18 @@ private struct LaneHeader: View {
                 .accessibilityLabel("Open epic \(epic.name)")
 
                 if model.canWrite {
+                    #if os(macOS)
+                    SplitControl(action: "Add task", more: "Epic actions") {
+                        model.promptNewTask(epicId: epic.id)
+                    } items: {
+                        EpicMenuItems(model: model, epic: epic)
+                    }
+                    #else
                     Button("Add task", systemImage: "plus") { model.promptNewTask(epicId: epic.id) }
                         .labelStyle(.iconOnly)
                         .frame(width: 30, height: 30)
-                        .contentShape(.rect)
-                        .bareControl()
                     EpicMenu(model: model, epic: epic)
+                    #endif
                 }
             } else {
                 Image(systemName: "tray")
@@ -908,9 +914,18 @@ private struct LaneHeader: View {
                 if model.canWrite {
                     Button("Add task", systemImage: "plus") { model.promptNewTask(epicId: nil) }
                         .labelStyle(.iconOnly)
-                        .frame(width: 30, height: 30)
+                        #if os(macOS)
+                        // Nothing more behind it: the leading half of the control the lanes above have.
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(theme.textPrimary)
+                        .frame(width: 34, height: 28)
                         .contentShape(.rect)
-                        .bareControl()
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .help("Add task")
+                        #else
+                        .frame(width: 30, height: 30)
+                        #endif
                 }
             }
         }
@@ -1038,6 +1053,22 @@ private struct EpicMenu: View {
 
     var body: some View {
         Menu("Epic actions", systemImage: "ellipsis") {
+            EpicMenuItems(model: model, epic: epic)
+        }
+        .labelStyle(.iconOnly)
+        .frame(width: 30, height: 30)
+        .contentShape(.rect)
+        .bareControl()
+    }
+}
+
+/// What can be done to an epic from its header: the menu's contents, whatever holds the menu.
+private struct EpicMenuItems: View {
+    @Bindable var model: BoardModel
+    var epic: Epic
+
+    var body: some View {
+        Group {
             Button("Open Epic", systemImage: "arrow.up.forward.app") { model.open(epic) }
             Button("Add Task", systemImage: "plus") { model.promptNewTask(epicId: epic.id) }
             Divider()
@@ -1066,12 +1097,47 @@ private struct EpicMenu: View {
             Divider()
             Button("Delete Epic", systemImage: "trash", role: .destructive) { model.confirmDelete(epic) }
         }
-        .labelStyle(.iconOnly)
-        .frame(width: 30, height: 30)
-        .contentShape(.rect)
-        .bareControl()
     }
 }
+
+/// A header's two controls as one, as a Mac's bar draws an action that has more behind it: a
+/// capsule of glass with the action on its leading side and, past a rule, an arrow that opens
+/// the rest. The board's own Add, in the window's bar above, is the same thing.
+#if os(macOS)
+private struct SplitControl<Items: View>: View {
+    @Environment(\.theme) private var theme
+    var action: String
+    var more: String
+    var perform: () -> Void
+    @ViewBuilder var items: Items
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action, systemImage: "plus", action: perform)
+                .labelStyle(.iconOnly)
+                .font(.body.weight(.medium))
+                .frame(width: 34, height: 28)
+                .contentShape(.rect)
+                .buttonStyle(.plain)
+                .help(action)
+            Rectangle()
+                .fill(theme.divider)
+                .frame(width: 1, height: 14)
+            Menu(more, systemImage: "chevron.down") { items }
+                .labelStyle(.iconOnly)
+                .font(.caption.weight(.semibold))
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .frame(width: 30, height: 28)
+                .contentShape(.rect)
+                .help(more)
+        }
+        .foregroundStyle(theme.textPrimary)
+        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+}
+#endif
 
 /// The title of a group of epics, which heads its outline. The epics are rows of their own
 /// below it (`BoardModel.rows`), not children of this.
@@ -1104,29 +1170,35 @@ private struct GroupHeader: View {
                 .foregroundStyle(theme.textSecondary)
             Spacer()
             if model.canWrite {
+                #if os(macOS)
+                SplitControl(action: "Add epic to group", more: "Group actions") {
+                    model.promptNewEpic(groupId: group.id)
+                } items: {
+                    groupActions
+                }
+                #else
                 Button("Add epic to group", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
                     .labelStyle(.iconOnly)
                     .frame(width: 30, height: 30)
-                    .contentShape(.rect)
-                    .bareControl()
-                Menu("Group actions", systemImage: "ellipsis") {
-                    Button("Rename", systemImage: "pencil") { model.promptRename(group) }
-                    Button("Add Epic", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
-                    Divider()
-                    Button("Move Up", systemImage: "arrow.up") { Task { await model.move(group, by: -1) } }
-                        .disabled(!model.canMove(group, by: -1))
-                    Button("Move Down", systemImage: "arrow.down") { Task { await model.move(group, by: 1) } }
-                        .disabled(!model.canMove(group, by: 1))
-                    Divider()
-                    Button("Delete Group", systemImage: "trash", role: .destructive) { model.confirmDelete(group) }
-                }
-                .labelStyle(.iconOnly)
-                .frame(width: 30, height: 30)
-                .contentShape(.rect)
-                .bareControl()
+                Menu("Group actions", systemImage: "ellipsis") { groupActions }
+                    .labelStyle(.iconOnly)
+                    .frame(width: 30, height: 30)
+                #endif
             }
         }
         .modifier(GroupDrag(model: model, group: group, enabled: !carried))
+    }
+
+    @ViewBuilder private var groupActions: some View {
+        Button("Rename", systemImage: "pencil") { model.promptRename(group) }
+        Button("Add Epic", systemImage: "plus") { model.promptNewEpic(groupId: group.id) }
+        Divider()
+        Button("Move Up", systemImage: "arrow.up") { Task { await model.move(group, by: -1) } }
+            .disabled(!model.canMove(group, by: -1))
+        Button("Move Down", systemImage: "arrow.down") { Task { await model.move(group, by: 1) } }
+            .disabled(!model.canMove(group, by: 1))
+        Divider()
+        Button("Delete Group", systemImage: "trash", role: .destructive) { model.confirmDelete(group) }
     }
 }
 
