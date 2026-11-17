@@ -20,6 +20,17 @@ struct SoloApp: App {
         .defaultSize(width: 1360, height: 880)
         .commands { SoloCommands(model: model) }
 
+        // The account, the instance's admin pages and what extensions add beside them: on a
+        // Mac these are Settings, in the app's menu and on Command-comma (`SoloCommands`). A
+        // window of the app's own and not the system's Settings scene: that one keeps its
+        // bar for a row of tabs, and puts a page's Back button in the middle of a second row.
+        Window("Settings", id: SettingsWindow.scene) {
+            SettingsWindow(model: model)
+        }
+        .defaultSize(width: 900, height: 640)
+        .windowResizability(.contentMinSize)
+        .restorationBehavior(.disabled)
+
         // A sketch or a picture opened from a note: see `CoverWindow`.
         WindowGroup(id: CoverWindow.scene, for: UUID.self) { $id in
             CoverWindow(id: id, model: model)

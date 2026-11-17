@@ -41,10 +41,15 @@ struct AccountView: View {
             Section {
                 link("Notifications", "bell.badge", .notificationSettings)
                 link("Signed-in Devices", "laptopcomputer.and.iphone", .devices)
+                // On a Mac this page is one section of the Settings window, and these are the
+                // sections beside it (`SettingsShell`): they are not listed here as well.
+                #if os(iOS)
                 InstanceExtensionLinks()
+                #endif
             }
             .themedRow()
 
+            #if os(iOS)
             if session.user.isSuperAdmin {
                 Section {
                     link("Admin Settings", "gearshape.2", .admin)
@@ -59,6 +64,7 @@ struct AccountView: View {
                 }
                 .themedRow()
             }
+            #endif
 
             Section {
                 link("About \(session.siteName)", "info.circle", .about)

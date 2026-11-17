@@ -56,6 +56,17 @@ final class Navigator {
     var tab: AppTab = .work
     var paths: [AppTab: [Route]] = [:]
 
+    #if os(macOS)
+    /// On a Mac the account's section — the account itself, its devices, the instance's admin
+    /// pages, what extensions add beside them — is not in the main window: it is the Settings
+    /// window, which has a navigator of its own. This is that one, for the main window's; the
+    /// Settings window's own has none, and shows the section itself.
+    @ObservationIgnored var settings: Navigator?
+    /// Counts up each time something in the main window asks for a page of Settings: what the
+    /// window listens for to open it, since only a view can.
+    private(set) var settingsAsked = 0
+    #endif
+
     /// A tab's stack, empty until something is pushed.
     subscript(tab: AppTab) -> [Route] {
         get { paths[tab] ?? [] }
@@ -66,8 +77,7 @@ final class Navigator {
     var current: Route? { paths[tab]?.last }
 
     func popToRoot(_ tab: AppTab) {
-        self.tab = tab
-        paths[tab] = []
+        show(tab, [])
     }
 
     /// Opens a route as a fresh stack under Projects: a board always has its
@@ -86,6 +96,13 @@ final class Navigator {
     }
 
     private func show(_ tab: AppTab, _ path: [Route]) {
+        #if os(macOS)
+        if tab == .account, let settings {
+            settings.show(tab, path)
+            settingsAsked += 1
+            return
+        }
+        #endif
         self.tab = tab
         paths[tab] = path
     }

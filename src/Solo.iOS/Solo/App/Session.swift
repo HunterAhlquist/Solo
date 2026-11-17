@@ -10,6 +10,10 @@ final class Session {
 
     let toasts = ToastCenter()
     let navigator = Navigator()
+    #if os(macOS)
+    /// Where the Settings window is looking: see `Navigator.settings`.
+    let settingsNavigator = Navigator()
+    #endif
     let projects: ProjectNavStore
     let notifications: NotificationStore
     let assigned: AssignedTasksStore
@@ -36,6 +40,10 @@ final class Session {
         assigned = AssignedTasksStore(api: api, hub: hub, userId: user.id)
         extensions = ExtensionCatalog(api: api)
         kit.session = self
+        #if os(macOS)
+        settingsNavigator.tab = .account
+        navigator.settings = settingsNavigator
+        #endif
         api.onReachabilityChanged = { [weak self] reachable in
             guard let self, self.isOffline == reachable else { return }
             self.isOffline = !reachable

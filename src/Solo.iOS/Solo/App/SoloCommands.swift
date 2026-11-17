@@ -2,10 +2,11 @@
 import SwiftUI
 
 /// The menu bar. What the sidebar and the bars do with a click, by name and by key: where to
-/// go, the way back, and a new task on the board that is showing.
+/// go, the way back, a new task on the board that is showing, and Settings.
 struct SoloCommands: Commands {
     var model: AppModel
     @FocusedValue(\.newTask) private var newTask
+    @Environment(\.openWindow) private var openWindow
 
     private var navigator: Navigator? { model.session?.navigator }
 
@@ -24,11 +25,10 @@ struct SoloCommands: Commands {
                 .disabled(navigator == nil)
         }
 
-        // The app's settings are a page of it — appearance, notifications, devices — under the account.
+        // Where a Mac keeps such things, and under the key it keeps them on.
         CommandGroup(replacing: .appSettings) {
-            Button("Settings…") { navigator?.popToRoot(.account) }
+            Button("Settings…") { openWindow(id: SettingsWindow.scene) }
                 .keyboardShortcut(",")
-                .disabled(navigator == nil)
         }
 
         CommandMenu("Go") {
@@ -43,12 +43,6 @@ struct SoloCommands: Commands {
                     .keyboardShortcut("2")
                 Button("Inbox") { navigator?.popToRoot(.inbox) }
                     .keyboardShortcut("3")
-                Button("Account") { navigator?.popToRoot(.account) }
-                    .keyboardShortcut("4")
-                if model.session?.user.isSuperAdmin == true {
-                    Button("Admin Settings") { navigator?.open(.admin) }
-                        .keyboardShortcut("5")
-                }
             }
             .disabled(navigator == nil)
         }

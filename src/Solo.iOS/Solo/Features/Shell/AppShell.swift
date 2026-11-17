@@ -15,6 +15,11 @@ struct AppShell: View {
                 TabShell()
             }
         }
+        // Something here asked for a page of Settings — a link to the admin pages, say: the
+        // window is opened, which only a view can do. See `Navigator.settings`.
+        #if os(macOS)
+        .modifier(OpensSettings())
+        #endif
         // The page that runs extensions' contributions, kept in the window and out of sight.
         .background(alignment: .topLeading) {
             KitSurfaceAnchor(webView: session.kit.webView, lent: session.kit.presenting)
@@ -33,6 +38,75 @@ struct AppShell: View {
         }
     }
 }
+
+#if os(macOS)
+private struct OpensSettings: ViewModifier {
+    @Environment(Navigator.self) private var navigator
+    @Environment(\.openWindow) private var openWindow
+
+    func body(content: Content) -> some View {
+        content.onChange(of: navigator.settingsAsked) { openWindow(id: SettingsWindow.scene) }
+    }
+}
+
+/// The Settings window: on a Mac, where the account, the instance's admin pages and what
+/// extensions add beside them are kept — the rows at the foot of an iPad's sidebar, and the
+/// pages they lead to. It is the same section of the app, shown by a navigator of its own
+/// (`Session.settingsNavigator`), so every page in it is the page an iPad shows.
+struct SettingsShell: View {
+    @Environment(Session.self) private var session
+    @Environment(Navigator.self) private var navigator
+
+    /// What the window is showing: the section chosen down its side, and whatever has been
+    /// gone into from there. The navigator's path says both. Where its first page is one of
+    /// the sections, that is the section and stands at the foot of the stack with no way
+    /// back from it; otherwise the section is the account, and all of the path is on top.
+    private var section: Route? {
+        guard let first = navigator[.account].first else { return nil }
+        switch first {
+        case .mcpAccess, .admin, .pluginPage(_, _, nil): return first
+        default: return nil
+        }
+    }
+
+    var body: some View {
+        let section = section
+        NavigationSplitView {
+            List {
+                SidebarRow(title: "Account", symbol: "person.crop.circle", selected: section == nil) {
+                    navigator.popToRoot(.account)
+                }
+                InstanceExtensionLinks(inSidebar: true)
+                if session.user.isSuperAdmin {
+                    SidebarRow(title: "Admin Settings", symbol: "gearshape", badge: session.serverUpdate == nil ? 0 : 1,
+                               selected: section == .admin) {
+                        navigator.open(.admin)
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .buttonStyle(.plain)
+            .labelStyle(AsWrittenLabelStyle())
+            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
+        } detail: {
+            NavigationStack(path: Binding(
+                get: { Array(navigator[.account].dropFirst(section == nil ? 0 : 1)) },
+                set: { navigator[.account] = (section.map { [$0] } ?? []) + $0 })) {
+                Group {
+                    if let section {
+                        RouteView(route: section)
+                    } else {
+                        TabRoot(tab: .account)
+                    }
+                }
+                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0) }
+            }
+            // Each section is a stack of its own, from its first page.
+            .id(section)
+        }
+    }
+}
+#endif
 
 /// The root page of each section, and what every route leads to.
 struct TabRoot: View {
@@ -398,13 +472,11 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .labelStyle(AsWrittenLabelStyle())
         #endif
-        // On an iPad the rows that scroll under the foot of the column go out of focus behind
-        // it. A Mac's sidebar leaves them legible there, written over by the rows of the foot.
-        #if os(macOS)
-        .scrollEdgeEffectStyle(.hard, for: .bottom)
-        #endif
         // What is always wanted stays put at the foot of the column, as the title does at its
-        // head; the projects scroll between the two.
+        // head; the projects scroll between the two. On a Mac none of it is here: the account,
+        // the instance's admin pages and what extensions add beside them are the Settings
+        // window (`SettingsShell`), where a Mac keeps such things.
+        #if os(iOS)
         .safeAreaBar(edge: .bottom, spacing: 0) {
             VStack(spacing: 2) {
                 InstanceExtensionLinks(inSidebar: true)
@@ -425,6 +497,7 @@ struct SidebarView: View {
             .padding(.top, 6)
             .padding(.bottom, 4)
         }
+        #endif
         .navigationTitle(session.siteName)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -450,12 +523,14 @@ struct SidebarView: View {
         }
     }
 
+    #if os(iOS)
     private var isAdminRoute: Bool {
         switch navigator.current {
         case .admin, .adminUsers, .adminEmail, .adminExtensions, .adminUpdates, .adminThemes: navigator.tab == .account
         default: false
         }
     }
+    #endif
 
     private func expansion(_ id: UUID) -> Binding<Bool> {
         Binding(
