@@ -133,11 +133,13 @@ import Testing
         let text = "- one\n- [ ] two\n\n> quoted\n> more"
         let found = spans(text)
         #expect(has(found, .bullet, "- ", in: text))
-        #expect(has(found, .bullet, "- [ ] ", in: text))
+        // A task's mark is its box (`aTaskIsDrawnAsABoxAwayFromTheCaret`).
+        #expect(has(found, .checkbox(false), "[ ]", in: text))
         #expect(has(found, .listItem(prefix: 2), "- one", in: text))
         #expect(has(found, .listItem(prefix: 6), "- [ ] two", in: text))
         #expect(has(found, .quote(1), "> quoted\n> more", in: text))
-        #expect(found.filter { $0.kind == .hidden }.count == 2)
+        // The two quote marks, and what the task's list is written with.
+        #expect(found.filter { $0.kind == .hidden }.count == 3)
     }
 
     @Test func anUnorderedMarkerIsDrawnAsABulletAwayFromTheCaret() {
@@ -149,6 +151,35 @@ import Testing
     }
 
     /// The tree counts columns in UTF-8 bytes; the text view counts UTF-16 units.
+    @Test func aTaskIsDrawnAsABoxAwayFromTheCaret() {
+        let text = "- [ ] buy milk\n- [x] feed cat\n1. [X] numbered\n- [ ]not a task"
+        let away = spans(text)
+        #expect(has(away, .checkbox(false), "[ ]", in: text))
+        #expect(has(away, .checkbox(true), "[x]", in: text))
+        #expect(has(away, .checkbox(true), "[X]", in: text))
+        // The box is the bullet: what the list is written with folds away, but a number stays.
+        #expect(has(away, .hidden, "- ", in: text))
+        #expect(has(away, .bullet, "1. ", in: text))
+        #expect(has(away, .taskLine(shown: 0), "- [ ] buy milk", in: text))
+        #expect(has(away, .taskLine(shown: 3), "1. [X] numbered", in: text))
+        // Nothing but a space after the box makes one of it.
+        #expect(away.filter { if case .checkbox = $0.kind { true } else { false } }.count == 3)
+    }
+
+    @Test func aTaskIsItsTextWhileTheCaretIsInItsBox() {
+        let text = "- [ ] buy milk"
+        // Anywhere from the list's mark to the end of the box: `- [ ]`, before the space after it.
+        for caret in 0...5 {
+            let onIt = spans(text, caret: caret)
+            #expect(!onIt.contains { if case .checkbox = $0.kind { true } else { false } }, "caret at \(caret)")
+            #expect(has(onIt, .bullet, "- [ ] ", in: text), "caret at \(caret)")
+        }
+        // At the start of what the task says, and anywhere in it, the box is a box.
+        for caret in [6, 9, 14] {
+            #expect(has(spans(text, caret: caret), .checkbox(false), "[ ]", in: text), "caret at \(caret)")
+        }
+    }
+
     @Test func positionsSurviveNonASCIIText() {
         let text = "é **b** 😀 *c* – ==d=="
         let found = spans(text)

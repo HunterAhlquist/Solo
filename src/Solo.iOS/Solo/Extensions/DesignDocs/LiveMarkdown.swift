@@ -30,6 +30,11 @@ nonisolated struct LiveSpan: Equatable, Sendable {
         case bullet
         /// An unordered item's `-`, `*` or `+`, drawn as a bullet while the caret is elsewhere.
         case dot
+        /// A task item's `[ ]` or `[x]`, drawn as a checkbox while the caret is elsewhere.
+        case checkbox(Bool)
+        /// The first line of a task item whose box is drawn; `shown` is how much of the line
+        /// still shows before the box, for wrapped lines to hang from the text after it.
+        case taskLine(shown: Int)
         /// Syntax left on show, dimmed.
         case syntax
         /// Syntax not shown while the caret is elsewhere.
@@ -204,6 +209,8 @@ nonisolated struct LiveMarkdown {
     nonisolated(unsafe) private static let wikiEmbed = regex(#"!\[\[([^\]\n]+)\]\]"#)
     nonisolated(unsafe) private static let wiki = regex(#"(?<!!)\[\[([^\]\n]+)\]\]"#)
     nonisolated(unsafe) private static let highlight = regex(#"(?<!=)==(?=[^\s=])([^\n]+?)(?<=[^\s=])==(?!=)"#)
+    /// A task item's marker: the list's own, then the box.
+    nonisolated(unsafe) private static let task = regex(#"^(?:[-*+]|\d{1,9}[.)])[ \t]+(\[[ xX]\])(?=[ \t])"#)
 
     /// The spans for the whole note. `selection` is the caret or the selected
     /// range; nil — a note that isn't being typed in — leaves all syntax hidden.
@@ -319,9 +326,32 @@ nonisolated struct LiveMarkdown {
                 var text = node.child(at: 0).flatMap { map.range($0) }?.location ?? NSMaxRange(line)
                 if text > NSMaxRange(line) || text <= range.location { text = NSMaxRange(line) }
                 out.append(LiveSpan(range: line, kind: .listItem(prefix: text - line.location)))
-                out.append(LiveSpan(range: NSRange(location: range.location, length: text - range.location), kind: .bullet))
+                let lead = NSRange(location: range.location, length: text - range.location)
+                let unordered = [45, 42, 43].contains(source.character(at: range.location))
+                // A task: `- [ ] ` is a box, and the box is all of it that shows. With the caret
+                // anywhere in it — up to the box's own end, not the space after — it is the
+                // text it is written as, to be changed or taken out by hand.
+                let rest = NSRange(location: range.location, length: NSMaxRange(line) - range.location)
+                if (node as? ListItem)?.checkbox != nil,
+                   let match = Self.task.firstMatch(in: string, options: .anchored, range: rest) {
+                    let box = match.range(at: 1)
+                    let written = NSRange(location: range.location, length: NSMaxRange(box) - range.location)
+                    if !touches(written) {
+                        let before = NSRange(location: range.location, length: box.location - range.location)
+                        // A numbered task keeps its number; a bulleted one has the box for a bullet.
+                        if unordered {
+                            marker(before, shown: false)
+                        } else {
+                            out.append(LiveSpan(range: before, kind: .bullet))
+                        }
+                        out.append(LiveSpan(range: line, kind: .taskLine(shown: (unordered ? range.location : box.location) - line.location)))
+                        out.append(LiveSpan(range: box, kind: .checkbox(source.character(at: box.location + 1) != 32)))
+                        break
+                    }
+                }
+                out.append(LiveSpan(range: lead, kind: .bullet))
                 let mark = NSRange(location: range.location, length: 1)
-                if [45, 42, 43].contains(source.character(at: range.location)), !touches(mark) {
+                if unordered, !touches(mark) {
                     out.append(LiveSpan(range: mark, kind: .dot))
                 }
 

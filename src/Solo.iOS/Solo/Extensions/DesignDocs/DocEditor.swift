@@ -185,6 +185,8 @@ struct SyncedTextEditor: UIViewRepresentable {
         tap.cancelsTouchesInView = false
         tap.delegate = coordinator
         view.addGestureRecognizer(tap)
+        view.ownTap = tap
+        view.boxAt = { [weak coordinator] in coordinator?.checkbox(at: $0) }
         coordinator.setAccent(accent)
         coordinator.mediaRevision = mediaRevision
         view.typingAttributes = coordinator.styler.base
@@ -508,19 +510,61 @@ struct SyncedTextEditor: UIViewRepresentable {
             return glyph.insetBy(dx: -8, dy: -4).contains(spot) ? address : nil
         }
 
-        /// A tap in a note that is being read opens the link under it rather
-        /// than putting the caret there. Once typing, a tap is a tap.
+        /// A tap in a note that is being read opens the link under it, or ticks the box
+        /// under it, rather than putting the caret there. Once typing, a tap is a tap —
+        /// but for one on a box, which ticks it then too (`tapped`).
         func textViewShouldBeginEditing(_ textView: UITextView) -> Bool {
-            guard let view = self.textView, let touch = view.lastTouch, Date().timeIntervalSince(touch.at) < 1,
-                  let address = link(at: touch.point) else { return true }
+            guard let view = self.textView, let touch = view.lastTouch, Date().timeIntervalSince(touch.at) < 1 else { return true }
+            if let box = view.touchedBox {
+                view.forgetTouch()
+                toggle(box.range)
+                return false
+            }
+            guard let address = link(at: touch.point) else { return true }
             view.forgetTouch()
             onLink(address)
             return false
         }
 
         @objc func tapped(_ gesture: UITapGestureRecognizer) {
-            guard let view = textView, !view.isEditable, let address = link(at: gesture.location(in: view)) else { return }
-            onLink(address)
+            guard let view = textView else { return }
+            if view.isEditable {
+                guard view.isFirstResponder, let box = view.touchedBox else { return }
+                view.forgetTouch()
+                toggle(box.range)
+                // Wherever the tap may have put the caret, it goes back to where it was.
+                DispatchQueue.main.async { [weak self] in
+                    guard box.selection.upperBound <= view.textStorage.length else { return }
+                    view.selectedRange = box.selection
+                    self?.restyle()
+                }
+                return
+            }
+            if let address = link(at: gesture.location(in: view)) { onLink(address) }
+        }
+
+        // MARK: Task boxes
+
+        /// The box under a point, as its `[ ]` in the text — in a note that may be written in:
+        /// a box that can't be ticked is only a picture of one.
+        func checkbox(at point: CGPoint) -> NSRange? {
+            guard let view = textView, view.isEditable, sync.canWrite, let manager = view.layoutManager as? NoteLayoutManager else { return nil }
+            return manager.checkbox(at: CGPoint(x: point.x - view.textContainerInset.left, y: point.y - view.textContainerInset.top),
+                                    slop: 8)
+        }
+
+        /// Ticks a box or clears it, by changing what it is written as.
+        private func toggle(_ box: NSRange) {
+            guard let view = textView, box.length == 3, NSMaxRange(box) <= view.textStorage.length else { return }
+            let text = view.textStorage.string as NSString
+            guard text.character(at: box.location) == 91, text.character(at: box.location + 2) == 93,
+                  let start = view.position(from: view.beginningOfDocument, offset: box.location + 1),
+                  let end = view.position(from: start, offset: 1), let inner = view.textRange(from: start, to: end) else { return }
+            let selection = view.selectedRange
+            // Through the input system rather than the storage, so Undo takes it back.
+            view.replace(inner, withText: text.character(at: box.location + 1) == 32 ? "x" : " ")
+            if view.isFirstResponder { view.selectedRange = selection }
+            changedLocally()
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,

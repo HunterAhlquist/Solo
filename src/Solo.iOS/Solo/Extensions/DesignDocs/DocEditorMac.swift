@@ -174,6 +174,7 @@ struct SyncedTextEditor: NSViewRepresentable {
         }
         view.onFocus = { [weak coordinator] in coordinator?.focused($0) }
         view.linkAt = { [weak coordinator] in coordinator?.link(at: $0) }
+        view.tickAt = { [weak coordinator] in coordinator?.tick(at: $0) ?? false }
         view.onLink = { [weak coordinator] in coordinator?.onLink($0) }
         NotificationCenter.default.addObserver(coordinator, selector: #selector(Coordinator.scrolled),
                                                name: NSView.boundsDidChangeNotification, object: scroll.contentView)
@@ -517,6 +518,28 @@ struct SyncedTextEditor: NSViewRepresentable {
             return address
         }
 
+        // MARK: Task boxes
+
+        /// Ticks or clears the task box under a point, by changing what it is written as, in
+        /// a note that may be written in. True if there was one: the click was for it, and
+        /// the caret stays where it is.
+        func tick(at point: CGPoint) -> Bool {
+            guard let view = textView, view.isEditable, sync.canWrite, let manager = view.layoutManager as? NoteLayoutManager,
+                  let storage = view.textStorage else { return false }
+            let origin = view.textContainerOrigin
+            guard let box = manager.checkbox(at: CGPoint(x: point.x - origin.x, y: point.y - origin.y), slop: 3),
+                  NSMaxRange(box) <= storage.length else { return false }
+            let text = storage.string as NSString
+            guard text.character(at: box.location) == 91, text.character(at: box.location + 2) == 93 else { return false }
+            let selection = view.selectedRange()
+            // Through the input system rather than the storage, so Undo takes it back.
+            view.insertText(text.character(at: box.location + 1) == 32 ? "x" : " ",
+                            replacementRange: NSRange(location: box.location + 1, length: 1))
+            view.setSelectedRange(selection)
+            changedLocally()
+            return true
+        }
+
         private func mediaSize(_ row: String) -> CGSize? {
             // Nothing is measured until the view has a width to lay rows out in.
             guard let view = textView, view.bounds.width > 120 else { return nil }
@@ -612,6 +635,8 @@ final class NoteTextView: NSTextView {
     var onFocus: ((Bool) -> Void)?
     var linkAt: ((CGPoint) -> String?)?
     var onLink: ((String) -> Void)?
+    /// Ticks the task box under a point; true if there was one.
+    var tickAt: ((CGPoint) -> Bool)?
     let placeholder = NSTextField(labelWithString: "")
     private var lastWidth: CGFloat = 0
 
@@ -654,6 +679,7 @@ final class NoteTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if tickAt?(convert(event.locationInWindow, from: nil)) == true { return }
         if let address = linkAt?(convert(event.locationInWindow, from: nil)) {
             onLink?(address)
             return

@@ -19,6 +19,32 @@ nonisolated extension NSAttributedString.Key {
     static let noteBullet = NSAttributedString.Key("solo.note.bullet")
     /// The raw embed target a line stands in for, where a picture is laid over it.
     static let noteMedia = NSAttributedString.Key("solo.note.media")
+    /// A task item's box, drawn where its `[ ]` is written: whether it is ticked, how big it
+    /// is, and how tall the capitals beside it are (`NoteCheckbox`).
+    static let noteCheckbox = NSAttributedString.Key("solo.note.checkbox")
+}
+
+/// What `.noteCheckbox` holds. Three numbers in an array, which compares by what it holds:
+/// a pass over the note leaves alone every run whose attributes are equal to what they were.
+nonisolated struct NoteCheckbox {
+    var checked: Bool
+    var side: CGFloat
+    var capHeight: CGFloat
+
+    init(checked: Bool, font: PlatformFont) {
+        self.checked = checked
+        side = ceil(font.capHeight * 1.45)
+        capHeight = font.capHeight
+    }
+
+    init?(_ value: Any?) {
+        guard let numbers = value as? [NSNumber], numbers.count == 3 else { return nil }
+        checked = numbers[0].boolValue
+        side = CGFloat(numbers[1].doubleValue)
+        capHeight = CGFloat(numbers[2].doubleValue)
+    }
+
+    var value: NSArray { [NSNumber(value: checked), NSNumber(value: Double(side)), NSNumber(value: Double(capHeight))] }
 }
 
 /// Draws what attributes can't: the bar down the side of a quote, and a code
@@ -60,12 +86,72 @@ nonisolated final class NoteLayoutManager: NSLayoutManager, NSLayoutManagerDeleg
         return glyphRange.length
     }
 
+    /// Where a task item's box is drawn, in the text container's own coordinates: beside the
+    /// text that follows it, centred on its capitals. `character` is where its `[` is.
+    func checkboxRect(at character: Int, _ box: NoteCheckbox) -> CGRect {
+        let glyph = glyphIndexForCharacter(at: character)
+        let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let place = location(forGlyphAt: glyph)
+        // `place.y` is the baseline, down from the line's top.
+        let middle = line.minY + place.y - box.capHeight / 2
+        return CGRect(x: line.minX + place.x, y: middle - box.side / 2, width: box.side, height: box.side)
+    }
+
+    /// The box under a point, if there is one: its `[ ]` in the text. A finger is given
+    /// some room round it.
+    func checkbox(at point: CGPoint, slop: CGFloat) -> NSRange? {
+        guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return nil }
+        let glyph = glyphIndex(for: point, in: container)
+        var row = NSRange()
+        _ = lineFragmentRect(forGlyphAt: glyph, effectiveRange: &row)
+        var found: NSRange?
+        storage.enumerateAttribute(.noteCheckbox, in: characterRange(forGlyphRange: row, actualGlyphRange: nil)) { value, range, stop in
+            guard let box = NoteCheckbox(value), range.length == 3,
+                  checkboxRect(at: range.location, box).insetBy(dx: -slop, dy: -slop).contains(point) else { return }
+            found = range
+            stop.pointee = true
+        }
+        return found
+    }
+
+    private func draw(_ box: NoteCheckbox, in rect: CGRect, context: CGContext) {
+        let shape = CGPath(roundedRect: rect.insetBy(dx: 1.25, dy: 1.25), cornerWidth: rect.width * 0.24, cornerHeight: rect.width * 0.24,
+                           transform: nil)
+        context.saveGState()
+        defer { context.restoreGState() }
+        guard box.checked else {
+            context.addPath(shape)
+            context.setStrokeColor(accent.withAlphaComponent(0.85).cgColor)
+            context.setLineWidth(1.5)
+            context.strokePath()
+            return
+        }
+        context.addPath(shape)
+        context.setFillColor(accent.cgColor)
+        context.fillPath()
+        // The tick in whichever of black and white the accent shows up better.
+        let parts = accent.cgColor.converted(to: CGColorSpaceCreateDeviceRGB(), intent: .defaultIntent, options: nil)?.components ?? [0, 0, 0, 1]
+        let bright = parts.count >= 3 ? 0.299 * parts[0] + 0.587 * parts[1] + 0.114 * parts[2] : 0
+        context.setStrokeColor(bright > 0.6 ? CGColor(gray: 0, alpha: 0.85) : CGColor(gray: 1, alpha: 1))
+        context.setLineWidth(max(1.6, rect.width * 0.11))
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        context.move(to: CGPoint(x: rect.minX + rect.width * 0.29, y: rect.minY + rect.height * 0.53))
+        context.addLine(to: CGPoint(x: rect.minX + rect.width * 0.44, y: rect.minY + rect.height * 0.68))
+        context.addLine(to: CGPoint(x: rect.minX + rect.width * 0.72, y: rect.minY + rect.height * 0.34))
+        context.strokePath()
+    }
+
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: CGPoint) {
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
         guard let storage = textStorage, let container = textContainers.first, let context = PlatformGraphics.current
         else { return }
         let padding = container.lineFragmentPadding
         let characters = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        storage.enumerateAttribute(.noteCheckbox, in: characters) { value, range, _ in
+            guard let box = NoteCheckbox(value), range.length == 3 else { return }
+            draw(box, in: checkboxRect(at: range.location, box).offsetBy(dx: origin.x, dy: origin.y), context: context)
+        }
         storage.enumerateAttribute(.noteBlock, in: characters) { value, range, _ in
             guard let block = (value as? NSNumber)?.intValue, block != 0 else { return }
             let glyphs = glyphRange(forCharacterRange: range, actualCharacterRange: nil)
@@ -122,7 +208,7 @@ final class NoteStyler {
 
     private func rank(_ kind: LiveSpan.Kind) -> Int {
         switch kind {
-        case .heading, .codeBlock, .table, .quote, .listItem: 0
+        case .heading, .codeBlock, .table, .quote, .listItem, .taskLine: 0
         case .hidden, .foldedFence, .media: 2
         default: 1
         }
@@ -211,6 +297,19 @@ final class NoteStyler {
                 result.addAttribute(.foregroundColor, value: accent, range: range)
             case .dot:
                 result.addAttribute(.noteBullet, value: true, range: range)
+            case .taskLine(let shown):
+                // As a list item's, with the box in place of what it is written as.
+                let lead = source.substring(with: NSRange(location: range.location, length: min(shown, range.length)))
+                let width = (lead as NSString).size(withAttributes: [.font: body]).width
+                    + NoteCheckbox(checked: false, font: body).side + (" " as NSString).size(withAttributes: [.font: body]).width
+                paragraphs(range) { $0.headIndent = $0.firstLineHeadIndent + width }
+            case .checkbox(let checked):
+                // Its three characters fold away, and the last of them is given the box's
+                // width to stand in: the layout manager draws the box there.
+                let box = NoteCheckbox(checked: checked, font: body)
+                result.addAttributes(hidden, range: range)
+                result.addAttribute(.noteCheckbox, value: box.value, range: range)
+                result.addAttribute(.kern, value: box.side, range: NSRange(location: NSMaxRange(range) - 1, length: 1))
             case .syntax:
                 result.addAttribute(.foregroundColor, value: PlatformColor.tertiaryLabel, range: range)
             case .embed:
@@ -278,15 +377,33 @@ final class NoteTextView: UITextView {
     private(set) var lastTouch: (point: CGPoint, at: Date)?
     private var lastWidth: CGFloat = 0
     let placeholder = UILabel()
+    /// The task box under a point, if the note may be written in (the editor's to say).
+    var boxAt: ((CGPoint) -> NSRange?)?
+    /// The box the last touch came down on, and where the caret was then: a tap on a box
+    /// ticks it and leaves the caret be, and by the time the tap is known to be one the
+    /// caret may have been put in the box's text, where there is no box to find.
+    private(set) var touchedBox: (range: NSRange, selection: NSRange)?
+    /// The editor's own tap, which is the one that ticks.
+    weak var ownTap: UIGestureRecognizer?
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hit = super.hitTest(point, with: event)
-        if hit === self { lastTouch = (point, Date()) }
+        if hit === self {
+            lastTouch = (point, Date())
+            touchedBox = boxAt?(point).map { ($0, selectedRange) }
+        }
         return hit
+    }
+
+    /// A tap on a box is not a tap to put the caret there.
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if touchedBox != nil, gestureRecognizer !== ownTap, gestureRecognizer is UITapGestureRecognizer { return false }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
     func forgetTouch() {
         lastTouch = nil
+        touchedBox = nil
     }
 
     override func layoutSubviews() {
