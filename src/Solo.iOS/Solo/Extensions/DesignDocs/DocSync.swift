@@ -76,7 +76,19 @@ struct NoteCaret: Equatable {
 /// while the connection is down is sent again, not lost.
 @Observable
 final class DocSync {
-    private(set) var statusText = "Connecting…"
+    /// What to say of where the document's changes have got to.
+    var statusText: String {
+        kept ? session.docsOffline.status(of: documentId, unsaved: unsaved) : liveStatus
+    }
+
+    private var liveStatus = "Connecting…"
+    /// True while the document is one of a downloaded design doc's (OfflineDocs.swift). Then
+    /// what is written is kept on the device and owed to the instance, which the download
+    /// pays: nothing written here is sent over the live connection, though what others write
+    /// still arrives over it. It can be written in with the instance out of reach.
+    private(set) var kept = false
+    /// Changed here and not yet kept on the device: for the status, which a view reads.
+    private var unsaved = false
     private(set) var canWrite = false
     private(set) var synced = false
     private(set) var deleted = false
@@ -100,6 +112,8 @@ final class DocSync {
     @ObservationIgnored let documentId: UUID
     @ObservationIgnored private let topic: String
     @ObservationIgnored private let mayWrite: Bool
+    /// The design doc the document is in, when whoever opened it said.
+    @ObservationIgnored private let vaultId: UUID?
     /// Called a little after an edit has been saved, with the text and the sequence it is current to.
     @ObservationIgnored var onSavedCopy: ((String, String) async -> Void)?
 
@@ -135,15 +149,18 @@ final class DocSync {
 
     private static let chunkLength = 32_000
 
-    init(session: Session, projectId: UUID, documentId: UUID, mayWrite: Bool) {
+    init(session: Session, projectId: UUID, documentId: UUID, mayWrite: Bool, vaultId: UUID? = nil) {
         self.session = session
         self.projectId = projectId
         self.documentId = documentId
         self.mayWrite = mayWrite
+        self.vaultId = vaultId
         topic = DocTopics.doc(documentId)
     }
 
-    var hasPending: Bool { pending != nil || dirty }
+    var hasPending: Bool {
+        kept ? dirty || session.docsOffline.isPending(documentId) : pending != nil || dirty
+    }
 
     // MARK: Lifecycle
 
@@ -164,6 +181,10 @@ final class DocSync {
             hub.reconnected.subscribe { [weak self] in self?.connect() },
         ]
         awareness.onLocalChange = { [weak self] in self?.scheduleAwareness() }
+        // A downloaded design doc's document is shown from the device at once, before the
+        // instance has said anything, and whether or not it ever does.
+        session.docsOffline.editing(self)
+        keepOnDevice()
         await hub.subscribe(projectId: projectId, topic: topic)
         await hub.setTopicPresence(projectId: projectId, topic: topic, .viewing)
         connect()
@@ -280,10 +301,62 @@ final class DocSync {
         awareness.set("cursor", ["anchor": anchor.json, "head": head.json])
     }
 
+    // MARK: Kept on the device
+
+    /// Takes the document up from the device, where its design doc is downloaded. Asked when
+    /// it is opened, and again whenever something is written or the connection is lost, since
+    /// the download may have been made while it was open.
+    func keepOnDevice() {
+        guard started, !kept, !deleted, let vaultId,
+              let here = session.docsOffline.opened(self, documentId: documentId, vaultId: vaultId) else { return }
+        kept = true
+        documentVersion += 1
+        if shared.apply([here.state]) { remoteRevision += 1 }
+        // Anything written and not yet sent stays owed: it is kept, and sent, with the next change.
+        if !dirty { sentVector = shared.stateVector() }
+        // What the instance is asked for is only what has come since this was last read.
+        seq = max(seq, here.seq)
+        checkpoint = max(checkpoint, here.seq)
+        synced = true
+        if !session.hub.isConnected { setWritable(here.canWrite) }
+    }
+
+    /// Changes the download read from the instance, for the open document to take as it
+    /// takes anyone else's.
+    func absorb(_ updates: [[UInt8]]) {
+        apply(updates, fromDevice: true)
+    }
+
+    /// The download says whether the design doc may be written in, having asked the instance.
+    func setKeptWritable(_ value: Bool) {
+        guard kept, !session.hub.isConnected || !value else { return }
+        setWritable(value)
+    }
+
+    /// The download was removed: from here on the document is saved straight to the instance.
+    func leaveDevice() {
+        guard kept else { return }
+        kept = false
+        connect()
+    }
+
+    /// What was written here and never sent has been given up, or the document replaced by
+    /// the one the instance has. An open document cannot unwrite what it holds, so it stops
+    /// taking changes until it is opened again.
+    func discardedHere() {
+        dirty = false
+        unsaved = false
+        deleted = true
+        setWritable(false)
+        liveStatus = "Changes discarded · reopen to continue"
+        kept = false
+    }
+
     func stop() async {
         guard started else { return }
         started = false
         flushNow()
+        session.docsOffline.closed(documentId)
         // What was just sent gets a moment to be acknowledged, so the saved
         // copy the tree and links read can go with it rather than wait for
         // the next person to open the note.
@@ -293,7 +366,8 @@ final class DocSync {
             waited += 1
         }
         copyTask?.cancel()
-        if copyWanted, !hasPending, canWrite {
+        // A downloaded design doc's copies are the download's to save, once it has sent the text.
+        if copyWanted, !kept, !hasPending, canWrite {
             copyWanted = false
             await onSavedCopy?(shared.string(), String(seq))
         }
@@ -320,12 +394,15 @@ final class DocSync {
     /// Asks for everything after the last completed replay. Also what a reconnect does.
     private func connect() {
         guard !deleted else { return }
-        synced = false
-        setWritable(false)
+        // Kept on the device, it is whole and may be written in whatever the connection says.
+        if !kept {
+            synced = false
+            setWritable(false)
+        }
         chunks = [:]
         syncId = UUID()
         resendTask?.cancel()
-        statusText = session.hub.isConnected ? "Synchronizing…" : "Offline · changes retained"
+        liveStatus = session.hub.isConnected ? "Synchronizing…" : "Offline · changes retained"
         Task { await send("sync", ["afterSeq": String(checkpoint), "batch": true, "syncId": syncId.api]) }
     }
 
@@ -349,6 +426,7 @@ final class DocSync {
     func changedLocally(promptly: Bool = false) {
         documentVersion += 1
         dirty = true
+        if kept { unsaved = true }
         edited = true
         copyWanted = true
         flushTask?.cancel()
@@ -368,6 +446,16 @@ final class DocSync {
 
     private func flushNow() {
         flushTask?.cancel()
+        keepOnDevice()
+        if kept {
+            // Kept, not sent: the download sends it, now or whenever the instance is next in reach.
+            guard dirty else { return }
+            sentVector = shared.stateVector()
+            dirty = false
+            unsaved = false
+            session.docsOffline.changed(documentId, state: shared.fullState())
+            return
+        }
         guard dirty, pending == nil, synced, canWrite else { return }
         let update = shared.update(since: sentVector)
         sentVector = shared.stateVector()
@@ -375,7 +463,7 @@ final class DocSync {
         guard update.count > 2 else { return }
         let packet = Packet(data: Data(update).base64EncodedString(), seedToken: seedToken)
         pending = packet
-        statusText = "Saving…"
+        liveStatus = "Saving…"
         transmit(packet)
     }
 
@@ -422,9 +510,14 @@ final class DocSync {
 
     private func interrupted() {
         guard !deleted else { return }
+        keepOnDevice()
+        if kept {
+            // Nothing is lost by it: the document is on the device. A reconnect asks again.
+            return
+        }
         setWritable(false)
         synced = false
-        statusText = "Sync interrupted; edits retained…"
+        liveStatus = "Sync interrupted; edits retained…"
         retryTask?.cancel()
         retryTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(1500))
@@ -517,12 +610,12 @@ final class DocSync {
         case "unseeded":
             unseededMarkdown = payload["markdown"] as? String
             synced = true
-            statusText = "Read-only"
+            liveStatus = "Read-only"
 
         case "refused":
             setWritable(false)
             let reason = payload["reason"] as? String ?? ""
-            statusText = reason == "seed-expired" ? "Seed lease expired. Reopen this note before editing." : "Read-only · \(reason)"
+            liveStatus = reason == "seed-expired" ? "Seed lease expired. Reopen this note before editing." : "Read-only · \(reason)"
 
         case "deleted":
             markDeleted()
@@ -537,18 +630,22 @@ final class DocSync {
         }
     }
 
-    private func apply(_ updates: [[UInt8]]) {
+    private func apply(_ updates: [[UInt8]], fromDevice: Bool = false) {
         documentVersion += 1
         guard shared.apply(updates) else { return }
         if !dirty, pending == nil {
             sentVector = shared.stateVector()
         }
         remoteRevision += 1
+        // What came over the live connection is the instance's, and is kept as that.
+        if kept, !fromDevice {
+            session.docsOffline.received(documentId, updates: updates, state: shared.fullState())
+        }
     }
 
     private func settle() {
-        statusText = hasPending ? "Saving…" : canWrite ? "Saved online" : "Read-only"
-        guard copyWanted, !hasPending, canWrite else { return }
+        liveStatus = hasPending ? "Saving…" : canWrite ? "Saved online" : "Read-only"
+        guard copyWanted, !kept, !hasPending, canWrite else { return }
         copyTask?.cancel()
         copyTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
@@ -565,7 +662,7 @@ final class DocSync {
         pending = nil
         dirty = false
         setWritable(false)
-        statusText = "Deleted · read-only"
+        liveStatus = "Deleted · read-only"
     }
 
     /// A batch is a count, then each update behind its length — all little-endian 32-bit.

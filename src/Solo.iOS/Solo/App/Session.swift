@@ -20,6 +20,8 @@ final class Session {
     let extensions: ExtensionCatalog
     /// What extensions with no native half add to core's screens, drawn here (KitSurface.swift).
     let kit = KitSurfaceHost()
+    /// The design docs downloaded to this device (OfflineDocs.swift).
+    let docsOffline: OfflineVaults
 
     /// True while requests are failing to reach the instance.
     private(set) var isOffline = false
@@ -39,6 +41,7 @@ final class Session {
         notifications = NotificationStore(api: api, hub: hub, toasts: toasts)
         assigned = AssignedTasksStore(api: api, hub: hub, userId: user.id)
         extensions = ExtensionCatalog(api: api)
+        docsOffline = OfflineVaults(api: api, userId: user.id)
         kit.session = self
         #if os(macOS)
         settingsNavigator.tab = .account
@@ -61,6 +64,7 @@ final class Session {
         async let projects: Void = projects.refreshProjects()
         async let version = try? api.instanceVersion()
         _ = await (extensions, projects)
+        docsOffline.start(hub: hub)
         serverVersion = await version
         await notifications.start()
         if let fresh = try? await api.currentUser() {
@@ -123,6 +127,7 @@ final class Session {
     }
 
     func stop() async {
+        docsOffline.stop()
         kit.reset()
         await hub.shutDown()
     }

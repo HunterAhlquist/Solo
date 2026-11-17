@@ -198,6 +198,11 @@ struct DesignDocsView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
+            if let store, let project, let vault = store.vault {
+                DocDownloadControl(projectId: project.id, projectAlias: project.alias, vault: vault)
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
             if store?.tree != nil {
                 if wide {
                     Button("Notes", systemImage: "sidebar.left") {
@@ -271,6 +276,133 @@ struct DesignDocsView: View {
             if await store.deleteVault() {
                 navigator.open(.project(alias: projectAlias))
             }
+        }
+    }
+}
+
+// MARK: - Downloading
+
+/// A design doc's place on this device: a button that downloads it, and once it is here what
+/// says how it stands with the instance — in step, owing, out of reach, or refused — with
+/// the things to do about that.
+private struct DocDownloadControl: View {
+    @Environment(Session.self) private var session
+    @Environment(\.theme) private var theme
+    var projectId: UUID
+    var projectAlias: String
+    var vault: DocVault
+    @State private var reviewing = false
+    @State private var confirmation: Confirmation?
+
+    var body: some View {
+        let offline = session.docsOffline
+        Group {
+            if offline.downloading.contains(vault.id) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Downloading this design doc")
+            } else if offline.isDownloaded(vault.id) {
+                let pending = offline.pending(in: vault.id)
+                let problems = offline.problems(in: vault.id).count
+                Menu {
+                    Section(summary(pending: pending, problems: problems, reachable: offline.reachable)) {
+                        Button("Sync Now", systemImage: "arrow.triangle.2.circlepath") { offline.sync() }
+                        if problems > 0 {
+                            Button("Review Changes…", systemImage: "exclamationmark.triangle") { reviewing = true }
+                        }
+                    }
+                    Button("Remove Download", systemImage: "trash", role: .destructive) {
+                        confirmation = Confirmation(
+                            title: "Remove download?",
+                            message: "\(vault.name) is taken off this device. The instance keeps its copy.",
+                            action: "Remove") {
+                            if let refusal = offline.remove(vault.id) { session.toasts.show(refusal, .warning) }
+                        }
+                    }
+                } label: {
+                    Label("Downloaded", systemImage: symbol(pending: pending, problems: problems, reachable: offline.reachable))
+                        .foregroundStyle(problems > 0 ? theme.warning : theme.primary)
+                }
+                .help("Downloaded to this device")
+            } else {
+                Button("Download for Offline", systemImage: "icloud.and.arrow.down") {
+                    Task {
+                        if let problem = await offline.download(projectId: projectId, projectAlias: projectAlias, vault: vault) {
+                            session.toasts.show(problem, .error)
+                        } else {
+                            session.toasts.show("\(vault.name) is on this device. Changes made offline are sent when the instance is back in reach.", .success)
+                        }
+                    }
+                }
+                .help("Download this design doc to read and write it offline")
+            }
+        }
+        .sheet(isPresented: $reviewing) {
+            OfflineProblemsSheet(vault: vault)
+        }
+        .confirmation($confirmation)
+    }
+
+    private func summary(pending: Int, problems: Int, reachable: Bool) -> String {
+        if problems > 0 { return "\(problems) \(problems == 1 ? "change needs" : "changes need") attention. What was written is kept." }
+        if pending > 0 { return "\(reachable ? "Sending" : "Offline") · \(pending) \(pending == 1 ? "document" : "documents") changed on this device" }
+        return reachable ? "On this device · in step with the instance" : "Offline · on this device"
+    }
+
+    /// Out of reach it does not say so again: the bar's own indicator is beside it. It says
+    /// what is true of the design doc — here, and with or without something to send.
+    private func symbol(pending: Int, problems: Int, reachable: Bool) -> String {
+        if problems > 0 { return "exclamationmark.icloud" }
+        if pending > 0 { return reachable ? "arrow.triangle.2.circlepath.icloud" : "icloud.and.arrow.up" }
+        return "checkmark.icloud"
+    }
+}
+
+/// The changes the instance refused, each to be sent again or given up.
+private struct OfflineProblemsSheet: View {
+    @Environment(Session.self) private var session
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.theme) private var theme
+    var vault: DocVault
+    @State private var confirmation: Confirmation?
+
+    var body: some View {
+        let offline = session.docsOffline
+        let problems = offline.problems(in: vault.id)
+        NavigationStack {
+            GroupedList {
+                if problems.isEmpty {
+                    Text("Nothing needs attention.").foregroundStyle(theme.textSecondary).themedRow()
+                }
+                ForEach(problems) { problem in
+                    Section {
+                        Text(problem.message)
+                            .font(.footnote)
+                            .foregroundStyle(theme.textSecondary)
+                        Button("Send Again", systemImage: "arrow.up.circle") { offline.retry(problem.id) }
+                        Button("Discard What I Wrote", systemImage: "trash", role: .destructive) {
+                            confirmation = Confirmation(
+                                title: "Discard changes to \(problem.name)?",
+                                message: "What was written on this device and never sent is lost, and the document is shown as the instance has it.",
+                                action: "Discard") {
+                                await offline.discard(problem.id)
+                            }
+                        }
+                    } header: {
+                        Text(problem.name)
+                    }
+                    .themedRow()
+                }
+            }
+            .themedList()
+            .navigationTitle("Changes Not Sent")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .confirmation($confirmation)
         }
     }
 }

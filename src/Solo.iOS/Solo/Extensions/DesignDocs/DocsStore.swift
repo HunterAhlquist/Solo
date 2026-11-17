@@ -292,8 +292,10 @@ final class DocVaultStore {
     func picture(_ image: DocImage) async -> PlatformImage? {
         let key = "\(image.id.compact):\(image.version)"
         if let cached = pictures[key] { return cached }
-        guard let data = try? await session.api.docImageData(projectId, vaultId, image.id), let decoded = PlatformImage(data: data)
-        else { return nil }
+        // From the instance, or from the device where the design doc is downloaded and the instance out of reach.
+        var data = try? await session.api.docImageData(projectId, vaultId, image.id)
+        if data == nil { data = session.docsOffline.image(image.id) }
+        guard let data, let decoded = PlatformImage(data: data) else { return nil }
         pictures[key] = decoded
         return decoded
     }
@@ -302,8 +304,17 @@ final class DocVaultStore {
     func sketchPicture(_ sketch: DocSketch, dark: Bool) async -> PlatformImage? {
         let key = "\(sketch.id.compact):\(sketch.version):\(sketchRevision):\(dark)"
         if let cached = pictures[key] { return cached }
-        guard let state = try? await session.api.docState(projectId, sketch.id) else { return nil }
-        let snapshot = await SketchSnapshot.load(state.updates.map(\.data), sketch: sketch)
+        // A downloaded design doc's sketch is drawn as it stands on the device, which may be
+        // ahead of the instance and is there when the instance is not.
+        let updates: [String]
+        if let kept = session.docsOffline.state(sketch.id) {
+            updates = [Data(kept).base64EncodedString()]
+        } else if let state = try? await session.api.docState(projectId, sketch.id) {
+            updates = state.updates.map(\.data)
+        } else {
+            return nil
+        }
+        let snapshot = await SketchSnapshot.load(updates, sketch: sketch)
         let colors = dark ? SketchColors.dark : SketchColors.light
         guard let drawn = snapshot.raster.image(page: snapshot.page, paper: colors.paper, themeInk: colors.ink) else { return nil }
         let picture = PlatformImage.picture(drawn)

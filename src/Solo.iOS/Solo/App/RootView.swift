@@ -68,6 +68,7 @@ struct RootView: View {
             if phase == .active {
                 if day != .today { day = .today }
                 model.session?.hub.resume()
+                model.session?.docsOffline.sync()
                 Task {
                     await model.session?.notifications.refresh()
                     await model.refreshElsewhere()

@@ -88,7 +88,8 @@ struct NoteView: View {
             }
         }
         .task {
-            let fresh = DocSync(session: session, projectId: store.projectId, documentId: note.id, mayWrite: mayWrite)
+            let fresh = DocSync(session: session, projectId: store.projectId, documentId: note.id, mayWrite: mayWrite,
+                                vaultId: store.vaultId)
             let api = session.api, projectId = store.projectId, vaultId = store.vaultId, noteId = note.id
             fresh.onSavedCopy = { [store] markdown, seq in
                 try? await api.saveDocCopy(projectId, vaultId, noteId, markdown: markdown, seq: seq)

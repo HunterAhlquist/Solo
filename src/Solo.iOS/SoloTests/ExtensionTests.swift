@@ -134,6 +134,41 @@ import Testing
         #expect(second.string() == first.string())
     }
 
+    // A downloaded design doc keeps each document twice — as it stands here, and as the
+    // instance is known to have it — and owes the instance the difference.
+
+    @Test func whatIsOwedIsWhatWasWrittenSinceTheInstanceWasLastInStep() {
+        let editor = SharedDoc()
+        editor.replaceText(start: 0, length: 0, with: "One line.")
+        let server = editor.fullState()
+        // Written with the instance out of reach, some of it taken back out again.
+        editor.replaceText(start: 9, length: 0, with: " Two lines. Three.")
+        editor.replaceText(start: 20, length: 7, with: "")
+        let owed = YStates.missing(from: server, in: editor.fullState())
+        // Paid, the instance has what is here; and someone who wrote there meanwhile loses nothing.
+        let instance = SharedDoc()
+        instance.apply([server])
+        instance.replaceText(start: 0, length: 0, with: "Zero. ")
+        instance.apply([owed])
+        #expect(instance.string() == "Zero. One line. Two lines.")
+        #expect(YStates.markdown(YStates.merged([server, owed])) == "One line. Two lines.")
+    }
+
+    @Test func mergingIsTheSameInAnyOrderAndAnyNumberOfTimes() {
+        let editor = SharedDoc()
+        editor.replaceText(start: 0, length: 0, with: "a")
+        let first = editor.fullState()
+        editor.replaceText(start: 1, length: 0, with: "b")
+        let second = editor.update(since: SharedDoc().stateVector())
+        #expect(YStates.markdown(YStates.merged([first, second])) == "ab")
+        // An update that got there and was sent again, and one that arrives before the one it follows.
+        #expect(YStates.markdown(YStates.merged([second, first, second, []])) == "ab")
+    }
+
+    @Test func anImportedNoteBecomesADocumentOfItsText() {
+        #expect(YStates.markdown(YStates.seeded("# Imported\n\nBody 😀")) == "# Imported\n\nBody 😀")
+    }
+
     @Test func offsetsAreUTF16() {
         let doc = SharedDoc()
         doc.replaceText(start: 0, length: 0, with: "a😀b")

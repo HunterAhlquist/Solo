@@ -413,7 +413,7 @@ final class SketchModel: Identifiable {
         let page = SketchPage(sketch)
         self.page = page
         frames = [SketchRaster(page: page)]
-        sync = DocSync(session: session, projectId: projectId, documentId: sketch.id, mayWrite: mayWrite)
+        sync = DocSync(session: session, projectId: projectId, documentId: sketch.id, mayWrite: mayWrite, vaultId: vaultId)
         history = sync.shared.sketchHistory()
         watchPresence()
     }
