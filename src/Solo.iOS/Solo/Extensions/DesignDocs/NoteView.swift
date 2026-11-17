@@ -187,14 +187,21 @@ struct NoteView: View {
                 .foregroundStyle(theme.textPrimary)
                 .lineLimit(2)
             HStack(spacing: 8) {
+                // One line, whatever it says: how the note stands changes as it is typed in —
+                // saved, sending, saved — and a status that wrapped on a narrow screen moved
+                // the whole note down a line and back under the hand writing it. It is said
+                // in full, and who edited it last gives way.
                 if let sync {
                     Label(sync.statusText, systemImage: statusSymbol(sync))
                         .labelStyle(.titleAndIcon)
+                        .lineLimit(1)
+                        .layoutPriority(1)
                 }
                 if let edited = note.lastEditedAt {
                     Text("·")
                     Text("Edited \(edited.relative)\(author.map { " by \($0)" } ?? "")")
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
                 if uploading {
                     ProgressView().controlSize(.mini)
