@@ -303,8 +303,13 @@ private struct WebPluginPage: View {
             if let webView = page.webView {
                 HostedWebView(webView: webView)
                     // Under the bars, which are glass: the web view keeps its content clear of
-                    // them at rest and lets it pass beneath them as it scrolls.
+                    // them at rest and lets it pass beneath them as it scrolls. That is an
+                    // iPhone's web view. A Mac's keeps nothing clear of anything, and what it
+                    // would run under there is the sidebar, which lies over the page's leading
+                    // edge: its page began beneath it. There it stays inside the bars.
+                    #if os(iOS)
                     .ignoresSafeArea()
+                    #endif
                     .opacity(page.isReady ? 1 : 0)
                     .animation(.easeOut(duration: 0.2), value: page.isReady)
             }

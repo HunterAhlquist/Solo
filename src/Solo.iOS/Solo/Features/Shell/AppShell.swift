@@ -71,7 +71,9 @@ struct SettingsShell: View {
 
     var body: some View {
         let section = section
-        NavigationSplitView {
+        // The sections are all there is to this window, so they are always showing: the side
+        // is never put away, is one width, and has no button to hide it.
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             List {
                 SidebarRow(title: "Account", symbol: "person.crop.circle", selected: section == nil) {
                     navigator.popToRoot(.account)
@@ -87,7 +89,8 @@ struct SettingsShell: View {
             .listStyle(.sidebar)
             .buttonStyle(.plain)
             .labelStyle(AsWrittenLabelStyle())
-            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
+            .toolbar(removing: .sidebarToggle)
+            .navigationSplitViewColumnWidth(240)
         } detail: {
             NavigationStack(path: Binding(
                 get: { Array(navigator[.account].dropFirst(section == nil ? 0 : 1)) },
@@ -103,6 +106,16 @@ struct SettingsShell: View {
             }
             // Each section is a stack of its own, from its first page.
             .id(section)
+        }
+        // With no button for the sidebar, a page that has nothing of its own in the bar leaves
+        // the window with no bar at all, only a title; the next page, with a Back button, has
+        // one, and everything in the window moves down to make room for it. Something that
+        // takes no room and shows nothing keeps the bar there for both.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
     }
 }
