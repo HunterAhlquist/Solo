@@ -525,13 +525,15 @@ nonisolated struct CommentBubble: Shape {
         path.addLine(to: CGPoint(x: side - radius, y: rect.minY))
         path.addArc(tangent1End: CGPoint(x: side, y: rect.minY), tangent2End: CGPoint(x: side, y: rect.minY + radius),
                     radius: radius)
-        // Down the side to where the tail leaves it, out to the tail's point at the foot,
-        // and back in under the bubble.
-        path.addLine(to: CGPoint(x: side, y: rect.maxY - radius * 0.7))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.maxY), control: CGPoint(x: side, y: rect.maxY - 1))
-        path.addQuadCurve(to: CGPoint(x: side - radius * 0.75, y: rect.maxY - 1.5),
-                          control: CGPoint(x: side - 2, y: rect.maxY))
-        path.addQuadCurve(to: CGPoint(x: side - radius, y: rect.maxY), control: CGPoint(x: side - radius * 0.9, y: rect.maxY))
+        // Down the side to where the tail leaves it, and out to the tail's point at the foot.
+        // It leaves the side going straight down, as the side was, so there is no corner
+        // where it starts. Its underside is the bubble's own foot carried on to the point:
+        // one straight line, with nothing to join. Curved back in under the bubble instead,
+        // it met the foot at a dip that showed as a notch.
+        path.addLine(to: CGPoint(x: side, y: rect.maxY - radius * 0.75))
+        path.addCurve(to: CGPoint(x: rect.maxX, y: rect.maxY),
+                      control1: CGPoint(x: side, y: rect.maxY - radius * 0.3),
+                      control2: CGPoint(x: side + Self.tail * 0.35, y: rect.maxY - 1.5))
         path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
         path.addArc(tangent1End: CGPoint(x: rect.minX, y: rect.maxY), tangent2End: CGPoint(x: rect.minX, y: rect.maxY - radius),
                     radius: radius)
