@@ -405,7 +405,36 @@ extension View {
         self
         #endif
     }
+
+    /// On a window's content, where its pages draw the line under the bar themselves
+    /// (`barBackedAcross`). A Mac's window draws one too, under the bar and as wide as what
+    /// scrolls beneath it — which is the page, and not the task panel's end of the window:
+    /// the line stopped short there, beside one that did not. The window's is turned off.
+    func withoutBarLine() -> some View {
+        #if os(macOS)
+        background(WindowBarLineOff())
+        #else
+        self
+        #endif
+    }
 }
+
+#if os(macOS)
+/// Nothing to look at: it is in the window to reach the window, which SwiftUI gives no way to.
+private struct WindowBarLineOff: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.titlebarSeparatorStyle = .none
+        }
+    }
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ view: Probe, context: Context) {
+        view.window?.titlebarSeparatorStyle = .none
+    }
+}
+#endif
 
 extension ToolbarContent {
     /// On a page's own title in the middle of the bar. A Mac's bar puts glass behind each of

@@ -319,7 +319,7 @@ private extension View {
     /// travelled between them for as long as the panel was moving.
     ///
     /// So here the bar's backing is not the system's. The page's own is turned off and one
-    /// is drawn in its place, the bar's material down to a line, as wide as the page's
+    /// is drawn in its place, a material down to a line, as wide as the page's
     /// column — which the panel stands over and takes nothing from. It is part of the
     /// page, and goes where the column goes; there is no second piece of it to fall out of
     /// step. On the page and not on the stack: a Mac draws nothing that is put on the stack.
@@ -328,10 +328,15 @@ private extension View {
         scrollEdgeEffectHidden(true, for: .top)
             .overlay(alignment: .top) {
                 GeometryReader { proxy in
-                    VStack(spacing: 0) {
-                        Rectangle().fill(.thinMaterial)
-                        Divider()
-                    }
+                    Rectangle().fill(.thinMaterial)
+                        // The line a bar has under it, drawn here because the window's own is
+                        // only as wide as the page (`withoutBarLine`). It is on the material's
+                        // last row and not under it, where it took its strength from whatever
+                        // was behind — the board at one end, nothing at the other — and its
+                        // colour is said: a divider's own was too faint here to be seen.
+                        .overlay(alignment: .bottom) {
+                            Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1)
+                        }
                     .frame(height: proxy.safeAreaInsets.top)
                     .ignoresSafeArea(.container, edges: .top)
                 }

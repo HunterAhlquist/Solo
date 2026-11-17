@@ -15,7 +15,7 @@ struct SoloApp: App {
         // window would be the same navigator shown twice, each following the other about.
         Window("Solo", id: "main") {
             // No narrower than a board's three columns can be read in beside the task panel.
-            root.frame(minWidth: 960, minHeight: 600).windowBarBacked()
+            root.frame(minWidth: 960, minHeight: 600).windowBarBacked().withoutBarLine()
         }
         .defaultSize(width: 1360, height: 880)
         .commands { SoloCommands(model: model) }
