@@ -46,6 +46,46 @@ import AppKit
     }
 }
 
+@Suite struct CalendarPickerTests {
+    private func calendar(firstWeekday: Int) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.firstWeekday = firstWeekday
+        return calendar
+    }
+
+    private func days(_ week: [Date?], _ calendar: Calendar) -> [Int?] {
+        week.map { $0.map { calendar.component(.day, from: $0) } }
+    }
+
+    @Test func aMonthIsRowsOfSevenFromTheDayTheWeekStarts() throws {
+        // November 2026 begins on a Sunday.
+        let sunday = calendar(firstWeekday: 1)
+        let month = try #require(sunday.date(from: DateComponents(year: 2026, month: 11, day: 1)))
+        let weeks = CalendarPicker.weeks(of: month, in: sunday)
+        #expect(weeks.count == 5)
+        #expect(weeks.allSatisfy { $0.count == 7 })
+        #expect(days(weeks[0], sunday) == [1, 2, 3, 4, 5, 6, 7])
+        #expect(days(weeks[4], sunday) == [29, 30, nil, nil, nil, nil, nil])
+    }
+
+    @Test func aWeekThatStartsOnMondayPutsSundayLast() throws {
+        let monday = calendar(firstWeekday: 2)
+        let month = try #require(monday.date(from: DateComponents(year: 2026, month: 11, day: 1)))
+        let weeks = CalendarPicker.weeks(of: month, in: monday)
+        #expect(weeks.count == 6)
+        #expect(days(weeks[0], monday) == [nil, nil, nil, nil, nil, nil, 1])
+        #expect(days(weeks[5], monday) == [30, nil, nil, nil, nil, nil, nil])
+    }
+
+    @Test func februaryInALeapYearHasItsTwentyNinth() throws {
+        let sunday = calendar(firstWeekday: 1)
+        let month = try #require(sunday.date(from: DateComponents(year: 2028, month: 2, day: 1)))
+        let all = CalendarPicker.weeks(of: month, in: sunday).flatMap { $0 }.compactMap { $0 }
+        #expect(all.count == 29)
+    }
+}
+
 @Suite struct DateParsingTests {
     @Test func readsEveryShapeTheServerWrites() throws {
         let whole = try #require(SoloJSON.parseDate("2026-11-14T00:25:45Z"))

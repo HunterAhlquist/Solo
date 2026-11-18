@@ -126,8 +126,6 @@ struct UserAvatar: View {
     var hasPicture: Bool = false
     var size: CGFloat = 26
 
-    private static let palette = ["#8d7ffa", "#4fd1c5", "#f6ad55", "#f56565", "#63b3ed", "#48bb78", "#ed64a6", "#ecc94b"]
-
     var body: some View {
         Group {
             if hasPicture {
@@ -148,6 +146,19 @@ struct UserAvatar: View {
     }
 
     private var initials: some View {
+        AvatarInitials(userId: userId, name: name, size: size)
+    }
+}
+
+/// A person without a picture: their initials on a colour derived from their name.
+struct AvatarInitials: View {
+    var userId: UUID
+    var name: String?
+    var size: CGFloat
+
+    private static let palette = ["#8d7ffa", "#4fd1c5", "#f6ad55", "#f56565", "#63b3ed", "#48bb78", "#ed64a6", "#ecc94b"]
+
+    var body: some View {
         ZStack {
             Color(hex: Self.palette[colorIndex])
             Text(initialsText)
@@ -182,6 +193,61 @@ extension UserAvatar {
 
     init(user: User, size: CGFloat = 26) {
         self.init(userId: user.id, name: user.name, hasPicture: user.avatarUrl?.nilIfBlank != nil, size: size)
+    }
+}
+
+/// People's faces as pictures of their own, for a menu. A menu draws an item's icon from an
+/// image and nothing else — a view there, an avatar included, is dropped — so each face is
+/// drawn once into one: the person's picture where they have one, their initials where not.
+enum MenuFaces {
+    private static var drawn: [UUID: Image] = [:]
+    private static let size: CGFloat = Platform.isMac ? 18 : 26
+
+    /// A face already drawn, for the first time a menu is put together.
+    static func ready(_ member: ProjectMember) -> Image? { drawn[member.avatarId] }
+
+    static func face(of member: ProjectMember, session: Session) async -> Image? {
+        if let face = drawn[member.avatarId] { return face }
+        var picture: PlatformImage?
+        if member.avatarUrl?.nilIfBlank != nil {
+            picture = try? await ImagePipeline.shared.image(for: session.api.avatarURL(member.avatarId))
+        }
+        let renderer = ImageRenderer(content: MenuFace(picture: picture, member: member, size: size))
+        // Drawn finer than any screen it is shown on; the image says how large it is.
+        renderer.scale = 3
+        #if os(macOS)
+        guard let image = renderer.nsImage else { return nil }
+        image.size = CGSize(width: size, height: size)
+        let face = Image(nsImage: image)
+        #else
+        // As it is, where a menu would otherwise fill its shape with the menu's own colour.
+        guard let image = renderer.uiImage?.withRenderingMode(.alwaysOriginal) else { return nil }
+        let face = Image(uiImage: image)
+        #endif
+        drawn[member.avatarId] = face
+        return face
+    }
+}
+
+private struct MenuFace: View {
+    var picture: PlatformImage?
+    var member: ProjectMember
+    var size: CGFloat
+
+    var body: some View {
+        Group {
+            if let picture {
+                #if os(macOS)
+                Image(nsImage: picture).resizable().aspectRatio(contentMode: .fill)
+                #else
+                Image(uiImage: picture).resizable().aspectRatio(contentMode: .fill)
+                #endif
+            } else {
+                AvatarInitials(userId: member.avatarId, name: member.name, size: size)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(.circle)
     }
 }
 

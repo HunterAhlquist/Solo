@@ -589,6 +589,7 @@ struct SidebarView: View {
                             Text(project.name).lineLimit(1)
                         }
                     }
+                    .disclosureGroupStyle(ProjectDisclosureStyle())
                 }
                 .onMove { nav.move(from: $0, to: $1) }
 
@@ -726,6 +727,63 @@ struct SidebarView: View {
 }
 
 /// What unfolds under a project: its open boards, each extension's section, and the way to its overview.
+/// A project in the sidebar, opened and closed by a chevron drawn here rather than by the
+/// list. A Mac's own is a triangle a few points across in the row's margin, as faint as a
+/// control that is off and hard against the project's icon; an iPad's is larger but still
+/// slight for the one thing in the row that says it opens. Drawn here it is the size and
+/// weight of the row's text on both, and on a Mac it stands clear of the icon. The whole
+/// row opens the project, as an iPad's always did.
+private struct ProjectDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ProjectDisclosureRow(configuration: configuration)
+        if configuration.isExpanded {
+            // Under the project: its icon on a Mac, where the chevron leads the row, and a
+            // step in from it on an iPad, where the list used to set them.
+            configuration.content
+                .padding(.leading, Platform.isMac ? ProjectDisclosureRow.chevronWidth + ProjectDisclosureRow.gap : 20)
+        }
+    }
+}
+
+private struct ProjectDisclosureRow: View {
+    @Environment(\.theme) private var theme
+    var configuration: DisclosureGroupStyleConfiguration
+
+    static let chevronWidth: CGFloat = 16
+    static let gap: CGFloat = 10
+
+    var body: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.25)) { configuration.isExpanded.toggle() }
+        } label: {
+            HStack(spacing: Self.gap) {
+                #if os(macOS)
+                chevron.frame(width: Self.chevronWidth)
+                #endif
+                configuration.label
+                    .foregroundStyle(theme.textPrimary)
+                Spacer(minLength: 0)
+                #if os(iOS)
+                chevron
+                #endif
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: Platform.isMac ? 12 : 17, weight: .semibold))
+            // An iPad's was the colour of the row's text, and stays it; a Mac's is a
+            // control in the margin, a step quieter than what it opens.
+            .foregroundStyle(Platform.isMac ? theme.textSecondary : theme.textPrimary)
+            .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+            .accessibilityHidden(true)
+    }
+}
+
 private struct ProjectBranch: View {
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator

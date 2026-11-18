@@ -18,6 +18,9 @@ struct SoloMarkdown: View {
     var navigationLocked = false
     /// Extra rewriting before rendering, for extensions that label their own links.
     var transform: ((String) -> String)?
+    /// Whether its words can be selected. Off where a press on the text means something else:
+    /// selectable text keeps a Mac's click to itself, to start a selection with.
+    var selectable = true
 
     private static let taskScheme = "solo-task"
     private static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
@@ -43,7 +46,7 @@ struct SoloMarkdown: View {
                 }
                 return .systemAction
             })
-            .textSelection(.enabled)
+            .selectable(selectable)
     }
 
     private var rendered: String {
@@ -454,7 +457,10 @@ struct MarkdownField: View {
     var body: some View {
         Group {
             if let text = text?.nilIfBlank {
-                SoloMarkdown(text: text)
+                // A press anywhere on a description that can be changed opens its editor,
+                // which is where its words are selected from. One that can only be read
+                // keeps them selectable where it is.
+                SoloMarkdown(text: text, selectable: !canWrite)
             } else {
                 Text(canWrite ? emptyPrompt : "No description.")
                     .foregroundStyle(theme.textSecondary)
@@ -478,5 +484,16 @@ struct MarkdownField: View {
         }
         .accessibilityAddTraits(canWrite ? .isButton : [])
         .accessibilityHint(canWrite ? "Opens the editor" : "")
+    }
+}
+
+private extension View {
+    /// `textSelection` takes a different type for each answer, so the choice is made here.
+    @ViewBuilder func selectable(_ selectable: Bool) -> some View {
+        if selectable {
+            textSelection(.enabled)
+        } else {
+            textSelection(.disabled)
+        }
     }
 }

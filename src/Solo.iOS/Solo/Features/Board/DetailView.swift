@@ -420,6 +420,9 @@ struct FieldValue: View {
 /// Who it is assigned to. Each tick is its own save, and "Nobody" takes everyone off at once.
 struct AssigneeField: View {
     @Environment(\.theme) private var theme
+    @Environment(Session.self) private var session
+    /// Each person's face, drawn for the menu as it becomes ready.
+    @State private var faces: [UUID: Image] = [:]
     var store: BoardStore
     var assigneeIds: [UUID]
     var canWrite: Bool
@@ -431,12 +434,18 @@ struct AssigneeField: View {
             Menu {
                 ForEach(store.members.filter { $0.userId != nil }) { member in
                     let userId = member.userId!
-                    Toggle(member.name, isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { assigneeIds.contains(userId) },
                         set: { isOn in
                             let ids = isOn ? assigneeIds + [userId] : assigneeIds.filter { $0 != userId }
                             Task { await onChange(ids) }
-                        }))
+                        })) {
+                        Label {
+                            Text(member.name)
+                        } icon: {
+                            faces[member.avatarId] ?? MenuFaces.ready(member) ?? Image(systemName: "person.crop.circle")
+                        }
+                    }
                 }
                 if !assigneeIds.isEmpty {
                     Divider()
@@ -470,6 +479,11 @@ struct AssigneeField: View {
             #endif
             .menuToggles()
             .disabled(!canWrite)
+            .task(id: store.members.map(\.avatarId)) {
+                for member in store.members where member.userId != nil {
+                    faces[member.avatarId] = await MenuFaces.face(of: member, session: session)
+                }
+            }
         }
         if embedded {
             row
@@ -507,8 +521,13 @@ struct DayField: View {
         .opacity(disabled ? 0.5 : 1)
         .popover(isPresented: $picking) {
             VStack(spacing: 8) {
+                #if os(macOS)
+                // A Mac's own calendar is a fraction of this size (CalendarPicker).
+                CalendarPicker(selection: $date, latest: latest?.date())
+                #else
                 DatePicker("Date", selection: $date, in: ...(latest?.date() ?? .distantFuture), displayedComponents: .date)
                     .datePickerStyle(.graphical)
+                #endif
                 HStack {
                     if day != nil {
                         Button("Clear", role: .destructive) {
