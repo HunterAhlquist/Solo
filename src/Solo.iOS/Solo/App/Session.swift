@@ -135,6 +135,29 @@ final class Session {
 
     var siteName: String { config.siteName }
 
+    /// A notification on the device was tapped: an inbox entry is read and opened as the
+    /// inbox opens it, a reminder goes to its task. Something that is no longer there — a
+    /// task since deleted, an entry since cleared — lands on the inbox.
+    func open(_ tap: DeviceNotifications.Tap) async {
+        var taskId = tap.task
+        if let entry = tap.entry {
+            await notifications.refresh()
+            if let item = notifications.inbox?.items.first(where: { $0.id == entry }) {
+                await notifications.markRead(item)
+                taskId = item.taskId
+                if taskId == nil, let boardId = item.boardId, let board = try? await api.board(boardId) {
+                    navigator.open(.board(project: board.projectAlias, board: board.alias))
+                    return
+                }
+            }
+        }
+        if let taskId, let task = try? await api.task(taskId), let board = try? await api.board(task.boardId) {
+            navigator.open(TaskReference(projectAlias: board.projectAlias, boardAlias: board.alias, number: task.number))
+        } else {
+            navigator.popToRoot(.inbox)
+        }
+    }
+
     /// What a signed-in launch needs before the first screen is useful.
     func start() async {
         async let extensions: Void = extensions.load()

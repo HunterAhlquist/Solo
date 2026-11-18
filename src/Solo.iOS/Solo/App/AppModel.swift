@@ -67,6 +67,13 @@ final class AppModel {
 
     let themes = ThemeStore()
 
+    /// The instances kept on this device, for what runs without the app's own model: a
+    /// background refresh reads each of them (`BackgroundSync`).
+    static func storedInstances() -> [SavedInstance] {
+        UserDefaults.standard.data(forKey: instancesKey)
+            .flatMap { try? JSONDecoder().decode([SavedInstance].self, from: $0) } ?? []
+    }
+
     init() {
         recentInstances = UserDefaults.standard.stringArray(forKey: Self.recentsKey) ?? []
         let stored = UserDefaults.standard.data(forKey: Self.instancesKey)
@@ -82,6 +89,32 @@ final class AppModel {
             instances = []
         }
         themes.use(showing)
+        DeviceNotifications.shared.deliver = { [weak self] tap in self?.take(tap) ?? false }
+    }
+
+    /// A notification on the device was tapped. With no session to follow it with yet — a
+    /// tap that launched the app — it is kept, under the instance's address as the app
+    /// spells it, until there is one.
+    private func take(_ tap: DeviceNotifications.Tap) -> Bool {
+        // An instance since removed from the list just opens the app.
+        let address = DeviceNotifications.address(of: tap.instance)
+        guard let instance = instances.first(where: { DeviceNotifications.address(of: $0.url) == address })?.url else {
+            return true
+        }
+        var tap = tap
+        tap.instance = instance
+        if instance == instanceURL {
+            guard let session, phase == .signedIn else {
+                DeviceNotifications.shared.hold(tap)
+                return true
+            }
+            Task { await session.open(tap) }
+        } else {
+            // Another instance's: the app turns to it first, and it is followed from there.
+            DeviceNotifications.shared.hold(tap)
+            Task { await switchTo(instance) }
+        }
+        return true
     }
 
     /// The saved entry for the instance showing, when it has one: an address that has never
@@ -259,6 +292,9 @@ final class AppModel {
             self.pendingLink = nil
             follow(pendingLink)
         }
+        if let instanceURL, let tap = DeviceNotifications.shared.takeTap(for: instanceURL) {
+            Task { await session.open(tap) }
+        }
         await session.start()
     }
 
@@ -323,6 +359,8 @@ final class AppModel {
 
     private func endSession(instanceURL: URL, api: APIClient) async {
         Keychain.delete(account: instanceURL.absoluteString)
+        // Its reminders were this person's, and so was what the device had announced.
+        DeviceNotifications.forget(instanceURL)
         api.token = nil
         api.onUnauthorized = nil
         session = nil
@@ -378,6 +416,7 @@ final class AppModel {
         saveInstances()
         unreadElsewhere[url] = nil
         themes.forget(url)
+        DeviceNotifications.forget(url)
         // Still offered when adding one: an instance removed by mistake is one tap from back.
         recentInstances = [url.absoluteString] + recentInstances.filter { $0 != url.absoluteString }.prefix(4)
         UserDefaults.standard.set(recentInstances, forKey: Self.recentsKey)
@@ -423,13 +462,15 @@ final class AppModel {
                 continue
             }
             do {
-                // Asked of the instance itself: a count from the cache would be a guess.
-                let inbox: NotificationInbox = try await APIClient(baseURL: instance.url, token: token)
-                    .send("GET", "api/notifications")
+                // Asked of the instance itself: a count from the cache would be a guess. What
+                // is new there is announced on the device, and its reminders scheduled, as
+                // they would be with it showing: it has no live connection to hear over.
+                let inbox = try await DeviceNotifications.sync(instance.url, api: APIClient(baseURL: instance.url, token: token))
                 unreadElsewhere[instance.url] = inbox.unreadCount
             } catch let error as APIError where error.isUnauthorized {
                 // Its session ended while it wasn't showing.
                 Keychain.delete(account: instance.url.absoluteString)
+                DeviceNotifications.forget(instance.url)
                 signedIn(instance.url, as: nil)
                 unreadElsewhere[instance.url] = nil
             } catch {

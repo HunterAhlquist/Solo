@@ -176,8 +176,22 @@ nonisolated struct NotificationItem: Codable, Hashable, Sendable, Identifiable {
     var epicId: UUID?
     var createdAt: Date
     var readAt: Date?
+    /// A deadline entry's reminder key: the `UpcomingReminder.key` it was announced under
+    /// before the instance raised it. Nil for other kinds, and from an instance that
+    /// doesn't offer reminders ahead.
+    var key: String?
 
     var isUnread: Bool { readAt == nil }
+}
+
+/// A deadline reminder the instance will raise later, for the device to show at that time
+/// itself (`DeviceNotifications`).
+nonisolated struct UpcomingReminder: Codable, Hashable, Sendable {
+    var key: String
+    var taskId: UUID
+    var fireAt: Date
+    var title: String
+    var body: String?
 }
 
 nonisolated struct NotificationInbox: Codable, Hashable, Sendable {

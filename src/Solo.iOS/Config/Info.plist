@@ -17,6 +17,17 @@
 	     the keychain, both the system's. Said here so an upload isn't held for the answer. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- The background refresh that reads each instance's inbox while the app is closed
+	     (BackgroundSync), and the mode it runs under. An iPhone's and iPad's; a Mac has
+	     neither and ignores both. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Solo connects to the instance you point it at, which may be on your local network.</string>
 	<!-- What a note or folder carries while it is dragged about its design doc. Private to

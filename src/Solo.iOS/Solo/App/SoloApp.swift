@@ -7,6 +7,12 @@ struct SoloApp: App {
     init() {
         SoloImages.configure()
         Perf.start()
+        // Both before launch finishes: a tap that launched the app is handed over as it
+        // does, and the system takes a background refresh's handler no later.
+        DeviceNotifications.shared.install()
+        #if os(iOS)
+        BackgroundSync.install()
+        #endif
     }
 
     var body: some Scene {

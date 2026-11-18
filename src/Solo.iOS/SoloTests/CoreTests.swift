@@ -86,6 +86,60 @@ import AppKit
     }
 }
 
+@Suite struct NotificationLedgerTests {
+    private func entry(_ id: Int, key: String? = nil, raised: Double = 1_000) -> NotificationItem {
+        NotificationItem(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", id))!,
+                         kind: key == nil ? .assigned : .dueThisWeek, title: "Entry \(id)", body: nil, projectId: nil,
+                         boardId: nil, taskId: nil, epicId: nil, createdAt: Date(timeIntervalSince1970: raised), readAt: nil,
+                         key: key)
+    }
+
+    private func news(_ unread: [NotificationItem], seen: [NotificationItem]?, reminded: [String: Double] = [:],
+                      pending: Set<String> = [], now: Double = 2_000) -> (news: Set<UUID>, superseded: [String]) {
+        NotificationLedger.news(in: unread, seen: seen.map { Set($0.map(NotificationLedger.key)) }, reminded: reminded,
+                                pending: pending, now: now)
+    }
+
+    @Test func theFirstLookAtAnInstanceAnnouncesNothing() {
+        // An inbox full of old entries isn't news; it is only what is there.
+        #expect(news([entry(1), entry(2)], seen: nil).news.isEmpty)
+    }
+
+    @Test func onlyWhatHasNotBeenSeenIsNews() {
+        let verdict = news([entry(1), entry(2), entry(3)], seen: [entry(1), entry(2)])
+        #expect(verdict.news == [entry(3).id])
+        #expect(verdict.superseded.isEmpty)
+    }
+
+    @Test func anEntryRaisedAgainUnderTheSameIdIsNewsAgain() {
+        // Cleared and raised again: the same id, a later time.
+        #expect(news([entry(1, raised: 5_000)], seen: [entry(1)]).news == [entry(1).id])
+    }
+
+    @Test func aDeadlineEntryWhoseReminderThisDeviceShowedIsNotSaidTwice() {
+        let key = "DueThisWeek:task:2026-11-26"
+        #expect(news([entry(1, key: key)], seen: [], reminded: [key: 1_500]).news.isEmpty)
+        // One the device never scheduled — the deadline was set after its last look — is news.
+        #expect(news([entry(1, key: key)], seen: []).news == [entry(1).id])
+        // And so is one whose reminder is on record for a time still to come and is not
+        // pending: something took it down before it could say anything.
+        #expect(news([entry(1, key: key)], seen: [], reminded: [key: 9_000]).news == [entry(1).id])
+    }
+
+    @Test func anEntryThatBeatsItsReminderTakesTheReminderDown() {
+        let key = "DueThisWeek:task:2026-11-26"
+        let verdict = news([entry(1, key: key)], seen: [], reminded: [key: 9_000], pending: [key])
+        #expect(verdict.news == [entry(1).id])
+        #expect(verdict.superseded == [key])
+    }
+
+    @Test func aReminderThatFiredIsRememberedForAMonthAndOnePendingIsNot() {
+        let now = 100 * 86_400.0
+        let kept = NotificationLedger.fired(["fired": now - 86_400, "old": now - 31 * 86_400, "pending": now + 60], now: now)
+        #expect(kept == ["fired": now - 86_400])
+    }
+}
+
 @Suite struct DateParsingTests {
     @Test func readsEveryShapeTheServerWrites() throws {
         let whole = try #require(SoloJSON.parseDate("2026-11-14T00:25:45Z"))
@@ -810,4 +864,15 @@ private func symbolExists(_ name: String) -> Bool {
     #else
     NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
     #endif
+}
+
+@Suite struct DeviceNotificationAddressTests {
+    @Test func anInstanceIsOneInstanceWithOrWithoutItsSlash() throws {
+        let kept = try #require(URL(string: "https://solo.example.com"))
+        let client = try #require(URL(string: "https://solo.example.com/"))
+        #expect(DeviceNotifications.address(of: kept) == DeviceNotifications.address(of: client))
+        let under = try #require(URL(string: "https://example.com/solo/"))
+        #expect(DeviceNotifications.address(of: under) == "https://example.com/solo")
+        #expect(DeviceNotifications.address(of: kept) != DeviceNotifications.address(of: under))
+    }
 }

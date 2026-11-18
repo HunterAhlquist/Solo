@@ -253,6 +253,8 @@ extension APIClient {
     // MARK: Notifications
 
     func notifications() async throws -> NotificationInbox { try await get("api/notifications") }
+    /// Asked of the instance itself: a schedule made from the cache would be an old one.
+    func upcomingReminders() async throws -> [UpcomingReminder] { try await send("GET", "api/notifications/upcoming") }
     func markNotificationRead(_ id: UUID) async throws { try await send("POST", "api/notifications/\(id.api)/read") }
     func markAllNotificationsRead() async throws { try await send("POST", "api/notifications/read") }
     func clearNotifications() async throws { try await send("POST", "api/notifications/clear") }

@@ -45,10 +45,28 @@ final class NotificationStore {
         let fresh = inbox == nil ? [] : fetched.items.filter { $0.isUnread && !known.contains($0.id) }
         known.formUnion(fetched.items.map(\.id))
         inbox = fetched
+        // Asked every time, whether or not anything is announced: it is also how the device
+        // comes to know what it has seen, so a background refresh doesn't say it again.
+        let news = await DeviceNotifications.claim(fetched.items.filter(\.isUnread), on: api.baseURL)
         for item in fresh {
-            announce(item)
+            toasts.show(item.title, .info)
+        }
+        // Behind another app, or put away with the connection still up, there is nobody to
+        // read a toast: the device shows it. The inbox lists the newest first.
+        if !Platform.isActive {
+            for item in fetched.items.reversed() where news.contains(item.id) {
+                await DeviceNotifications.show(item, on: api.baseURL)
+            }
         }
         try? await UNUserNotificationCenter.current().setBadgeCount(fetched.unreadCount)
+        await scheduleReminders()
+    }
+
+    /// Hands the device the deadline reminders still to come, to show at their time whether
+    /// the app is open or not. Left as they are when the instance can't be asked.
+    private func scheduleReminders() async {
+        guard let reminders = try? await api.upcomingReminders() else { return }
+        await DeviceNotifications.schedule(reminders, on: api.baseURL)
     }
 
     func markRead(_ notification: NotificationItem) async {
@@ -70,23 +88,6 @@ final class NotificationStore {
     func clearAll() async {
         try? await api.clearNotifications()
         await refresh()
-    }
-
-    /// In the app it is a toast. Behind the app it is a notification on the
-    /// device, when the person has allowed them: the hub connection only lives
-    /// as long as iOS lets the app run, so this covers the minutes after
-    /// leaving, not the hours.
-    private func announce(_ item: NotificationItem) {
-        toasts.show(item.title, .info)
-        Task {
-            let center = UNUserNotificationCenter.current()
-            guard await center.notificationSettings().authorizationStatus == .authorized else { return }
-            let content = UNMutableNotificationContent()
-            content.title = item.title
-            content.body = item.body ?? ""
-            content.sound = .default
-            try? await center.add(UNNotificationRequest(identifier: item.id.uuidString, content: content, trigger: nil))
-        }
     }
 
     /// Reminders and digests go by UTC until a client says where its person is.

@@ -129,6 +129,19 @@ struct NotificationSettingsView: View {
     @State private var busy = false
 
     private var emailOn: Bool { session.config.emailEnabled == true }
+
+    /// What the device can and can't do, which is not what a notifications switch usually means.
+    private static var deviceNote: String {
+        let reminders = "Solo has no push notifications: an instance you host has no way to send them. "
+            + "Your deadline reminders are scheduled on this device ahead of time, so they arrive when they are due "
+            + "even with Solo closed. "
+        #if os(macOS)
+        return reminders + "Anything else, such as being assigned a task, shows while Solo is running."
+        #else
+        return reminders + "Anything else, such as being assigned a task, shows while Solo is open, and otherwise "
+            + "when iOS next lets it check in the background, which can be hours later."
+        #endif
+    }
     private static let weekdays: [Weekday] = [.monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday]
 
     var body: some View {
@@ -149,6 +162,8 @@ struct NotificationSettingsView: View {
                         Task {
                             _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
                             await readPermission()
+                            // Allowed only now: the reminders asked for before this were turned away.
+                            await session.notifications.refresh()
                         }
                     }
                 }
@@ -156,9 +171,7 @@ struct NotificationSettingsView: View {
                 Text("On this device")
             } footer: {
                 // Said outright, because the switch above looks like the one that turns push on.
-                Text("Solo shows these itself, for what arrives while it is open or has only just been put away. "
-                    + "It has no push notifications: an instance you host has no way to send them, so nothing arrives "
-                    + "once the app has been closed for a while.")
+                Text(Self.deviceNote)
             }
             .themedRow()
 
