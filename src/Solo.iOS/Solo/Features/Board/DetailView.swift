@@ -445,6 +445,8 @@ struct AssigneeField: View {
                         } icon: {
                             faces[member.avatarId] ?? MenuFaces.ready(member) ?? Image(systemName: "person.crop.circle")
                         }
+                        // Said outright: left to itself a Mac's menu shows a label's title alone.
+                        .labelStyle(.titleAndIcon)
                     }
                 }
                 if !assigneeIds.isEmpty {
