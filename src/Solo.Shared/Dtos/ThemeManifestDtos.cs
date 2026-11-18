@@ -153,10 +153,11 @@ public sealed record ThemeLayoutDto
 /// </summary>
 /// <remarks>
 /// Behind the app, the picture is drawn over the palette's background colour,
-/// so one with transparency in it lets that colour through. The web client
-/// draws it at half strength on top of whatever <see cref="Scrim"/> asks for:
-/// its panels are opaque and its text sits straight on the page, where a native
-/// client reads through glass.
+/// so one with transparency in it lets that colour through. No client draws
+/// it at full strength — the web at half, the native app at a quarter — on
+/// top of whatever <see cref="Scrim"/> asks for: headings and titles sit
+/// straight on the page, and a picture at full strength is read through
+/// rather than over.
 /// </remarks>
 public sealed record ThemeBackgroundDto
 {

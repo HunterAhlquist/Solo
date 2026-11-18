@@ -143,7 +143,7 @@ Use `scrim` with a detailed image. Without it, the text on the sign-in card can 
 
 Solo puts the image on the background colour of the palette. If the image has transparent parts, the background colour shows through them.
 
-The web app shows the image at half strength, because text can be directly on the page. `scrim` decreases the strength more. To change the half, set `--solo-backdrop-strength` in the stylesheet of the theme:
+Solo does not show the image at full strength, because text can be directly on the page. The web app shows it at half strength. `scrim` decreases the strength more. To change the half, set `--solo-backdrop-strength` in the stylesheet of the theme:
 
 ```css
 :root {
@@ -151,7 +151,7 @@ The web app shows the image at half strength, because text can be directly on th
 }
 ```
 
-The apps for iPhone, iPad and Mac show the image at full strength below their glass panels. They use `scrim` only.
+The apps for iPhone, iPad and Mac always show the image at a quarter of its strength. They do not read the stylesheet.
 
 ## Palette
 

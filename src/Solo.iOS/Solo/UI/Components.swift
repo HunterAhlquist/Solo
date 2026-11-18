@@ -31,10 +31,18 @@ struct CardBackground: ViewModifier {
 /// one picture for the window: each draws the part of it that it is standing in front of.
 /// So it holds still while a page slides in or a panel opens beside one, and a sheet is a
 /// further pane over the same picture rather than a smaller copy of it.
+///
+/// It is drawn at a quarter of its strength. Glass carries most of what is read here, but
+/// not all: a section's heading, a page's title and an empty page's one line sit straight
+/// on the page. At full strength they were lost in the picture, and at the web's half the
+/// quieter of them still were — the web has its panels behind such lines more often.
 struct AppBackground: View {
     @Environment(\.theme) private var theme
     @Environment(ThemeStore.self) private var themes: ThemeStore?
     @Environment(\.backdropCanvas) private var canvas
+
+    /// How much of the picture shows: what `--solo-backdrop-strength` is on the web.
+    private static let strength = 0.25
 
     var body: some View {
         ZStack {
@@ -55,6 +63,7 @@ struct AppBackground: View {
                         .frame(width: own.width, height: own.height, alignment: .topLeading)
                         .clipped()
                 }
+                .opacity(Self.strength)
                 // What a theme asks to be laid over a picture too busy to read on.
                 Color.groupedBackground.opacity(min(max(background.scrim ?? 0, 0), 1))
             }

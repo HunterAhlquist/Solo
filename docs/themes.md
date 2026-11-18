@@ -156,11 +156,12 @@ separate from the sign-in one on purpose: a picture that suits a card in the
 middle of an empty page is rarely one to read a board over.
 
 The picture is drawn over the palette's `background` colour, so transparency in
-it lets that colour through. The web client draws it at half strength, and
-`scrim` takes it down further: the panels there are opaque and headings sit
-straight on the page. A theme's stylesheet can change the half with
+it lets that colour through. It is never drawn at full strength, and `scrim`
+takes it down further: headings and titles sit straight on the page, and a
+picture at full strength is read through rather than over. The web client draws
+it at half, which a theme's stylesheet can change with
 `--solo-backdrop-strength` (`:root { --solo-backdrop-strength: 0.8; }`). The
-native app draws the picture as it is, under glass, with only `scrim` over it.
+native app draws it at a quarter, fixed: more of its text sits on the bare page.
 Inside an app that hosts the web client the picture is the app's to draw, and
 the client leaves it out.
 
