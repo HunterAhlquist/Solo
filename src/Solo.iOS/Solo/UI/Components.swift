@@ -25,8 +25,16 @@ struct CardBackground: ViewModifier {
 /// The page behind everything: the system's own background, with the
 /// instance's accent as a faint wash at the top. The wash is what the glass
 /// above it picks up, and the only place the accent is painted large.
+///
+/// Over that goes the theme's picture, where it has one for behind the app. Every page, and
+/// every sheet over a page, draws this view for itself at its own size, and the picture is
+/// one picture for the window: each draws the part of it that it is standing in front of.
+/// So it holds still while a page slides in or a panel opens beside one, and a sheet is a
+/// further pane over the same picture rather than a smaller copy of it.
 struct AppBackground: View {
     @Environment(\.theme) private var theme
+    @Environment(ThemeStore.self) private var themes: ThemeStore?
+    @Environment(\.backdropCanvas) private var canvas
 
     var body: some View {
         ZStack {
@@ -36,9 +44,68 @@ struct AppBackground: View {
                 startPoint: .topLeading, endPoint: .bottom)
             RadialGradient(colors: [theme.primary.opacity(theme.isDark ? 0.10 : 0.07), .clear],
                            center: .bottomTrailing, startRadius: 0, endRadius: 520)
+            if let background = themes?.document?.background, let picture = themes?.backdrop(dark: theme.isDark) {
+                GeometryReader { proxy in
+                    let own = proxy.frame(in: .global)
+                    // Without a window to go by — a preview, a window of its own — it fills this.
+                    let window = canvas.map { CGRect(origin: .zero, size: $0) } ?? own
+                    FittedPicture(image: picture, fit: background.fit, position: background.position)
+                        .frame(width: window.width, height: window.height)
+                        .offset(x: window.minX - own.minX, y: window.minY - own.minY)
+                        .frame(width: own.width, height: own.height, alignment: .topLeading)
+                        .clipped()
+                }
+                // What a theme asks to be laid over a picture too busy to read on.
+                Color.groupedBackground.opacity(min(max(background.scrim ?? 0, 0), 1))
+            }
         }
         .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
+}
+
+/// A theme's picture laid out in the room it is given by the theme's `fit` and `position`,
+/// as the web lays it out with `background-size` and `background-position`.
+struct FittedPicture: View {
+    var image: Image
+    var fit: String?
+    var position: String?
+
+    var body: some View {
+        GeometryReader { proxy in
+            fitted(in: proxy.size)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment)
+                .clipped()
+        }
+    }
+
+    @ViewBuilder
+    private func fitted(in size: CGSize) -> some View {
+        switch fit?.lowercased() {
+        case "contain":
+            image.resizable().scaledToFit()
+        case "width":
+            image.resizable().aspectRatio(contentMode: .fit).frame(width: size.width)
+        case "height":
+            image.resizable().aspectRatio(contentMode: .fit).frame(height: size.height).fixedSize()
+        case "stretch":
+            image.resizable().frame(width: size.width, height: size.height)
+        default:
+            image.resizable().scaledToFill()
+        }
+    }
+
+    private var alignment: Alignment {
+        let value = position?.lowercased() ?? "center"
+        let vertical: VerticalAlignment = value.contains("top") ? .top : value.contains("bottom") ? .bottom : .center
+        let horizontal: HorizontalAlignment = value.contains("left") ? .leading : value.contains("right") ? .trailing : .center
+        return Alignment(horizontal: horizontal, vertical: vertical)
+    }
+}
+
+extension EnvironmentValues {
+    /// The size of the window a view is in, where the app's root has measured it.
+    @Entry var backdropCanvas: CGSize?
 }
 
 extension View {

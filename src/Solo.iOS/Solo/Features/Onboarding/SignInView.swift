@@ -134,42 +134,15 @@ struct LoginBackground: View {
             (background?.color.flatMap(CSSColor.init)?.color ?? Color.pageBackground)
             if let background, let api = model.api,
                let path = theme.isDark ? background.image : (background.imageLight ?? background.image) {
-                GeometryReader { proxy in
-                    LazyImage(url: api.url(path)) { state in
-                        if let image = state.image {
-                            fitted(image, background.fit, in: proxy.size)
-                        }
+                LazyImage(url: api.url(path)) { state in
+                    if let image = state.image {
+                        FittedPicture(image: image, fit: background.fit, position: background.position)
                     }
-                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: alignment(background.position))
-                    .clipped()
                 }
                 // A busy picture behind the card is the fastest way to make it unreadable.
                 Color.pageBackground.opacity(background.scrim ?? 0)
             }
         }
         .ignoresSafeArea()
-    }
-
-    @ViewBuilder
-    private func fitted(_ image: Image, _ fit: String?, in size: CGSize) -> some View {
-        switch fit?.lowercased() {
-        case "contain":
-            image.resizable().scaledToFit()
-        case "width":
-            image.resizable().aspectRatio(contentMode: .fit).frame(width: size.width)
-        case "height":
-            image.resizable().aspectRatio(contentMode: .fit).frame(height: size.height).fixedSize()
-        case "stretch":
-            image.resizable().frame(width: size.width, height: size.height)
-        default:
-            image.resizable().scaledToFill()
-        }
-    }
-
-    private func alignment(_ position: String?) -> Alignment {
-        let value = position?.lowercased() ?? "center"
-        let vertical: VerticalAlignment = value.contains("top") ? .top : value.contains("bottom") ? .bottom : .center
-        let horizontal: HorizontalAlignment = value.contains("left") ? .leading : value.contains("right") ? .trailing : .center
-        return Alignment(horizontal: horizontal, vertical: vertical)
     }
 }

@@ -39,6 +39,10 @@ public sealed class ThemePackage
 
         string? Url(string? path) => path is null ? null : prefix + path;
 
+        ThemeBackgroundDto? Served(ThemeBackgroundDto? background) => background is null
+            ? null
+            : background with { Image = Url(background.Image), ImageLight = Url(background.ImageLight) };
+
         var login = Manifest.Login;
         if (login is not null)
         {
@@ -46,13 +50,7 @@ public sealed class ThemePackage
             {
                 Logo = Url(login.Logo),
                 LogoLight = Url(login.LogoLight),
-                Background = login.Background is { } background
-                    ? background with
-                    {
-                        Image = Url(background.Image),
-                        ImageLight = Url(background.ImageLight),
-                    }
-                    : null,
+                Background = Served(login.Background),
             };
         }
 
@@ -61,6 +59,7 @@ public sealed class ThemePackage
             Stylesheet = Url(Manifest.Stylesheet),
             FontStylesheet = Url(Manifest.FontStylesheet),
             Login = login,
+            Background = Served(Manifest.Background),
             // The font files' own URLs are resolved by the browser against the
             // generated stylesheet, so the paths inside it stay package-relative.
             Fonts = Manifest.Fonts,

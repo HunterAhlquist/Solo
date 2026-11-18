@@ -49,6 +49,14 @@ lede: Each field of the theme manifest, with its values and its default.
     "logoLight": "content/logo-light.svg"
   },
 
+  "background": {
+    "image": "content/background.webp",
+    "imageLight": "content/background-light.webp",
+    "fit": "cover",
+    "position": "center",
+    "scrim": 0
+  },
+
   "dark":  { },
   "light": { }
 }
@@ -70,6 +78,7 @@ A theme needs only `id` and `name`. All other fields are optional. An omitted pa
 | `typography` | See [Typography](#typography). |
 | `layout` | See [Layout](#layout). |
 | `login` | See [Sign-in screen](#sign-in-screen). |
+| `background` | An image behind the app. See [App background](#app-background). |
 | `dark`, `light` | The two palettes. See [Palette](#palette). |
 
 All paths are relative to the root of the package, for example `content/theme.css`.
@@ -127,6 +136,22 @@ Use `scrim` with a detailed image. Without it, the text on the sign-in card can 
 |---|---|
 | `logo` | The path of an image that replaces the word "Solo" on the sign-in card. |
 | `logoLight` | The path of a different logo for the light scheme. |
+
+## App background
+
+`background` puts an image behind the app, on all pages after sign-in. It has the same fields as the [sign-in background](#background): `image`, `imageLight`, `fit`, `position`, `scrim` and `color`. The sign-in screen does not show it.
+
+Solo puts the image on the background colour of the palette. If the image has transparent parts, the background colour shows through them.
+
+The web app shows the image at half strength, because text can be directly on the page. `scrim` decreases the strength more. To change the half, set `--solo-backdrop-strength` in the stylesheet of the theme:
+
+```css
+:root {
+    --solo-backdrop-strength: 0.8;
+}
+```
+
+The apps for iPhone, iPad and Mac show the image at full strength below their glass panels. They use `scrim` only.
 
 ## Palette
 

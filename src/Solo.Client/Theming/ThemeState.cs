@@ -51,20 +51,21 @@ public sealed class ThemeState(IJSRuntime js)
     public event Action? Changed;
 
     /// <summary>The login background for the scheme in force, or null if the theme has none.</summary>
-    public ThemeBackgroundDto? LoginBackground
-    {
-        get
-        {
-            var background = _theme?.Login?.Background;
-            if (background is null)
-            {
-                return null;
-            }
+    public ThemeBackgroundDto? LoginBackground => ForScheme(_theme?.Login?.Background);
 
-            // A theme may ship one image for both schemes or one per scheme.
-            var image = IsDarkMode ? background.Image : background.ImageLight ?? background.Image;
-            return image is null ? null : background with { Image = image };
+    /// <summary>The picture behind the app itself for the scheme in force, or null if the theme has none.</summary>
+    public ThemeBackgroundDto? AppBackground => ForScheme(_theme?.Background);
+
+    private ThemeBackgroundDto? ForScheme(ThemeBackgroundDto? background)
+    {
+        if (background is null)
+        {
+            return null;
         }
+
+        // A theme may ship one image for both schemes or one per scheme.
+        var image = IsDarkMode ? background.Image : background.ImageLight ?? background.Image;
+        return image is null ? null : background with { Image = image };
     }
 
     /// <summary>The sign-in wordmark for the scheme in force, if the theme supplies one.</summary>

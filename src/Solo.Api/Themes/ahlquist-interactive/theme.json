@@ -30,6 +30,13 @@
     }
   },
 
+  "background": {
+    "image": "content/background-dark.webp",
+    "imageLight": "content/background-light.webp",
+    "fit": "cover",
+    "position": "center"
+  },
+
   "dark": {
     "primary": "#fff600",
     "secondary": "#c9c400",

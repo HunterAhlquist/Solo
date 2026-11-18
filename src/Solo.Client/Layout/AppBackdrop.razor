@@ -1,0 +1,26 @@
+@implements IDisposable
+@inject ThemeState Theme
+@inject NavigationManager Navigation
+@inject Solo.Client.Hosting.HostShell Shell
+
+@* The theme's picture behind the app (ThemeDto.Background). A component of its
+   own because the layout around it doesn't redraw when the scheme changes, and
+   a theme may ship one picture for dark and another for light.
+
+   Not inside an app that hosts the client (HostShell): the page there is the
+   app's, which draws the same picture behind it, and a second one through a
+   see-through page lands on top of the first at another size. *@
+@if (!Shell.IsHosted && Style is { Length: > 0 } style)
+{
+    <div class="app-backdrop" style="@style" aria-hidden="true"></div>
+}
+
+@code {
+    private string Style => ThemeBackgroundCss.Properties(Theme.AppBackground, "backdrop", Navigation.ToAbsoluteUri);
+
+    protected override void OnInitialized() => Theme.Changed += OnThemeChanged;
+
+    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Theme.Changed -= OnThemeChanged;
+}

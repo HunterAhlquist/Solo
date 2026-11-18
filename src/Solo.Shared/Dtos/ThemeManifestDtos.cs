@@ -146,9 +146,18 @@ public sealed record ThemeLayoutDto
 }
 
 /// <summary>
-/// A login background. <see cref="Image"/> is a package-relative path in
-/// <c>theme.json</c> and an app-relative URL by the time a client sees it.
+/// A background picture: the sign-in page's (<see cref="ThemeLoginDto.Background"/>)
+/// or the app's own (<see cref="ThemeDto.Background"/>). <see cref="Image"/> is a
+/// package-relative path in <c>theme.json</c> and an app-relative URL by the
+/// time a client sees it.
 /// </summary>
+/// <remarks>
+/// Behind the app, the picture is drawn over the palette's background colour,
+/// so one with transparency in it lets that colour through. The web client
+/// draws it at half strength on top of whatever <see cref="Scrim"/> asks for:
+/// its panels are opaque and its text sits straight on the page, where a native
+/// client reads through glass.
+/// </remarks>
 public sealed record ThemeBackgroundDto
 {
     /// <summary>Used for both schemes unless <see cref="ImageLight"/> overrides it.</summary>
@@ -167,7 +176,8 @@ public sealed record ThemeBackgroundDto
 
     /// <summary>
     /// 0-1 opacity of a flat scrim laid over the image in the palette's
-    /// background colour. Keeps the sign-in card legible over a busy photo.
+    /// background colour. Keeps the sign-in card, or the app's own pages,
+    /// legible over a busy photo.
     /// </summary>
     public double Scrim { get; init; }
 

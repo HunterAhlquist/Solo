@@ -52,6 +52,14 @@ public sealed record ThemeDto
     public ThemeLayoutDto? Layout { get; init; }
     public ThemeLoginDto? Login { get; init; }
 
+    /// <summary>
+    /// A picture behind the app itself, on every page once signed in. Separate
+    /// from <see cref="ThemeLoginDto.Background"/>, which is the sign-in page's
+    /// alone: a picture that suits a card in the middle of an empty page is
+    /// rarely one to read a board over.
+    /// </summary>
+    public ThemeBackgroundDto? Background { get; init; }
+
     public ThemePaletteDto? Dark { get; init; }
     public ThemePaletteDto? Light { get; init; }
 }

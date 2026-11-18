@@ -7,7 +7,9 @@ import SwiftUI
 /// backgrounds, system type, Liquid Glass — and takes one thing from the
 /// instance's theme: its accent. That accent arrives as the tint on controls
 /// and as a faint wash behind the content, which is enough to tell one
-/// instance from another without repainting the system.
+/// instance from another without repainting the system. A theme with a
+/// picture for behind the app has that drawn behind this one too
+/// (`AppBackground`): it is what the glass is over, and repaints nothing.
 nonisolated struct Theme: Equatable, Sendable {
     /// The instance's accent for the scheme in effect.
     var primary: Color

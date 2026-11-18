@@ -1746,6 +1746,29 @@ html.solo-desktop .solo-titlebar {
 }
 
 /* ---------------------------------------------------------------------------
+   App backdrop — a theme's picture behind the app itself (ThemeDto.Background).
+
+   Behind everything in the page and in front of the page's own colour, which
+   is what a picture with transparency in it lets through. It is drawn at half
+   strength: the panels here are opaque and text sits straight on the page, so
+   a picture at full strength is read through rather than over. A theme's
+   stylesheet can say otherwise with --solo-backdrop-strength; its `scrim`
+   takes the picture down further.
+   --------------------------------------------------------------------------- */
+.app-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-color: var(--backdrop-color, transparent);
+    background-image: var(--backdrop-image, none);
+    background-size: var(--backdrop-size, cover);
+    background-position: var(--backdrop-position, center);
+    background-repeat: no-repeat;
+    opacity: calc(var(--solo-backdrop-strength, 0.5) * (1 - var(--backdrop-scrim, 0)));
+}
+
+/* ---------------------------------------------------------------------------
    Sign-in backdrop — a theme's login background image.
 
    The image and its fit arrive as custom properties from the theme package

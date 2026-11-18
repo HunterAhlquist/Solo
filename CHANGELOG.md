@@ -21,6 +21,7 @@ with its version in parentheses).
 - Each person gets an email digest: daily or weekly at the hour they pick, or as it happens, batched every 15 minutes. It lists overdue work, work due within 2 weeks with the earliest deadline first, and work recently assigned to them. Mail apps can unsubscribe in one click. People can now pick their time zone in **Notifications**.
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
 - The web client can be shown inside an app that hosts it in a web view of its own: it leaves out its bars and navigation, signs in with the session the app hands it, and passes a link to a screen the app has back to the app. For such an app it can also run extensions' contributions out of sight and describe the ones built from the kit as data — and what they add to a task's menu, and an extension's whole page when that is built from the kit — so that the app can draw them itself, and it tells the app when one of them opens a dialog or says something in a snackbar. Nothing changes in a browser or in the desktop app.
+- A theme can put a picture behind the app itself: `background` in `theme.json`, with the same fields as the sign-in background and an optional light-scheme version. The web client draws it at half strength over the page colour; a theme's stylesheet can change that with `--solo-backdrop-strength`. Ahlquist Interactive, the default theme, now has one.
 
 ### Desktop
 - Notifications from your instance show as system notifications while the app is open.
@@ -28,6 +29,7 @@ with its version in parentheses).
 ### SDK
 - Contract 1.16.0: the notification and email settings DTOs, `NotificationKind`, `DigestFrequency`, `SmtpSecurity`, `AuthConfigDto.EmailEnabled` and the core user topic `BoardHubConstants.NotificationsTopic`, used by core's own client and API.
 - Contract 1.17.0: the kit, `Solo.Shared.Kit`. Ten components an extension builds a contribution from (`SoloStack`, `SoloText`, `SoloIcon`, `SoloBadge`, `SoloButton`, `SoloRow`, `SoloProgress`, `SoloToggle`, `SoloTextField`, `SoloPicker`) that say what each piece is and leave the drawing to the client; the web client draws them with the components core itself uses. A contribution built from them is one a client that is not a browser can draw too, and so is a whole page; `[WebPage]` marks a page that needs more than the kit, for such a client to show from the web client instead. `HunterAhlquist.Solo.Shared` now depends on `Microsoft.AspNetCore.Components`. Client-only: a package using the kit needs 1.17 in `soloClientVersion`.
+- Contract 1.17.0 also adds `ThemeDto.Background`, the picture a theme puts behind the app.
 
 ### Extensions
 

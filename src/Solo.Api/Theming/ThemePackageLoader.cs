@@ -365,34 +365,40 @@ public static partial class ThemePackageLoader
             return normalized;
         }
 
+        // The sign-in page's background and the app's own are the same shape and
+        // are checked the same way; `field` is where the manifest wrote this one.
+        ThemeBackgroundDto? Background(ThemeBackgroundDto? background, string field)
+        {
+            if (background is null)
+            {
+                return null;
+            }
+
+            if (background.Color is { } color && !ThemeColors.IsValid(color))
+            {
+                throw new ThemePackageException($"{field}.color '{color}' is not a valid CSS colour.");
+            }
+
+            if (background.Position is { } position && !BackgroundPosition().IsMatch(position))
+            {
+                throw new ThemePackageException(
+                    $"{field}.position '{position}' is not a CSS background-position.");
+            }
+
+            return background with
+            {
+                Image = Resolve(background.Image, $"{field}.image"),
+                ImageLight = Resolve(background.ImageLight, $"{field}.imageLight"),
+                Scrim = Math.Clamp(background.Scrim, 0, 1),
+            };
+        }
+
         var login = manifest.Login;
         if (login is not null)
         {
-            var background = login.Background;
-            if (background is not null)
-            {
-                if (background.Color is { } color && !ThemeColors.IsValid(color))
-                {
-                    throw new ThemePackageException($"login.background.color '{color}' is not a valid CSS colour.");
-                }
-
-                if (background.Position is { } position && !BackgroundPosition().IsMatch(position))
-                {
-                    throw new ThemePackageException(
-                        $"login.background.position '{position}' is not a CSS background-position.");
-                }
-
-                background = background with
-                {
-                    Image = Resolve(background.Image, "login.background.image"),
-                    ImageLight = Resolve(background.ImageLight, "login.background.imageLight"),
-                    Scrim = Math.Clamp(background.Scrim, 0, 1),
-                };
-            }
-
             login = login with
             {
-                Background = background,
+                Background = Background(login.Background, "login.background"),
                 Logo = Resolve(login.Logo, "login.logo"),
                 LogoLight = Resolve(login.LogoLight, "login.logoLight"),
             };
@@ -403,6 +409,7 @@ public static partial class ThemePackageLoader
             IsBuiltIn = isBuiltIn,
             Stylesheet = Resolve(manifest.Stylesheet, "stylesheet"),
             Login = login,
+            Background = Background(manifest.Background, "background"),
             Fonts = ValidateFonts(manifest.Fonts, Resolve),
             // Output only: a manifest that sets these is ignored. FontStylesheet
             // is generated below; the fallback flags are decided per request by

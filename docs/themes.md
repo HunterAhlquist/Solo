@@ -1,7 +1,8 @@
 # Themes
 
 A theme controls Solo's whole look: both colour schemes, typography, layout
-metrics, an optional stylesheet, and the sign-in background.
+metrics, an optional stylesheet, the sign-in background, and a picture behind
+the app itself.
 
 Two settings, deliberately kept apart:
 
@@ -113,6 +114,13 @@ copy one as a starting point.
     "logoLight": "content/logo-light.svg"
   },
 
+  "background": {                               // optional; behind the app once signed in
+    "image": "content/background.webp",
+    "imageLight": "content/background-light.webp",
+    "fit": "cover",
+    "position": "center"
+  },
+
   "dark":  { /* palette */ },
   "light": { /* palette */ }
 }
@@ -139,6 +147,22 @@ on import if you write them anyway.
 
 `scrim` (0–1) lays a flat wash of the palette background over the image. Use it
 — a busy photo behind the sign-in card is the fastest way to make it unreadable.
+
+### App background
+
+`background` at the top level takes the same fields as `login.background` and
+puts a picture behind the app itself, on every page once signed in. It is
+separate from the sign-in one on purpose: a picture that suits a card in the
+middle of an empty page is rarely one to read a board over.
+
+The picture is drawn over the palette's `background` colour, so transparency in
+it lets that colour through. The web client draws it at half strength, and
+`scrim` takes it down further: the panels there are opaque and headings sit
+straight on the page. A theme's stylesheet can change the half with
+`--solo-backdrop-strength` (`:root { --solo-backdrop-strength: 0.8; }`). The
+native app draws the picture as it is, under glass, with only `scrim` over it.
+Inside an app that hosts the web client the picture is the app's to draw, and
+the client leaves it out.
 
 The desktop app's sign-in page (`/desktop-auth`, served by the API rather than
 the client) wears the same login background and logo, plus the palette,

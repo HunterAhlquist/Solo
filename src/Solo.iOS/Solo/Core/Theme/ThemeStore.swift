@@ -1,3 +1,4 @@
+import Nuke
 import SwiftUI
 
 /// Light or dark is each person's own choice, kept on the device; which theme
@@ -43,6 +44,10 @@ final class ThemeStore {
     private(set) var document: ThemeDocument?
     /// Where the instance showing keeps its theme, or nil when none is.
     @ObservationIgnored private var key: String?
+    /// The theme's pictures for behind the app, by the path each was read from. Read once
+    /// here rather than by each page that draws one: a page pushed in has its picture in its
+    /// first frame, and every page draws the same one.
+    private var backdrops: [String: Image] = [:]
 
     var preference: SchemePreference {
         didSet { UserDefaults.standard.set(preference.rawValue, forKey: Self.preferenceKey) }
@@ -89,8 +94,31 @@ final class ThemeStore {
     }
 
     func load(from api: APIClient) async {
+        // The theme as last seen first, so its picture is up without waiting on the instance
+        // to say what the theme is now — and is up at all when the instance is out of reach.
+        await loadBackdrops(from: api)
         if let document = try? await api.activeTheme() {
             apply(document)
+            await loadBackdrops(from: api)
+        }
+    }
+
+    /// The theme's picture for behind the app in a scheme, once it has been read.
+    func backdrop(dark: Bool) -> Image? {
+        guard let background = document?.background else { return nil }
+        return (dark ? background.image : background.imageLight ?? background.image).flatMap { backdrops[$0] }
+    }
+
+    private func loadBackdrops(from api: APIClient) async {
+        let background = document?.background
+        let paths = Set([background?.image, background?.imageLight].compactMap { $0?.nilIfBlank })
+        // A theme's content is addressed by a hash of what it is, so a path read before is
+        // the same picture; one no longer named was another theme's, or another version's.
+        backdrops = backdrops.filter { paths.contains($0.key) }
+        for path in paths where backdrops[path] == nil {
+            if let picture = try? await ImagePipeline.shared.image(for: api.url(path)) {
+                backdrops[path] = Image(platform: picture)
+            }
         }
     }
 }
@@ -101,10 +129,17 @@ struct ThemedRoot<Content: View>: View {
     @Environment(ThemeStore.self) private var store
     @Environment(\.colorScheme) private var colorScheme
     @ViewBuilder var content: Content
+    /// The window, edge to edge: what the theme's picture is laid out to fill.
+    @State private var canvas: CGSize?
 
     var body: some View {
         let theme = store.theme(for: colorScheme)
         content
+            .onGeometryChange(for: CGSize.self) { proxy in
+                CGSize(width: proxy.size.width + proxy.safeAreaInsets.leading + proxy.safeAreaInsets.trailing,
+                       height: proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom)
+            } action: { canvas = $0 }
+            .environment(\.backdropCanvas, canvas)
             .environment(\.theme, theme)
             .tint(theme.primary)
             // A switch's knob is white whatever its track is, so the track is the fill white reads on.

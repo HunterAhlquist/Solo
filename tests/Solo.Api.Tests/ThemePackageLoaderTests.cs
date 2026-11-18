@@ -208,6 +208,51 @@ public class ThemePackageLoaderTests : IDisposable
     }
 
     [Fact]
+    public void An_app_background_is_checked_like_the_login_one()
+    {
+        var manifest = """
+            { "formatVersion": 1, "id": "test-theme", "name": "Test Theme",
+              "background": { "image": "content/bg.webp", "imageLight": "content/BG-Light.webp",
+                              "fit": "cover", "position": "center", "scrim": -3 } }
+            """;
+        var path = WriteZip(
+            ("theme.json", Encoding.UTF8.GetBytes(manifest)),
+            ("content/bg.webp", "RIFF"u8.ToArray()),
+            ("content/bg-light.webp", "RIFF"u8.ToArray()));
+
+        var package = ThemePackageLoader.LoadZip(path);
+
+        var background = package.Manifest.Background!;
+        Assert.Equal("content/bg.webp", background.Image);
+        // Found whatever case the zip stored it under, as every other content path is.
+        Assert.Equal("content/BG-Light.webp", background.ImageLight);
+        Assert.Equal(0, background.Scrim);
+        Assert.Null(package.Manifest.Login);
+
+        var served = package.ToServedDto().Background!;
+        Assert.StartsWith($"api/themes/test-theme/{package.ContentHash}/content/", served.Image);
+        Assert.EndsWith("content/BG-Light.webp", served.ImageLight);
+    }
+
+    [Theory]
+    [InlineData("""{ "image": "content/missing.webp" }""", "background.image points at")]
+    [InlineData("""{ "image": "content/bg.webp", "color": "url(x)" }""", "background.color")]
+    [InlineData("""{ "image": "content/bg.webp", "position": "center; color: red" }""", "background.position")]
+    public void A_bad_app_background_is_refused_by_its_own_name(string background, string expected)
+    {
+        var manifest = $$"""
+            { "formatVersion": 1, "id": "test-theme", "name": "Test Theme", "background": {{background}} }
+            """;
+        var path = WriteZip(
+            ("theme.json", Encoding.UTF8.GetBytes(manifest)),
+            ("content/bg.webp", "RIFF"u8.ToArray()));
+
+        var error = Assert.Throws<ThemePackageException>(() => ThemePackageLoader.LoadZip(path));
+        Assert.StartsWith(expected, error.Message);
+        Assert.DoesNotContain("login.", error.Message);
+    }
+
+    [Fact]
     public void Scrim_is_clamped_to_the_zero_to_one_range()
     {
         var manifest = """

@@ -84,6 +84,8 @@ nonisolated struct ThemeDocument: Codable, Hashable, Sendable {
     var typography: ThemeTypography?
     var layout: ThemeLayout?
     var login: ThemeLogin?
+    /// The picture behind the app itself, where the theme has one.
+    var background: ThemeBackground?
     var dark: ThemePalette?
     var light: ThemePalette?
 }
