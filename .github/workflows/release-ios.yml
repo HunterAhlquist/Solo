@@ -1,0 +1,166 @@
+name: iOS TestFlight
+
+on:
+  push:
+    # Previews only, for now: a `preview-v*` tag uploads the iPad and iPhone
+    # app to TestFlight for internal testers. Stable `v*` tags don't, until the
+    # app is ready for App Review.
+    tags: ["preview-v*"]
+  # Builds and uploads from a branch, under a preview version, without a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # build/testflight-gate.sh reads this workflow's earlier runs to find the
+  # last build that reached TestFlight.
+  actions: read
+
+jobs:
+  testflight:
+    name: Upload to TestFlight
+    # The Xcode 27 image, which is what the app is built and tested with: it
+    # deploys to iOS 26 and draws with what that SDK brought. App Store Connect
+    # turns away beta toolchains, so the step below picks a release Xcode.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    # The App Store Connect key can publish builds, so it lives in an
+    # environment whose deployment rules limit it to preview tags.
+    environment: testflight
+    # Lifted to the job because a step's `if:` can read `env` but not
+    # `secrets`: without a key the run stops at a notice instead of failing.
+    env:
+      ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    defaults:
+      run:
+        working-directory: src/Solo.iOS
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history, so the gate can diff against the last uploaded build.
+          fetch-depth: 0
+
+      - name: Classify the release
+        id: channel
+        working-directory: .
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            printf 'version=0.0.0-preview.%s\npackage_label=\n' "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
+      # an extension zip, not the app. Otherwise build/testflight-gate.sh skips
+      # a tag that leaves the app as testers already have it, which is most of
+      # them: the app talks to its instance over the API and carries none of
+      # the server, so a server change doesn't reach it.
+      - name: Check what this run uploads
+        id: gate
+        working-directory: .
+        env:
+          PACKAGE_LABEL: ${{ steps.channel.outputs.package_label }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PACKAGE_LABEL" ]; then
+            echo "::notice::A Design Docs package preview; no app upload."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::notice::No App Store Connect key in the testflight environment; skipping the upload."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          else
+            bash build/testflight-gate.sh ios >> "$GITHUB_OUTPUT"
+          fi
+
+      # The newest release (non-beta) Xcode 27 on the image. Fails rather
+      # than fall back to a beta, which App Store Connect would reject.
+      - name: Select Xcode 27
+        if: steps.gate.outputs.upload == 'true'
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | grep -v -i beta | sort -V | tail -1)"
+          xcodebuild -version
+
+      # The project keeps the store's icon (Solo/Solo.icon). The preview's is
+      # in Icons with the desktop's; the app's folder is one the project reads
+      # whole, so a file put in it is in the target without being listed.
+      - name: Stage the preview icon
+        if: steps.gate.outputs.upload == 'true'
+        run: cp -R "../../Icons/Solo Preview.icon" "Solo/Solo Preview.icon"
+
+      - name: Write the App Store Connect key
+        if: steps.gate.outputs.upload == 'true'
+        working-directory: .
+        run: build/write-asc-key.sh "$RUNNER_TEMP/asc.p8"
+
+      # Release, under the preview name, icon and bundle id. The bundle id is
+      # the Capacitor preview's, so this is the same App Store Connect app and
+      # testers get it as an update to the one they have; it goes through
+      # SOLO_BUNDLE_ID, which the app, its widgets and its tests each build
+      # their own from, where PRODUCT_BUNDLE_IDENTIFIER on the command line
+      # would give every target, the packages included, the same one. The team
+      # is given here and nowhere in the project. The build number only has to
+      # be one this version hasn't had, and grow: it is the minute of the
+      # build, in UTC. The Capacitor port's builds took the run's number, and
+      # this app's can't carry on from theirs — a workflow that isn't on the
+      # default branch keeps its count only as long as its runs are kept — but
+      # any minute is past every number that got.
+      # The marketing version drops the prerelease suffix: iOS takes three
+      # numbers only. The two -skip flags are for a runner with nobody at it to
+      # be asked whether a package's macro or plug-in may run.
+      - name: Archive
+        if: steps.gate.outputs.upload == 'true'
+        env:
+          VERSION: ${{ steps.channel.outputs.version }}
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project Solo.xcodeproj -scheme Solo -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Solo.xcarchive" \
+            -skipPackagePluginValidation -skipMacroValidation \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="${VERSION%%-*}" \
+            CURRENT_PROJECT_VERSION="$(date -u +%Y%m%d%H%M)" \
+            SOLO_BUNDLE_ID=com.hunterahlquist.solo.preview \
+            INFOPLIST_KEY_CFBundleDisplayName="Solo (Preview)" \
+            ASSETCATALOG_COMPILER_APPICON_NAME="Solo Preview"
+
+      # ExportOptions-testflight.plist uploads straight to App Store Connect
+      # and marks the build internal-only, so it can't reach external testers
+      # or a review by accident. The step's name is how build/testflight-gate.sh
+      # recognises a run that uploaded; rename both together.
+      - name: Upload
+        if: steps.gate.outputs.upload == 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Solo.xcarchive" \
+            -exportOptionsPlist ExportOptions-testflight.plist \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      # Signing the archive made an "Apple Development: Created via API"
+      # certificate whose key leaves with this runner; left alone, they pile
+      # up until Apple refuses another. This revokes that one, matched by
+      # serial against this runner's keychain, and never fails the job. It runs
+      # after a failure too, since the archive makes the certificate first.
+      - name: Revoke this run's development certificate
+        if: always() && steps.gate.outputs.upload == 'true'
+        working-directory: .
+        run: swift build/asc-revoke-run-certificates.swift "$RUNNER_TEMP/asc.p8"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asc.p8"

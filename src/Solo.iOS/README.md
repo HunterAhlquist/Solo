@@ -2,7 +2,7 @@
 
 A SwiftUI client for a Solo instance. It talks to the same REST API and the same SignalR hub as the Blazor client in `src/Solo.Client`, so nothing on the server changes for it: point it at an instance and sign in.
 
-It is an experiment and lives on its own branch. It is not part of `Solo.slnx`, of the release train, or of any workflow — it builds and runs locally, from Xcode or `xcodebuild`.
+It is an experiment and lives on its own branch. It is not part of `Solo.slnx` — it builds and runs locally, from Xcode or `xcodebuild` — and of the release train it has one part: a preview tag uploads the iPhone and iPad app to TestFlight (see "TestFlight previews" below).
 
 ## Running it
 
@@ -17,6 +17,17 @@ Choose the `Solo` scheme and an iPhone or iPad destination, or **My Mac**, and r
 On first launch the app asks for the instance's address, then signs in through the instance's own sign-in page in a system sheet. It keeps the session token in the Keychain and the instance in its settings, so later launches go straight in. More instances can be added beside the first — see [Several instances](#several-instances).
 
 The tests are in the `SoloTests` target (`⌘U`, or `xcodebuild test`), and run on a simulator or on the Mac. They cover the rules the app has to share with the server and the web client — dates, serial numbers, rank neighbours, the roadmap's sprint arithmetic, note addresses and heading slugs, the Design Docs sync batch format, and the sketch rasterizer against values taken from the web one.
+
+### TestFlight previews
+
+A `preview-v<version>` tag uploads the iPhone and iPad app to TestFlight for internal testers ([release-ios.yml](../../.github/workflows/release-ios.yml), from the Capacitor port's workflow of the same name). It is built as the preview app — `com.hunterahlquist.solo.preview`, "Solo (Preview)", with the preview icon from `Icons/` — which is the App Store Connect app the Capacitor previews went to, so testers get it as an update to the one they have. The Mac build is not uploaded.
+
+- **The tag is the whole train's.** The same tag runs `ci.yml` and `release-desktop.yml`, which publish the server image, the extension packages and the desktop installers as a prerelease from the tagged commit ([docs/prereleases.md](../../docs/prereleases.md)). There is no tag that uploads the app alone, and the `testflight` environment that holds the App Store Connect key only deploys from `preview-v*` tags, so a manual run from a branch stops at that environment.
+- **Not every tag uploads.** `build/testflight-gate.sh ios` compares `src/Solo.iOS` (its README aside), `Icons/`, `build/release-channel.sh` and the workflow against the commit of the last run that uploaded, and skips the build when none of them changed.
+- **Identity is given on the command line.** The project builds as `com.hunterahlquist.solo.native`; the workflow passes `SOLO_BUNDLE_ID`, which the app, its widgets and its tests each make their own identifier from, along with the display name, the icon's name, the version from the tag and the team. No team is written into the project. The build number is the UTC minute of the build.
+- **Signing is Xcode's, with the App Store Connect key.** The archive is signed with a development certificate the run creates and then revokes (`build/asc-revoke-run-certificates.swift`); the export re-signs for distribution and uploads, marked internal-only (`ExportOptions-testflight.plist`).
+
+The workflow has not run yet: what was checked here is that its archive step builds from a clean copy, unsigned, with the preview identity, and that the gate's tests pass.
 
 ### Debug hooks
 

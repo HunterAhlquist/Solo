@@ -13,6 +13,10 @@
 	<!-- The keychain group the app shares with its widgets, with the team's prefix filled in. -->
 	<key>SoloKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)com.hunterahlquist.solo.native.shared</string>
+	<!-- Nothing of the app's own encrypts anything: it speaks https and keeps a session in
+	     the keychain, both the system's. Said here so an upload isn't held for the answer. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Solo connects to the instance you point it at, which may be on your local network.</string>
 	<!-- What a note or folder carries while it is dragged about its design doc. Private to

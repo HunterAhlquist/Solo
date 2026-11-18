@@ -211,6 +211,7 @@ jobs:
           bash build/test-release-channel.sh
           bash build/test-release-baseline.sh
           bash build/test-release-gating.sh
+          bash build/test-testflight-gate.sh
           bash build/test-nuget-behind.sh
           bash build/test-changelog.sh
 
