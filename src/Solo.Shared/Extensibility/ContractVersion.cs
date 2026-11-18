@@ -111,7 +111,10 @@ namespace Solo.Shared.Extensibility;
 /// contribution with controls of its own. With them the shared assembly takes
 /// its first dependency, on <c>Microsoft.AspNetCore.Components</c>. It is
 /// client-only, so a package using the kit needs 1.17 in
-/// <c>soloClientVersion</c> alone.</para>
+/// <c>soloClientVersion</c> alone. Two additions to core's own DTOs arrive with
+/// it: <c>UpcomingReminderDto</c>, the deadline reminders the iPhone, iPad and
+/// Mac app schedules ahead, with <c>NotificationDto.Key</c> to match one to the
+/// entry raised for it, and <c>ThemeDto.Background</c>.</para>
 /// </remarks>
 public static class ContractVersion
 {
