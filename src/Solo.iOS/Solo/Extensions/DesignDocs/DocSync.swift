@@ -119,6 +119,8 @@ final class DocSync {
 
     @ObservationIgnored private var subscriptions: [EventSubscription] = []
     @ObservationIgnored private var chunks: [String: [String?]] = [:]
+    /// The replay so far, held until the instance says that was all of it.
+    @ObservationIgnored private var replay: [[UInt8]] = []
     @ObservationIgnored private var seq: Int64 = 0
     @ObservationIgnored private var checkpoint: Int64 = 0
     @ObservationIgnored private var syncId = UUID()
@@ -400,6 +402,8 @@ final class DocSync {
             setWritable(false)
         }
         chunks = [:]
+        // Asked for again from the last whole replay, so what came of this one comes again.
+        replay = []
         syncId = UUID()
         resendTask?.cancel()
         liveStatus = session.hub.isConnected ? "Synchronizing…" : "Offline · changes retained"
@@ -550,6 +554,15 @@ final class DocSync {
             chunks[key] = nil
             guard let bytes = Data(base64Encoded: parts.compactMap { $0 }.joined()) else { return }
             let updates = kind == "state-batch" ? Self.unpack(bytes) : [[UInt8](bytes)]
+            // A replay is the document's past, a megabyte at a time, and not something to
+            // watch: applied as it came, a sketch was drawn from each piece in turn, with
+            // every stroke since cleared away, before the one it is now. It is kept back and
+            // applied whole at "synced", as the web's sketches are. What someone writes in
+            // the meantime waits with it, since a document not yet whole can't show it.
+            guard synced, kind == "update" else {
+                replay.append(contentsOf: updates)
+                return
+            }
             apply(updates)
             seq = max(seq, Int64(sequence) ?? 0)
 
@@ -559,6 +572,11 @@ final class DocSync {
             if chunks.keys.contains(where: { $0.hasPrefix("state") }) {
                 interrupted()
                 return
+            }
+            if !replay.isEmpty {
+                let whole = replay
+                replay = []
+                apply(whole)
             }
             let head = Int64(payload["seq"] as? String ?? "") ?? seq
             seq = max(seq, head)
