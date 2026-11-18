@@ -90,31 +90,35 @@ commit src/Solo.Api/Program.cs > /dev/null
 expect "a server change skips iOS" ios false
 expect "a server change skips Mac" mac false
 
-# Docs inside the app folders aren't in either app.
-commit src/Solo.iOS/README.md src/Solo.Desktop/README.md > /dev/null
-expect "an iOS README change skips iOS" ios false
-expect "a desktop README change skips Mac" mac false
+# The app folder's README isn't in either app.
+commit src/Solo.iOS/README.md > /dev/null
+expect "a README change skips iOS" ios false
+expect "a README change skips Mac" mac false
 
-# Neither app carries the client: both load the one their instance serves.
+# Neither app carries the web client or the contract: both are the native
+# client, which has its own code from the API down.
 commit src/Solo.Client/App.razor > /dev/null
 expect "a client change skips iOS" ios false
 expect "a client change skips Mac" mac false
 commit src/Solo.Shared/Dto.cs > /dev/null
+expect "a shared contract change skips iOS" ios false
 expect "a shared contract change skips Mac" mac false
-# The shell itself does reach the Mac app.
-commit src/Solo.Desktop/main.js > /dev/null
-expect "a desktop shell change uploads Mac" mac true
+# Nor the Electron shell, which was the Mac app before the native one.
+commit src/Solo.Desktop/main.js src/Solo.Desktop/README.md src/Solo.Desktop/scripts/stage-icon.mjs > /dev/null
 expect "a desktop shell change skips iOS" ios false
+expect "a desktop shell change skips Mac" mac false
 
-# Icons reach both. The script that stages them is the shell's: the iOS app
-# takes its icon from Icons as it is.
+# The Mac's packaging script is the Mac's alone.
+commit build/package-mac-store.sh > /dev/null
+expect "a Mac packaging change skips iOS" ios false
+expect "a Mac packaging change uploads Mac" mac true
+
+# Icons reach both: each takes its icon from Icons as it is.
 reset=$(git rev-parse HEAD)
 echo "100 $reset" > "$RUNS"
-commit src/Solo.Desktop/scripts/stage-icon.mjs > /dev/null
-expect "the icon staging script skips iOS" ios false
-expect "the icon staging script uploads Mac (it's in the shell)" mac true
 commit Icons/Solo.icon/icon.json > /dev/null
 expect "an icon change uploads iOS" ios true
+expect "an icon change uploads Mac" mac true
 
 # The version and preview identity come from release-channel.sh.
 reset=$(git rev-parse HEAD)
@@ -133,6 +137,8 @@ mobile=$(commit src/Solo.iOS/Solo/App/SoloApp.swift)
 printf '300 %s\n200 %s\n' "$mobile" "$reset" > "$RUNS"
 rm -f "$UPLOADED"/*; touch "$UPLOADED/200"
 expect "a newer run that didn't upload isn't the baseline" ios true
+# One target, two platforms: a change to the app reaches both.
+expect "an app change uploads Mac too" mac true
 touch "$UPLOADED/300"
 expect "the newest run that uploaded is the baseline" ios false
 

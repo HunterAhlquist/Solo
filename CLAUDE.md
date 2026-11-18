@@ -12,7 +12,8 @@ src/Solo.Client         Blazor WASM client
 src/Solo.Desktop        Electron shell (serves the published client, proxies /api)
 src/Solo.iOS            native SwiftUI client for iPhone, iPad and Mac — an experiment, with its own
                         Xcode project and README; not in Solo.slnx. A `preview-v*` tag uploads its
-                        iPhone and iPad build to TestFlight (release-ios.yml); nothing else releases it
+                        iPhone and iPad build (release-ios.yml) and its Mac build
+                        (release-mac-store.yml) to TestFlight; nothing else releases it
 tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, plus the harnesses
                         (Solo.Api.Testing, Solo.Client.Testing) and the fixture extension
 extensions/Mcp          an EXTENSION, not core — the reference example (Solo.Mcp.slnx)

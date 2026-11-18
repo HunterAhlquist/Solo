@@ -2,7 +2,7 @@
 
 A SwiftUI client for a Solo instance. It talks to the same REST API and the same SignalR hub as the Blazor client in `src/Solo.Client`, so nothing on the server changes for it: point it at an instance and sign in.
 
-It is an experiment and lives on its own branch. It is not part of `Solo.slnx` — it builds and runs locally, from Xcode or `xcodebuild` — and of the release train it has one part: a preview tag uploads the iPhone and iPad app to TestFlight (see "TestFlight previews" below).
+It is an experiment and lives on its own branch. It is not part of `Solo.slnx` — it builds and runs locally, from Xcode or `xcodebuild` — and of the release train it has one part: a preview tag uploads the iPhone and iPad app and the Mac app to TestFlight (see "TestFlight previews" below).
 
 ## Running it
 
@@ -20,14 +20,15 @@ The tests are in the `SoloTests` target (`⌘U`, or `xcodebuild test`), and run 
 
 ### TestFlight previews
 
-A `preview-v<version>` tag uploads the iPhone and iPad app to TestFlight for internal testers ([release-ios.yml](../../.github/workflows/release-ios.yml), from the Capacitor port's workflow of the same name). It is built as the preview app — `com.hunterahlquist.solo.preview`, "Solo (Preview)", with the preview icon from `Icons/` — which is the App Store Connect app the Capacitor previews went to, so testers get it as an update to the one they have. The Mac build is not uploaded.
+A `preview-v<version>` tag uploads the app to TestFlight for internal testers, twice: the iPhone and iPad build ([release-ios.yml](../../.github/workflows/release-ios.yml)) and the Mac build ([release-mac-store.yml](../../.github/workflows/release-mac-store.yml)), each from the Capacitor port's workflow of the same name. Both are built as the preview app — `com.hunterahlquist.solo.preview`, "Solo (Preview)", with the preview icon from `Icons/` — which is the App Store Connect app the earlier previews went to, the Capacitor app on iOS and the Electron shell on the Mac, so testers get this one as an update to the one they have.
 
 - **The tag is the whole train's.** The same tag runs `ci.yml` and `release-desktop.yml`, which publish the server image, the extension packages and the desktop installers as a prerelease from the tagged commit ([docs/prereleases.md](../../docs/prereleases.md)). There is no tag that uploads the app alone, and the `testflight` environment that holds the App Store Connect key only deploys from `preview-v*` tags, so a manual run from a branch stops at that environment.
-- **Not every tag uploads.** `build/testflight-gate.sh ios` compares `src/Solo.iOS` (its README aside), `Icons/`, `build/release-channel.sh` and the workflow against the commit of the last run that uploaded, and skips the build when none of them changed.
-- **Identity is given on the command line.** The project builds as `com.hunterahlquist.solo.native`; the workflow passes `SOLO_BUNDLE_ID`, which the app, its widgets and its tests each make their own identifier from, along with the display name, the icon's name, the version from the tag and the team. No team is written into the project. The build number is the UTC minute of the build.
-- **Signing is Xcode's, with the App Store Connect key.** The archive is signed with a development certificate the run creates and then revokes (`build/asc-revoke-run-certificates.swift`); the export re-signs for distribution and uploads, marked internal-only (`ExportOptions-testflight.plist`).
+- **Not every tag uploads.** `build/testflight-gate.sh` compares `src/Solo.iOS` (its README aside), `Icons/`, `build/release-channel.sh` and the workflow against the commit of the last run that uploaded, and skips the build when none of them changed. Each platform is compared against its own workflow's last upload.
+- **Identity is given on the command line.** The project builds as `com.hunterahlquist.solo.native`; the workflow passes `SOLO_BUNDLE_ID`, which the app, its widgets and its tests each make their own identifier from, along with the display name, the icon's name, the version from the tag and, on iOS, the team. No team is written into the project. The build number is the UTC minute of the build.
+- **On iOS, signing is Xcode's, with the App Store Connect key.** The archive is signed with a development certificate the run creates and then revokes (`build/asc-revoke-run-certificates.swift`); the export re-signs for distribution and uploads, marked internal-only (`ExportOptions-testflight.plist`).
+- **On the Mac, signing is the environment's certificates.** The archive is signed for nobody; `build/package-mac-store.sh` then signs it with the Apple Distribution identity and the Mac App Store profile the `testflight` environment already held for the Electron preview (`MAS_CERTIFICATES`, `MAS_PREVIEW_PROVISIONING_PROFILE`), adds the two identifiers TestFlight needs to its sandbox entitlements, and wraps it in a package signed with the installer identity, which `altool` uploads. It installs as "Solo (Preview)" in `/Applications`, where the Electron preview was, beside a downloaded Solo rather than over it. The script signs one binary: when the Mac build gains an extension or a framework of its own it stops and says so.
 
-The workflow has not run yet: what was checked here is that its archive step builds from a clean copy, unsigned, with the preview identity, and that the gate's tests pass.
+Neither workflow has run yet. What was checked here: each archive step builds from a clean copy with the preview identity (the Mac one universal, sandboxed, signed for nobody); the Mac packaging script, run on that archive with a made-up profile and no certificate, produces a package holding "Solo (Preview).app" with the profile embedded and the entitlements it should have, and refuses a profile for another app; and the gate's tests pass. The real certificates, the profile and the upload itself have only ever been used by the Electron build.
 
 ### Debug hooks
 

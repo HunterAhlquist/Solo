@@ -9,11 +9,10 @@
 # skip notice included, goes to stderr.
 #
 # Most preview tags change the server or an extension and leave both apps
-# alone: the Mac app loads the client its instance serves and the iOS app only
-# calls its instance's API, so neither carries any of the client or the server.
-# A build
-# that changes nothing still costs a macOS runner, a processing slot at Apple
-# and a TestFlight notification to every tester.
+# alone: they are the native client built twice, which only calls its
+# instance's API, so neither carries any of the web client or the server. A
+# build that changes nothing still costs a macOS runner, a processing slot at
+# Apple and a TestFlight notification to every tester.
 #
 # The baseline is the last run of the same workflow whose Upload step
 # succeeded, not the previous tag. A tag whose upload failed, or which this
@@ -46,17 +45,22 @@ case "$app" in
             .github/workflows/release-ios.yml
         )
         ;;
-    # The Mac App Store build: the Electron shell and the icon sources, the
-    # same inputs release-desktop.yml packages. The client isn't among them:
-    # the shell proxies the one each instance serves.
+    # The Mac App Store build: the same target built for the Mac, so the same
+    # folder, though each platform's upload is tracked by its own workflow's
+    # runs. The folder is taken whole rather than picked through for what one
+    # platform leaves out: a widget-only change uploads a Mac build it didn't
+    # need, which is the cheap mistake. package-mac-store.sh puts the store's
+    # signature and name on it. The Electron shell (src/Solo.Desktop) was this
+    # app before the native one and is no longer in it.
     mac)
         name="Mac app"
         workflow=release-mac-store.yml
         paths=(
-            src/Solo.Desktop
-            ":(exclude)src/Solo.Desktop/README.md"
+            src/Solo.iOS
+            ":(exclude)src/Solo.iOS/README.md"
             Icons
             build/release-channel.sh
+            build/package-mac-store.sh
             .github/workflows/release-mac-store.yml
         )
         ;;
