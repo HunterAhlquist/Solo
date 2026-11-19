@@ -213,18 +213,18 @@ struct DesignDocsView: View {
                 if canEdit(project, store) {
                     Button("New Note", systemImage: "doc.badge.plus") { addNote(store) }
                 }
-                if canManage, let vault = store.vault {
-                    Button("Rename Design Doc", systemImage: "pencil") { rename(store, vault) }
-                    if vault.isClosed {
-                        Button("Reopen Design Doc", systemImage: "arrow.uturn.backward") {
-                            Task { await store.changeVault(name: vault.name, isClosed: false) }
-                        }
+                // Renaming the design doc is on the project's page, in its row's menu
+                // (`DocsHomeSection`): a pencil here, over a note, read as renaming the note,
+                // which is done at the note's own head.
+                if canManage, let vault = store.vault, vault.isClosed {
+                    Button("Reopen Design Doc", systemImage: "arrow.uturn.backward") {
+                        Task { await store.changeVault(name: vault.name, isClosed: false) }
                     }
                 }
             }
         }
         // The one button that takes a design doc away stands apart from the ones that add to
-        // it or rename it, in the colour of something that takes away. It closes the design
+        // it, in the colour of something that takes away. It closes the design
         // doc, and on one that is closed it is what deletes it: the two steps the instance
         // asks for, in the one place. A gap, or a bar draws the two groups as one.
         ToolbarSpacer(.fixed, placement: .secondaryAction)
@@ -318,13 +318,6 @@ struct DesignDocsView: View {
     private func addNote(_ store: DocVaultStore) {
         prompt = TextPrompt(title: "New note", placeholder: "Name") { name in
             if let created = await store.addNote(name: name, parent: nil) { open(created.id) }
-        }
-    }
-
-    private func rename(_ store: DocVaultStore, _ vault: DocVault) {
-        prompt = TextPrompt(title: "Rename design doc", placeholder: "Name", initial: vault.name, action: "Rename") { name in
-            guard name != vault.name else { return }
-            await store.changeVault(name: name, isClosed: vault.isClosed)
         }
     }
 
