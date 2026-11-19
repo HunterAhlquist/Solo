@@ -17,6 +17,9 @@ struct NoteView: View {
     /// How far in from the page's trailing edge the design doc's tree would come if it were
     /// out, where it is not out beside the note already: where the note's ground fades to.
     var trailingPane: CGFloat = 0
+    /// How far in from the page's trailing edge the tree's button comes, where it stands over
+    /// the note's corner by itself: the head of a note that reaches that far is kept short of it.
+    var trailingButton: CGFloat = 0
     /// How wide the app's sidebar is when it is out, as last seen; a usual width until then.
     @State private var sidebarWidth: CGFloat = 300
 
@@ -25,6 +28,11 @@ struct NoteView: View {
     /// True while the note is being typed in: from the tap that puts the caret down until the keyboard goes away.
     @State private var typing = false
     @State private var prompt: TextPrompt?
+    @State private var confirmation: Confirmation?
+    /// The note's name as it is being written at the head of the note. It is kept here and
+    /// not with the field: the head is a view the editor sizes when this view is drawn, and
+    /// a name that grows onto a second line has to be given the room.
+    @State private var title = ""
     @State private var pickingNote = false
     @State private var pickingTask = false
     /// The page's to say, since on a phone what asks for them is in the page's menu.
@@ -48,12 +56,17 @@ struct NoteView: View {
 
     var body: some View {
         let text = text
+        // Read here, so that this is drawn again as the name is written: handing the field a
+        // binding reads nothing, and it is this view's drawing that has the editor size the head.
+        let _ = title
         GeometryReader { geometry in
             if let sync {
                 // Edge to edge, under the bars: the note is one sheet that passes behind their glass.
                 SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite, fallback: note.markdown,
                                  accent: PlatformColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision,
-                                 presence: sync.awareness.revision, header: AnyView(header.environment(\.theme, theme).environment(session)), insets: geometry.safeAreaInsets,
+                                 presence: sync.awareness.revision,
+                                 header: AnyView(header(clear: headClearance(geometry)).environment(\.theme, theme).environment(session)),
+                                 insets: geometry.safeAreaInsets,
                                  layout: store.noteLayout, onLink: follow) {
                     typing = $0
                 }
@@ -135,6 +148,8 @@ struct NoteView: View {
             if writable == false, typing { proxy.dismissKeyboard() }
         }
         .textPrompt($prompt)
+        .confirmation($confirmation)
+        .onChange(of: note.name, initial: true) { _, name in title = name }
         .sheet(isPresented: $pickingNote) {
             DocLinkPicker(projectId: store.projectId, preferredVault: store.vaultId) { proxy.insert($0) }
         }
@@ -204,12 +219,20 @@ struct NoteView: View {
         note.lastEditedAt.map { "Edited \($0.relative)\(author.map { " by \($0)" } ?? "")" }
     }
 
-    private var header: some View {
+    /// How much of the head's trailing end the tree's button stands over. The head is as wide
+    /// as the column of text, which is short of the button on a wide page and under it where
+    /// the column runs to the page's edge: a phone opened out, or margins set to none.
+    private func headClearance(_ geometry: GeometryProxy) -> CGFloat {
+        guard trailingButton > 0 else { return 0 }
+        let insets = geometry.safeAreaInsets
+        let width = geometry.size.width + insets.leading + insets.trailing
+        let column = NoteColumn.span(width: width, leading: insets.leading, trailing: insets.trailing, layout: store.noteLayout)
+        return max(0, column.upperBound - (width - insets.trailing - trailingButton))
+    }
+
+    private func header(clear: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(note.name)
-                .font(.title.weight(.bold))
-                .foregroundStyle(theme.textPrimary)
-                .lineLimit(2)
+            NoteTitle(name: note.name, draft: $title, editable: mayWrite, rename: rename)
             // How the note stands changes as it is typed in — saved, sending, saved — and a
             // status that wrapped on a narrow screen moved the whole note down a line and
             // back under the hand writing it. So each thing said here is a line of its own
@@ -240,8 +263,34 @@ struct NoteView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // In line with the text below, which sits this far in.
-        .padding(.horizontal, 19)
+        .padding(.leading, 19)
+        .padding(.trailing, max(19, clear))
         .padding(.top, 8)
+    }
+
+    /// Gives the note the name written at its head. Wiki links name a note by its path, so a
+    /// new name orphans them: where there are any, that is said first, as it is when the
+    /// note is renamed from the tree.
+    private func rename(to name: String) {
+        guard let node = store.node(note.id), name != node.name else { return }
+        Task {
+            let references = await store.renameImpact(node.id)
+            guard references > 0 else {
+                await store.rename(node, to: name)
+                // Refused, the head goes back to the name the note still has.
+                title = store.note(note.id)?.name ?? note.name
+                return
+            }
+            confirmation = Confirmation(
+                title: "Links keep their old path",
+                message: "\(references) \(references == 1 ? "note" : "notes") may link to this name. "
+                    + "Renaming leaves those wiki links unresolved.",
+                action: "Rename",
+                onCancel: { title = note.name }) {
+                await store.rename(node, to: name)
+                title = store.note(note.id)?.name ?? note.name
+            }
+        }
     }
 
     /// An icon in a column of its own width, so the two lines of a note's status start in
@@ -350,6 +399,77 @@ struct NoteView: View {
             }
         }
         if changed { sync.changedOutsideEditor() }
+    }
+}
+
+/// A note's name at the head of it, which is where it is changed: a click or a tap in it
+/// starts writing, and Return or leaving it gives the note the new name. Escape, on a
+/// keyboard that has one, leaves it as it was. To someone who may not write in the design
+/// doc it is only the name.
+private struct NoteTitle: View {
+    @Environment(\.theme) private var theme
+    var name: String
+    @Binding var draft: String
+    var editable: Bool
+    var rename: (String) -> Void
+
+    @FocusState private var focused: Bool
+
+    // A size over the page's own titles: it is the note's, and the biggest thing in it. A
+    // Mac's largest text style is smaller than an iPhone's second largest.
+    private var font: Font {
+        #if os(macOS)
+        .system(size: 30, weight: .bold)
+        #else
+        .largeTitle.weight(.bold)
+        #endif
+    }
+
+    var body: some View {
+        if editable {
+            // Down the page, so a long name wraps as it did when it was only shown.
+            TextField("Untitled", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...3)
+                .font(font)
+                .foregroundStyle(theme.textPrimary)
+                .focused($focused)
+                .submitLabel(.done)
+                .onSubmit { focused = false }
+                .onChange(of: draft) { _, written in
+                    // A field that grows down the page takes Return as a new line: here it
+                    // is the end of the name.
+                    guard written.contains(where: \.isNewline) else { return }
+                    draft = written.filter { !$0.isNewline }
+                    focused = false
+                }
+                .onChange(of: focused) { _, focused in
+                    if !focused { commit() }
+                }
+                #if os(macOS)
+                .onExitCommand {
+                    draft = name
+                    focused = false
+                }
+                #endif
+                .accessibilityLabel("Note name")
+        } else {
+            Text(name)
+                .font(font)
+                .foregroundStyle(theme.textPrimary)
+                .lineLimit(3)
+        }
+    }
+
+    private func commit() {
+        let wanted = String(draft.trimmingCharacters(in: .whitespacesAndNewlines).prefix(FieldLimits.itemName))
+        // Emptied, or left as it was: the note keeps its name.
+        guard !wanted.isEmpty, wanted != name else {
+            draft = name
+            return
+        }
+        draft = wanted
+        rename(wanted)
     }
 }
 

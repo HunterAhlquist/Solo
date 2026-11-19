@@ -514,6 +514,8 @@ struct Confirmation: Identifiable {
     var title: String
     var message: String
     var action = "Delete"
+    /// What to put back when it is turned down, where asking had already changed what shows.
+    var onCancel: () -> Void = {}
     var onConfirm: () async -> Void
 }
 
@@ -527,7 +529,7 @@ private struct ConfirmationModifier: ViewModifier {
             Button(confirmation.action, role: .destructive) {
                 Task { await confirmation.onConfirm() }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) { confirmation.onCancel() }
         } message: { confirmation in
             Text(confirmation.message)
         }

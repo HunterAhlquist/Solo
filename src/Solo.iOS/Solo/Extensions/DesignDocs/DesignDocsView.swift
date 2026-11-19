@@ -155,6 +155,7 @@ struct DesignDocsView: View {
                      onOpenNote: open,
                      // Out beside the note, the tree is where the note's page ends already.
                      trailingPane: wide && (floats || !treeShown) ? Self.treeReach : 0,
+                     trailingButton: wide && (floats || !treeShown) ? Self.toggleReach : 0,
                      showingAttachments: $showingAttachments)
                 .id(note.id)
         } else if store.tree?.notes.isEmpty == true {
@@ -177,6 +178,9 @@ struct DesignDocsView: View {
     private static let treeMargin: CGFloat = 14
     /// How far in from the page's trailing edge the tree's panel comes: its width and its margin.
     private static let treeReach: CGFloat = 300 + treeMargin
+    /// How far in from the page's trailing edge the tree's button comes where it stands by
+    /// itself over the note, with a little to spare: what a note's name keeps clear of.
+    private static var toggleReach: CGFloat { treeMargin + DocTreeView.headingEnd + PaneButton.size + 8 }
 
     /// The tree as a panel of glass down the trailing side, beside the note or over it.
     private func treePanel(_ store: DocVaultStore, editable: Bool, selected: UUID?) -> some View {
