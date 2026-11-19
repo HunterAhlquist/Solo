@@ -191,6 +191,34 @@ The server image is not a release asset; it goes to GHCR as
 `ghcr.io/hunterahlquist/solo` tagged `<version>`, `<major>.<minor>`, `latest`
 and `sha-<sha>`.
 
+## One prerelease at a time
+
+A prerelease takes down the prereleases before it. Every `preview-v*` tag
+publishes one, and left alone they pile up on the releases page with the stable
+releases somewhere among them. So the last step of both release jobs is
+[build/prune-prereleases.sh](../build/prune-prereleases.sh): once this tag's
+release has been written, every published prerelease **tagged before it** is
+deleted — of whatever preview line, since the rule is one prerelease, not one
+per line.
+
+- **Stable releases are never touched**, and a stable release removes nothing:
+  the prerelease that was newest stays until the next one replaces it.
+- **Tags and images stay.** Only the GitHub release and its assets go. The tag
+  still checks out, and the image the preview pushed to GHCR is still there.
+  The installers and extension packages that were on the release are gone, and
+  come back only by building that tag again.
+- **"Before" is by when the tag was made**, not when the release was published,
+  so of two previews tagged minutes apart the later tag's is the one that
+  survives, whichever workflow finished first. A preview still running when a
+  later one is tagged can write its release again after it was removed; the
+  next prerelease clears it away.
+- **It never fails a release.** What it could not remove it reports as a
+  warning on the run.
+- **A server still on a replaced preview loses its update check.** A preview
+  reads its own release's manifest ([updates.md](updates.md)), which is gone
+  with the release: its Version & Updates page says no manifest was published,
+  and it is offered no extension updates, until it is moved to the newer image.
+
 ## Failure modes worth knowing
 
 - A changed server that fails to push to GHCR blocks its own release.

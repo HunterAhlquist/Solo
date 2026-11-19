@@ -15,6 +15,10 @@ git push origin preview-v1.17.0-design-docs-codex.17
 ```
 
 Never move an existing preview tag. Wait for **CI** and **Desktop Release** to succeed.
+A new preview replaces the ones before it: once its release is written, every earlier
+prerelease is deleted from the releases page, whichever preview line it belonged to.
+Their tags and images stay; their installers and extension ZIPs do not. See
+[releases.md](releases.md#one-prerelease-at-a-time).
 The server workflow tests core and extensions before publication.
 The desktop workflow keeps its signing and notarization steps.
 Both workflows attach assets to the same GitHub prerelease.
@@ -35,6 +39,7 @@ Preview publication does not publish NuGet packages or create SDK/template relea
 6. Restart the preview app.
 
 Keep previous packages as backups outside the active extensions directory.
+The release they came from is deleted when the next preview is published, so a copy you keep is the only one.
 Database migrations can prevent a simple image downgrade. Restore a compatible snapshot when required.
 Use a matching desktop client when the preview changes the client contract.
 The browser client comes with the server image.

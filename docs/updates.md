@@ -47,6 +47,11 @@ preview therefore hears about neither newer previews nor a later stable
 release; moving it is a new image either way. A prerelease cut from a `v` tag
 (`v1.2.0-rc`) has no `preview-v` release and needs `Updates__ManifestUrl`.
 
+A preview's release is deleted when the next prerelease is published
+([releases.md](releases.md#one-prerelease-at-a-time)). From then on a server
+still running the older preview finds no manifest: the page says so, and no
+extension update is offered, until the server is moved to the newer image.
+
 ## The desktop app
 
 The installers carry a `generic` electron-updater feed baked in at packaging

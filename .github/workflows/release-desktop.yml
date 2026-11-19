@@ -398,6 +398,16 @@ jobs:
           prerelease: ${{ needs.changes.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.changes.outputs.prerelease == 'true' && 'false' || 'legacy' }}
 
+      # One prerelease at a time: the ones tagged before this one are taken off
+      # the releases page (build/prune-prereleases.sh). After the upload, so it
+      # is only done once this tag's release is there to take their place; in
+      # both workflows, since either may be the one that finishes; and never a
+      # failure of this job. A stable release removes nothing.
+      - name: Remove earlier prereleases
+        env:
+          PRERELEASE: ${{ needs.changes.outputs.prerelease }}
+        run: bash build/prune-prereleases.sh "$TAG" "$PRERELEASE"
+
       # The installers are hundreds of MB a build and now live on the release,
       # where they cost nothing; as workflow artifacts they were only a handoff
       # between the matrix jobs and this one, and they bill against the
