@@ -51,6 +51,10 @@ struct SoloCommands: Commands {
                 .disabled(navigator == nil)
         }
 
+        CommandGroup(replacing: .appInfo) {
+            Button("About \(AboutWindow.appName)") { openWindow(id: AboutWindow.scene) }
+        }
+
         // Where a Mac keeps such things, and under the key it keeps them on.
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { openWindow(id: SettingsWindow.scene) }

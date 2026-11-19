@@ -876,3 +876,119 @@ private func symbolExists(_ name: String) -> Bool {
         #expect(DeviceNotifications.address(of: kept) != DeviceNotifications.address(of: under))
     }
 }
+
+/// The game in the Mac's About window is the desktop shell's, rule for rule: each of these
+/// is a game played headless on that one (`Solo.Desktop/about/about.js`, with the same deal
+/// and the same keys), and what it came to.
+@Suite struct FallingBlocksTests {
+    private static let letters: [(Character, FallingBlocks.Kind)] =
+        [("I", .i), ("O", .o), ("T", .t), ("S", .s), ("Z", .z), ("J", .j), ("L", .l)]
+    private static let keys: [Character: FallingBlocks.Key] = [
+        "L": .left, "R": .right, "D": .down, "U": .up, "S": .space,
+        "Z": .turnCounterclockwise, "X": .turnClockwise, "P": .pause, "E": .enter,
+    ]
+
+    private static func letter(_ kind: FallingBlocks.Kind?) -> Character {
+        letters.first { $0.1 == kind }?.0 ?? "."
+    }
+
+    /// The game as the desktop's is written down, so the two can be compared as text.
+    private static func snapshot(_ game: FallingBlocks) -> String {
+        let board = game.board.map { String($0.map(letter)) }.joined(separator: "/")
+        let state = switch game.phase {
+        case .ready: "ready"
+        case .playing: "playing"
+        case .paused: "paused"
+        case .over: "over"
+        }
+        return #"{"board":"\#(board)","piece":"\#(letter(game.piece.kind)),\#(game.piece.x),\#(game.piece.y)","#
+            + #""next":"\#(letter(game.next))","score":\#(game.score),"lines":\#(game.lines),"state":"\#(state)"}"#
+    }
+
+    /// A game dealt `deal` over and over, with one key a millisecond. The first only starts it.
+    private static func play(_ deal: String, _ pressed: String) -> FallingBlocks {
+        let order = deal.compactMap { letter in letters.first { $0.0 == letter }?.1 }
+        var game = FallingBlocks(deal: { order.reversed() })
+        var now = 0.0
+        for key in pressed {
+            now += 0.001
+            game.press(keys[key] ?? .other, at: now)
+        }
+        return game
+    }
+
+    private static let empty = Array(repeating: "..........", count: 16).joined(separator: "/")
+
+    @Test func aFullRowGoesAndWhatIsAboveItComesDown() {
+        let game = Self.play("IIOT", "SLLLURURRRRU")
+        let rows = Array(repeating: "..........", count: 15) + ["........OO"]
+        #expect(Self.snapshot(game) == #"{"board":"\#(rows.joined(separator: "/"))","piece":"T,3,0","next":"I","score":188,"lines":1,"state":"playing"}"#)
+        // What flashes is what is left of the piece, where it now is.
+        #expect(Set(game.flash?.cells ?? []) == [.init(x: 8, y: 15), .init(x: 9, y: 15)])
+        #expect(game.flashStrength(at: 0.012) == 1)
+        #expect(game.flashStrength(at: 0.112) < 0.6)
+        #expect(game.flashStrength(at: 0.3) == 0)
+    }
+
+    @Test func rowsClearedTogetherScoreMore() {
+        #expect(Self.snapshot(Self.play("OOOOOT", "SLLLLULLURRURRRRUU"))
+            == #"{"board":"\#(Self.empty)","piece":"T,3,0","next":"O","score":440,"lines":2,"state":"playing"}"#)
+        #expect(Self.snapshot(Self.play("OOOOOOOOIIT", "SLLLLULLLLULLULLUUURRURRUXRRRUXRRRRU"))
+            == #"{"board":"\#(Self.empty)","piece":"T,3,0","next":"O","score":1060,"lines":4,"state":"playing"}"#)
+    }
+
+    @Test func aTurnThatDoesNotFitIsNudgedOffTheWall() {
+        #expect(Self.snapshot(Self.play("IT", "SXRRRRRRZ"))
+            == #"{"board":"\#(Self.empty)","piece":"I,6,-1","next":"T","score":0,"lines":0,"state":"playing"}"#)
+    }
+
+    @Test func theShadowIsWhereThePieceWouldLand() {
+        var game = Self.play("OT", "S")
+        #expect(game.landingRow == 14)
+        // The next is a T, whose box reaches a row below its stem: it comes to rest on the O.
+        game.press(.up, at: 0.01)
+        #expect(game.landingRow == 12)
+    }
+
+    /// Twelve thousand frames of keys picked by a Park–Miller sequence: gravity, the lock
+    /// delay, a held ↓, pausing, topping out and starting again, at the desktop's timings.
+    @Test func randomPlayComesToTheBoardsTheDesktopGameDid() {
+        var game = FallingBlocks(deal: { [.i, .o, .t, .s, .z, .j, .l] })
+        var seed = 20_261_118
+        var now = 0.0
+        var seen: [[String]] = []
+        for step in 1...12000 {
+            seed = seed * 48271 % 2_147_483_647
+            switch seed % 20 {
+            case 0...2: game.press(.left, at: now)
+            case 3...5: game.press(.right, at: now)
+            case 6: game.press(.down, at: now)
+            case 7: game.release(.down)
+            case 8: game.press(.up, at: now)
+            case 9, 10: game.press(.space, at: now)
+            case 11: game.press(.turnCounterclockwise, at: now)
+            case 12: game.press(.turnClockwise, at: now)
+            case 13: game.press(.pause, at: now)
+            case 14: game.press(.enter, at: now)
+            default: break
+            }
+            now = Double(step) * 0.0167
+            game.tick(at: now)
+            if step.isMultiple(of: 1500) {
+                // FNV-1a over the snapshot, as the desktop's was hashed.
+                let hash = Self.snapshot(game).unicodeScalars.reduce(UInt32(0x811c_9dc5)) { ($0 ^ $1.value) &* 0x0100_0193 }
+                seen.append(["\(step)", "\(game.score)", "\(game.lines)", "\(game.phase)", "\(hash)"])
+            }
+        }
+        #expect(seen == [
+            ["1500", "186", "0", "playing", "1980232078"],
+            ["3000", "72", "0", "playing", "1051498232"],
+            ["4500", "142", "0", "playing", "3477100959"],
+            ["6000", "200", "0", "over", "2104179125"],
+            ["7500", "81", "0", "playing", "207359871"],
+            ["9000", "102", "0", "playing", "2097782460"],
+            ["10500", "40", "0", "paused", "1883419320"],
+            ["12000", "189", "0", "paused", "2222008863"],
+        ])
+    }
+}

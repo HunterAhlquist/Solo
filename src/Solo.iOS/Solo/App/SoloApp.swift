@@ -46,6 +46,21 @@ struct SoloApp: App {
         // What such a window shows is the page's to say, and the page is not there at the next launch.
         .restorationBehavior(.disabled)
         .commandsRemoved()
+
+        // About Solo, in place of AppKit's panel and shaped like it: see `AboutWindow`.
+        Window("About \(AboutWindow.appName)", id: AboutWindow.scene) {
+            AboutWindow()
+                .preferredColorScheme(model.themes.preference.colorScheme)
+                // The panel is only ever closed.
+                .windowMinimizeBehavior(.disabled)
+                .windowFullScreenBehavior(.disabled)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        // The panel moves by its background.
+        .windowBackgroundDragBehavior(.enabled)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
         #else
         WindowGroup { root }
         #endif

@@ -28,6 +28,9 @@
 	<array>
 		<string>fetch</string>
 	</array>
+	<!-- The last line of the Mac's About window, as the desktop shell's has it. -->
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Hunter Ahlquist</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Solo connects to the instance you point it at, which may be on your local network.</string>
 	<!-- What a note or folder carries while it is dragged about its design doc. Private to
