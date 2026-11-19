@@ -353,6 +353,109 @@ extension PrimitiveButtonStyle where Self == GlassButtonStyle {
 }
 #endif
 
+/// A menu that stands by itself in a row of a card: a member's role, a label's actions, a
+/// filter. An iPad draws one as its label and nothing more. A Mac gives it a bezel of its
+/// own — flat, in the accent, with an arrow beside the one the label already draws — which
+/// is not how anything else in the app is drawn; so there it stands on a lens of glass, as
+/// the app's buttons do.
+///
+/// The Mac's bezel is kept and made clear, and the lens put behind it. A Mac's menu draws a
+/// label of the app's own — a badge, two colours of text — only inside a bezel: told to be
+/// plain or borderless it draws a title and a picture and nothing else. And the bezel is
+/// what is clicked, so the whole of the lens opens the menu.
+struct RowMenu<Face: View, Content: View>: View {
+    @Environment(\.theme) private var theme
+    @Environment(\.font) private var font
+    /// A glyph by itself, on a round lens.
+    var round = false
+    @ViewBuilder var content: Content
+    @ViewBuilder var label: Face
+
+    var body: some View {
+        #if os(macOS)
+        Menu { content } label: {
+            // The accent is given by name: the tint is what makes the bezel clear.
+            if round {
+                // Room for the glyph, or the bezel is no bigger than the three dots in it.
+                label.labelStyle(.iconOnly).foregroundStyle(theme.primary).frame(width: 20, height: 18)
+            } else {
+                // A Mac's menu sets its label in its own size; the row's is handed in again,
+                // so that a menu and a button side by side are set alike.
+                label.font(font)
+            }
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(round ? .circle : .capsule)
+        .tint(.clear)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .glassEffect(.regular.interactive(), in: .capsule)
+        #else
+        if round {
+            Menu { content } label: { label.labelStyle(.iconOnly) }.frame(width: 32, height: 32)
+        } else {
+            Menu { content } label: { label }
+        }
+        #endif
+    }
+}
+
+extension RowMenu where Face == Label<Text, Image> {
+    /// The usual one: a glyph that opens what can be done to the row.
+    init(_ title: String, systemImage: String, @ViewBuilder content: () -> Content) {
+        self.init(round: true, content: content) { Label(title, systemImage: systemImage) }
+    }
+}
+
+#if os(macOS)
+enum RowLens {
+    /// A clear bezel still lays a little of the text's colour over what is behind it. A
+    /// button on a lens has no bezel, and is given the same, so the two are one glass.
+    static let wash = Color.primary.opacity(0.1)
+}
+
+/// The room a row's control has on its lens: a glyph in a circle, anything else in a capsule.
+private struct RowLensRoom: ViewModifier {
+    var round: Bool
+
+    func body(content: Content) -> some View {
+        if round {
+            content.foregroundStyle(.tint).frame(width: 28, height: 28).contentShape(.circle)
+        } else {
+            content.padding(.horizontal, 10).padding(.vertical, 4).contentShape(.capsule)
+        }
+    }
+}
+
+/// A button in a row of a card, drawn as `RowMenu` draws a menu there.
+struct RowLensButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    var round = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .modifier(RowLensRoom(round: round))
+            // Over the glass and under the label, where a bezel's is.
+            .background(RowLens.wash, in: .capsule)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.45)
+    }
+}
+#endif
+
+extension View {
+    /// On a button that stands by itself in a row of a card, beside its `RowMenu`s: a lens
+    /// of glass on a Mac, and as it was on an iPad.
+    @ViewBuilder
+    func rowLens(round: Bool = false) -> some View {
+        #if os(macOS)
+        buttonStyle(RowLensButtonStyle(round: round))
+        #else
+        self
+        #endif
+    }
+}
+
 /// A label as an icon beside a name and nothing more, in whatever colour it is given. The
 /// icon has the room a sidebar row gives its own (`SidebarRow`), so the two stand in line.
 struct AsWrittenLabelStyle: LabelStyle {

@@ -161,7 +161,7 @@ struct RoadmapHomeSection: View {
                             }
                             .buttonStyle(.plain)
                             if canWrite || session.manages(project) {
-                                Menu("Roadmap actions", systemImage: "ellipsis") {
+                                RowMenu("Roadmap actions", systemImage: "ellipsis") {
                                     if canWrite {
                                         Button("Rename", systemImage: "pencil") { rename(roadmap) }
                                     }
@@ -169,8 +169,6 @@ struct RoadmapHomeSection: View {
                                         Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(roadmap) }
                                     }
                                 }
-                                .labelStyle(.iconOnly)
-                                .frame(width: 32, height: 32)
                             }
                         }
                         .card(padding: 14)

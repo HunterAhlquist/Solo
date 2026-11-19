@@ -104,12 +104,10 @@ struct DocsHomeSection: View {
                             }
                             .buttonStyle(.plain)
                             if model.canManage {
-                                Menu("Design doc actions", systemImage: "ellipsis") {
+                                RowMenu("Design doc actions", systemImage: "ellipsis") {
                                     Button("Rename", systemImage: "pencil") { rename(vault) }
                                     Button("Close", systemImage: "archivebox") { change(vault, name: vault.name, closed: true) }
                                 }
-                                .labelStyle(.iconOnly)
-                                .frame(width: 32, height: 32)
                             }
                         }
                         .card(padding: 14)

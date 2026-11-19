@@ -80,7 +80,7 @@ struct MembersSection: View {
             }
             Spacer(minLength: 8)
             if isOwner {
-                Menu {
+                RowMenu {
                     Picker("Role", selection: Binding(get: { member.role }, set: { role in
                         Task { await update(member, role: role, isOwner: member.isOwner) }
                     })) {
@@ -219,6 +219,7 @@ struct LabelsSection: View {
                                     editing = LabelDraft(kind: kind)
                                 }
                                 .labelStyle(.iconOnly)
+                                .rowLens(round: true)
                             }
                         }
                         .padding(12)
@@ -232,12 +233,10 @@ struct LabelsSection: View {
                                 LabelChip(label: label)
                                 Spacer()
                                 if canWrite {
-                                    Menu("Label actions", systemImage: "ellipsis") {
+                                    RowMenu("Label actions", systemImage: "ellipsis") {
                                         Button("Edit", systemImage: "pencil") { editing = LabelDraft(label: label) }
                                         Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(label) }
                                     }
-                                    .labelStyle(.iconOnly)
-                                    .frame(width: 32, height: 32)
                                 }
                             }
                             .padding(.horizontal, 12)
@@ -431,7 +430,7 @@ struct AuditSection: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(spacing: 0) {
                 FieldRow(title: "Table", symbol: "tablecells") {
-                    Menu {
+                    RowMenu {
                         Picker("Table", selection: $table) {
                             Text("Any").tag(String?.none)
                             ForEach(Self.tables, id: \.self) { Text($0).tag(String?.some($0)) }
@@ -440,7 +439,7 @@ struct AuditSection: View {
                 }
                 Divider().overlay(theme.divider)
                 FieldRow(title: "User", symbol: "person") {
-                    Menu {
+                    RowMenu {
                         Picker("User", selection: $userId) {
                             Text("Anyone").tag(UUID?.none)
                             ForEach(members.filter { $0.userId != nil }) { Text($0.name).tag($0.userId) }
@@ -452,11 +451,11 @@ struct AuditSection: View {
                 }
                 Divider().overlay(theme.divider)
                 FieldRow(title: "From", symbol: "calendar") {
-                    DayField(day: from, placeholder: "Any time") { from = $0 }
+                    DayField(day: from, placeholder: "Any time", lens: true) { from = $0 }
                 }
                 Divider().overlay(theme.divider)
                 FieldRow(title: "To", symbol: "calendar") {
-                    DayField(day: to, placeholder: "Now") { to = $0 }
+                    DayField(day: to, placeholder: "Now", lens: true) { to = $0 }
                 }
             }
             .card(padding: 0)

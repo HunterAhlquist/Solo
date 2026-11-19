@@ -496,12 +496,31 @@ struct AssigneeField: View {
 }
 
 /// An optional calendar day: shows it, opens a calendar to change it, and can clear it.
+private struct DayFieldStyle: ViewModifier {
+    var lens: Bool
+
+    func body(content: Content) -> some View {
+        // One style or the other: of two said on a button, it is the nearer that is used.
+        #if os(macOS)
+        if lens {
+            content.rowLens()
+        } else {
+            content.buttonStyle(.plain)
+        }
+        #else
+        content.buttonStyle(.plain)
+        #endif
+    }
+}
+
 struct DayField: View {
     @Environment(\.theme) private var theme
     var day: Day?
     var placeholder: String
     var latest: Day?
     var disabled = false
+    /// On a lens of glass on a Mac, where the row's other controls are (`RowMenu`).
+    var lens = false
     var onChange: (Day?) async -> Void
 
     @State private var picking = false
@@ -518,7 +537,7 @@ struct DayField: View {
                 Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(theme.textSecondary)
             }
         }
-        .buttonStyle(.plain)
+        .modifier(DayFieldStyle(lens: lens))
         .disabled(disabled)
         .opacity(disabled ? 0.5 : 1)
         .popover(isPresented: $picking) {

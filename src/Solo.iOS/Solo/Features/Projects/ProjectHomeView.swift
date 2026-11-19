@@ -318,7 +318,7 @@ struct BoardsSection: View {
             .buttonStyle(.plain)
 
             if canWrite || canManage {
-                Menu("Board actions", systemImage: "ellipsis") {
+                RowMenu("Board actions", systemImage: "ellipsis") {
                     if canWrite {
                         Button("Board Settings", systemImage: "gearshape") { editing = board }
                         Button("Labels", systemImage: "tag") { labelling = board }
@@ -328,8 +328,6 @@ struct BoardsSection: View {
                         Button("Close Board", systemImage: "archivebox") { Task { await setOpen(board, false) } }
                     }
                 }
-                .labelStyle(.iconOnly)
-                .frame(width: 32, height: 32)
             }
         }
         .card(padding: 14)
