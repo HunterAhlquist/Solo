@@ -130,18 +130,10 @@ struct NotificationSettingsView: View {
 
     private var emailOn: Bool { session.config.emailEnabled == true }
 
-    /// What the device can and can't do, which is not what a notifications switch usually means.
-    private static var deviceNote: String {
-        let reminders = "Solo has no push notifications: an instance you host has no way to send them. "
-            + "Your deadline reminders are scheduled on this device ahead of time, so they arrive when they are due "
-            + "even with Solo closed. "
-        #if os(macOS)
-        return reminders + "Anything else, such as being assigned a task, shows while Solo is running."
-        #else
-        return reminders + "Anything else, such as being assigned a task, shows while Solo is open, and otherwise "
-            + "when iOS next lets it check in the background, which can be hours later."
-        #endif
-    }
+    /// What to expect of them, which is less than a notifications switch usually promises:
+    /// there is no push behind this, only what the device can do for itself.
+    private static let deviceNote = "Notifications use a local background service and may not be reliable for "
+        + "time-sensitive reminders. Open the app regularly to sync notifications."
     private static let weekdays: [Weekday] = [.monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday]
 
     var body: some View {
