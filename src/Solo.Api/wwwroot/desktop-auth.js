@@ -1,9 +1,9 @@
 // Served by the API at GET /desktop-auth?state={flow} (DesktopAuthController)
-// for the desktop shell's and the iPad app's browser sign-in. Signs in with
-// Google on this instance's own origin, then hands the ID token to the complete
-// endpoint. The endpoint returns a one-time authorization code to the desktop
-// process's loopback listener, or to the iPad app's URL scheme; PKCE binds its
-// redemption to the process that started the flow.
+// for the desktop shell's and the iPad app's browser sign-in. Signs in with the
+// instance's identity provider on this instance's own origin, then hands the ID
+// token to the complete endpoint. The endpoint returns a one-time authorization
+// code to the desktop process's loopback listener, or to the iPad app's URL
+// scheme; PKCE binds its redemption to the process that started the flow.
 //
 // Two ways to reach Google:
 //  - By default, Google's button, whose sign-in opens in a popup. A popup
@@ -12,7 +12,12 @@
 //    OpenID Connect request), with no click and no second window. Google posts
 //    the ID token and the flow's state back to /desktop-auth, which serves
 //    this page again with both in meta tags.
-// Either way the token's nonce is the flow's state, which complete checks.
+// Every other provider (Microsoft, generic OIDC) gets the authorization code
+// flow with PKCE, as the web client does: straight to the provider, back here
+// with ?code=…&state=…, and the code traded for an ID token at the provider's
+// token endpoint from this page. No client secret: Google is only different
+// because its web clients demand one there.
+// Whichever way, the token's nonce is the flow's state, which complete checks.
 //
 // The page wears the instance's theme, like the web sign-in, in the palette
 // for the system's light or dark setting: the app's own choice is stored on
@@ -24,9 +29,13 @@
 const status = document.getElementById('status');
 const lead = document.getElementById('lead');
 const meta = name => document.querySelector(`meta[name="${name}"]`)?.content;
+const query = new URLSearchParams(location.search);
 const returnedCredential = meta('solo-credential');
 const returnedError = meta('solo-error');
-const state = meta('solo-state') ?? new URLSearchParams(location.search).get('state');
+const state = meta('solo-state') ?? query.get('state');
+// Back from a code-flow provider: the code, or the provider's refusal.
+const returnedCode = query.get('code');
+const returnedProviderError = query.get('error');
 
 // The theme's CSS families, quoted where a name needs it: generic families
 // (sans-serif, system-ui) and already-quoted names go through unchanged.
@@ -205,6 +214,119 @@ function renderGoogleButton(clientId) {
   document.head.appendChild(script);
 }
 
+// What to call the provider in this page's messages.
+function providerName(config) {
+  switch (config?.provider?.toLowerCase()) {
+    case 'google': return 'Google';
+    case 'microsoft': return 'Microsoft';
+    default: return 'Your identity provider';
+  }
+}
+
+// The PKCE verifier waits out the round trip to the provider in session
+// storage, which a same-tab navigation keeps and nothing cross-origin reads.
+// Keyed by the flow, so two sign-ins in one tab don't trade verifiers.
+const verifierKey = `solo.desktop-auth.verifier.${state}`;
+
+const redirectUri = () => new URL('desktop-auth', location.href).href;
+
+function base64Url(bytes) {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// The provider's own endpoints, from its discovery document. Fetching it from
+// here needs the provider's origin in the instance CSP's connect-src, which
+// SecurityHeaders adds for any provider but Google.
+async function providerMetadata(authority) {
+  const response = await fetch(`${authority.replace(/\/+$/, '')}/.well-known/openid-configuration`);
+  if (!response.ok) {
+    throw new Error(`discovery answered ${response.status}`);
+  }
+  const metadata = await response.json();
+  if (!metadata?.authorization_endpoint || !metadata?.token_endpoint) {
+    throw new Error('discovery is missing an endpoint');
+  }
+  return metadata;
+}
+
+async function redirectToProvider(config) {
+  // crypto.subtle exists in secure contexts only: an instance on plain http
+  // somewhere other than localhost has no way to make the PKCE challenge.
+  if (!crypto?.subtle) {
+    fail('Sign-in needs this instance on https. Ask its administrator.');
+    return;
+  }
+
+  let metadata;
+  try {
+    metadata = await providerMetadata(config.authority);
+  } catch {
+    fail(`Couldn’t reach ${providerName(config)}. Check your connection and try again from Solo.`);
+    return;
+  }
+
+  const verifier = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = base64Url(new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+  sessionStorage.setItem(verifierKey, verifier);
+
+  // Added to, not replacing, the endpoint's own query: some providers put a
+  // tenant or policy there.
+  const authorize = new URL(metadata.authorization_endpoint);
+  for (const [name, value] of Object.entries({
+    client_id: config.clientId,
+    redirect_uri: redirectUri(),
+    response_type: 'code',
+    scope: 'openid email profile',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    nonce: state,
+    state,
+  })) {
+    authorize.searchParams.set(name, value);
+  }
+  location.replace(authorize.href);
+}
+
+async function redeemCode(config) {
+  // The code is single-use and worthless without the verifier, but it has no
+  // business staying in the address bar or the history either.
+  history.replaceState(null, '', `${location.pathname}?state=${encodeURIComponent(state)}`);
+
+  const verifier = sessionStorage.getItem(verifierKey);
+  sessionStorage.removeItem(verifierKey);
+  if (!verifier) {
+    fail('This sign-in started in another window. Go back to Solo and try again.');
+    return;
+  }
+
+  const name = providerName(config);
+  let tokens = null;
+  try {
+    const metadata = await providerMetadata(config.authority);
+    const response = await fetch(metadata.token_endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: config.clientId,
+        code: returnedCode,
+        redirect_uri: redirectUri(),
+        code_verifier: verifier,
+      }),
+    });
+    tokens = response.ok ? await response.json() : null;
+  } catch {
+    tokens = null;
+  }
+
+  if (!tokens?.id_token) {
+    fail(`${name} didn’t finish the sign-in. Go back to Solo and try again.`);
+    return;
+  }
+  await complete(tokens.id_token);
+}
+
 async function run() {
   if (returnedError) {
     fail('Google didn’t complete the sign-in. Go back to Solo and try again.');
@@ -229,8 +351,23 @@ async function run() {
     themed,
   ]);
 
-  if (!config?.clientId || config.provider?.toLowerCase() !== 'google') {
-    fail('This Solo instance is not configured for Google sign-in.');
+  if (!config?.clientId || !config.authority || !config.provider) {
+    fail('This Solo instance has no sign-in set up yet. Ask its administrator.');
+    return;
+  }
+
+  if (config.provider.toLowerCase() !== 'google') {
+    const name = providerName(config);
+    if (returnedProviderError) {
+      sessionStorage.removeItem(verifierKey);
+      fail(`${name} didn’t complete the sign-in. Go back to Solo and try again.`);
+    } else if (returnedCode) {
+      lead.textContent = 'Finishing sign-in…';
+      await redeemCode(config);
+    } else {
+      lead.textContent = `Opening ${name === 'Your identity provider' ? 'sign-in' : `${name} sign-in`}…`;
+      await redirectToProvider(config);
+    }
     return;
   }
 

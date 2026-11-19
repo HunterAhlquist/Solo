@@ -50,7 +50,7 @@ public sealed class GoogleIdentityService(IJSRuntime js, AppConfig config) : IAs
     /// </summary>
     public async Task InitializeAsync()
     {
-        if (_self is not null || !config.IsGoogle)
+        if (_self is not null || !config.UsesSessionSignIn)
         {
             return;
         }

@@ -9,6 +9,10 @@
     callback. In the desktop shell, Google refuses to run its widget at all,
     so a plain button hands the flow to the system browser and the shell
     injects the credential into the same callback when the browser finishes.
+    The desktop and iPad apps sign in that way whatever the instance's
+    provider (AppConfig.UsesSessionSignIn), so in an app this component is the
+    sign-in for Microsoft and generic instances too; the web rendering below
+    is Google's alone.
 *@
 <div class="d-flex flex-column align-center" style="gap:.5rem">
     @if (_desktop)

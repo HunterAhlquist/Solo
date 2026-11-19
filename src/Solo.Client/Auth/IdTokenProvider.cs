@@ -36,7 +36,7 @@ public sealed class IdTokenProvider(
             return await js.InvokeAsync<string?>("solo.session.token");
         }
 
-        if (config.IsGoogle)
+        if (config.UsesSessionSignIn)
         {
             return await google.GetTokenAsync();
         }
@@ -64,5 +64,5 @@ public sealed class IdTokenProvider(
 
     /// <summary>Whether requests carry the web app's session cookie (see <see cref="GoogleIdentityService"/>).</summary>
     public async ValueTask<bool> HoldsSessionCookieAsync() =>
-        shell is not { IsHosted: true } && config.IsGoogle && await google.HoldsSessionCookieAsync();
+        shell is not { IsHosted: true } && config.UsesSessionSignIn && await google.HoldsSessionCookieAsync();
 }

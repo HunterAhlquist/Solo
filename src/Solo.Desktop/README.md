@@ -217,12 +217,15 @@ address must be an authorized redirect URI of the Google client, which is why
 it is opt-in. Either way `complete` requires the ID token's `nonce` to be the
 flow's state.
 
-For **other OIDC providers** (code + PKCE redirect) the flow runs in-app:
-expand **Details** under the instance in **Settings**.
-Register the displayed **OIDC redirect URI** with your provider.
-Details also shows the local origin. Its port can differ between stable and preview profiles.
-These providers redirect the whole window rather than a popup; whether that
-works depends on the provider's webview policy.
+**Other OIDC providers** (Microsoft Entra ID, generic) sign in through the
+same page, with the authorization code flow and PKCE: the page goes straight
+to the provider, comes back to `GET /desktop-auth?code=…&state=…`, and trades
+the code for an ID token at the provider's token endpoint, with no client
+secret. Register `https://<instance>/desktop-auth` as a redirect URI of the
+client: for Entra ID, under **Single-page application**, beside the web app's
+own. The iPad app signs in through this page too, so one registration covers
+both apps. The window itself never runs the provider's pages: this shell's CSP
+allows no provider but Google.
 
 ## MCP
 
