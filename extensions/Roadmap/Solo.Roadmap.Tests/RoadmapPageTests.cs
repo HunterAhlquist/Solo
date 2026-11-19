@@ -29,6 +29,7 @@ public class RoadmapPageTests : ComponentTestBase
     private List<RoadmapMilestoneDto> _milestones = [];
     private ProjectRole _role = ProjectRole.ReadWrite;
     private bool _isSuperAdmin;
+    private bool _isOwner;
 
     public RoadmapPageTests()
     {
@@ -51,7 +52,7 @@ public class RoadmapPageTests : ComponentTestBase
             () => new UserDto(TestData.MeId, "me@example.com", "Me", null, _isSuperAdmin));
         _http.Route("/api/projects", HttpStatusCode.OK, () => new[]
         {
-            new ProjectSummaryDto(ProjectId, "Solo", "SOLO", null, null, _role, false),
+            new ProjectSummaryDto(ProjectId, "Solo", "SOLO", null, null, _role, _isOwner),
         });
     }
 
@@ -95,19 +96,22 @@ public class RoadmapPageTests : ComponentTestBase
         Bars(page).GroupBy(b => b.Line).OrderBy(l => l.Key).Select(l => l.Select(b => b.Name).ToList()).ToList();
 
     /// <summary>
-    /// Renaming is the writers'; deleting is the super admin's alone, as a
-    /// board's lifecycle is. The menu shows for either, with only what applies.
+    /// Renaming is the writers'; deleting is the project owners' and the super
+    /// admin's, as a board's lifecycle is. The menu shows for either, with only
+    /// what applies.
     /// </summary>
     [Theory]
-    [InlineData(ProjectRole.ReadWrite, false, new[] { "Rename" })]
-    [InlineData(ProjectRole.ReadWrite, true, new[] { "Rename", "Delete" })]
-    [InlineData(ProjectRole.Read, true, new[] { "Delete" })]
-    [InlineData(ProjectRole.Read, false, new string[0])]
-    public void The_roadmap_menu_offers_rename_to_writers_and_delete_to_a_super_admin(
-        ProjectRole role, bool isSuperAdmin, string[] expected)
+    [InlineData(ProjectRole.ReadWrite, false, false, new[] { "Rename" })]
+    [InlineData(ProjectRole.ReadWrite, true, false, new[] { "Rename", "Delete" })]
+    [InlineData(ProjectRole.ReadWrite, false, true, new[] { "Rename", "Delete" })]
+    [InlineData(ProjectRole.Read, true, false, new[] { "Delete" })]
+    [InlineData(ProjectRole.Read, false, false, new string[0])]
+    public void The_roadmap_menu_offers_rename_to_writers_and_delete_to_owners(
+        ProjectRole role, bool isSuperAdmin, bool isOwner, string[] expected)
     {
         _role = role;
         _isSuperAdmin = isSuperAdmin;
+        _isOwner = isOwner;
 
         // MudMenu teleports its items into a MudPopoverProvider, so both share one tree.
         var host = Render(builder =>

@@ -36,8 +36,8 @@ struct DesignDocsView: View {
         (project.isOwner || project.role == .readWrite) && store.vault?.isClosed == false
     }
 
-    /// Creating, renaming, closing and deleting a design doc is a super admin's who owns the project.
-    private var canManage: Bool { session.user.isSuperAdmin && project?.isOwner == true }
+    /// Creating, renaming, closing and deleting a design doc is the project's owners' and a super admin's.
+    private var canManage: Bool { session.manages(project) }
 
     /// The note on show: the one asked for, else the one last read here, else the first.
     private func currentNote(_ store: DocVaultStore) -> DocNote? {

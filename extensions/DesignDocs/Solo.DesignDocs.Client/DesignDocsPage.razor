@@ -118,7 +118,7 @@ else if(_activeVaultId==Guid.Empty) {
             var details=await Api.GetAsync<ProjectDto>($"api/projects/{project.Id}");
             await DesignDocsAssets.EnsureStylesAsync(Js,new DesignDocsApi(Api));
             if(generation!=_loadGeneration||_disposed)return;
-            _project=project;_canManage=user.IsSuperAdmin;
+            _project=project;_canManage=user.IsSuperAdmin||project.IsOwner;
             _authors.Clear();foreach(var member in details.Members)if(member.UserId is Guid userId)_authors[userId]=member.DisplayName??member.Email;
             if(vaultId!=Guid.Empty) {
                 var tree=await Api.GetAsync<TreeDto>($"api/ext/design-docs/projects/{project.Id}/vaults/{vaultId}");

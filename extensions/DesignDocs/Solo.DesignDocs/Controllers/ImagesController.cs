@@ -42,7 +42,7 @@ public sealed class ImagesController(DesignDocsDbContext db,ISoloQuery query,ISo
     [HttpPost("import"),Authorize(Policy=SoloPolicies.ProjectRead),RequestSizeLimit(Limit)]
     public async Task<ActionResult<ImageDto>> Import(Guid projectId,Guid vaultId,[FromQuery]string path,CancellationToken ct)
     {
-        if (!(await query.CallerAsync(ct)).IsSuperAdmin) return Forbid();
+        if (!VaultsController.CanManage(await query.CallerAsync(ct))) return Forbid();
         return await Store(projectId,vaultId,null,path,null,ct);
     }
     [HttpPut("{id:guid}"),Authorize(Policy=SoloPolicies.ProjectWrite),RequestSizeLimit(Limit)]

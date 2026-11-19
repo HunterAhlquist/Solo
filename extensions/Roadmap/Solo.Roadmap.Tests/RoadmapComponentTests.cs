@@ -92,12 +92,12 @@ public class RoadmapComponentTests : ComponentTestBase
 
     // -- The sidebar section -------------------------------------------------------------
 
-    private static ProjectSummaryDto Project(ProjectRole role) =>
-        new(ProjectId, "Solo", "SOLO", null, null, role, false);
+    private static ProjectSummaryDto Project(ProjectRole role, bool isOwner = false) =>
+        new(ProjectId, "Solo", "SOLO", null, null, role, isOwner);
 
-    private IRenderedComponent<RoadmapNavSection> RenderSection(ProjectRole role) =>
+    private IRenderedComponent<RoadmapNavSection> RenderSection(ProjectRole role, bool isOwner = false) =>
         Render<RoadmapNavSection>(p => p
-            .Add(s => s.Project, Project(role))
+            .Add(s => s.Project, Project(role, isOwner))
             .Add(s => s.CanWrite, role == ProjectRole.ReadWrite));
 
     [Fact]
@@ -122,17 +122,20 @@ public class RoadmapComponentTests : ComponentTestBase
         Assert.DoesNotContain("Add roadmap", section.Markup);
     }
 
-    // Creating a roadmap is the super admin's alone, as a board's is: a writer
-    // doesn't get the action, and a super admin does whatever their role.
+    // Creating a roadmap is the project owners', as a board's is: a writer
+    // doesn't get the action, and an owner or a super admin does whatever
+    // their role.
     [Theory]
-    [InlineData(false, ProjectRole.ReadWrite, false)]
-    [InlineData(true, ProjectRole.Read, true)]
-    public void Add_roadmap_is_offered_to_a_super_admin_only(bool isSuperAdmin, ProjectRole role, bool offered)
+    [InlineData(false, false, ProjectRole.ReadWrite, false)]
+    [InlineData(false, true, ProjectRole.ReadWrite, true)]
+    [InlineData(true, false, ProjectRole.Read, true)]
+    public void Add_roadmap_is_offered_to_owners_and_the_super_admin(
+        bool isSuperAdmin, bool isOwner, ProjectRole role, bool offered)
     {
         _isSuperAdmin = isSuperAdmin;
         _http.RouteJson($"projects/{ProjectId}/roadmaps", Array.Empty<RoadmapSummaryDto>());
 
-        var section = RenderSection(role);
+        var section = RenderSection(role, isOwner);
 
         section.WaitForAssertion(() => Assert.Contains("No roadmaps.", section.Markup));
         section.WaitForAssertion(() => Assert.Equal(offered, section.Markup.Contains("Add roadmap")));

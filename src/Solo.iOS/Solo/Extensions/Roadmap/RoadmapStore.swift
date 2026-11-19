@@ -51,8 +51,8 @@ final class RoadmapStore {
 
     /// The board's write rule: an owner, or a read/write member. A person's own roadmap is always theirs to arrange.
     var canWrite: Bool { isPersonal || (project?.canWrite ?? false) }
-    /// Deleting a roadmap is the super admin's, whatever their role here.
-    var canDelete: Bool { !isPersonal && session.user.isSuperAdmin }
+    /// Deleting a roadmap is the project's owners', and a super admin's whatever their role here.
+    var canDelete: Bool { !isPersonal && session.manages(project) }
     var settings: RoadmapSettings { timeline?.settings ?? .standard }
     var layout: TimelineLayout { TimelineRules.layout(entries, window: window) }
 

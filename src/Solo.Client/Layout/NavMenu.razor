@@ -97,7 +97,7 @@
                                     </MudText>
                                 }
 
-                                @if (Session.IsSuperAdmin)
+                                @if (Session.IsSuperAdmin || project.IsOwner)
                                 {
                                     <MudNavLink Icon="@Icons.Material.Filled.Add" Class="nav-shell__muted"
                                                 OnClick="@(() => AddBoardAsync(project))">

@@ -21,6 +21,7 @@ with its version in parentheses).
 - Each person gets an email digest: daily or weekly at the hour they pick, or as it happens, batched every 15 minutes. It lists overdue work, work due within 2 weeks with the earliest deadline first, and work recently assigned to them. Mail apps can unsubscribe in one click. People can now pick their time zone in **Notifications**.
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
 - The web client can be shown inside an app that hosts it in a web view of its own: it leaves out its bars and navigation, signs in with the session the app hands it, and passes a link to a screen the app has back to the app. For such an app it can also run extensions' contributions out of sight and describe the ones built from the kit as data — and what they add to a task's menu, and an extension's whole page when that is built from the kit — so that the app can draw them itself, and it tells the app when one of them opens a dialog or says something in a snackbar. Nothing changes in a browser or in the desktop app.
+- A project's owners can create, close, reopen and delete its boards, not only a super admin. Add board appears in the sidebar for each project you own.
 - A preview server checks its own preview release for updates instead of the newest stable one, so Admin settings offers the extension versions built with that preview. Stable instances are unchanged, and `Updates__ManifestUrl` still overrides both.
 - Sign-in with Microsoft Entra ID or another OIDC provider works on the web again. The content security policy only allowed Google, so the browser blocked the provider's discovery document and the sign-in ended in "Network Error"; it now allows the endpoints the instance's own provider lists in its discovery document, Entra ID's userinfo endpoint on graph.microsoft.com included, and lets silent renewal frame its authorization endpoint and come back to `/authentication/login-callback`, the one page the app may frame. Google instances keep the policy they had.
 - The desktop app and the app for iPhone, iPad and Mac sign in with whatever provider the instance uses, not only Google. The app sign-in page (`/desktop-auth`) runs the authorization code flow with PKCE against a Microsoft or generic provider, with no client secret. Register `https://<instance>/desktop-auth` as a redirect URI of the provider's client: for Entra ID, under Single-page application.
@@ -43,11 +44,13 @@ with its version in parentheses).
 #### MCP Server (1.6.5)
 - Rebuilt on contract 1.17.0.
 
-#### Roadmaps (1.10.2)
+#### Roadmaps (1.10.3)
 - Rebuilt on contract 1.17.0.
+- A project's owners can create and delete its roadmaps, not only a super admin.
 
-#### Design Docs (1.5.4)
+#### Design Docs (1.5.5)
 - Rebuilt on contract 1.17.0.
+- A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
 
 ## v1.20.1 (2026-11-05)

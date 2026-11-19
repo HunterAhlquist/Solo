@@ -135,6 +135,14 @@ final class Session {
 
     var siteName: String { config.siteName }
 
+    /// Whether this person may create, close, reopen and delete a project's boards, roadmaps
+    /// and design docs: its owners, and a super admin whatever their role there. The API's
+    /// owner policy, which an instance from before owners were let in applies more narrowly —
+    /// there an owner who isn't a super admin is offered what the instance then refuses.
+    func manages(_ project: ProjectSummary?) -> Bool {
+        user.isSuperAdmin || project?.isOwner == true
+    }
+
     /// A notification on the device was tapped: an inbox entry is read and opened as the
     /// inbox opens it, a reminder goes to its task. Something that is no longer there — a
     /// task since deleted, an entry since cleared — lands on the inbox.

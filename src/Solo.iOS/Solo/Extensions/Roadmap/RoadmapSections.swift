@@ -104,7 +104,7 @@ struct RoadmapSidebarSection: View {
             } else if model?.failed == true {
                 Text("Roadmaps couldn't load.").font(.caption).foregroundStyle(theme.error)
             }
-            if session.user.isSuperAdmin {
+            if session.manages(project) {
                 Button("Add Roadmap", systemImage: "plus") {
                     prompt = RoadmapCreator.prompt(session: session, navigator: navigator, project: project)
                 }
@@ -140,7 +140,7 @@ struct RoadmapHomeSection: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionTitle("Roadmaps")
             if let roadmaps = model?.roadmaps {
-                if roadmaps.isEmpty && !session.user.isSuperAdmin {
+                if roadmaps.isEmpty && !session.manages(project) {
                     Text("No roadmaps yet.").foregroundStyle(theme.textSecondary)
                 }
                 LazyVGrid(columns: columns, spacing: 12) {
@@ -160,12 +160,12 @@ struct RoadmapHomeSection: View {
                                 .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
-                            if canWrite || session.user.isSuperAdmin {
+                            if canWrite || session.manages(project) {
                                 Menu("Roadmap actions", systemImage: "ellipsis") {
                                     if canWrite {
                                         Button("Rename", systemImage: "pencil") { rename(roadmap) }
                                     }
-                                    if session.user.isSuperAdmin {
+                                    if session.manages(project) {
                                         Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(roadmap) }
                                     }
                                 }
@@ -175,7 +175,7 @@ struct RoadmapHomeSection: View {
                         }
                         .card(padding: 14)
                     }
-                    if session.user.isSuperAdmin {
+                    if session.manages(project) {
                         Button {
                             prompt = RoadmapCreator.prompt(session: session, navigator: navigator, project: project)
                         } label: {

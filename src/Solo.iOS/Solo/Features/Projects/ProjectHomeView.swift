@@ -60,7 +60,7 @@ struct ProjectHomeView: View {
                     VStack(alignment: .leading, spacing: 18) {
                         switch section {
                         case .work:
-                            BoardsSection(project: project, canWrite: access.canWrite)
+                            BoardsSection(project: project, canWrite: access.canWrite, canManage: access.isOwner)
                             ProjectHomeExtensions(project: project, canWrite: access.canWrite)
                         case .members:
                             MembersSection(projectId: project.id, isOwner: access.isOwner) { await load() }
@@ -174,8 +174,8 @@ struct ChipPicker<Option: Hashable & Identifiable, ChipLabel: View>: View {
 // MARK: - Boards
 
 /// Fold, don't hide: closed boards live in a faded foldout with one-tap reopen.
-/// Creating, closing and reopening are the super admin's; settings and labels
-/// are the writers'.
+/// Creating, closing and reopening are the owners' and a super admin's; settings
+/// and labels are the writers'.
 struct BoardsSection: View {
     @Environment(Session.self) private var session
     @Environment(Navigator.self) private var navigator
@@ -183,6 +183,7 @@ struct BoardsSection: View {
 
     var project: Project
     var canWrite: Bool
+    var canManage: Bool
 
     @State private var boards: [Board]?
     @State private var creating = false
@@ -190,7 +191,6 @@ struct BoardsSection: View {
     @State private var labelling: Board?
     @State private var showClosed = false
 
-    private var canManage: Bool { session.user.isSuperAdmin }
     private let columns = [GridItem(.adaptive(minimum: 240), spacing: 12, alignment: .top)]
 
     var body: some View {

@@ -805,7 +805,7 @@ private struct ProjectBranch: View {
                     .font(.caption)
                     .foregroundStyle(theme.textSecondary)
             }
-            if session.user.isSuperAdmin {
+            if session.manages(project) {
                 Button("Add Board", systemImage: "plus", action: onAddBoard)
                     .font(.subheadline)
                     .foregroundStyle(theme.textSecondary)

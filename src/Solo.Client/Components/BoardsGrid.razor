@@ -11,7 +11,7 @@
 @*
     Fold, don't hide: closed boards live in a faded foldout with one-click
     reopen. Everything stays reachable. Creating, closing and reopening are the
-    super admin's (CanManage); settings and labels are the writers'.
+    project owners' (CanManage); settings and labels are the writers'.
 *@
 
 @if (_boards is null)
@@ -121,7 +121,7 @@ else
     [Parameter]
     public bool CanWrite { get; set; }
 
-    /// <summary>Create, close and reopen: the super admin's, whatever their role here.</summary>
+    /// <summary>Create, close, reopen and delete: the project owners', and the super admin's.</summary>
     [Parameter]
     public bool CanManage { get; set; }
 

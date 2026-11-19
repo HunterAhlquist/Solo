@@ -162,9 +162,10 @@ public sealed class RoadmapApi(ISoloClientApi api)
         api.GetAsync<List<ProjectSummaryDto>>("api/projects", ct);
 
     /// <summary>
-    /// Whether the caller is the instance's super admin, who alone creates and
-    /// deletes roadmaps. False when the answer can't be had: a hidden button
-    /// costs less than one that 403s.
+    /// Whether the caller is the instance's super admin, who creates and
+    /// deletes roadmaps in any project, as each project's owners do in theirs.
+    /// False when the answer can't be had: a hidden button costs less than one
+    /// that 403s.
     /// </summary>
     public async Task<bool> IsSuperAdminAsync(CancellationToken ct = default)
     {
