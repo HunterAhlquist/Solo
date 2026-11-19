@@ -33,7 +33,9 @@ struct SettingsWindow: View {
         .environment(model.themes)
         .preferredColorScheme(model.themes.preference.colorScheme)
         .frame(minWidth: 760, minHeight: 500)
+        // Its pages draw the bar's backing and its line themselves, as the main window's do.
         .windowBarBacked()
+        .withoutBarLine()
     }
 }
 #endif

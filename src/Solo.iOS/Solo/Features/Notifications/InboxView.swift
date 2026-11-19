@@ -137,7 +137,7 @@ struct NotificationSettingsView: View {
     private static let weekdays: [Weekday] = [.monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday]
 
     var body: some View {
-        Form {
+        GlassList(form: true) {
             Section {
                 switch permission {
                 case .authorized, .provisional, .ephemeral:

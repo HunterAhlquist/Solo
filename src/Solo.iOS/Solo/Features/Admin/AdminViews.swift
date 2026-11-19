@@ -20,7 +20,7 @@ struct AdminSettingsView: View {
     }
 
     var body: some View {
-        Form {
+        GlassList(form: true) {
             if let settings {
                 Section {
                     TextField("Name", text: $displayName, prompt: Text("Solo"))
@@ -142,7 +142,7 @@ struct AdminThemesView: View {
     @State private var rescanning = false
 
     var body: some View {
-        GroupedList {
+        GlassList {
             if let document = themes.document, document.isFallback == true {
                 Section {
                     Label("Theme '\(document.requestedThemeId ?? "?")' is selected for this instance but is not installed. "
@@ -243,7 +243,7 @@ struct AdminUsersView: View {
     @State private var confirmation: Confirmation?
 
     var body: some View {
-        GroupedList {
+        GlassList {
             if let users {
                 Section {
                     ForEach(users) { user in
@@ -360,7 +360,7 @@ struct AdminEmailView: View {
     }
 
     var body: some View {
-        Form {
+        GlassList(form: true) {
             if let problem {
                 Section { Label(problem, systemImage: "exclamationmark.triangle").foregroundStyle(theme.error) }.themedRow()
             }
@@ -530,7 +530,7 @@ struct AdminUpdatesView: View {
     @State private var checkError: String?
 
     var body: some View {
-        GroupedList {
+        GlassList {
             Section("This instance") {
                 LabeledContent("Version", value: running)
                 LabeledContent("Extension contract", value: session.serverVersion?.extensionApiVersion ?? "—")
@@ -630,7 +630,7 @@ struct AdminExtensionsView: View {
     private var available: [ExtensionUpdate] { (updates?.extensions ?? []).filter(\.compatible) }
 
     var body: some View {
-        GroupedList {
+        GlassList {
             if let admin {
                 if let updates, !updates.enabled {
                     Section { Text("Update checks are disabled on this instance (Updates__Enabled).").font(.footnote) }.themedRow()

@@ -107,7 +107,9 @@ struct SettingsShell: View {
                         TabRoot(tab: .account)
                     }
                 }
-                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0) }
+                // The bar the main window's pages have: see `barBackedAcross`.
+                .barBackedAcross()
+                .navigationDestination(for: Route.self) { RouteView(route: $0).id($0).barBackedAcross() }
             }
             // Each section is a stack of its own, from its first page.
             .id(section)
@@ -141,7 +143,7 @@ struct InstancesOnlySettings: View {
             .navigationSplitViewColumnWidth(240)
         } detail: {
             NavigationStack {
-                InstancesView()
+                InstancesView().barBackedAcross()
             }
         }
         .toolbar {

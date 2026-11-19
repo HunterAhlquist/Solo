@@ -11,7 +11,7 @@ struct AccountView: View {
 
     var body: some View {
         @Bindable var themes = themes
-        GroupedList {
+        GlassList {
             Section {
                 HStack(spacing: 14) {
                     UserAvatar(user: session.user, size: 56)
@@ -101,7 +101,7 @@ struct AppearanceView: View {
 
     var body: some View {
         @Bindable var themes = themes
-        Form {
+        GlassList(form: true) {
             Picker("Colour scheme", selection: $themes.preference) {
                 ForEach(SchemePreference.allCases) { preference in
                     Label(preference.title, systemImage: preference.symbol).tag(preference)
@@ -125,7 +125,7 @@ struct DevicesView: View {
     @State private var busy = false
 
     var body: some View {
-        GroupedList {
+        GlassList {
             if let sessions {
                 Section {
                     ForEach(sessions) { item in
@@ -231,7 +231,7 @@ struct AboutView: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        GroupedList {
+        GlassList {
             Section("Instance") {
                 LabeledContent("Name", value: session.siteName)
                 LabeledContent("Address", value: session.api.host)

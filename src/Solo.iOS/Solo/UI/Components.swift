@@ -139,9 +139,10 @@ extension View {
     }
 
     /// A list row that lets the page's wash through, so a list reads as a
-    /// frosted panel over the background rather than a solid slab on it.
+    /// frosted panel over the background rather than a solid slab on it. In
+    /// Settings (`GlassList`) the panel is glass.
     func themedRow() -> some View {
-        listRowBackground(Color.groupedRowBackground.opacity(0.55))
+        listRowBackground(ThemedRowBackground())
     }
 }
 
@@ -185,6 +186,127 @@ struct GroupedList<Content: View>: View {
         #else
         List { content }
         #endif
+    }
+}
+
+/// A grouped list whose sections are panes of Liquid Glass: the pages of Settings. They are
+/// read straight through to the page, and where a theme puts a picture behind the app a
+/// row's wash was not enough to read a row of small text over it.
+///
+/// An iPhone's and iPad's list is given glass a row at a time (`themedRow`), which the list
+/// cuts to its sections' corners. A Mac's grouped form takes no background for a row and
+/// draws its sections itself, so there a section is made one row holding all of its rows,
+/// with one pane of glass behind it, let out to the edges of the panel the form draws: the
+/// rows are still in the form, and its controls are still laid out as a form's. Only for
+/// pages of a few rows: on a Mac a section's rows are all built at once.
+struct GlassList<Content: View>: View {
+    /// A form on an iPhone and iPad, where a page of fields was written as one.
+    var form = false
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        #if os(macOS)
+        Form {
+            ForEach(sections: content) { section in
+                // A heading that is there but shows nothing still takes a heading's room, so
+                // a section is given one only if it has one to show. Until that is known the
+                // section is not shown: it is known a frame later, and a section that was
+                // drawn in that frame was drawn a heading's height too low.
+                let heading = headings[section.id]
+                Group {
+                    switch (heading ?? true, section.footer.isEmpty) {
+                    case (false, true): Section { pane(section) }
+                    case (true, true): Section { pane(section) } header: { section.header }
+                    case (false, false): Section { pane(section) } footer: { section.footer }
+                    case (true, false): Section { pane(section) } header: { section.header } footer: { section.footer }
+                    }
+                }
+                .opacity(heading == nil ? 0 : 1)
+            }
+        }
+        #else
+        Group {
+            if form {
+                Form { content }
+            } else {
+                List { content }
+            }
+        }
+        .environment(\.glassRows, true)
+        #endif
+    }
+
+    #if os(macOS)
+    /// Whether each section has a heading. A section written without one is still handed
+    /// over with a heading, an empty one, and nothing says which it is but its size: so each
+    /// is laid out once, unseen, behind its section.
+    @State private var headings: [SectionConfiguration.ID: Bool] = [:]
+
+    /// Whether a heading laid out by itself came to nothing: no size at all, or the ten
+    /// points square that stands in for a view there is nothing of, which is what a section
+    /// written without a heading has for one.
+    private static func showsNothing(_ size: CGSize) -> Bool {
+        size.height < 1 || (size.width <= 10 && size.height <= 10)
+    }
+
+    /// A section's rows as the one row the form is given, on their pane of glass.
+    private func pane(_ section: SectionConfiguration) -> some View {
+        Group(subviews: section.content) { rows in
+            if !rows.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(rows.indices, id: \.self) { index in
+                        if index > 0 { Divider() }
+                        rows[index]
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, index == 0 ? 0 : Self.rowGap)
+                            .padding(.bottom, index == rows.count - 1 ? 0 : Self.rowGap)
+                    }
+                }
+                .background {
+                    Color.clear
+                        .glassEffect(.regular, in: .rect(cornerRadius: Self.panelRadius))
+                        .padding(-Self.panelInset)
+                }
+                .background {
+                    VStack(spacing: 0) { section.header }
+                        .fixedSize()
+                        .onGeometryChange(for: Bool.self) { Self.showsNothing($0.size) } action: { empty in
+                            headings[section.id] = !empty
+                        }
+                        .hidden()
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+    }
+
+    // A grouped form's own measures: what it puts above and below a row, how far its panel
+    // stands out from its rows, and the panel's corners.
+    private static var rowGap: CGFloat { 10 }
+    private static var panelInset: CGFloat { 10 }
+    private static var panelRadius: CGFloat { 10 }
+    #endif
+}
+
+extension EnvironmentValues {
+    /// Inside a `GlassList`: its rows are backed by glass.
+    @Entry var glassRows = false
+}
+
+/// What is behind a row of a themed list: the page's wash, or glass in a `GlassList`.
+private struct ThemedRowBackground: View {
+    @Environment(\.glassRows) private var glass
+
+    var body: some View {
+        if glass {
+            // A row's glass is let out past the row on every side, where the list cuts it
+            // off: glass bends what is behind it along its edge, and with an edge to every
+            // row a section was a stack of lenses and not a pane.
+            Color.clear.glassEffect(.regular, in: .rect).padding(-24)
+        } else {
+            Color.groupedRowBackground.opacity(0.55)
+        }
     }
 }
 

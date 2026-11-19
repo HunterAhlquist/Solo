@@ -118,7 +118,7 @@ struct InstancesSection: View {
 /// The list as a page of its own: a section of a Mac's Settings window.
 struct InstancesView: View {
     var body: some View {
-        GroupedList {
+        GlassList {
             InstancesSection()
         }
         .themedList()
