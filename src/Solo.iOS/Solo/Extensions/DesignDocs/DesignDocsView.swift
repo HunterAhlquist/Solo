@@ -18,7 +18,6 @@ struct DesignDocsView: View {
     @State private var authors: [UUID: String] = [:]
     @State private var selected: UUID?
     @State private var treeShown = true
-    @State private var treeSheet = false
     @State private var problem: String?
     @State private var prompt: TextPrompt?
     @State private var confirmation: Confirmation?
@@ -72,6 +71,7 @@ struct DesignDocsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .task(id: vaultId) { await load() }
+        .onChange(of: wide, initial: true) { settleWhatIsUnder() }
         .onDisappear {
             let leaving = store
             Task { await leaving?.stop() }
@@ -145,22 +145,6 @@ struct DesignDocsView: View {
         // picked from it (`open`): left out, it would stand over what was asked for.
         .onChange(of: floats, initial: true) { _, floats in
             if floats { treeShown = false }
-        }
-        .sheet(isPresented: $treeSheet) {
-            NavigationStack {
-                tree(store, editable: editable, selected: note?.id) { id in
-                    treeSheet = false
-                    replaceTop(id)
-                }
-                .themedBackground()
-                .navigationTitle(store.vault?.name ?? "Notes")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { treeSheet = false }
-                    }
-                }
-            }
         }
     }
 
@@ -266,16 +250,6 @@ struct DesignDocsView: View {
                                    review: { reviewing = true }, export: { exporting = true }, confirm: { confirmation = $0 })
             }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            if store?.tree != nil {
-                // Beside a note the tree has a button of its own, at its panel's corner (`content`).
-                if !wide, noteId != nil, !underNotes {
-                    // Only where Back is not the way to them: a note come to by a link from
-                    // somewhere else, with that somewhere under it.
-                    Button("Notes", systemImage: "folder") { treeSheet = true }
-                }
-            }
-        }
     }
 
     // MARK: Loading and moving about
@@ -309,19 +283,30 @@ struct DesignDocsView: View {
         }
     }
 
-    /// Whether the page under this note is this design doc's — its list of notes, or a note
-    /// that was come from. Then Back leads to the notes, and nothing else needs to.
-    private var underNotes: Bool {
-        let path = navigator[navigator.tab]
-        guard path.count >= 2, case .designDocs(_, let under, _) = path[path.count - 2] else { return false }
-        return under == vaultId
-    }
-
-    /// Picking from the tree while already in a note swaps the note rather than stacking another.
-    private func replaceTop(_ id: UUID) {
+    /// Sees to what is under a note's page, which is where Back leads.
+    ///
+    /// On a phone a note is a page of its own, and the way to the design doc's other notes is
+    /// Back: so a note come to from anywhere else — a link in a task, a notification, the
+    /// page it was left on — is given the design doc's list of notes to go back to, between
+    /// it and wherever it was come from. A note under it already, one of this design doc's
+    /// that a link was followed from, is left: Back returns to it.
+    ///
+    /// Beside a note the list is on the same page, and one under it is that page again:
+    /// Back would seem to do nothing. So where the page is wide — a phone opened out, a
+    /// window made wider — a list put under a note is taken away again.
+    private func settleWhatIsUnder() {
+        guard let noteId else { return }
         var path = navigator[navigator.tab]
-        guard !path.isEmpty else { return }
-        path[path.count - 1] = .designDocs(project: projectAlias, vaultId: vaultId, noteId: id)
+        let notes = Route.designDocs(project: projectAlias, vaultId: vaultId, noteId: nil)
+        guard path.last == .designDocs(project: projectAlias, vaultId: vaultId, noteId: noteId) else { return }
+        let under = path.count >= 2 ? path[path.count - 2] : nil
+        if wide {
+            guard under == notes else { return }
+            path.remove(at: path.count - 2)
+        } else {
+            if case .designDocs(_, let other, _)? = under, other == vaultId { return }
+            path.insert(notes, at: path.count - 1)
+        }
         navigator[navigator.tab] = path
     }
 
