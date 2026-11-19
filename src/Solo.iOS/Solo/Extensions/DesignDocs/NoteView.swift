@@ -54,13 +54,13 @@ struct NoteView: View {
                 SyncedTextEditor(sync: sync, proxy: proxy, revision: sync.remoteRevision, editable: sync.canWrite, fallback: note.markdown,
                                  accent: PlatformColor(theme.primary), media: editorMedia, mediaRevision: mediaRevision,
                                  presence: sync.awareness.revision, header: AnyView(header.environment(\.theme, theme).environment(session)), insets: geometry.safeAreaInsets,
-                                 onLink: follow) {
+                                 layout: store.noteLayout, onLink: follow) {
                     typing = $0
                 }
                 .ignoresSafeArea()
                 .background {
                     NoteGround(leading: geometry.safeAreaInsets.leading, trailing: geometry.safeAreaInsets.trailing,
-                               sidebar: sidebarWidth, pane: trailingPane, fades: sizeClass == .regular)
+                               sidebar: sidebarWidth, pane: trailingPane, fades: sizeClass == .regular, layout: store.noteLayout)
                         .ignoresSafeArea()
                 }
                 .onChange(of: geometry.safeAreaInsets.leading, initial: true) { _, inset in
@@ -80,6 +80,9 @@ struct NoteView: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: typing)
+        #if os(macOS)
+        .focusedSceneValue(\.noteLayout, Binding(get: { store.noteLayout }, set: { store.noteLayout = $0 }))
+        #endif
         .toolbar {
             // A phone's bar has room for little, and a menu of everything else at its end: there
             // the note's attachments are in that menu (`DesignDocsView.toolbar`), and this one
@@ -101,6 +104,7 @@ struct NoteView: View {
                         }
                         if !narrow {
                             Button("Attachments", systemImage: "paperclip") { showingAttachments = true }
+                            Section { NoteLayoutMenu(store: store) }
                         }
                     }
                 }
@@ -168,21 +172,23 @@ struct NoteView: View {
         hasher.combine(store.sketches.map(\.id))
         hasher.combine(canWrite)
         hasher.combine(theme.primary)
+        // Pictures are drawn to the text's size, as the web's are.
+        hasher.combine(store.noteLayout.scale)
         return hasher.finalize()
     }
 
     /// The editor is UIKit, so its rows are handed to it ready-made, with the
     /// environment a view of this app expects.
     private var editorMedia: NoteEditorMedia {
-        let context = mediaContext, session = session, theme = theme
+        let context = mediaContext, session = session, theme = theme, scale = store.noteLayout.factor
         return NoteEditorMedia(
             size: { row in
                 guard let refs = DocMarkdown.mediaRow(row), let entries = context.entries(refs) else { return nil }
-                return NoteMediaStack.size(count: entries.count)
+                return NoteMediaStack.size(count: entries.count, scale: scale)
             },
             row: { row in
                 guard let refs = DocMarkdown.mediaRow(row), let entries = context.entries(refs) else { return nil }
-                return AnyView(NoteMediaStack(entries: entries, context: context)
+                return AnyView(NoteMediaStack(entries: entries, context: context, scale: scale)
                     .environment(session)
                     .environment(session.navigator)
                     .environment(session.toasts)
@@ -706,12 +712,82 @@ private struct DocPictureLoader: View {
 nonisolated enum NoteColumn {
     static let measure: CGFloat = 820
 
+    /// What is left empty on each side of the column in this much room: by itself, whatever
+    /// keeps the column to its measure, and otherwise the share of the room that was asked for.
+    static func margin(room: CGFloat, _ layout: NoteLayout) -> CGFloat {
+        guard let share = layout.marginShare else { return max((room - measure) / 2, 0) }
+        return room * share
+    }
+
     /// The column's two edges in a view of this width with this much of its sides stood over.
-    static func span(width: CGFloat, leading: CGFloat, trailing: CGFloat) -> ClosedRange<CGFloat> {
+    static func span(width: CGFloat, leading: CGFloat, trailing: CGFloat, layout: NoteLayout = NoteLayout()) -> ClosedRange<CGFloat> {
         let room = max(width - leading - trailing, 0)
-        let margin = max((room - measure) / 2, 0)
+        let margin = margin(room: room, layout)
         let start = leading + margin
         return start...max(width - trailing - margin, start)
+    }
+}
+
+/// How a design doc's notes are set on this device: how big the text is and how much is left
+/// empty beside it. The web's two menus over its editor (`DesignDocsPage.razor`), with the
+/// same choices, kept as it keeps them — for each design doc, on the device and not the
+/// instance (`js/preferences.js`).
+nonisolated struct NoteLayout: Equatable, Sendable {
+    /// Per cent of the size text is otherwise written at.
+    static let scales = [75, 90, 100, 110, 125, 150, 175, 200]
+    /// Per cent of the note's width left empty on each side; `automatic` keeps the column
+    /// to its measure and centres it.
+    static let margins = [automatic, 0, 5, 10, 15, 20]
+    static let automatic = -1
+
+    var scale = 100
+    var margin = NoteLayout.automatic
+
+    /// Anything but one of the choices is the usual, as the web reads what it kept.
+    init(scale: Int = 100, margin: Int = NoteLayout.automatic) {
+        self.scale = Self.scales.contains(scale) ? scale : 100
+        self.margin = Self.margins.contains(margin) ? margin : Self.automatic
+    }
+
+    var factor: CGFloat { CGFloat(scale) / 100 }
+    /// Nil where the margins are left to the column's measure.
+    var marginShare: CGFloat? { margin < 0 ? nil : CGFloat(margin) / 100 }
+
+    static func marginName(_ margin: Int) -> String { margin < 0 ? "Auto" : "\(margin)%" }
+
+    /// The next size up or down, for a key; nil at either end.
+    func stepped(_ by: Int) -> NoteLayout? {
+        guard let index = Self.scales.firstIndex(of: scale), Self.scales.indices.contains(index + by) else { return nil }
+        return NoteLayout(scale: Self.scales[index + by], margin: margin)
+    }
+}
+
+/// The two choices as rows of a menu, each saying what it is set to and opening onto its
+/// own list: in the note's menu where the bar has one, and in the page's on a phone.
+struct NoteLayoutMenu: View {
+    @Bindable var store: DocVaultStore
+
+    var body: some View {
+        Menu {
+            Picker("Text Size", selection: $store.noteLayout.scale) {
+                ForEach(NoteLayout.scales, id: \.self) { Text("\($0)%").tag($0) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Label("Text Size", systemImage: "textformat.size")
+            Text("\(store.noteLayout.scale)%")
+        }
+        Menu {
+            Picker("Margins", selection: $store.noteLayout.margin) {
+                ForEach(NoteLayout.margins, id: \.self) { Text(NoteLayout.marginName($0)).tag($0) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Label("Margins", systemImage: "arrow.left.and.right.text.vertical")
+            Text(NoteLayout.marginName(store.noteLayout.margin))
+        }
     }
 }
 
@@ -730,6 +806,7 @@ private struct NoteGround: View {
     var sidebar: CGFloat
     var pane: CGFloat
     var fades: Bool
+    var layout: NoteLayout
 
     private static let strength = 0.75
     /// The least it fades over.
@@ -740,7 +817,7 @@ private struct NoteGround: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             if fades, width > 0 {
-                let column = NoteColumn.span(width: width, leading: leading, trailing: trailing)
+                let column = NoteColumn.span(width: width, leading: leading, trailing: trailing, layout: layout)
                 let from = min(max(leading, sidebar), column.lowerBound - Self.least)
                 let to = max(width - max(trailing, pane), column.upperBound + Self.least)
                 LinearGradient(stops: Self.stops(ground, from: from, column: column, to: to),

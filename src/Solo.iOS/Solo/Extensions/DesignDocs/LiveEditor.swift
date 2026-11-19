@@ -191,16 +191,23 @@ final class NoteStyler {
 
     var accent: PlatformColor = .tintColor
     private(set) var body = PlatformFont.writing
+    /// How big the note is set, against the size text is otherwise written at (`NoteLayout`).
+    /// Everything else in a note is sized from `body`, so it all follows.
+    var scale: CGFloat = 1 {
+        didSet { if scale != oldValue { refreshFonts() } }
+    }
 
-    /// Dynamic Type changed: the next pass uses the new size.
+    /// Dynamic Type changed, or the note's own size: the next pass uses the new one.
     func refreshFonts() {
-        body = .writing
+        let writing = PlatformFont.writing
+        body = scale == 1 ? writing : writing.withSize((writing.pointSize * scale).rounded())
     }
 
     private func paragraph() -> NSMutableParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.lineSpacing = 3
-        style.paragraphSpacing = 2
+        // With the text, as a line's height is on the web.
+        style.lineSpacing = 3 * scale
+        style.paragraphSpacing = 2 * scale
         return style
     }
 

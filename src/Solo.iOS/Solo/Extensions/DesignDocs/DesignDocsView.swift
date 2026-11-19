@@ -204,6 +204,7 @@ struct DesignDocsView: View {
                 // wider it is in the note's own (`NoteView`).
                 if !wide, noteId != nil, currentNote(store) != nil {
                     Button("Attachments", systemImage: "paperclip") { showingAttachments = true }
+                    NoteLayoutMenu(store: store)
                 }
                 if canEdit(project, store) {
                     Button("New Note", systemImage: "doc.badge.plus") { addNote(store) }

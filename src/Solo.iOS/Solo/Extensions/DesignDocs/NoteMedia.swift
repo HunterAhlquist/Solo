@@ -123,6 +123,8 @@ struct NoteMediaStack: View {
     @Environment(\.theme) private var theme
     var entries: [NoteMediaEntry]
     var context: NoteMediaContext
+    /// The note's text size, which its prints are drawn to as the web's are (`--design-docs-scale`).
+    var scale: CGFloat = 1
 
     @Namespace private var zoom
     @State private var viewing: Start?
@@ -137,8 +139,8 @@ struct NoteMediaStack: View {
     private static let step: CGFloat = 24
 
     /// The room a row of `count` prints takes, as the web editor lays it out.
-    static func size(count: Int) -> CGSize {
-        CGSize(width: 148 + CGFloat(min(max(count, 1) - 1, 7)) * step, height: 164)
+    static func size(count: Int, scale: CGFloat = 1) -> CGSize {
+        CGSize(width: (148 + CGFloat(min(max(count, 1) - 1, 7)) * step) * scale, height: 164 * scale)
     }
 
     /// The same few degrees of tilt the web gives a print, worked out from its path so it never changes.
@@ -180,13 +182,13 @@ struct NoteMediaStack: View {
                                     .shadow(color: .black.opacity(0.15), radius: 4, x: 1, y: 2)
                             }
                         }
-                        .frame(width: Self.side, height: Self.side)
+                        .frame(width: Self.side * scale, height: Self.side * scale)
                     }
                     .matchedTransitionSource(id: entry.id, in: zoom)
                 }
                 .buttonStyle(.plain)
                 .rotationEffect(.degrees(Self.angle(entry.embed.path) * (entries.count > 1 ? 2 : 1)))
-                .offset(x: 10 + CGFloat(min(index, 7)) * Self.step, y: 12 + CGFloat(index % 2) * 6)
+                .offset(x: (10 + CGFloat(min(index, 7)) * Self.step) * scale, y: (12 + CGFloat(index % 2) * 6) * scale)
                 .zIndex(entry.id == front ? Double(entries.count + 1) : Double(index))
                 .accessibilityLabel("\(entry.embed.isSketch ? "Sketch" : "Image") \(entry.embed.name)")
                 .accessibilityHint("Opens it full screen")
@@ -203,7 +205,8 @@ struct NoteMediaStack: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(width: Self.size(count: entries.count).width, height: Self.size(count: entries.count).height, alignment: .topLeading)
+        .frame(width: Self.size(count: entries.count, scale: scale).width, height: Self.size(count: entries.count, scale: scale).height,
+               alignment: .topLeading)
         .fullScreenCover(item: $viewing) { start in
             NoteMediaViewer(entries: entries, context: context, current: start.id, zoom: zoom) { front = $0 }
         }

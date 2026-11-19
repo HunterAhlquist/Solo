@@ -102,6 +102,13 @@ final class DocVaultStore {
     var openFolders: Set<UUID> {
         didSet { UserDefaults.standard.set(openFolders.map(\.uuidString), forKey: foldersKey) }
     }
+    /// How this design doc's notes are set on this device.
+    var noteLayout: NoteLayout {
+        didSet {
+            UserDefaults.standard.set(noteLayout.scale, forKey: scaleKey)
+            UserDefaults.standard.set(noteLayout.margin, forKey: marginKey)
+        }
+    }
 
     @ObservationIgnored private let session: Session
     @ObservationIgnored private var subscriptions: [EventSubscription] = []
@@ -114,9 +121,17 @@ final class DocVaultStore {
         self.vaultId = vaultId
         let stored = UserDefaults.standard.stringArray(forKey: "solo.docs.\(vaultId.compact).folders") ?? []
         openFolders = Set(stored.compactMap(UUID.init))
+        // Asked for by whether it is there: never kept reads as nought, and nought is a margin.
+        let defaults = UserDefaults.standard, prefix = "solo.docs.\(vaultId.compact)"
+        func kept(_ name: String, or usual: Int) -> Int {
+            defaults.object(forKey: "\(prefix).\(name)") == nil ? usual : defaults.integer(forKey: "\(prefix).\(name)")
+        }
+        noteLayout = NoteLayout(scale: kept("fontScale", or: 100), margin: kept("marginWidth", or: NoteLayout.automatic))
     }
 
     private var foldersKey: String { "solo.docs.\(vaultId.compact).folders" }
+    private var scaleKey: String { "solo.docs.\(vaultId.compact).fontScale" }
+    private var marginKey: String { "solo.docs.\(vaultId.compact).marginWidth" }
     private var noteKey: String { "solo.docs.\(vaultId.compact).note" }
 
     /// The note last read in this vault on this device.

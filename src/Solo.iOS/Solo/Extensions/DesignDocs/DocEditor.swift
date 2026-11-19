@@ -135,6 +135,8 @@ struct SyncedTextEditor: UIViewRepresentable {
     /// so the text passes behind their glass rather than stopping at their edges, and is inset
     /// by this much so that it can still be scrolled clear of them.
     var insets: EdgeInsets
+    /// How big the text is set and how much is left empty beside it.
+    var layout = NoteLayout()
     /// A link tapped while the note wasn't being typed in.
     var onLink: (String) -> Void = { _ in }
     var onFocus: (Bool) -> Void = { _ in }
@@ -170,7 +172,6 @@ struct SyncedTextEditor: UIViewRepresentable {
         view.isEditable = editable
 
         view.placeholder.font = .preferredFont(forTextStyle: .body)
-        view.placeholder.adjustsFontForContentSizeCategory = true
         view.placeholder.textColor = .tertiaryLabel
         view.placeholder.isHidden = true
         view.addSubview(view.placeholder)
@@ -195,6 +196,7 @@ struct SyncedTextEditor: UIViewRepresentable {
             coordinator?.restyle()
         }
         proxy.coordinator = coordinator
+        coordinator.setLayout(layout)
         coordinator.setInsets(insets)
         coordinator.setHeader(header)
         coordinator.applyRemote()
@@ -210,6 +212,7 @@ struct SyncedTextEditor: UIViewRepresentable {
         proxy.coordinator = coordinator
         coordinator.setInsets(insets)
         var stale = coordinator.setAccent(accent)
+        if coordinator.setLayout(layout) { stale = true }
         if coordinator.setHeader(header) { stale = true }
         if coordinator.mediaRevision != mediaRevision {
             coordinator.mediaRevision = mediaRevision
@@ -252,8 +255,7 @@ struct SyncedTextEditor: UIViewRepresentable {
         private var restyling = false
         private var placing = false
         private var placementPending = false
-        /// The widest a line of the note runs; past it the text keeps to the middle of the view.
-        private static let measure = NoteColumn.measure
+        private var layout = NoteLayout()
         /// How much of the view's leading and trailing sides something stands over.
         private var sides: (leading: CGFloat, trailing: CGFloat) = (0, 0)
 
@@ -292,6 +294,7 @@ struct SyncedTextEditor: UIViewRepresentable {
 
         @objc private func textSizeChanged() {
             styler.refreshFonts()
+            textView?.placeholder.font = styler.body
             restyle()
         }
 
@@ -302,6 +305,18 @@ struct SyncedTextEditor: UIViewRepresentable {
             styler.accent = accent
             (textView?.layoutManager as? NoteLayoutManager)?.accent = accent
             textView?.tintColor = accent
+            return true
+        }
+
+        /// True when the text's size or its margins changed and the text needs styling again.
+        @discardableResult
+        func setLayout(_ wanted: NoteLayout) -> Bool {
+            guard layout != wanted else { return false }
+            layout = wanted
+            styler.scale = wanted.factor
+            textView?.placeholder.font = styler.body
+            textView?.typingAttributes = styler.base
+            layoutChrome()
             return true
         }
 
@@ -344,7 +359,7 @@ struct SyncedTextEditor: UIViewRepresentable {
             // note passes under the app's sidebar, and centred in the whole of it the text
             // began at the sidebar's edge, or under it.
             let room = max(view.bounds.width - sides.leading - sides.trailing, 0)
-            let margin = max((room - Self.measure) / 2, 0)
+            let margin = NoteColumn.margin(room: room, layout)
             var top: CGFloat = 16
             if let headerHost {
                 let width = room - margin * 2

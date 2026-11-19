@@ -106,6 +106,8 @@ struct SyncedTextEditor: NSViewRepresentable {
     /// What the window's bar and the format strip cover. The view runs under them, so the
     /// text passes behind their glass, and is inset by this much so it can be scrolled clear.
     var insets: EdgeInsets
+    /// How big the text is set and how much is left empty beside it.
+    var layout = NoteLayout()
     /// A link clicked.
     var onLink: (String) -> Void = { _ in }
     var onFocus: (Bool) -> Void = { _ in }
@@ -180,6 +182,7 @@ struct SyncedTextEditor: NSViewRepresentable {
         NotificationCenter.default.addObserver(coordinator, selector: #selector(Coordinator.scrolled),
                                                name: NSView.boundsDidChangeNotification, object: scroll.contentView)
         proxy.coordinator = coordinator
+        coordinator.setLayout(layout)
         coordinator.setInsets(insets)
         coordinator.setHeader(header)
         coordinator.applyRemote()
@@ -196,6 +199,7 @@ struct SyncedTextEditor: NSViewRepresentable {
         proxy.coordinator = coordinator
         coordinator.setInsets(insets)
         var stale = coordinator.setAccent(accent)
+        if coordinator.setLayout(layout) { stale = true }
         if coordinator.setHeader(header) { stale = true }
         if coordinator.mediaRevision != mediaRevision {
             coordinator.mediaRevision = mediaRevision
@@ -238,8 +242,7 @@ struct SyncedTextEditor: NSViewRepresentable {
         private var restyling = false
         private var placing = false
         private var placementPending = false
-        /// The widest a line of the note runs; past it the text keeps to the middle of the view.
-        private static let measure = NoteColumn.measure
+        private var layout = NoteLayout()
         /// How much of the view's leading and trailing sides something stands over.
         private var sides: (leading: CGFloat, trailing: CGFloat) = (0, 0)
 
@@ -286,6 +289,18 @@ struct SyncedTextEditor: NSViewRepresentable {
             return true
         }
 
+        /// True when the text's size or its margins changed and the text needs styling again.
+        @discardableResult
+        func setLayout(_ wanted: NoteLayout) -> Bool {
+            guard layout != wanted else { return false }
+            layout = wanted
+            styler.scale = wanted.factor
+            textView?.placeholder.font = styler.body
+            textView?.typingAttributes = styler.base
+            layoutChrome()
+            return true
+        }
+
         // MARK: Chrome
 
         /// Takes the room the bars cover out of what the text can be scrolled to rest in.
@@ -329,7 +344,7 @@ struct SyncedTextEditor: NSViewRepresentable {
             // note passes under the window's sidebar, and what began at the view's edge
             // began under it.
             let room = max(view.bounds.width - sides.leading - sides.trailing, 0)
-            let margin = max((room - Self.measure) / 2, 0)
+            let margin = NoteColumn.margin(room: room, layout)
             var top: CGFloat = 16
             if let headerHost {
                 let width = room - margin * 2

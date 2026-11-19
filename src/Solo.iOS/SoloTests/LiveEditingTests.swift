@@ -206,6 +206,37 @@ import Testing
     }
 }
 
+@Suite struct NoteLayoutTests {
+    @Test func whatWasNeverAChoiceIsTheUsual() {
+        // As the web reads what it kept (`viewPreferences`).
+        #expect(NoteLayout(scale: 125, margin: 10) == NoteLayout(scale: 125, margin: 10))
+        #expect(NoteLayout(scale: 120, margin: 7) == NoteLayout())
+        #expect(NoteLayout(scale: 0, margin: -3) == NoteLayout(scale: 100, margin: NoteLayout.automatic))
+        #expect(NoteLayout().factor == 1)
+        #expect(NoteLayout(scale: 175).factor == 1.75)
+    }
+
+    @Test func aKeyStepsThroughTheMenusSizes() {
+        #expect(NoteLayout(scale: 100, margin: 5).stepped(1) == NoteLayout(scale: 110, margin: 5))
+        #expect(NoteLayout(scale: 100).stepped(-1) == NoteLayout(scale: 90))
+        #expect(NoteLayout(scale: 200).stepped(1) == nil)
+        #expect(NoteLayout(scale: 75).stepped(-1) == nil)
+    }
+
+    @Test func marginsAreAShareOfTheRoomOrWhatKeepsTheMeasure() {
+        // Left to itself the column is its measure, centred; in less room than that it has it all.
+        #expect(NoteColumn.margin(room: 1220, NoteLayout()) == 200)
+        #expect(NoteColumn.margin(room: 400, NoteLayout()) == 0)
+        // A margin asked for is that much of the room on each side, wide or narrow.
+        #expect(NoteColumn.margin(room: 1220, NoteLayout(margin: 0)) == 0)
+        #expect(NoteColumn.margin(room: 1000, NoteLayout(margin: 15)) == 150)
+        #expect(NoteColumn.margin(room: 400, NoteLayout(margin: 20)) == 80)
+        // The room is what can be seen: between whatever stands over the view's sides.
+        #expect(NoteColumn.span(width: 1400, leading: 300, trailing: 100, layout: NoteLayout(margin: 10)) == 400...1200)
+        #expect(NoteColumn.span(width: 1400, leading: 300, trailing: 100) == 390...1210)
+    }
+}
+
 @Suite struct NotePictureTests {
     @Test func aRowIsALineOfEmbedsAndNothingElse() {
         #expect(DocMarkdown.mediaRow("![[a.png]]  ![alt](b.jpg)")?.map(\.target) == ["a.png", "b.jpg"])

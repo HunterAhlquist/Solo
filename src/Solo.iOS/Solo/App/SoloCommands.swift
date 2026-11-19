@@ -6,6 +6,7 @@ import SwiftUI
 struct SoloCommands: Commands {
     var model: AppModel
     @FocusedValue(\.newTask) private var newTask
+    @FocusedValue(\.noteLayout) private var noteLayout
     @Environment(\.openWindow) private var openWindow
 
     private var navigator: Navigator? { model.session?.navigator }
@@ -49,6 +50,18 @@ struct SoloCommands: Commands {
             Button("Reload") { Task { await ReloadCenter.shared.reload() } }
                 .keyboardShortcut("r")
                 .disabled(navigator == nil)
+            Divider()
+            // The note showing, a step of its menu's sizes at a time, on the keys a Mac has
+            // for it everywhere else.
+            Button("Make Text Bigger") { step(1) }
+                .keyboardShortcut("+")
+                .disabled(noteLayout?.wrappedValue.stepped(1) == nil)
+            Button("Make Text Smaller") { step(-1) }
+                .keyboardShortcut("-")
+                .disabled(noteLayout?.wrappedValue.stepped(-1) == nil)
+            Button("Actual Size") { noteLayout?.wrappedValue.scale = 100 }
+                .keyboardShortcut("0")
+                .disabled(noteLayout == nil || noteLayout?.wrappedValue.scale == 100)
         }
 
         CommandGroup(replacing: .appInfo) {
@@ -84,7 +97,17 @@ struct SoloCommands: Commands {
     }
 }
 
+extension SoloCommands {
+    private func step(_ by: Int) {
+        guard let noteLayout, let next = noteLayout.wrappedValue.stepped(by) else { return }
+        noteLayout.wrappedValue = next
+    }
+}
+
 extension FocusedValues {
+    /// How the note in the window is set, where there is one, for the View menu to change.
+    @Entry var noteLayout: Binding<NoteLayout>?
+
     /// Starts a new task on the board in the window, where there is one and it may be written to.
     @Entry var newTask: (() -> Void)?
 }
