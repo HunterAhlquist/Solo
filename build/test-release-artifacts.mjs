@@ -62,6 +62,24 @@ test('the feed links absolute URLs and offers the mac zip, not the image', async
     assert.equal(manifest.desktop.installers.filter(i => i.primary).length, 3);
 });
 
+// What the release workflow builds now: it has no macOS leg. The feed must not
+// claim a mac channel it has no installer for; the release job hands the last
+// latest-mac.yml on by itself.
+test('a build with no mac installers writes no mac channel', async () => {
+    const dist = await scratch();
+    await installers(dist, {
+        'Solo-1.22.0-setup.exe': 'setup',
+        'Solo-1.22.0-setup.exe.blockmap': '0123456789',
+        'Solo-1.22.0.AppImage': 'appimage',
+    });
+
+    const { channels, manifest } = await buildFeed({ dist, version: '1.22.0', tag: 'v1.22.0', base: BASE });
+
+    assert.deepEqual(channels.map(c => c.file).sort(), ['latest-linux.yml', 'latest.yml']);
+    assert.deepEqual(Object.keys(manifest.desktop.channels).sort(), ['linux', 'win']);
+    assert.deepEqual(manifest.desktop.installers.map(i => i.platform).sort(), ['linux', 'win']);
+});
+
 test('a mac image without a zip is refused rather than shipped unusable', async () => {
     const dist = await scratch();
     await installers(dist, { 'Solo-1.18.0-arm64.dmg': 'image' });

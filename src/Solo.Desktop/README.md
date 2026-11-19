@@ -313,15 +313,20 @@ predate the preprocessing the advisory describes (`optimizationLevel`,
 listing under 10 and 11. Drop the overrides once electron-builder depends on
 11 itself.
 
-CI does this automatically: pushing a `v<version>` tag runs
+CI does this automatically for Windows and Linux: pushing a `v<version>` tag runs
 [release-desktop.yml](../../.github/workflows/release-desktop.yml), which
-packages macOS (Apple silicon), Windows, and Linux installers and attaches them
-to that tag's GitHub release, alongside the server image's and the extension
-packages' own artifacts from `ci.yml`. The macOS build produces a `.zip` beside
-the `.dmg` because an update installs from the zip — Squirrel.Mac cannot use a
-disk image. Builds are unsigned unless the Apple signing/notarization secrets
-are configured; a manual `workflow_dispatch` run uploads the installers as
-workflow artifacts without creating a release.
+packages those two installers and attaches them to that tag's GitHub release,
+alongside the server image's and the extension packages' own artifacts from
+`ci.yml`. A manual `workflow_dispatch` run uploads the installers as workflow
+artifacts without creating a release.
+
+The workflow no longer builds for macOS, where the native app (`src/Solo.iOS`)
+is taking this one's place; what this file says of the macOS build — signing,
+notarization, the `.dmg` — now describes a build made by hand. It produces a
+`.zip` beside the `.dmg` because an update installs from the zip: Squirrel.Mac
+cannot use a disk image. The copies already installed keep their update check:
+each release carries the last `latest-mac.yml` forward
+([docs/releases.md](../../docs/releases.md)).
 
 The installers are named explicitly in `electron-builder.config.cjs` rather than
 from `productName`, and carry a `generic` electron-updater feed rather than the

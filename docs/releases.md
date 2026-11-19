@@ -81,8 +81,8 @@ URL included, so it keeps resolving.
   "release": { "tag": "v1.18.0", "version": "1.18.0", "prerelease": false, "published": "…" },
   "server":  { "version": "1.17.0", "release": "v1.17.0", "image": "ghcr.io/hunterahlquist/solo:1.17.0", "contract": "1.11.1" },
   "desktop": { "version": "1.18.0", "release": "v1.18.0", "contract": "1.11.1",
-               "channels": { "mac": "…/latest-mac.yml", "win": "…/latest.yml", "linux": "…/latest-linux.yml" },
-               "installers": [ { "platform": "mac", "asset": "…", "url": "…", "size": 0, "sha512": "…", "primary": true } ] },
+               "channels": { "win": "…/latest.yml", "linux": "…/latest-linux.yml" },
+               "installers": [ { "platform": "win", "asset": "…", "url": "…", "size": 0, "sha512": "…", "primary": true } ] },
   "extensions": [
     { "id": "design-docs", "version": "1.3.0", "release": "v1.18.0", "asset": "solo-design-docs-1.3.0.zip",
       "url": "…", "size": 0, "sha512": "…", "soloApiVersion": ">=1.10 <2.0", "soloClientVersion": ">=1.11 <2.0" }
@@ -140,15 +140,27 @@ Two constraints shaped that, and both are easy to undo by accident:
   that holds the matching installers, so nothing is uploaded twice.
 
 [build/updater-feed.mjs](../build/updater-feed.mjs) writes those files from the
-uploaded bytes rather than letting electron-builder generate them — partly for
-the absolute URLs, and partly because `scripts/after-all-artifact-build.mjs`
-re-encodes the `.dmg` as ULMO *after* electron-builder has hashed it, so any
-digest taken during packaging is stale.
+uploaded bytes rather than letting electron-builder generate them, for the
+absolute URLs.
 
-macOS updates install from a **zip**, not the `.dmg` — Squirrel.Mac cannot use a
-disk image. Both are built and attached, and the feed names the zip. Dropping
-the `zip` target from `package.json` would leave macOS unable to update while
-everything still looked fine.
+**The release workflow no longer builds the shell for macOS**: it packages
+Windows and Linux, and a Mac is left to the native app (`src/Solo.iOS`). The
+shell is still installed on Macs, though, and those copies go on reading
+`latest-mac.yml` off the newest release, so the rule above holds for them too.
+The release job hands the last `latest-mac.yml` from release to release
+("Carry the last macOS feed forward"): it names the last macOS build by
+absolute URL, in the release that still holds it, so an installed copy is told
+it is up to date, or is offered that last build, and never meets a 404. The
+manifest's `desktop` entry no longer lists a mac channel or installer, because
+no release builds one. Dropping that step would break the update check of every
+Electron copy on a Mac while everything else still looked fine.
+
+`package.json` keeps its mac targets, so the shell still builds for a Mac
+locally. Should a release build it again: macOS updates install from a **zip**,
+not the `.dmg` (Squirrel.Mac cannot use a disk image), so both have to be built
+and the feed has to name the zip, which `build/updater-feed.mjs` insists on; and
+`scripts/after-all-artifact-build.mjs` re-encodes the `.dmg` as ULMO *after*
+electron-builder has hashed it, so any digest taken during packaging is stale.
 
 Preview builds get no feed: they're prereleases, which the `releases/latest`
 redirect skips, so the feed they'd read describes the stable app. Previews are
@@ -170,8 +182,9 @@ on the preview channel. `scripts/check-app-identity.mjs` enforces this, and
 | Asset | From |
 |---|---|
 | `release-manifest.json` | always |
-| `latest-mac.yml`, `latest.yml`, `latest-linux.yml` | always — fresh, or carried forward |
-| `Solo-<version>-arm64.dmg` / `.zip`, `Solo-<version>-setup.exe`, `Solo-<version>.AppImage` | only when the desktop changed |
+| `latest.yml`, `latest-linux.yml` | always — fresh, or carried forward |
+| `latest-mac.yml` | always carried forward, from the last release that built the shell for macOS |
+| `Solo-<version>-setup.exe`, `Solo-<version>.AppImage` | only when the desktop changed |
 | `solo-<extension>-<version>.zip` | only for extensions that changed |
 
 The server image is not a release asset; it goes to GHCR as

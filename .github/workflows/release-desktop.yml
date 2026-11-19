@@ -21,7 +21,7 @@ env:
 
 jobs:
   # Gate for the whole run. A tag that changes nothing the installers are built
-  # from would package identical apps on three runners for several hundred MB
+  # from would package identical apps on two runners for several hundred MB
   # of upload, so it doesn't get built at all. Manual runs always fall through.
   changes:
     name: Check release inputs
@@ -109,43 +109,20 @@ jobs:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     runs-on: ${{ matrix.os }}
-    # A backstop, not a budget: before notarization had its own time limit a
-    # slow Apple queue held the runner for as long as Apple took. A healthy
-    # mac run is ~8 minutes plus however long notarization takes, which is
-    # capped below.
+    # A backstop, not a budget: packaging takes minutes.
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Not macos-latest: that's macOS 26 with Xcode 26.6 at newest, and
-          # actool 26.6 doesn't know the icon's `refractivity` feature, so
-          # stage-icon.mjs drops it and the app ships the macOS 26 rendering.
-          # `xcode-27` is the preview image (macOS 27 + Xcode 27), whose actool
-          # compiles the feature. It is a preview: thinner capacity, and its
-          # Xcode is a beta build that also signs and notarizes the release.
-          # Move back to macos-latest once macOS 27 is the GA image.
-          - os: xcode-27
-            # Architecture comes from package.json's mac target: Apple silicon
-            # only. Don't pass --x64/--arm64 here; an arch flag overrides the
-            # config and adds an Intel build back. --dir stops at the signed
-            # .app: it is notarized and stapled in its own step, and only then
-            # wrapped in the .dmg (see "Build disk image").
-            args: "--dir"
-          - os: windows-latest
-            args: ""
-          - os: ubuntu-latest
-            args: ""
+        # Windows and Linux. The shell is no longer built for macOS: a Mac is
+        # left to the native app (src/Solo.iOS), whose preview builds go out
+        # through release-mac-store.yml. package.json keeps its mac target, so
+        # the shell still builds for one locally; and the release job below
+        # still hands the last macOS feed on, for the copies already installed.
+        os: [windows-latest, ubuntu-latest]
     defaults:
       run:
         working-directory: src/Solo.Desktop
-    # Lifted to the job because a step's `if:` can read the `env` context but
-    # not `secrets` — the signing and notarizing steps skip themselves when
-    # their secrets are absent.
-    env:
-      MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-      MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -161,36 +138,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Electron 44 stopped fetching its binary on install and fetches it on
-      # first launch instead — which would be the check below, whose
-      # five-second wait for the debugger the download alone outlasts. The
-      # packaging step brings its own copy, so only the mac runner needs it.
-      - name: Fetch the Electron binary
-        if: runner.os == 'macOS'
-        run: node node_modules/electron/install.js
-
-      - name: Verify glass loading view
-        if: runner.os == 'macOS'
-        run: npm run test:glass-loading
-
-      # mac.icon is an Icon Composer bundle, staged by the beforePack hook and
-      # compiled by electron-builder with actool, which only ships with Xcode
-      # 26+. The image's default Xcode selection can lag behind what's
-      # installed, and a newer actool means fewer icon features get dropped.
-      - name: Select Xcode 26+
-        if: runner.os == 'macOS'
-        run: |
-          sudo xcode-select -s "$(ls -d /Applications/Xcode_2[6-9]*.app | sort -V | tail -1)"
-          xcrun actool --version | grep short-bundle-version
-
       # The channel guard already validated this version; a failed stamp must
       # stop the build rather than publish mislabeled installers.
       - name: Stamp release identity
         env:
           RELEASE_VERSION: ${{ needs.changes.outputs.version || format('0.0.0-preview.{0}', github.run_number) }}
-        run: |
-          npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
-          node -e 'console.log("DESKTOP_PRODUCT_NAME=" + require("./electron-builder.config.cjs").productName)' >> "$GITHUB_ENV"
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
         shell: bash
 
       - name: Verify desktop isolation
@@ -207,157 +160,15 @@ jobs:
       - name: Publish Blazor client into shell
         run: npm run build:client
 
-      # The macOS sign-in window (main/auth-sheet.js). Without it the app still
-      # works but signs in through a browser tab, so a build that can't
-      # compile or load it fails here rather than shipping that silently.
-      - name: Build the macOS sign-in window
-        if: runner.os == 'macOS'
-        run: |
-          npm run build:native
-          node -e "const m = require('./native/auth-session/build/Release/auth_session.node'); if (typeof m.start !== 'function') process.exit(1)"
-
-      # electron-builder builds its own signing keychain when CSC_LINK is set,
-      # and that path is broken: it creates the keychain with a random password
-      # but then calls `security set-key-partition-list -k` with the *p12
-      # export* password (app-builder-lib importCerts). The two were never the
-      # same secret; it only worked because a just-created keychain is already
-      # unlocked, so the bogus password went unchecked. Since macos-latest
-      # moved to macOS 27 the unlock happens unconditionally and the build dies
-      # with "SecKeychainUnlock: The user name or passphrase you entered is not
-      # correct."
-      #
-      # So we own the keychain instead. With CSC_LINK unset electron-builder
-      # skips that code entirely and signs against CSC_KEYCHAIN.
-      - name: Import signing certificate
-        id: keychain
-        if: runner.os == 'macOS' && env.MAC_CSC_LINK != ''
-        run: |
-          set -euo pipefail
-          KEYCHAIN="${RUNNER_TEMP}/solo-signing.keychain-db"
-          # Only ever unlocks this throwaway keychain, on a throwaway runner.
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          CERT="${RUNNER_TEMP}/mac-csc.p12"
-
-          echo "$MAC_CSC_LINK" | base64 --decode > "$CERT"
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          # No auto-lock: a locked keychain is what broke the build in the
-          # first place, and codesign runs unattended minutes later.
-          security set-keychain-settings "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT" -k "$KEYCHAIN" -P "$MAC_CSC_KEY_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/productbuild
-          # The keychain password, which is the one this actually wants.
-          security set-key-partition-list -S apple-tool:,apple: -s \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
-          # codesign resolves the certificate chain through the search list,
-          # not through --keychain alone; keep the existing keychains on it.
-          # `list-keychains` prints one indented, quoted path per line.
-          EXISTING=()
-          while IFS= read -r line; do
-            EXISTING+=("$(printf '%s' "$line" | sed -e 's/^[[:space:]]*"//' -e 's/"$//')")
-          done < <(security list-keychains -d user)
-          # bash 3.2 (still /bin/bash on the runners) treats an empty array as
-          # unbound under `set -u`, so don't expand one.
-          if [ ${#EXISTING[@]} -gt 0 ]; then
-            security list-keychains -d user -s "$KEYCHAIN" "${EXISTING[@]}"
-          else
-            security list-keychains -d user -s "$KEYCHAIN"
-          fi
-
-          rm -f "$CERT"
-          # find-identity exits 0 even when it found nothing, so check the
-          # count here rather than discovering it as an unsigned .dmg.
-          security find-identity -v -p codesigning "$KEYCHAIN" \
-            | tee "${RUNNER_TEMP}/identities"
-          if grep -q "0 valid identities found" "${RUNNER_TEMP}/identities"; then
-            echo "::error::No codesigning identity in the keychain — check that" \
-                 "MAC_CSC_LINK is a base64 .p12 and MAC_CSC_KEY_PASSWORD matches it."
-            exit 1
-          fi
-          echo "CSC_KEYCHAIN=${KEYCHAIN}" >> "$GITHUB_ENV"
-
-      # Without the signing/notarization secrets, electron-builder logs a
-      # warning and ships unsigned builds. Gatekeeper then blocks the first
-      # launch on macOS, and since macOS 15 right-click → Open no longer gets
-      # past it: users have to find Open Anyway in System Settings → Privacy &
-      # Security. Add the secrets and the same workflow signs and notarizes
-      # with no other changes.
       - name: Package
-        run: npx electron-builder --config electron-builder.config.cjs --publish never ${{ matrix.args }}
-
-      # Not electron-builder's `mac.notarize`: that waits on Apple inside the
-      # Package step with no time limit and no output, so a slow notary queue
-      # looked like a hung codesign and held the runner as long as Apple took.
-      # Here the log carries the submission id and Apple's status as it goes,
-      # and the wait is capped. The verdict is the final `status:` line of
-      # submit's own output, not its exit status, which a timeout also
-      # produces. It isn't asked for again with `notarytool info`: that is one
-      # more authenticated call, able to fail a build Apple already accepted.
-      - name: Notarize
-        if: runner.os == 'macOS' && env.MAC_CSC_LINK != '' && env.APPLE_ID != ''
-        env:
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          APP="dist/mac-arm64/${DESKTOP_PRODUCT_NAME}.app"
-          ZIP="${RUNNER_TEMP}/Solo.zip"
-          LOG="${RUNNER_TEMP}/notarytool.log"
-          AUTH=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
-
-          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
-          echo "Submitting $(du -h "$ZIP" | cut -f1) to the notary service."
-
-          # Apple carries on processing after --timeout; this only stops
-          # paying a runner to watch.
-          xcrun notarytool submit "$ZIP" "${AUTH[@]}" --wait --timeout 40m 2>&1 | tee "$LOG" || true
-
-          ID=$(awk '$1 == "id:" { print $2; exit }' "$LOG")
-          if [ -z "$ID" ]; then
-            echo "::error::The notary service returned no submission id; see notarytool's output above."
-            exit 1
-          fi
-          # "Processing complete" is followed by `status: <verdict>`; a timeout
-          # leaves no such line, or only "In Progress".
-          STATUS=$(awk '/^ *status: / { sub(/^ *status: /, ""); s = $0 } END { print s }' "$LOG")
-          case "$STATUS" in
-            Accepted) ;;
-            "" | "In Progress")
-              echo "::error::Apple was still processing submission $ID after 40 minutes. It was not abandoned, but this build can't wait for it; re-run the job to submit again."
-              exit 1 ;;
-            *)
-              xcrun notarytool log "$ID" "${AUTH[@]}" || true
-              echo "::error::Notarization of submission $ID ended as '$STATUS'; Apple's log is above."
-              exit 1 ;;
-          esac
-
-          xcrun stapler staple "$APP"
-          # Gatekeeper's own verdict, from the stapled ticket alone.
-          spctl -a -t exec -vv "$APP" 2>&1 | tee "${RUNNER_TEMP}/spctl.log"
-          grep -q "source=Notarized Developer ID" "${RUNNER_TEMP}/spctl.log"
-
-      # Wraps the finished, stapled app. --prepackaged skips packing and
-      # signing entirely, so nothing touches the app after its ticket is
-      # stapled; the afterAllArtifactBuild hook still re-encodes the image.
-      - name: Build disk image
-        if: runner.os == 'macOS'
-        run: npx electron-builder --config electron-builder.config.cjs --mac --prepackaged "dist/mac-arm64/${DESKTOP_PRODUCT_NAME}.app" --publish never
-
-      # The runner is ephemeral, but the keychain outlives the job on a
-      # self-hosted one and leaving it on the search list breaks later builds.
-      - name: Remove signing keychain
-        if: always() && steps.keychain.outcome == 'success'
-        run: security delete-keychain "${RUNNER_TEMP}/solo-signing.keychain-db"
+        run: npx electron-builder --config electron-builder.config.cjs --publish never
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-${{ matrix.os }}
           path: |
-            src/Solo.Desktop/dist/*.dmg
             src/Solo.Desktop/dist/*.exe
             src/Solo.Desktop/dist/*.AppImage
-            src/Solo.Desktop/dist/*.zip
             src/Solo.Desktop/dist/*.blockmap
           if-no-files-found: error
 
@@ -464,7 +275,7 @@ jobs:
           # undescribed by the manifest too, and a release must not offer an
           # installer nothing vouches for. Reachable only when the feed write
           # itself failed; a train that simply skipped the build has none.
-          undescribed=(artifacts/*.dmg artifacts/*.zip artifacts/*.exe artifacts/*.AppImage artifacts/*.blockmap)
+          undescribed=(artifacts/*.exe artifacts/*.AppImage artifacts/*.blockmap)
           if [ ${#undescribed[@]} -gt 0 ]; then
             echo "::warning::Discarding installers no updater feed describes: ${undescribed[*]}"
             rm -f "${undescribed[@]}"
@@ -493,6 +304,34 @@ jobs:
             exit 1
           fi
           echo "::warning::No updater feed on this release and no earlier desktop release to carry one forward from."
+
+      # macOS is no longer built here (see the build matrix), but the shell is
+      # installed on Macs that go on reading latest-mac.yml off the newest
+      # release, and to them a 404 is a broken update check, not "no update". So
+      # the last one written is handed from release to release: every URL in it
+      # is absolute and names the last macOS build, in the release that still
+      # holds it. A previous release whose assets can't be listed stops the job,
+      # as an unreadable baseline does; one that has no such file has nothing to
+      # hand on.
+      - name: Carry the last macOS feed forward
+        run: |
+          set -euo pipefail
+          if [ -f artifacts/latest-mac.yml ]; then
+            echo "Already here: carried forward with the rest of the feed."
+            exit 0
+          fi
+          if [ -z "$PREVIOUS" ]; then
+            echo "No earlier release to carry a macOS feed forward from."
+            exit 0
+          fi
+          assets=$(gh release view "$PREVIOUS" --json assets --jq '.assets[].name')
+          if ! grep -qxF latest-mac.yml <<< "$assets"; then
+            echo "$PREVIOUS has no latest-mac.yml to carry forward."
+            exit 0
+          fi
+          gh release download "$PREVIOUS" -p latest-mac.yml -D artifacts
+          echo "Carried forward from $PREVIOUS:"
+          cat artifacts/latest-mac.yml
 
       # The client bundled in the installers is what soloClientVersion is
       # checked against, so the contract version rides along with the desktop
