@@ -15,6 +15,8 @@ struct AboutWindow: View {
             ?? "Solo"
     }
 
+    private static let source = URL(string: "https://github.com/HunterAhlquist/Solo")!
+
     @State private var playing = false
     @State private var clicks = 0
     @State private var lastClick = Date.distantPast
@@ -34,12 +36,21 @@ struct AboutWindow: View {
                 .padding(.bottom, 2)
             Text(version)
                 .font(.system(size: 11))
-            if let copyright {
-                Text(copyright)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 10)
+            VStack(spacing: 2) {
+                if let copyright {
+                    Text(copyright)
+                }
+                // The licence the copyright is held under (LICENSE), and where the source is.
+                Text("Released under the MIT License")
+                Link("github.com/HunterAhlquist/Solo", destination: Self.source)
+                    // The system's colour for a link: the panel is outside the instance's theme.
+                    .foregroundStyle(Color(nsColor: .linkColor))
+                    .pointerStyle(.link)
+                    .padding(.top, 2)
             }
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .padding(.top, 10)
         }
         .multilineTextAlignment(.center)
         // Nothing above the icon: the room the hidden bar still keeps for the window's
