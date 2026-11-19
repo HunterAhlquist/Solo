@@ -110,7 +110,38 @@ struct DesignDocsView: View {
                         // text is laid out again at every width on the way, and the page jitters
                         // for as long as that takes.
                         .animation(nil, value: treeShown)
+                        // With the tree put away its button is alone at the head of the page:
+                        // the note starts under it and passes behind it, as it does the bar.
+                        #if os(iOS)
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            if !treeShown { Color.clear.frame(height: 56) }
+                        }
+                        #endif
                 }
+                // On an iPad and a phone's wide screen the button for the tree is where the tree
+                // is: at the page's leading edge, under the bar's own button for the app's
+                // sidebar, and in the same place whether the tree is out or put away. In the bar
+                // it stood at the far end from what it opens. Out, it is at the head of the
+                // tree's panel; put away, it is by itself on glass.
+                #if os(iOS)
+                .overlay(alignment: .topLeading) {
+                    Button {
+                        withAnimation(.snappy) { treeShown.toggle() }
+                    } label: {
+                        Image(systemName: Self.treeSymbol)
+                            .font(.title3)
+                            .frame(width: 44, height: 44)
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.textPrimary)
+                    .glassEffect(treeShown ? .identity : .regular.interactive(), in: .circle)
+                    .accessibilityLabel("Notes")
+                    .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
+                    .padding(.leading, 18)
+                    .padding(.top, 12)
+                }
+                #endif
             } else if noteId != nil {
                 page(store, note, editable: editable)
             } else {
@@ -163,8 +194,14 @@ struct DesignDocsView: View {
     }
 
     private func tree(_ store: DocVaultStore, editable: Bool, selected: UUID?, onOpen: ((UUID) -> Void)? = nil) -> some View {
-        DocTreeView(store: store, canEdit: editable, selected: selected, onOpen: onOpen ?? open)
+        DocTreeView(store: store, canEdit: editable, selected: selected, onOpen: onOpen ?? open,
+                    // Beside the note, an iPad's has the button that puts it away at its head.
+                    headingStart: wide && onOpen == nil && !Platform.isMac ? 52 : 18)
     }
+
+    /// The button for the note tree. A sidebar's, as it is one, but not the plain one: that
+    /// is the app's own sidebar's, which on an iPad is a few points away.
+    private static let treeSymbol = "sidebar.squares.left"
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
@@ -223,10 +260,14 @@ struct DesignDocsView: View {
         ToolbarItem(placement: .topBarTrailing) {
             if store?.tree != nil {
                 if wide {
-                    Button("Notes", systemImage: "sidebar.left") {
+                    // A Mac's is in the window's bar, with its other buttons. An iPad's is at
+                    // the page's leading edge (`content`).
+                    #if os(macOS)
+                    Button("Notes", systemImage: Self.treeSymbol) {
                         withAnimation(.snappy) { treeShown.toggle() }
                     }
                     .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
+                    #endif
                 } else if noteId != nil, !underNotes {
                     // Only where Back is not the way to them: a note come to by a link from
                     // somewhere else, with that somewhere under it.
@@ -569,6 +610,8 @@ struct DocTreeView: View {
     var canEdit: Bool
     var selected: UUID?
     var onOpen: (UUID) -> Void
+    /// How far in the heading starts: further where something is drawn over its corner.
+    var headingStart: CGFloat = 18
 
     @State private var prompt: TextPrompt?
     @State private var confirmation: Confirmation?
@@ -612,7 +655,7 @@ struct DocTreeView: View {
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
-            .padding(.leading, 18)
+            .padding(.leading, headingStart)
             .padding(.trailing, Platform.isMac ? 10 : 8)
             .frame(height: 48)
             .background {

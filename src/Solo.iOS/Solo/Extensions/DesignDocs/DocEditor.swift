@@ -254,6 +254,8 @@ struct SyncedTextEditor: UIViewRepresentable {
         private var placementPending = false
         /// The widest a line of the note runs; past it the text keeps to the middle of the view.
         private static let measure: CGFloat = 820
+        /// How much of the view's leading and trailing sides something stands over.
+        private var sides: (leading: CGFloat, trailing: CGFloat) = (0, 0)
 
         init(sync: DocSync, media: NoteEditorMedia) {
             self.sync = sync
@@ -307,6 +309,9 @@ struct SyncedTextEditor: UIViewRepresentable {
 
         /// Takes the room the bars cover out of what the text can be scrolled to rest in.
         func setInsets(_ insets: EdgeInsets) {
+            // What stands over the note's sides — the app's sidebar, on an iPad — is kept for
+            // the margins (`layoutChrome`), which are set just after this.
+            sides = (insets.leading, insets.trailing)
             guard let view = textView else { return }
             let wanted = UIEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: 0)
             guard view.contentInset != wanted else { return }
@@ -335,16 +340,20 @@ struct SyncedTextEditor: UIViewRepresentable {
         @discardableResult
         func layoutChrome() -> Bool {
             guard let view = textView, view.bounds.width > 0 else { return false }
-            let margin = max((view.bounds.width - Self.measure) / 2, 0)
+            // The column is centred in what can be seen of the view, not in the view: the
+            // note passes under the app's sidebar, and centred in the whole of it the text
+            // began at the sidebar's edge, or under it.
+            let room = max(view.bounds.width - sides.leading - sides.trailing, 0)
+            let margin = max((room - Self.measure) / 2, 0)
             var top: CGFloat = 16
             if let headerHost {
-                let width = view.bounds.width - margin * 2
+                let width = room - margin * 2
                 let height = headerHost.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
-                let frame = CGRect(x: margin, y: 0, width: width, height: height)
+                let frame = CGRect(x: sides.leading + margin, y: 0, width: width, height: height)
                 if headerHost.view.frame != frame { headerHost.view.frame = frame }
                 top = height + 12
             }
-            let wanted = UIEdgeInsets(top: top, left: margin + 14, bottom: 96, right: margin + 14)
+            let wanted = UIEdgeInsets(top: top, left: sides.leading + margin + 14, bottom: 96, right: sides.trailing + margin + 14)
             guard view.textContainerInset != wanted else { return false }
             view.textContainerInset = wanted
             return true
