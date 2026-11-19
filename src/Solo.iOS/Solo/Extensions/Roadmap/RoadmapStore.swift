@@ -97,6 +97,8 @@ final class RoadmapStore {
         } catch let error as APIError where error.isNotFound {
             loadError = "That roadmap doesn't exist, or you don't have access to its project."
         } catch {
+            // Cut short because the page went away is not a failure to tell anyone of.
+            guard !Task.isCancelled else { return }
             loadError = (error as? LocalizedError)?.errorDescription ?? "Couldn't load the roadmap."
         }
     }

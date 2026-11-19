@@ -442,6 +442,22 @@ private struct SplitShell: View {
     @Environment(Navigator.self) private var navigator
     @State private var columns: NavigationSplitViewVisibility = .automatic
     @State private var panels = DetailPanelCenter()
+    #if os(iOS)
+    @Environment(\.backdropCanvas) private var canvas
+
+    /// Whether the sidebar slides over the page and takes no room from it. On an iPad there
+    /// is room for both and the page is made narrower beside it. A phone's screen wide enough
+    /// to have a sidebar at all — a folding one opened out, a large one on its side — has none
+    /// to spare: with the sidebar beside it the page was squeezed to little more than the
+    /// sidebar's own width. It is told by the window's shorter side and not by the kind of
+    /// device, so a window that size on anything is laid out the same.
+    private var slidesOver: Bool {
+        canvas.map { min($0.width, $0.height) < Self.roomForBoth } ?? false
+    }
+
+    /// Under every iPad's shorter side, over every phone's.
+    private static let roomForBoth: CGFloat = 700
+    #endif
     #if os(macOS)
     @State private var width: CGFloat = 0
     /// True while the sidebar is put away to make room for the task panel, and is to come back.
@@ -464,7 +480,21 @@ private struct SplitShell: View {
         } detail: {
             SectionStack(tab: session.shownTab)
         }
+        #if os(iOS)
+        .modifier(SidebarPlacement(slidesOver: slidesOver))
+        // Slid over the page, the sidebar is put away to begin with, and again once it has
+        // been used to go somewhere: left out, it would stand over the page that was asked for.
+        .onChange(of: slidesOver, initial: true) { _, slidesOver in
+            if slidesOver { columns = .detailOnly }
+        }
+        .onChange(of: Place(tab: session.shownTab, page: navigator.current)) {
+            if slidesOver, columns != .detailOnly {
+                withAnimation { columns = .detailOnly }
+            }
+        }
+        #else
         .navigationSplitViewStyle(.balanced)
+        #endif
         // Over the whole split view rather than the detail column: the panel stands above the
         // column's navigation bar, which nothing inside the column can do.
         .overlay { DetailPanelColumn() }
@@ -523,6 +553,26 @@ private struct SplitShell: View {
 }
 
 #if os(iOS)
+/// Where the window is: the section showing and the page on top of it.
+private struct Place: Equatable {
+    var tab: AppTab
+    var page: Route?
+}
+
+/// The sidebar beside the page, which is made narrower for it, or slid over a page that
+/// keeps its width (`SplitShell.slidesOver`).
+private struct SidebarPlacement: ViewModifier {
+    var slidesOver: Bool
+
+    func body(content: Content) -> some View {
+        if slidesOver {
+            content.navigationSplitViewStyle(.prominentDetail)
+        } else {
+            content.navigationSplitViewStyle(.balanced)
+        }
+    }
+}
+
 /// A pan in from the screen's leading edge. Every other pan — the stack's
 /// swipe back among them — waits for it to fail, so the screen's edge is its
 /// alone. A pan that starts anywhere else fails it at once and is unaffected.

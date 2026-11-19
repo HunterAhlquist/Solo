@@ -318,10 +318,15 @@ struct RoadmapDashboardSection: View {
             }
         }
         .task(id: collapsed) {
-            guard !collapsed, store == nil else { return }
-            let fresh = RoadmapStore(session: session, scope: .personal)
-            store = fresh
-            await fresh.load()
+            guard !collapsed else { return }
+            // The store is kept, and asked again for as long as it has nothing to show: the
+            // page is taken away and put back as it is gone to from another, which cuts the
+            // first asking short, and one that was only made once was never made good.
+            let current = store ?? RoadmapStore(session: session, scope: .personal)
+            store = current
+            if current.timeline == nil {
+                await current.load()
+            }
         }
         .onChange(of: openTask) { _, now in
             if now == nil, let lastOpened {
