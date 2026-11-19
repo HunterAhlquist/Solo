@@ -32,6 +32,12 @@ struct DesignDocsView: View {
 
     private var wide: Bool { sizeClass == .regular }
 
+    #if os(iOS)
+    /// True where the bar above this page is a phone's: its buttons are a phone's size and
+    /// stand where a phone's do, on a screen as wide as an iPad's too (`BarIdiom`).
+    @State private var phoneBars = UITraitCollection.current.userInterfaceIdiom == .phone
+    #endif
+
     private func canEdit(_ project: ProjectSummary, _ store: DocVaultStore) -> Bool {
         (project.isOwner || project.role == .readWrite) && store.vault?.isClosed == false
     }
@@ -101,7 +107,7 @@ struct DesignDocsView: View {
                             // highlight shows past the rounded corners as it scrolls out.
                             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                            .padding(.leading, 14)
+                            .padding(.leading, treeButton.panelStart)
                             .padding(.vertical, 10)
                             .transition(.move(edge: .leading).combined(with: .opacity))
                     }
@@ -114,7 +120,7 @@ struct DesignDocsView: View {
                         // the note starts under it and passes behind it, as it does the bar.
                         #if os(iOS)
                         .safeAreaInset(edge: .top, spacing: 0) {
-                            if !treeShown { Color.clear.frame(height: 56) }
+                            if !treeShown { Color.clear.frame(height: treeButton.top + treeButton.size) }
                         }
                         #endif
                 }
@@ -130,7 +136,7 @@ struct DesignDocsView: View {
                     } label: {
                         Image(systemName: Self.treeSymbol)
                             .font(.title3)
-                            .frame(width: 44, height: 44)
+                            .frame(width: treeButton.size, height: treeButton.size)
                             .contentShape(.circle)
                     }
                     .buttonStyle(.plain)
@@ -138,9 +144,10 @@ struct DesignDocsView: View {
                     .glassEffect(treeShown ? .identity : .regular.interactive(), in: .circle)
                     .accessibilityLabel("Notes")
                     .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
-                    .padding(.leading, 18)
-                    .padding(.top, 12)
+                    .padding(.leading, treeButton.start)
+                    .padding(.top, treeButton.top)
                 }
+                .background { BarIdiom { phoneBars = $0 } }
                 #endif
             } else if noteId != nil {
                 page(store, note, editable: editable)
@@ -196,7 +203,30 @@ struct DesignDocsView: View {
     private func tree(_ store: DocVaultStore, editable: Bool, selected: UUID?, onOpen: ((UUID) -> Void)? = nil) -> some View {
         DocTreeView(store: store, canEdit: editable, selected: selected, onOpen: onOpen ?? open,
                     // Beside the note, an iPad's has the button that puts it away at its head.
-                    headingStart: wide && onOpen == nil && !Platform.isMac ? 52 : 18)
+                    headingStart: wide && onOpen == nil && !Platform.isMac ? treeButton.headingStart : 18)
+    }
+
+    /// Where the tree's button goes, which is under the bar's own first button and so is
+    /// that button's size and as far in. A phone's bar and an iPad's differ in both, and the
+    /// tree's panel starts where the button sits exactly in its corner.
+    private struct TreeButton {
+        var size: CGFloat
+        var start: CGFloat
+        var panelStart: CGFloat
+
+        /// Level with the middle of the panel's heading, which is 48 points high under a
+        /// margin of ten.
+        var top: CGFloat { 10 + (48 - size) / 2 }
+        /// Where the heading's words start, clear of the button.
+        var headingStart: CGFloat { start - panelStart + size + 6 }
+    }
+
+    private var treeButton: TreeButton {
+        #if os(iOS)
+        phoneBars ? TreeButton(size: 48, start: 20, panelStart: 20) : TreeButton(size: 44, start: 10, panelStart: 8)
+        #else
+        TreeButton(size: 44, start: 14, panelStart: 14)
+        #endif
     }
 
     /// The button for the note tree. A sidebar's, as it is one, but not the plain one: that
@@ -859,3 +889,52 @@ private struct DocBranch: View {
         }
     }
 }
+
+#if os(iOS)
+/// Says whether the bars where it stands are a phone's or an iPad's. It is the one thing here
+/// that goes by the kind of device and not by the room there is: a bar's buttons are sized and
+/// placed by it, on a phone opened out as wide as an iPad as much as on any other. Read from
+/// the view's own traits, which are the window's it is in.
+private struct BarIdiom: UIViewRepresentable {
+    var report: (Bool) -> Void
+
+    func makeUIView(context: Context) -> Probe {
+        let view = Probe()
+        view.report = report
+        return view
+    }
+
+    func updateUIView(_ view: Probe, context: Context) {
+        view.report = report
+    }
+
+    final class Probe: UIView {
+        var report: ((Bool) -> Void)?
+        private var said: Bool?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            isHidden = true
+            registerForTraitChanges([UITraitUserInterfaceIdiom.self]) { (view: Probe, _) in view.say() }
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            say()
+        }
+
+        private func say() {
+            guard window != nil else { return }
+            let phone = traitCollection.userInterfaceIdiom == .phone
+            guard said != phone else { return }
+            said = phone
+            // Not in the middle of the pass that put the view in its window.
+            DispatchQueue.main.async { [weak self] in self?.report?(phone) }
+        }
+    }
+}
+#endif
