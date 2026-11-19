@@ -239,7 +239,7 @@ struct SyncedTextEditor: NSViewRepresentable {
         private var placing = false
         private var placementPending = false
         /// The widest a line of the note runs; past it the text keeps to the middle of the view.
-        private static let measure: CGFloat = 820
+        private static let measure = NoteColumn.measure
         /// How much of the view's leading and trailing sides something stands over.
         private var sides: (leading: CGFloat, trailing: CGFloat) = (0, 0)
 

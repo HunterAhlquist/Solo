@@ -100,22 +100,35 @@ struct DesignDocsView: View {
                 // its button's: with the tree there too the two stood side by side, each with
                 // a button of the same shape, and the tree's button was at the far end of the
                 // bar from the tree.
-                if floats {
-                    // Where there is not room for the note and the tree (`panesFloat`), the
-                    // tree goes over the note, which keeps its width and passes behind it.
-                    page(store, note, editable: editable)
-                        .overlay(alignment: .trailing) {
+                Group {
+                    if floats {
+                        // Where there is not room for the note and the tree (`panesFloat`), the
+                        // tree goes over the note, which keeps its width and passes behind it.
+                        page(store, note, editable: editable)
+                            .overlay(alignment: .trailing) {
+                                if treeShown { treePanel(store, editable: editable, selected: note?.id) }
+                            }
+                    } else {
+                        HStack(spacing: 0) {
+                            page(store, note, editable: editable)
+                                // The note takes its new width at once while the tree slides. Animated, its
+                                // text is laid out again at every width on the way, and the page jitters
+                                // for as long as that takes.
+                                .animation(nil, value: treeShown)
                             if treeShown { treePanel(store, editable: editable, selected: note?.id) }
                         }
-                } else {
-                    HStack(spacing: 0) {
-                        page(store, note, editable: editable)
-                            // The note takes its new width at once while the tree slides. Animated, its
-                            // text is laid out again at every width on the way, and the page jitters
-                            // for as long as that takes.
-                            .animation(nil, value: treeShown)
-                        if treeShown { treePanel(store, editable: editable, selected: note?.id) }
                     }
+                }
+                // The tree's button is in one place, the trailing corner of where its panel
+                // stands: at the head of the panel while the tree is out, and by itself there
+                // while it is away, as the app's sidebar's button keeps to its corner. In the
+                // bar it was one of a row of the page's buttons, and moved when it was pressed.
+                .overlay(alignment: .topTrailing) {
+                    PaneButton(title: treeShown ? "Hide notes" : "Show notes", symbol: DocTreeView.symbol, tint: theme.textPrimary) {
+                        withAnimation(.snappy) { treeShown.toggle() }
+                    }
+                    .padding(.trailing, Self.treeMargin + DocTreeView.headingEnd)
+                    .padding(.top, 10 + (DocTreeView.headingHeight - PaneButton.size) / 2)
                 }
             } else if noteId != nil {
                 page(store, note, editable: editable)
@@ -155,7 +168,10 @@ struct DesignDocsView: View {
     private func page(_ store: DocVaultStore, _ note: DocNote?, editable: Bool) -> some View {
         if let note {
             NoteView(store: store, note: note, mayWrite: editable, author: note.lastEditedBy.map { authors[$0] ?? "a former member" },
-                     onOpenNote: open, showingAttachments: $showingAttachments)
+                     onOpenNote: open,
+                     // Out beside the note, the tree is where the note's page ends already.
+                     trailingPane: wide && (floats || !treeShown) ? Self.treeReach : 0,
+                     showingAttachments: $showingAttachments)
                 .id(note.id)
         } else if store.tree?.notes.isEmpty == true {
             ContentUnavailableView {
@@ -173,21 +189,27 @@ struct DesignDocsView: View {
         }
     }
 
+    /// The room between the tree's panel and the page's trailing edge.
+    private static let treeMargin: CGFloat = 14
+    /// How far in from the page's trailing edge the tree's panel comes: its width and its margin.
+    private static let treeReach: CGFloat = 300 + treeMargin
+
     /// The tree as a panel of glass down the trailing side, beside the note or over it.
     private func treePanel(_ store: DocVaultStore, editable: Bool, selected: UUID?) -> some View {
-        tree(store, editable: editable, selected: selected)
+        tree(store, editable: editable, selected: selected, besideToggle: true)
             .frame(width: 300)
             // The panel's shape cuts what scrolls inside it too: without this a row's
             // highlight shows past the rounded corners as it scrolls out.
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .padding(.trailing, 14)
+            .padding(.trailing, Self.treeMargin)
             .padding(.vertical, 10)
             .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
-    private func tree(_ store: DocVaultStore, editable: Bool, selected: UUID?, onOpen: ((UUID) -> Void)? = nil) -> some View {
-        DocTreeView(store: store, canEdit: editable, selected: selected, onOpen: onOpen ?? open)
+    private func tree(_ store: DocVaultStore, editable: Bool, selected: UUID?, onOpen: ((UUID) -> Void)? = nil,
+                      besideToggle: Bool = false) -> some View {
+        DocTreeView(store: store, canEdit: editable, selected: selected, onOpen: onOpen ?? open, besideToggle: besideToggle)
     }
 
     @ToolbarContentBuilder
@@ -246,14 +268,8 @@ struct DesignDocsView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             if store?.tree != nil {
-                if wide {
-                    // A sidebar's symbol, as the tree is one, but the trailing one: the leading
-                    // one is the app's own sidebar's.
-                    Button("Notes", systemImage: "sidebar.trailing") {
-                        withAnimation(.snappy) { treeShown.toggle() }
-                    }
-                    .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
-                } else if noteId != nil, !underNotes {
+                // Beside a note the tree has a button of its own, at its panel's corner (`content`).
+                if !wide, noteId != nil, !underNotes {
                     // Only where Back is not the way to them: a note come to by a link from
                     // somewhere else, with that somewhere under it.
                     Button("Notes", systemImage: "folder") { treeSheet = true }
@@ -596,29 +612,27 @@ struct DocTreeView: View {
     var canEdit: Bool
     var selected: UUID?
     var onOpen: (UUID) -> Void
+    /// True where the tree is a panel with the button that puts it away over its trailing
+    /// corner: the heading leaves that corner to it.
+    var besideToggle = false
+
+    /// Its buttons' height and a margin above and below them.
+    static var headingHeight: CGFloat { PaneButton.size + 12 }
+    /// The room after the heading's last button.
+    static let headingEnd: CGFloat = 10
+
+    /// A sidebar's symbol, as the tree is one, but the trailing one: the leading one is the
+    /// app's own sidebar's.
+    static let symbol = "sidebar.trailing"
 
     @State private var prompt: TextPrompt?
     @State private var confirmation: Confirmation?
     /// True while something dragged is over the heading, which stands for the top of the design doc.
     @State private var overTop = false
 
-    @ViewBuilder
-    private func headingButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        #if os(macOS)
-        Button(title, systemImage: symbol, action: action)
-        #else
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .contentShape(.rect)
-        }
-        #endif
-    }
-
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Text("Notes").font(.headline).foregroundStyle(theme.textPrimary)
                 if store.vault?.isClosed == true {
                     Text("Closed · read-only")
@@ -629,19 +643,13 @@ struct DocTreeView: View {
                 }
                 Spacer(minLength: 0)
                 if canEdit {
-                    // Under a finger each is a finger's size, with an icon to match: at the
-                    // size of the text beside them they were two marks a few points apart.
-                    HStack(spacing: Platform.isMac ? 4 : 0) {
-                        headingButton("New note", "doc.badge.plus") { add(folder: false, in: nil) }
-                        headingButton("New folder", "folder.badge.plus") { add(folder: true, in: nil) }
-                    }
+                    PaneButton(title: "New note", symbol: "doc.badge.plus", tint: theme.primary) { add(folder: false, in: nil) }
+                    PaneButton(title: "New folder", symbol: "folder.badge.plus", tint: theme.primary) { add(folder: true, in: nil) }
                 }
             }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
             .padding(.leading, 18)
-            .padding(.trailing, Platform.isMac ? 10 : 8)
-            .frame(height: 48)
+            .padding(.trailing, Self.headingEnd + (besideToggle ? PaneButton.size + 6 : 0))
+            .frame(height: Self.headingHeight)
             .background {
                 if overTop {
                     RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.accentWash).padding(.horizontal, 8).padding(.vertical, 4)
@@ -841,5 +849,40 @@ private struct DocBranch: View {
             message: node.isFolder ? "Delete this folder and all of its notes and sketches?" : "Delete this note and its sketches?") {
             await store.delete(node)
         }
+    }
+}
+
+/// A button at the head of a pane: a circle of glass with its symbol in it, as a bar's
+/// buttons are, and their size. As bare symbols at the size of the heading's text they were
+/// small marks in a row, and on a Mac hard to hit.
+private struct PaneButton: View {
+    var title: String
+    var symbol: String
+    var tint: Color
+    var action: () -> Void
+
+    /// The size of the bar's own button for the app's sidebar, which is the button these are
+    /// seen beside: 44 points on an iPad, 48 on a phone — a folding one opened out too, which
+    /// is why it goes by the kind of device and not the room — and 36 in a Mac's window.
+    static var size: CGFloat {
+        #if os(macOS)
+        36
+        #else
+        UITraitCollection.current.userInterfaceIdiom == .phone ? 48 : 44
+        #endif
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: Self.size * 0.42, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: Self.size, height: Self.size)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel(title)
+        .help(title)
     }
 }

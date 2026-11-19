@@ -14,6 +14,11 @@ struct NoteView: View {
     var mayWrite: Bool
     var author: String?
     var onOpenNote: (UUID) -> Void
+    /// How far in from the page's trailing edge the design doc's tree would come if it were
+    /// out, where it is not out beside the note already: where the note's ground fades to.
+    var trailingPane: CGFloat = 0
+    /// How wide the app's sidebar is when it is out, as last seen; a usual width until then.
+    @State private var sidebarWidth: CGFloat = 300
 
     @State private var sync: DocSync?
     @State private var proxy = NoteEditorProxy()
@@ -53,6 +58,14 @@ struct NoteView: View {
                     typing = $0
                 }
                 .ignoresSafeArea()
+                .background {
+                    NoteGround(leading: geometry.safeAreaInsets.leading, trailing: geometry.safeAreaInsets.trailing,
+                               sidebar: sidebarWidth, pane: trailingPane, fades: sizeClass == .regular)
+                        .ignoresSafeArea()
+                }
+                .onChange(of: geometry.safeAreaInsets.leading, initial: true) { _, inset in
+                    if inset > 0 { sidebarWidth = inset }
+                }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -684,5 +697,84 @@ private struct DocPictureLoader: View {
             picture = await store.picture(image)
             failed = picture == nil
         }
+    }
+}
+
+/// Where a note's column of text is in the view that holds it: as wide as reads well and no
+/// wider, centred in what can be seen of the view. The editors lay the text out by this and
+/// the note's ground is drawn by it, so that the two agree.
+nonisolated enum NoteColumn {
+    static let measure: CGFloat = 820
+
+    /// The column's two edges in a view of this width with this much of its sides stood over.
+    static func span(width: CGFloat, leading: CGFloat, trailing: CGFloat) -> ClosedRange<CGFloat> {
+        let room = max(width - leading - trailing, 0)
+        let margin = max((room - measure) / 2, 0)
+        let start = leading + margin
+        return start...max(width - trailing - margin, start)
+    }
+}
+
+/// What a note is read on: the page's own white or black at three quarters, so the theme's
+/// picture is quiet behind the words. It is whole across the column of text and fades away
+/// on each side, gone by where the app's sidebar and the design doc's tree come to when they
+/// are out — whether they are or not, so that putting one away does not move it. Where the
+/// column already reaches that far, it fades over a short way past the column instead of
+/// stopping at an edge. A phone has neither beside a note, and is covered from side to side.
+private struct NoteGround: View {
+    @Environment(\.theme) private var theme
+    /// How much of the view's sides is stood over now.
+    var leading: CGFloat
+    var trailing: CGFloat
+    /// How far in the sidebar and the tree come when they are out.
+    var sidebar: CGFloat
+    var pane: CGFloat
+    var fades: Bool
+
+    private static let strength = 0.75
+    /// The least it fades over.
+    private static let least: CGFloat = 40
+
+    var body: some View {
+        let ground = theme.isDark ? Color.black : Color.white
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            if fades, width > 0 {
+                let column = NoteColumn.span(width: width, leading: leading, trailing: trailing)
+                let from = min(max(leading, sidebar), column.lowerBound - Self.least)
+                let to = max(width - max(trailing, pane), column.upperBound + Self.least)
+                LinearGradient(stops: Self.stops(ground, from: from, column: column, to: to),
+                               startPoint: .leading, endPoint: .trailing)
+                    .frame(width: to - from)
+                    .offset(x: from)
+            } else {
+                ground.opacity(Self.strength)
+            }
+        }
+        // Not cut to the note's own room: with the tree out beside the note that room ends
+        // where the column does, and the fade is finished under the tree's glass. Cut there,
+        // it stopped at a line.
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// Nothing at either end, whole across the column, eased between: a straight fade shows
+    /// as a line where it starts.
+    private static func stops(_ ground: Color, from: CGFloat, column: ClosedRange<CGFloat>, to: CGFloat) -> [Gradient.Stop] {
+        let span = to - from
+        let steps = 8
+        var stops: [Gradient.Stop] = []
+        for step in 0...steps {
+            let t = Double(step) / Double(steps)
+            let eased = t * t * (3 - 2 * t)
+            stops.append(.init(color: ground.opacity(strength * eased), location: (column.lowerBound - from) * t / span))
+        }
+        for step in 0...steps {
+            let t = Double(step) / Double(steps)
+            let eased = 1 - t * t * (3 - 2 * t)
+            stops.append(.init(color: ground.opacity(strength * eased),
+                               location: ((column.upperBound - from) + (to - column.upperBound) * t) / span))
+        }
+        return stops
     }
 }
