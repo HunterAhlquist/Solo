@@ -22,9 +22,13 @@ public sealed record NotificationDraft(
     Guid? EpicId,
     Guid? ActorUserId);
 
-/// <summary>The task or epic an assignment, or a reminder, is about.</summary>
+/// <summary>
+/// The task or epic an assignment is about. <paramref name="Serial"/> is a
+/// task's (<c>GAME-SP-1</c>); an epic has none.
+/// </summary>
 public sealed record NotifiedItem(
-    Guid ProjectId, Guid BoardId, Guid? TaskId, Guid? EpicId, string Name, string Where);
+    Guid ProjectId, Guid BoardId, Guid? TaskId, Guid? EpicId, string Name, string? Serial,
+    string ProjectName, string BoardName);
 
 /// <summary>
 /// The one place notifications are raised: every trigger hands its drafts here,
@@ -51,16 +55,32 @@ public sealed class NotificationService(
 
     public Task AssignedAsync(IEnumerable<Guid> userIds, User actor, NotifiedItem item, CancellationToken ct)
     {
-        var actorName = actor.DisplayName ?? actor.Email;
         var drafts = userIds
             .Where(id => id != actor.Id)
-            .Select(id => new NotificationDraft(
-                id, NotificationKind.Assigned, AssignedKey(item),
-                $"{actorName} assigned you to {item.Name}", item.Where,
-                item.ProjectId, item.BoardId, item.TaskId, item.EpicId, actor.Id))
+            .Select(id =>
+            {
+                // Picked per person, so a task handed to several reads differently to each.
+                var message = AssignedMessage(actor, item);
+                return new NotificationDraft(
+                    id, NotificationKind.Assigned, AssignedKey(item), message.Title, message.Body,
+                    item.ProjectId, item.BoardId, item.TaskId, item.EpicId, actor.Id);
+            })
             .ToList();
         return RaiseAsync(drafts, ct);
     }
+
+    public static NotificationMessages.Message AssignedMessage(User actor, NotifiedItem item) =>
+        NotificationMessages.Pick(item.TaskId is null ? NotificationMessages.Situation.AssignedEpic : NotificationMessages.Situation.Assigned,
+            AssignedValues(actor, item));
+
+    public static Dictionary<string, string> AssignedValues(User actor, NotifiedItem item) => new()
+    {
+        ["assigner"] = actor.DisplayName ?? actor.Email,
+        [item.TaskId is null ? "epic" : "task"] = item.Name,
+        ["serial"] = item.Serial ?? "",
+        ["project"] = item.ProjectName,
+        ["board"] = item.BoardName,
+    };
 
     public async Task RaiseAsync(IReadOnlyCollection<NotificationDraft> drafts, CancellationToken ct)
     {
