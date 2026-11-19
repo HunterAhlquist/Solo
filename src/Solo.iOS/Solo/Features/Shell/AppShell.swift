@@ -658,15 +658,12 @@ struct SidebarView: View {
         .safeAreaBar(edge: .bottom, spacing: 0) {
             VStack(spacing: 2) {
                 InstanceExtensionLinks(inSidebar: true)
+                // The instance's admin pages have no row of their own: they are a row of the
+                // account's page, which this one opens, and a row here as well only took room
+                // from the projects. On one of them it is this row that is lit.
                 SidebarRow(title: session.user.name, symbol: "person.crop.circle", badge: model.unreadElsewhereTotal,
-                           selected: navigator.tab == .account && navigator.current == nil) {
+                           selected: navigator.tab == .account && (navigator.current == nil || isAdminRoute)) {
                     navigator.popToRoot(.account)
-                }
-                if session.user.isSuperAdmin {
-                    SidebarRow(title: "Admin Settings", symbol: "gearshape", badge: session.serverUpdate == nil ? 0 : 1,
-                               selected: isAdminRoute) {
-                        navigator.open(.admin)
-                    }
                 }
             }
             .environment(\.sidebarRowStandsAlone, true)

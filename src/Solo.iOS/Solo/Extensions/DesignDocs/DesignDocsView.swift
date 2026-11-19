@@ -247,9 +247,9 @@ struct DesignDocsView: View {
         ToolbarItem(placement: .topBarTrailing) {
             if store?.tree != nil {
                 if wide {
-                    // A sidebar's symbol, as the tree is one, but the trailing one with squares
-                    // in it: the plain leading one is the app's own sidebar's.
-                    Button("Notes", systemImage: "sidebar.squares.trailing") {
+                    // A sidebar's symbol, as the tree is one, but the trailing one: the leading
+                    // one is the app's own sidebar's.
+                    Button("Notes", systemImage: "sidebar.trailing") {
                         withAnimation(.snappy) { treeShown.toggle() }
                     }
                     .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
