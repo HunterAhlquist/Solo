@@ -31,12 +31,8 @@ struct DesignDocsView: View {
     @State private var showingAttachments = false
 
     private var wide: Bool { sizeClass == .regular }
-
-    #if os(iOS)
-    /// True where the bar above this page is a phone's: its buttons are a phone's size and
-    /// stand where a phone's do, on a screen as wide as an iPad's too (`BarIdiom`).
-    @State private var phoneBars = UITraitCollection.current.userInterfaceIdiom == .phone
-    #endif
+    /// Whether the tree goes over the note and not beside it (`panesFloat`).
+    @Environment(\.panesFloat) private var floats
 
     private func canEdit(_ project: ProjectSummary, _ store: DocVaultStore) -> Bool {
         (project.isOwner || project.role == .readWrite) && store.vault?.isClosed == false
@@ -99,56 +95,28 @@ struct DesignDocsView: View {
         let note = currentNote(store)
         Group {
             if wide {
-                HStack(spacing: 0) {
-                    if treeShown {
-                        tree(store, editable: editable, selected: note?.id)
-                            .frame(width: 300)
-                            // The panel's shape cuts what scrolls inside it too: without this a row's
-                            // highlight shows past the rounded corners as it scrolls out.
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                            .padding(.leading, treeButton.panelStart)
-                            .padding(.vertical, 10)
-                            .transition(.move(edge: .leading).combined(with: .opacity))
-                    }
+                // The tree is on the trailing side, under the button in the bar's trailing
+                // corner that puts it away. The leading side is the app's own sidebar's, and
+                // its button's: with the tree there too the two stood side by side, each with
+                // a button of the same shape, and the tree's button was at the far end of the
+                // bar from the tree.
+                if floats {
+                    // Where there is not room for the note and the tree (`panesFloat`), the
+                    // tree goes over the note, which keeps its width and passes behind it.
                     page(store, note, editable: editable)
-                        // The note takes its new width at once while the tree slides. Animated, its
-                        // text is laid out again at every width on the way, and the page jitters
-                        // for as long as that takes.
-                        .animation(nil, value: treeShown)
-                        // With the tree put away its button is alone at the head of the page:
-                        // the note starts under it and passes behind it, as it does the bar.
-                        #if os(iOS)
-                        .safeAreaInset(edge: .top, spacing: 0) {
-                            if !treeShown { Color.clear.frame(height: treeButton.top + treeButton.size) }
+                        .overlay(alignment: .trailing) {
+                            if treeShown { treePanel(store, editable: editable, selected: note?.id) }
                         }
-                        #endif
-                }
-                // On an iPad and a phone's wide screen the button for the tree is where the tree
-                // is: at the page's leading edge, under the bar's own button for the app's
-                // sidebar, and in the same place whether the tree is out or put away. In the bar
-                // it stood at the far end from what it opens. Out, it is at the head of the
-                // tree's panel; put away, it is by itself on glass.
-                #if os(iOS)
-                .overlay(alignment: .topLeading) {
-                    Button {
-                        withAnimation(.snappy) { treeShown.toggle() }
-                    } label: {
-                        Image(systemName: Self.treeSymbol)
-                            .font(.title3)
-                            .frame(width: treeButton.size, height: treeButton.size)
-                            .contentShape(.circle)
+                } else {
+                    HStack(spacing: 0) {
+                        page(store, note, editable: editable)
+                            // The note takes its new width at once while the tree slides. Animated, its
+                            // text is laid out again at every width on the way, and the page jitters
+                            // for as long as that takes.
+                            .animation(nil, value: treeShown)
+                        if treeShown { treePanel(store, editable: editable, selected: note?.id) }
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.textPrimary)
-                    .glassEffect(treeShown ? .identity : .regular.interactive(), in: .circle)
-                    .accessibilityLabel("Notes")
-                    .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
-                    .padding(.leading, treeButton.start)
-                    .padding(.top, treeButton.top)
                 }
-                .background { BarIdiom { phoneBars = $0 } }
-                #endif
             } else if noteId != nil {
                 page(store, note, editable: editable)
             } else {
@@ -159,6 +127,11 @@ struct DesignDocsView: View {
             guard let id, let shown = store.note(id) else { return }
             store.rememberedNote = id
             store.reveal(shown)
+        }
+        // Over the note, the tree is put away to begin with, and again once a note has been
+        // picked from it (`open`): left out, it would stand over what was asked for.
+        .onChange(of: floats, initial: true) { _, floats in
+            if floats { treeShown = false }
         }
         .sheet(isPresented: $treeSheet) {
             NavigationStack {
@@ -200,38 +173,22 @@ struct DesignDocsView: View {
         }
     }
 
+    /// The tree as a panel of glass down the trailing side, beside the note or over it.
+    private func treePanel(_ store: DocVaultStore, editable: Bool, selected: UUID?) -> some View {
+        tree(store, editable: editable, selected: selected)
+            .frame(width: 300)
+            // The panel's shape cuts what scrolls inside it too: without this a row's
+            // highlight shows past the rounded corners as it scrolls out.
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .padding(.trailing, 14)
+            .padding(.vertical, 10)
+            .transition(.move(edge: .trailing).combined(with: .opacity))
+    }
+
     private func tree(_ store: DocVaultStore, editable: Bool, selected: UUID?, onOpen: ((UUID) -> Void)? = nil) -> some View {
-        DocTreeView(store: store, canEdit: editable, selected: selected, onOpen: onOpen ?? open,
-                    // Beside the note, an iPad's has the button that puts it away at its head.
-                    headingStart: wide && onOpen == nil && !Platform.isMac ? treeButton.headingStart : 18)
+        DocTreeView(store: store, canEdit: editable, selected: selected, onOpen: onOpen ?? open)
     }
-
-    /// Where the tree's button goes, which is under the bar's own first button and so is
-    /// that button's size and as far in. A phone's bar and an iPad's differ in both, and the
-    /// tree's panel starts where the button sits exactly in its corner.
-    private struct TreeButton {
-        var size: CGFloat
-        var start: CGFloat
-        var panelStart: CGFloat
-
-        /// Level with the middle of the panel's heading, which is 48 points high under a
-        /// margin of ten.
-        var top: CGFloat { 10 + (48 - size) / 2 }
-        /// Where the heading's words start, clear of the button.
-        var headingStart: CGFloat { start - panelStart + size + 6 }
-    }
-
-    private var treeButton: TreeButton {
-        #if os(iOS)
-        phoneBars ? TreeButton(size: 48, start: 20, panelStart: 20) : TreeButton(size: 44, start: 10, panelStart: 8)
-        #else
-        TreeButton(size: 44, start: 14, panelStart: 14)
-        #endif
-    }
-
-    /// The button for the note tree. A sidebar's, as it is one, but not the plain one: that
-    /// is the app's own sidebar's, which on an iPad is a few points away.
-    private static let treeSymbol = "sidebar.squares.left"
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
@@ -290,14 +247,12 @@ struct DesignDocsView: View {
         ToolbarItem(placement: .topBarTrailing) {
             if store?.tree != nil {
                 if wide {
-                    // A Mac's is in the window's bar, with its other buttons. An iPad's is at
-                    // the page's leading edge (`content`).
-                    #if os(macOS)
-                    Button("Notes", systemImage: Self.treeSymbol) {
+                    // A sidebar's symbol, as the tree is one, but the trailing one with squares
+                    // in it: the plain leading one is the app's own sidebar's.
+                    Button("Notes", systemImage: "sidebar.squares.trailing") {
                         withAnimation(.snappy) { treeShown.toggle() }
                     }
                     .accessibilityHint(treeShown ? "Hides the note tree" : "Shows the note tree")
-                    #endif
                 } else if noteId != nil, !underNotes {
                     // Only where Back is not the way to them: a note come to by a link from
                     // somewhere else, with that somewhere under it.
@@ -332,6 +287,7 @@ struct DesignDocsView: View {
     private func open(_ id: UUID) {
         if wide {
             selected = id
+            if floats { withAnimation(.snappy) { treeShown = false } }
         } else {
             navigator.push(.designDocs(project: projectAlias, vaultId: vaultId, noteId: id))
         }
@@ -640,8 +596,6 @@ struct DocTreeView: View {
     var canEdit: Bool
     var selected: UUID?
     var onOpen: (UUID) -> Void
-    /// How far in the heading starts: further where something is drawn over its corner.
-    var headingStart: CGFloat = 18
 
     @State private var prompt: TextPrompt?
     @State private var confirmation: Confirmation?
@@ -685,7 +639,7 @@ struct DocTreeView: View {
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
-            .padding(.leading, headingStart)
+            .padding(.leading, 18)
             .padding(.trailing, Platform.isMac ? 10 : 8)
             .frame(height: 48)
             .background {
@@ -889,52 +843,3 @@ private struct DocBranch: View {
         }
     }
 }
-
-#if os(iOS)
-/// Says whether the bars where it stands are a phone's or an iPad's. It is the one thing here
-/// that goes by the kind of device and not by the room there is: a bar's buttons are sized and
-/// placed by it, on a phone opened out as wide as an iPad as much as on any other. Read from
-/// the view's own traits, which are the window's it is in.
-private struct BarIdiom: UIViewRepresentable {
-    var report: (Bool) -> Void
-
-    func makeUIView(context: Context) -> Probe {
-        let view = Probe()
-        view.report = report
-        return view
-    }
-
-    func updateUIView(_ view: Probe, context: Context) {
-        view.report = report
-    }
-
-    final class Probe: UIView {
-        var report: ((Bool) -> Void)?
-        private var said: Bool?
-
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            isUserInteractionEnabled = false
-            isHidden = true
-            registerForTraitChanges([UITraitUserInterfaceIdiom.self]) { (view: Probe, _) in view.say() }
-        }
-
-        @available(*, unavailable)
-        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            say()
-        }
-
-        private func say() {
-            guard window != nil else { return }
-            let phone = traitCollection.userInterfaceIdiom == .phone
-            guard said != phone else { return }
-            said = phone
-            // Not in the middle of the pass that put the view in its window.
-            DispatchQueue.main.async { [weak self] in self?.report?(phone) }
-        }
-    }
-}
-#endif

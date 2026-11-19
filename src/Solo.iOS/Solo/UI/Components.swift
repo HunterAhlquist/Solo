@@ -115,6 +115,21 @@ struct FittedPicture: View {
 extension EnvironmentValues {
     /// The size of the window a view is in, where the app's root has measured it.
     @Entry var backdropCanvas: CGSize?
+
+    /// Whether what stands beside a page — the app's sidebar, a design doc's tree — goes over
+    /// it instead, taking no room from it. An iPad has room for both and the page is made
+    /// narrower. A phone's screen wide enough to have such a pane at all — a folding one
+    /// opened out, a large one on its side — has none to spare: beside one, the page was
+    /// squeezed to little more than the pane's own width. It is told by the window's shorter
+    /// side, under every iPad's and over every phone's, and not by the kind of device: a
+    /// window that size on anything is laid out the same. A Mac's window is the Mac's to size.
+    var panesFloat: Bool {
+        #if os(iOS)
+        backdropCanvas.map { min($0.width, $0.height) < 700 } ?? false
+        #else
+        false
+        #endif
+    }
 }
 
 extension View {

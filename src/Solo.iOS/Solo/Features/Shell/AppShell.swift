@@ -443,20 +443,9 @@ private struct SplitShell: View {
     @State private var columns: NavigationSplitViewVisibility = .automatic
     @State private var panels = DetailPanelCenter()
     #if os(iOS)
-    @Environment(\.backdropCanvas) private var canvas
-
-    /// Whether the sidebar slides over the page and takes no room from it. On an iPad there
-    /// is room for both and the page is made narrower beside it. A phone's screen wide enough
-    /// to have a sidebar at all — a folding one opened out, a large one on its side — has none
-    /// to spare: with the sidebar beside it the page was squeezed to little more than the
-    /// sidebar's own width. It is told by the window's shorter side and not by the kind of
-    /// device, so a window that size on anything is laid out the same.
-    private var slidesOver: Bool {
-        canvas.map { min($0.width, $0.height) < Self.roomForBoth } ?? false
-    }
-
-    /// Under every iPad's shorter side, over every phone's.
-    private static let roomForBoth: CGFloat = 700
+    /// Whether the sidebar slides over the page and takes no room from it: where there is
+    /// not room for both (`panesFloat`).
+    @Environment(\.panesFloat) private var slidesOver
     #endif
     #if os(macOS)
     @State private var width: CGFloat = 0
