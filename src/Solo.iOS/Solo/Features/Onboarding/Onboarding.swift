@@ -149,6 +149,9 @@ private struct OnboardingPages: View {
         .environment(guide)
         .task {
             guide.reduceMotion = reduceMotion
+            // The face knows when it is picked up and put down.
+            rig.onGrab = { [guide] piece in if piece == "Guy" { guide.faceTaken() } }
+            rig.onRelease = { [guide] piece in if piece == "Guy" { guide.faceLetGo() } }
             guide.begin()
         }
         .onDisappear {
@@ -168,7 +171,7 @@ private struct OnboardingPages: View {
         }
         let place = guide.place(at: date)
         // Once the picture of it has come up on the last screen, the face itself is put away.
-        let look = Guy.Look(pose: guide.pose, flat: Float(place?.flat ?? 0), tilt: place?.tilt ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1),
+        let look = Guy.Look(pose: guide.shown, flat: Float(place?.flat ?? 0), tilt: place?.tilt ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1),
                             hidden: guide.settled || place == nil)
         groups.append(StageGroup(id: "guy", scene: Guy.stage(look), rect: place?.rect ?? nowhere))
         return groups
@@ -246,6 +249,41 @@ extension EnvironmentValues {
     private(set) var settled: Bool
     private(set) var flight: Flight?
     @ObservationIgnored private var script: Task<Void, Never>?
+
+    /// In somebody's hand, or let go of within the last little while.
+    private(set) var tapped = false
+    @ObservationIgnored private var lettingGo: Task<Void, Never>?
+
+    /// How long after it is let go the face goes on looking as it did in hand.
+    nonisolated static let tapLingers = Duration.seconds(2)
+
+    /// What the face looks like just now: what it is doing (`pose`), unless somebody has
+    /// hold of it or has just let go, when it makes the face of something being prodded.
+    /// Under that it goes on with what it was doing, which is what it comes back to —
+    /// blinking where it had got to, or smiling on a screen it has since been taken to.
+    /// It does not break off talking for it: a face that is saying something says it.
+    var shown: GuyPose {
+        if case .talk = pose { return pose }
+        return tapped ? .tap : pose
+    }
+
+    /// Somebody took hold of the face. Again before it has got over the last time, and it
+    /// starts over: the two seconds are counted from the last letting go.
+    func faceTaken() {
+        if case .talk = pose { return }
+        lettingGo?.cancel()
+        tapped = true
+    }
+
+    /// They let go of it. It is itself again a little while after.
+    func faceLetGo(lingering: Duration = OnboardingGuide.tapLingers) {
+        guard tapped else { return }
+        lettingGo?.cancel()
+        lettingGo = Task {
+            try? await Task.sleep(for: lingering)
+            if !Task.isCancelled { tapped = false }
+        }
+    }
 
     /// On its way from one screen's place to the next's.
     struct Flight {
@@ -479,7 +517,7 @@ private struct FlatGuyLayer: View {
     var body: some View {
         SwiftUI.TimelineView(.animation(paused: guide.flight == nil)) { timeline in
             if let place = guide.place(at: timeline.date), !guide.landed {
-                GuyMark(pose: guide.pose)
+                GuyMark(pose: guide.shown)
                     .frame(width: place.rect.width, height: place.rect.height)
                     .position(x: place.rect.midX, y: place.rect.midY)
             }

@@ -921,11 +921,16 @@ private extension Route {
         let sheet = try #require(Guy.sheet)
         #expect(sheet.width == 16 && sheet.height == 16)
         #expect(sheet.tags["Smile"]?.count == 1 && sheet.tags["Idle"]?.count == 2 && sheet.tags["Talk"]?.count == 2)
-        #expect(sheet.frames.count == 5 && sheet.frames.allSatisfy { $0.filled.count == 256 && $0.filled.contains(true) })
+        #expect(sheet.tags["Tap"]?.count == 1)
+        #expect(sheet.frames.count == 6 && sheet.frames.allSatisfy { $0.filled.count == 256 && $0.filled.contains(true) })
         // Each thing it does is a frame of its own, and the second of a pair is not the first.
-        let poses: [GuyPose] = [.smile, .idle(blinking: false), .idle(blinking: true), .talk(open: false), .talk(open: true)]
+        let poses: [GuyPose] = [.smile, .idle(blinking: false), .idle(blinking: true), .talk(open: false), .talk(open: true), .tap]
         let frames = poses.map { Guy.frame(for: $0, in: sheet) }
-        #expect(Set(frames).count == 5)
+        #expect(Set(frames).count == 6)
+        // A drawing from before it had one for being prodded shows its smile for that.
+        var older = sheet
+        older.tags["Tap"] = nil
+        #expect(Guy.frame(for: .tap, in: older) == Guy.frame(for: .smile, in: older))
         #expect(sheet.frames[frames[1]].filled != sheet.frames[frames[2]].filled)
         // What isn't such a file is nothing, and is not read past its end.
         #expect(AsepriteSheet(data: Data([1, 2, 3])) == nil)
@@ -1040,6 +1045,37 @@ private extension Route {
         // Going nowhere, it does none of it.
         let still = OnboardingGuide.flying(from: from, to: from, share: 0.5)
         #expect(near(still.rect, from.rect) && abs(still.tilt.angle - from.tilt.angle) < 0.001)
+    }
+
+    /// Picked up, the face makes a face about it, and goes on making it for a little while
+    /// after it is put down — counted from the last time, if it is picked up again first.
+    @MainActor @Test func theFaceMindsBeingPickedUp() async throws {
+        let guide = OnboardingGuide(start: .welcome)
+        #expect(guide.shown == .smile)
+
+        guide.faceTaken()
+        #expect(guide.shown == .tap)
+        // In hand it stays so, however long.
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(guide.shown == .tap)
+
+        // Let go, taken again before it has got over it, and let go again: the wait starts over.
+        guide.faceLetGo(lingering: .milliseconds(150))
+        try await Task.sleep(for: .milliseconds(90))
+        guide.faceTaken()
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(guide.shown == .tap)
+        guide.faceLetGo(lingering: .milliseconds(150))
+        try await Task.sleep(for: .milliseconds(90))
+        #expect(guide.shown == .tap)
+        try await Task.sleep(for: .milliseconds(160))
+        // And then it is as it was.
+        #expect(guide.shown == .smile)
+
+        // Let go of with nobody having taken it, nothing follows.
+        guide.faceLetGo(lingering: .milliseconds(10))
+        #expect(guide.shown == .smile)
+        #expect(OnboardingGuide.tapLingers == .seconds(2))
     }
 
     /// It stops for breath where a sentence does, and for less at a comma.

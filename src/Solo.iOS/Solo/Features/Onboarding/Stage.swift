@@ -434,6 +434,11 @@ struct StageGroup: Identifiable {
     private var handed = false
     private var held: Entity?
 
+    /// Told which piece has been taken hold of, and which let go, by the name it has on its
+    /// stage: for a piece that makes something of being handled, which the face does.
+    var onGrab: (String) -> Void = { _ in }
+    var onRelease: (String) -> Void = { _ in }
+
     /// Set by the view: has it made a little narrower, or its own width again. See `fit`.
     var squeeze: (Bool) -> Void = { _ in }
     private var misfit = 0
@@ -612,6 +617,7 @@ struct StageGroup: Identifiable {
         guard let piece = hit?.entity.piece else { return false }
         held = piece
         Haptics.shared.play(.pickUp)
+        onGrab(piece.name)
         return true
     }
 
@@ -624,6 +630,7 @@ struct StageGroup: Identifiable {
 
     func release() {
         held?.components[SpringBack.self]?.held = nil
+        if let held { onRelease(held.name) }
         held = nil
     }
 }

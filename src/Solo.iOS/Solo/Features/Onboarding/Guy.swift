@@ -194,6 +194,8 @@ nonisolated enum GuyPose: Equatable, Sendable {
     case smile
     case idle(blinking: Bool)
     case talk(open: Bool)
+    /// Somebody has hold of it, or has only just let go.
+    case tap
 }
 
 enum Guy {
@@ -213,6 +215,7 @@ enum Guy {
         case .smile: return tagged("Smile", second: false)
         case .idle(let blinking): return tagged("Idle", second: blinking)
         case .talk(let open): return tagged("Talk", second: open)
+        case .tap: return tagged("Tap", second: false)
         }
     }
 

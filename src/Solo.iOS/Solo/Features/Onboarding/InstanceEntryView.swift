@@ -145,8 +145,13 @@ struct InstanceEntryView: View {
                     // of the face that stays here: the one that came down from the screen
                     // before is over it until it has arrived, and then this is shown in its
                     // place.
-                    GuyMark()
+                    GuyMark(pose: guide?.shown ?? .smile)
                         .frame(height: restartHeight)
+                        // It minds being prodded here as it did in the round.
+                        .contentShape(.rect)
+                        .gesture(DragGesture(minimumDistance: 0)
+                            .onChanged { _ in guide?.faceTaken() }
+                            .onEnded { _ in guide?.faceLetGo() }, isEnabled: guide != nil)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Onboarding.pageSpace)) }) {
                             guide?.anchors[.connect] = $0
                         }
