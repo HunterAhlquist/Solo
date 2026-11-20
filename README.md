@@ -52,6 +52,10 @@ Nerd emoji lookin ahh
 
 <img width="330" height="262" alt="image" src="https://github.com/user-attachments/assets/9e0a962d-faf3-4bcb-aada-1de1d8485239" />
 
+Okay but seriously, the backend was made with technologies I understand (.NET).
+So while this was a "vibecoding" experiment, I've done my due diligence to make sure that this has adequate security.
+However, if you do find an issue regarding security, please report it to me so I can put out a fix ASAP.
+
 </details>
 
 ## Support
