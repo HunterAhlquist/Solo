@@ -29,7 +29,8 @@ A variable name uses two underscores between its parts, for example `Auth__Clien
 | `Auth__SessionDays` | `30` | The number of days that a session lasts with no use. This applies to the desktop app and to browsers that sign in with Google. |
 | `Auth__DesktopRedirect` | `false` | Google only. The desktop app goes directly to Google's sign-in, in one window. See [Desktop sign-in with Google](#desktop-sign-in-with-google). |
 | `Database__AutoMigrate` | `true` | Apply database migrations at startup. |
-| `Email__Smtp__Password` | None | The SMTP password. When you set it, Solo uses it instead of the password in [Admin settings](admin-settings.md#email). |
+| `Email__Smtp__Password` | None | The SMTP password. When you set it, Solo uses it instead of the password in [Admin settings](admin-settings.md#email). Set `Email__Smtp__Host` with it. |
+| `Email__Smtp__Host` | None | The SMTP server that `Email__Smtp__Password` is for. Solo sends that password to this server only. Without it, Solo does not use the password. |
 | `Themes__Directory` | `/data/themes` | The directory that Solo scans for theme packages. |
 | `Extensions__Directory` | `/data/extensions` | The directory that Solo scans for extension packages. |
 | `Extensions__ApiBaseUrl` | The listen address | The address at which background work of an extension reaches the Solo API. |

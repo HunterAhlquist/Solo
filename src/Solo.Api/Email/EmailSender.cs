@@ -23,6 +23,9 @@ public sealed class EmailSender(
     private const int BatchSize = 20;
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
 
+    /// <summary>The last reason sending was held back, so the log says it once and not every poll.</summary>
+    private string? _refusal;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Small startup delay so migrations finish first.
@@ -62,6 +65,20 @@ public sealed class EmailSender(
         {
             return;
         }
+
+        // The environment's password is for one server, and the settings name
+        // another: nothing is sent, and signed in to nowhere, until they agree.
+        // What is queued waits.
+        if (password.Refusal(settings.SmtpHost) is { } refusal)
+        {
+            if (refusal != _refusal)
+            {
+                logger.LogWarning("Email is not being sent. {Reason}", refusal);
+                _refusal = refusal;
+            }
+            return;
+        }
+        _refusal = null;
 
         var options = EmailOutbox.OptionsFor(settings, password.Resolve(settings));
         while (true)

@@ -40,7 +40,9 @@ Solo sends two types of email: project invites, and the digest of each person's 
 
 Solo encrypts the password before it stores it, and never shows it again. The field shows **Saved** when a password is stored. Leave the field empty to keep that password. If you change the SMTP server, Solo forgets the stored password, so enter it again.
 
-To keep the password out of the database, set `Email__Smtp__Password` in the environment. See [Configuration](configuration.md). The field is then disabled.
+To keep the password out of the database, set `Email__Smtp__Password` and `Email__Smtp__Host` in the environment. See [Configuration](configuration.md). The password field is then disabled, and the SMTP server in the form must be the one that `Email__Smtp__Host` names. Solo sends the password to no other server, so a super admin cannot point the settings at a different server to get it.
+
+If you change the connection security to **None**, Solo forgets the stored password, so that it is not sent without encryption. Enter it again to use it that way.
 
 Emails use the colors and fonts of the instance [theme](#theme), in light or dark to match the mail app of the reader. A font that only the theme package has is replaced with a font that all devices have.
 
