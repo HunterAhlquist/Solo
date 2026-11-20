@@ -11,6 +11,8 @@ _layouts/            default (app bar, sidebar, footer), page, home
 _includes/           the icon sprite, and the screenshot include
 assets/css/docs.css  the whole design; its tokens are the theme's palette
 assets/js/docs.js    drawer, appearance menu, "On this page", copy buttons
+assets/models/       the front page's 3D mark, exported from Blender
+_hero/               that mark's script and the library it is bundled with
 index.md             the front page
 guide/               using Solo
 admin/               running an instance
@@ -26,7 +28,7 @@ build/preview-site.sh
 
 This builds the site in a container with the same `github-pages` gem that the
 Pages build runs, and serves it at <http://localhost:4000/Solo/>. It needs
-Docker and python3. There is no watch mode: run
+Docker, python3 and Node (for the front page's 3D mark, below). There is no watch mode: run
 `build/preview-site.sh --build-only` in a second terminal after an edit, and
 reload the page.
 
@@ -38,6 +40,32 @@ site and stops.
 
 The repository's Pages source has to be **GitHub Actions** (Settings → Pages).
 Until it is, the workflow fails at its first Pages step and publishes nothing.
+
+## The front page's 3D mark
+
+The mark in the front page's hero is the app's icon in pieces: the tile and its
+three glass bars, turning slowly, each of which can be taken hold of and pulled
+a little way. It is the model the app for iPhone, iPad and Mac shows on its
+first run, with the same springs and the same glass.
+
+- **The model** is `assets/models/SoloLogo.glb`, exported from
+  `src/Solo.iOS/Models/SoloLogo.blend` by the script beside it:
+  `blender -b SoloLogo.blend -P export_glb.py`. After changing the `.blend`,
+  export it and commit both. The page finds each piece by its name in Blender.
+- **The script** is `_hero/hero-logo.js`, written with
+  [three.js](https://threejs.org). `build/stage-site-assets.sh` bundles the two
+  into `assets/js/hero-logo.js`, which is in `.gitignore`: about 160 KB
+  compressed, loaded by the front page alone. The folder's name starts with an
+  underscore so Jekyll leaves it, and its `node_modules`, out of the site.
+  three.js and esbuild are pinned in `_hero/package-lock.json`; to move to a
+  newer one, change the version in `_hero/package.json` and run `npm install`
+  there.
+- **Without it** the page is whole. The hero holds the icon as a picture, and
+  the scene takes its place once it has drawn; where there is no WebGL, or the
+  script fails, the picture stays. Someone who has asked for reduced motion gets
+  a mark that stands still until they move a piece.
+- **To look at a change** to the script alone, after a build:
+  `(cd site/_hero && node build.mjs) && cp site/assets/js/hero-logo.js site/_site/Solo/assets/js/`.
 
 ## Add or change a page
 

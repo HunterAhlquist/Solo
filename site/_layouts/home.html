@@ -2,29 +2,39 @@
 layout: default
 ---
 {%- comment -%}
-  The front page: the wordmark over the sign-in screen's terminal grid, then
-  one card per section of _data/nav.yml, each listing its pages the way a
-  project card lists its boards.
+  The front page: the mark and the wordmark over the sign-in screen's terminal
+  grid, then one card per section of _data/nav.yml, each listing its pages the
+  way a project card lists its boards.
+
+  The mark is the icon as a picture until hero-logo.js has drawn it in 3D, in
+  pieces to take hold of, and stays the picture where that can't be done. It is
+  decoration either way, and says nothing the wordmark beside it doesn't.
 {%- endcomment -%}
 <section class="hero">
-  <h1 class="hero__title">{{ site.title }}</h1>
-  <p class="hero__tagline">Project management for <strong>small game-dev teams</strong></p>
-  <div class="hero__chips">
-    <span class="chip">kanban</span>
-    <span class="chip">live editing</span>
-    <span class="chip">audit log</span>
-    <span class="chip">themes</span>
-    <span class="chip">extensions</span>
+  <div class="hero__logo" data-hero-logo data-model="{{ '/assets/models/SoloLogo.glb' | relative_url }}" aria-hidden="true">
+    <img src="{{ '/assets/favicon.svg' | relative_url }}" alt="">
   </div>
-  <div class="hero__actions">
-    <a class="button button--filled" href="{{ '/guide/get-started/' | relative_url }}">
-      {% include icon.html name="rocket-launch" %} Use Solo
-    </a>
-    <a class="button" href="{{ '/admin/install/' | relative_url }}">
-      {% include icon.html name="download" %} Run an instance
-    </a>
+  <div class="hero__body">
+    <h1 class="hero__title">{{ site.title }}</h1>
+    <p class="hero__tagline">Project management for <strong>small game-dev teams</strong></p>
+    <div class="hero__chips">
+      <span class="chip">kanban</span>
+      <span class="chip">live editing</span>
+      <span class="chip">audit log</span>
+      <span class="chip">themes</span>
+      <span class="chip">extensions</span>
+    </div>
+    <div class="hero__actions">
+      <a class="button button--filled" href="{{ '/guide/get-started/' | relative_url }}">
+        {% include icon.html name="rocket-launch" %} Use Solo
+      </a>
+      <a class="button" href="{{ '/admin/install/' | relative_url }}">
+        {% include icon.html name="download" %} Run an instance
+      </a>
+    </div>
   </div>
 </section>
+<script type="module" src="{{ '/assets/js/hero-logo.js' | relative_url }}"></script>
 
 <div class="card-grid">
   {%- for section in site.data.nav %}

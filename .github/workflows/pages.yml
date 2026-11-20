@@ -67,6 +67,14 @@ jobs:
       # stay where those keep them. The site gets a copy for the build
       # (both destinations are in .gitignore) instead of a second set to keep
       # in step.
+      #
+      # It also bundles the front page's 3D mark, which is why Node is set up:
+      # two packages, pinned in site/_hero/package-lock.json and installed
+      # without running anything of theirs.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
       - name: Stage the app's own assets
         run: build/stage-site-assets.sh
 

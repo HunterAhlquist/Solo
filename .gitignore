@@ -80,6 +80,8 @@ site/.jekyll-cache/
 site/.jekyll-metadata
 site/assets/screenshots/
 site/assets/favicon.svg
+site/assets/js/hero-logo.js
+site/_hero/node_modules/
 
 # Generated Design Docs assets and JavaScript dependencies.
 extensions/DesignDocs/Solo.DesignDocs.Client/js/node_modules/

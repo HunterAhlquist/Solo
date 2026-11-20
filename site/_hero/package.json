@@ -1,0 +1,14 @@
+{
+  "name": "solo-docs-hero",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The front page's 3D mark: bundled into site/assets/js/hero-logo.js by build/stage-site-assets.sh.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "esbuild": "0.28.2",
+    "three": "0.187.0"
+  }
+}
