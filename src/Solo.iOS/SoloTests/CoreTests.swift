@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 #if canImport(UIKit)
 import UIKit
@@ -671,6 +672,32 @@ private extension Route {
         #expect(fill.blue == 0 && fill.red > fill.blue && abs(fill.red / fill.green - yellow.red / yellow.green) < 0.001)
         // A colour that already carries white is left alone.
         #expect(navy.carryingWhite == navy)
+    }
+
+    /// Before an instance's theme is known the accent is the app's own, and that one is a
+    /// bright yellow in the dark: Connect was white on it.
+    @Test func theAppsOwnAccentCarriesALabelThatReads() {
+        #expect(Theme.fallback(dark: true).onPrimary == .black)
+        for dark in [true, false] {
+            let accent: CSSColor = dark ? .appAccentDark : .appAccentLight
+            let theme = Theme.fallback(dark: dark)
+            #expect(theme.primary == accent.color)
+            #expect(accent.contrast(with: theme.onPrimary == .black ? .black : .white) >= 4.5)
+            #expect(accent.carryingWhite.contrast(with: .white) >= 3)
+        }
+    }
+
+    /// The numbers the app works from are the catalogue's colour, which is what a control
+    /// with no tint of its own is drawn in.
+    @Test func theAppsOwnAccentIsTheCataloguesColour() {
+        for (dark, accent) in [(true, CSSColor.appAccentDark), (false, CSSColor.appAccentLight)] {
+            var environment = EnvironmentValues()
+            environment.colorScheme = dark ? .dark : .light
+            let drawn = Color("AccentColor", bundle: .main).resolve(in: environment)
+            #expect(abs(Double(drawn.red) - accent.red) < 0.005)
+            #expect(abs(Double(drawn.green) - accent.green) < 0.005)
+            #expect(abs(Double(drawn.blue) - accent.blue) < 0.005)
+        }
     }
 }
 

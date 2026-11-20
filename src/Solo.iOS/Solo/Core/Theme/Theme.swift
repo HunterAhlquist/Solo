@@ -39,8 +39,14 @@ nonisolated struct Theme: Equatable, Sendable {
     /// A soft tint of the accent, for a selected row or segment.
     var accentWash: Color { primary.opacity(isDark ? 0.24 : 0.16) }
 
+    /// The app's own accent, worn until an instance's theme is known: on the screen that asks
+    /// which instance, and for a theme that names no palette. It is given the same working out
+    /// as a theme's accent, since the one for dark is as bright a yellow as any theme's: white
+    /// was laid on it here, and Connect could not be read.
     static func fallback(dark: Bool) -> Theme {
-        Theme(primary: .accentColor, secondary: .secondary, onPrimary: .white, fill: .accentColor, isDark: dark)
+        let accent: CSSColor = dark ? .appAccentDark : .appAccentLight
+        return Theme(primary: accent.color, secondary: .secondary, onPrimary: accent.readable,
+                     fill: accent.carryingWhite.color, isDark: dark)
     }
 
     init(primary: Color, secondary: Color, onPrimary: Color, fill: Color, isDark: Bool) {
@@ -177,6 +183,12 @@ nonisolated struct CSSColor: Equatable, Sendable {
 
     static let white = CSSColor(red: 1, green: 1, blue: 1)
     static let black = CSSColor(red: 0, green: 0, blue: 0)
+
+    /// The two colours of `AccentColor` in the asset catalogue, as numbers: what is read on
+    /// them can only be worked out from numbers, and a colour that names an asset has none
+    /// until it is drawn. A test holds the two to the catalogue.
+    static let appAccentLight = CSSColor("#df6610")!
+    static let appAccentDark = CSSColor("#fff600")!
 
     /// Black or white, whichever stands out more on this as a fill.
     var readable: Color {
