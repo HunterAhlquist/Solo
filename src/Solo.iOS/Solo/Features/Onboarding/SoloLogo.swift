@@ -24,7 +24,9 @@ nonisolated enum SoloLogo {
              : (CSSColor(red: 0.94039, green: 0.72495, blue: 0.49502), CSSColor(red: 1, green: 0.44275, blue: 0))
     }
 
-    @MainActor static let stage = StageScene(extent: CGSize(width: 1.5, height: 1.86), load: {
+    /// The view is centred down and to the right of the tile: the face is out that way,
+    /// and so is the glow round it.
+    @MainActor static let stage = StageScene(extent: CGSize(width: 1.5, height: 1.86), middle: [0.12, -0.1], load: {
         guard let model = await Stage.load("SoloLogo") else { return nil }
         for (index, name) in ["Tile", "BarBack", "BarMiddle", "BarFront"].enumerated() {
             Stage.piece(name, in: model, phase: Float(index) * 1.7)
@@ -33,14 +35,22 @@ nonisolated enum SoloLogo {
         return model
     }, paint: { model, palette in
         Stage.dress("Tile", in: model, Stage.material(palette.gray(palette.dark ? 0.15 : 0.97), roughness: 0.32))
-        Stage.dress("Face", in: model, Stage.material(palette.gray(palette.dark ? 1 : 0.16), roughness: 0.3))
+        // The face is lit from inside: its own colour given off, with enough of the room's
+        // light still on it to tell its blocks apart.
+        Stage.dress("Face", in: model, Stage.material(face(dark: palette.dark), roughness: 0.3, glow: 0.85))
     }, glass: { palette in
         let fill = fill(dark: palette.dark)
         return bars.map {
             StageGlass(name: $0.name, corner: corner, top: fill.top, bottom: fill.bottom,
                        opacity: palette.dark ? $0.opacity.dark : $0.opacity.light)
         }
+    }, glow: { palette in
+        StageGlow(name: "Face", colour: face(dark: palette.dark), strength: palette.dark ? 0.5 : 0.55)
     })
+
+    /// The face's light: white in the dark, as it is on the icon, and by day the accent,
+    /// since something dark gives off nothing and white would be lost on a light ground.
+    static func face(dark: Bool) -> CSSColor { dark ? CSSColor(red: 1, green: 1, blue: 1) : .appAccentLight }
 
     /// The radius of a bar's corners in the model: the icon's, at the size the model is made.
     static let corner: Float = 0.089

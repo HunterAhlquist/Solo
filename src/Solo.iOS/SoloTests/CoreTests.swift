@@ -1,4 +1,5 @@
 import Foundation
+import Metal
 import RealityKit
 import simd
 import SwiftUI
@@ -796,8 +797,85 @@ private extension Route {
     /// The shader reads what it is handed by where things are in it. These are the sizes
     /// its own two structures come to; a field added on one side only would shift the rest.
     @Test func whatTheGlassPassIsHandedIsLaidOutAsItsShaderExpects() {
-        #expect(MemoryLayout<LensShape>.stride == 2 * 64 + 4 * 16)
-        #expect(MemoryLayout<LensUniforms>.stride == LensUniforms.room * MemoryLayout<LensShape>.stride + 3 * 16)
+        #expect(MemoryLayout<LensShape>.stride == 2 * 64 + 5 * 16)
+        #expect(MemoryLayout<LensUniforms>.stride == LensUniforms.room * MemoryLayout<LensShape>.stride + 6 * 16)
+        #expect(MemoryLayout<BloomUniforms>.stride == 3 * 16)
+    }
+
+    /// The pass works on the part of the frame the glass is in and no more, so the box it
+    /// works out for a piece has to hold the piece.
+    @Test func aPiecesBoxOnScreenHoldsIt() {
+        let projection = GlassFrame.projection
+        // Straight ahead is the middle of the screen; up is up, and right is right.
+        let ahead = Lens.window(of: [[0, 0, -4]], projection: projection)
+        #expect(abs(ahead.x - 0.5) < 0.0001 && abs(ahead.y - 0.5) < 0.0001)
+        let box = Lens.window(of: [[-0.2, -0.3, -4], [0.2, 0.3, -4]], projection: projection)
+        #expect(box.x < 0.5 && box.z > 0.5 && box.y < 0.5 && box.w > 0.5)
+        #expect(abs((box.z - box.x) - 0.4) < 0.0001 && abs((box.w - box.y) - 0.6) < 0.0001)
+        // Something not in front of the camera can't be placed: all of the screen, to be safe.
+        #expect(Lens.window(of: [[0, 0, 1]], projection: projection) == [0, 0, 1, 1])
+
+        // As points of a picture: a point to spare all round, and none of it off the edge.
+        let patch = Lens.patch([0.25, 0.5, 0.75, 1.2], width: 200, height: 100)
+        #expect(patch?.x == 49 && patch?.y == 49 && patch?.width == 102 && patch?.height == 51)
+        #expect(Lens.patch([1.2, 0, 1.5, 1], width: 200, height: 100) == nil)
+
+        // A glow's room is square as the picture measures it, whatever shape the picture is.
+        let room = Lens.glowWindow(of: [0.4, 0.45, 0.6, 0.5], width: 200, height: 400)
+        #expect(abs((room.z - room.x) * 200 - (room.w - room.y) * 400) < 0.001)
+        #expect(room.x < 0.4 && room.z > 0.6 && room.y < 0.45 && room.w > 0.5)
+    }
+
+    /// The pass itself, on a frame of the test's own: a grey frame with one piece of red
+    /// glass in the middle of it. This is also what says the shader still compiles — it is
+    /// text until the app runs, and the first that was written didn't.
+    @MainActor @Test func theGlassPassTintsWhereTheGlassIsAndLeavesTheRest() throws {
+        let frame = try #require(GlassFrame(width: 200, height: 200))
+        frame.fill { _, _ in (128, 128, 128, 255) }
+        let glass = GlassFrame.lens(half: [0.2, 0.3], top: [1, 0, 0, 0.5], bottom: [1, 0, 0, 1])
+        let after = try #require(frame.run(lenses: [glass], glow: nil))
+
+        // Outside the glass the frame is as it was, to the last bit.
+        #expect(after(5, 5) == (128, 128, 128, 255))
+        #expect(after(100, 20) == (128, 128, 128, 255))
+        // Through the middle of it: half red, half what was there.
+        let middle = after(100, 100)
+        #expect(middle.red > 180 && middle.green < 110 && middle.blue < 110 && middle.alpha == 255)
+    }
+
+    /// What is behind the glass is seen larger, from nearer the glass's middle: a line that
+    /// runs behind it comes out further from the middle than it went in.
+    @MainActor @Test func theGlassPassBendsWhatIsBehindIt() throws {
+        let frame = try #require(GlassFrame(width: 200, height: 200))
+        // White to the right of a line twelve points right of the middle.
+        frame.fill { x, _ in x >= 112 ? (255, 255, 255, 255) : (0, 0, 0, 255) }
+        let glass = GlassFrame.lens(half: [0.2, 0.3], top: [0, 0, 0, 0.001], bottom: [0, 0, 0, 1])
+        let after = try #require(frame.run(lenses: [glass], glow: nil))
+
+        // Above the glass the line is where it was drawn.
+        #expect(after(110, 20).red < 40 && after(114, 20).red > 215)
+        // Behind it, the point just right of the line shows what is nearer the middle: black.
+        #expect(after(114, 100).red < 40)
+        #expect(after(125, 100).red > 215)
+    }
+
+    /// A piece that gives light has it laid round it, and only round it.
+    @MainActor @Test func theGlassPassLaysAGlowRoundWhatGivesLight() throws {
+        let frame = try #require(GlassFrame(width: 200, height: 200))
+        // A white square in the middle of nothing at all, sixty points across.
+        frame.fill { x, y in (70..<130).contains(x) && (70..<130).contains(y) ? (255, 255, 255, 255) : (0, 0, 0, 0) }
+        let corners = (0..<8).map { corner -> SIMD3<Float> in
+            [corner & 1 == 0 ? -0.15 : 0.15, corner & 2 == 0 ? -0.15 : 0.15, corner & 4 == 0 ? -4.01 : -3.99]
+        }
+        let after = try #require(frame.run(lenses: [], glow: GlowSource(corners: corners, colour: [1, 1, 1], strength: 1)))
+
+        // Just outside the square there is light where there was nothing; far from it, still nothing.
+        #expect(after(132, 100).red > 20 && after(132, 100).alpha > 20)
+        #expect(after(100, 67).red > 20)
+        #expect(after(10, 10) == (0, 0, 0, 0))
+        #expect(after(190, 100) == (0, 0, 0, 0))
+        // Nearer is brighter.
+        #expect(after(131, 100).red > after(137, 100).red)
     }
 
     /// A slab is looked through its thinnest side, wherever its file put that.
@@ -861,6 +939,88 @@ private extension Route {
         // Back to front, and no two within a slab's thickness of each other.
         for (behind, before) in zip(depths, depths.dropFirst()) {
             #expect(before - behind > 0.07)
+        }
+    }
+}
+
+/// A frame for the glass pass to work on, and a way to read what it made of it.
+@MainActor struct GlassFrame {
+    typealias Pixel = (red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8)
+
+    /// A camera whose screen is one unit across and one high at a distance of four.
+    static let projection: simd_float4x4 = {
+        var matrix = matrix_identity_float4x4
+        matrix.columns.0.x = 8
+        matrix.columns.1.y = 8
+        // What a depth of nearly nothing is turned back into: a long way off.
+        matrix.columns.2.z = 0
+        matrix.columns.3.z = 1
+        return matrix
+    }()
+
+    /// A piece of glass facing the camera, four units off, in the middle of its view.
+    static func lens(half: SIMD2<Float>, top: SIMD4<Float>, bottom: SIMD4<Float>) -> LensShape {
+        var viewFromLens = matrix_identity_float4x4
+        viewFromLens.columns.3 = [0, 0, -4, 1]
+        return LensShape(lensFromView: viewFromLens.inverse, viewFromLens: viewFromLens, shape: [half.x, half.y, 0.05, 0],
+                         top: top, bottom: bottom, fade: [0, 1, half.y * 2, 0])
+    }
+
+    let device: any MTLDevice
+    let queue: any MTLCommandQueue
+    let pass: GlassPass
+    let source: any MTLTexture
+    let target: any MTLTexture
+    let depth: any MTLTexture
+
+    init?(width: Int, height: Int) {
+        guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(), let pass = GlassPass(device: device) else { return nil }
+        // Unbent numbers, so that what is written is what is read back.
+        let colour = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        colour.usage = [.shaderRead, .shaderWrite]
+        colour.storageMode = .shared
+        let far = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: width, height: height, mipmapped: false)
+        far.usage = [.shaderRead, .renderTarget]
+        far.storageMode = .private
+        guard let source = device.makeTexture(descriptor: colour), let target = device.makeTexture(descriptor: colour),
+              let depth = device.makeTexture(descriptor: far) else { return nil }
+        (self.device, self.queue, self.pass, self.source, self.target, self.depth) = (device, queue, pass, source, target, depth)
+    }
+
+    func fill(_ pixel: (Int, Int) -> Pixel) {
+        var bytes = [UInt8](repeating: 0, count: source.width * source.height * 4)
+        for y in 0..<source.height {
+            for x in 0..<source.width {
+                let value = pixel(x, y), at = (y * source.width + x) * 4
+                (bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]) = (value.blue, value.green, value.red, value.alpha)
+            }
+        }
+        source.replace(region: MTLRegionMake2D(0, 0, source.width, source.height), mipmapLevel: 0, withBytes: bytes, bytesPerRow: source.width * 4)
+    }
+
+    /// Runs the pass, and gives back a way to read a point of what it made.
+    func run(lenses: [LensShape], glow: GlowSource?, times: Int = 1) -> ((Int, Int) -> Pixel)? {
+        guard let buffer = queue.makeCommandBuffer() else { return nil }
+        // Nothing solid anywhere: the depth of every point is that of a long way off.
+        let clear = MTLRenderPassDescriptor()
+        clear.depthAttachment.texture = depth
+        clear.depthAttachment.loadAction = .clear
+        clear.depthAttachment.storeAction = .store
+        clear.depthAttachment.clearDepth = 0.0001
+        buffer.makeRenderCommandEncoder(descriptor: clear)?.endEncoding()
+        for _ in 0..<times {
+            pass.encode(into: buffer, source: source, depth: depth, target: target, projection: Self.projection, lenses: lenses, glow: glow)
+        }
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        guard buffer.status == .completed else { return nil }
+
+        var bytes = [UInt8](repeating: 0, count: target.width * target.height * 4)
+        target.getBytes(&bytes, bytesPerRow: target.width * 4, from: MTLRegionMake2D(0, 0, target.width, target.height), mipmapLevel: 0)
+        let width = target.width
+        return { x, y in
+            let at = (y * width + x) * 4
+            return (bytes[at + 2], bytes[at + 1], bytes[at], bytes[at + 3])
         }
     }
 }

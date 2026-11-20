@@ -331,6 +331,10 @@ enum Stage {
 struct StageScene {
     /// How much of the stage has to be in view, in its own units, about its middle.
     var extent: CGSize
+    /// Where that middle is, when it isn't the model's own: what a model takes up on
+    /// screen can reach further one way than another — a glow does, round a piece that is
+    /// off to one side — and the view is centred on all of it.
+    var middle: SIMD2<Float> = .zero
     /// How far the whole thing turns from side to side as it idles, in degrees.
     var sway: Float = 7
     /// The model, with its pieces made.
@@ -339,6 +343,16 @@ struct StageScene {
     var paint: (Entity, StagePalette) -> Void
     /// The pieces that are glass and bend what is seen through them (`GlassLens`), for a scheme.
     var glass: (StagePalette) -> [StageGlass] = { _ in [] }
+    /// The piece that gives light, and has a glow round it for that.
+    var glow: (StagePalette) -> StageGlow? = { _ in nil }
+}
+
+/// A piece that gives light: which object it is, the colour of its light, and how strong
+/// the glow round it is.
+nonisolated struct StageGlow: Sendable {
+    var name: String
+    var colour: CSSColor
+    var strength: Float
 }
 
 /// A piece of glass: which object it is, how round its corners are, and its colour — a
@@ -363,7 +377,16 @@ private final class StageRig {
     /// Whether the pass has the glass, or the stage is still drawing it.
     private var handed = false
     var watching: RealityKit.EventSubscription?
-    var hasGlass: Bool { !lenses.isEmpty }
+    /// The piece that glows, and the box it fits in, in its own space.
+    private var lamp: (entity: Entity, glow: StageGlow, box: BoundingBox)?
+    /// Whether there is anything on this stage for the pass to make.
+    var needsPass: Bool { !lenses.isEmpty || lamp != nil }
+
+    func find(_ glow: StageGlow?, in model: Entity) {
+        lamp = glow.flatMap { glow in
+            model.findEntity(named: glow.name).map { ($0, glow, $0.visualBounds(relativeTo: $0)) }
+        }
+    }
 
     /// Finds the glass in the model, and draws it as plain tinted glass for now.
     func find(_ glass: [StageGlass], in model: Entity) {
@@ -384,11 +407,12 @@ private final class StageRig {
         dress()
     }
 
-    /// The same glass in another scheme's colours.
-    func recolour(_ glass: [StageGlass]) {
+    /// The same glass, and the same light, in another scheme's colours.
+    func recolour(_ glass: [StageGlass], glow: StageGlow?) {
         for index in lenses.indices {
             if let match = glass.first(where: { $0.name == lenses[index].glass.name }) { lenses[index].glass = match }
         }
+        if let glow, lamp != nil { lamp?.glow = glow }
         dress()
     }
 
@@ -408,14 +432,25 @@ private final class StageRig {
             dress()
         }
         let viewFromWorld = camera.transformMatrix(relativeTo: nil).inverse
-        board.post(lenses.map { lens in
+        let shapes = lenses.map { lens in
             let viewFromLens = viewFromWorld * lens.entity.transformMatrix(relativeTo: nil) * lens.localFromLens
             let top = lens.glass.top.light, bottom = lens.glass.bottom.light
             return LensShape(lensFromView: viewFromLens.inverse, viewFromLens: viewFromLens,
                              shape: [lens.half.x, lens.half.y, lens.glass.corner, 0],
                              top: [top.x, top.y, top.z, lens.glass.opacity], bottom: [bottom.x, bottom.y, bottom.z, 1],
                              fade: lens.fade)
-        })
+        }
+        // The glow is made by the same pass, so it waits for it as the glass does.
+        let glow = handed ? lamp.map { lamp in
+            let viewFromLocal = viewFromWorld * lamp.entity.transformMatrix(relativeTo: nil)
+            let low = lamp.box.min, high = lamp.box.max
+            let corners = (0..<8).map { corner in
+                simd_make_float3(viewFromLocal * SIMD4(corner & 1 == 0 ? low.x : high.x, corner & 2 == 0 ? low.y : high.y,
+                                                       corner & 4 == 0 ? low.z : high.z, 1))
+            }
+            return GlowSource(corners: corners, colour: lamp.glow.colour.light, strength: lamp.glow.strength)
+        } : nil
+        board.post(shapes, glow: glow)
     }
 }
 
@@ -461,9 +496,10 @@ struct StageView: View {
                     rig.painted = palette
                     root.addChild(model)
                     rig.find(scene.glass(palette), in: model)
+                    rig.find(scene.glow(palette), in: model)
                 }
                 content.add(root)
-                if rig.hasGlass {
+                if rig.needsPass {
                     content.renderingEffects.customPostProcessing = .effect(GlassLens(board: rig.board))
                     rig.watching = content.subscribe(to: SceneEvents.Update.self, on: nil, componentType: nil) { [rig] _ in
                         rig.post()
@@ -471,18 +507,18 @@ struct StageView: View {
                 }
 
                 rig.camera.camera.fieldOfViewInDegrees = Float(Self.fieldOfView)
-                rig.camera.position = [0, 0, distance]
+                rig.camera.position = [scene.middle.x, scene.middle.y, distance]
                 content.add(rig.camera)
                 ready()
             } update: { _ in
-                rig.camera.position = [0, 0, distance]
+                rig.camera.position = [scene.middle.x, scene.middle.y, distance]
                 // Another scheme is the same model in other colours. The stage is not made
                 // again for it: the system changes the scheme and back as the app leaves the
                 // screen, to take its pictures of it, and a stage rebuilt then came back
                 // without its lights or without anything.
                 if let model = rig.model, rig.painted != palette {
                     scene.paint(model, palette)
-                    rig.recolour(scene.glass(palette))
+                    rig.recolour(scene.glass(palette), glow: scene.glow(palette))
                     rig.painted = palette
                 }
             }
