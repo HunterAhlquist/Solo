@@ -18,6 +18,18 @@ On first launch the app asks for the instance's address, then signs in through t
 
 The tests are in the `SoloTests` target (`⌘U`, or `xcodebuild test`), and run on a simulator or on the Mac. They cover the rules the app has to share with the server and the web client — dates, serial numbers, rank neighbours, the roadmap's sprint arithmetic, note addresses and heading slugs, the Design Docs sync batch format, the sketch rasterizer against values taken from the web one, and the About window's game against games played on the desktop shell's.
 
+### The Mac download
+
+Every release tag also attaches the Mac build to its GitHub release, as a disk image anyone can download and open: `Solo-<version>-mac.dmg`, or `Solo-Preview-<version>-mac.dmg` for a prerelease. It is the `mac` job of [release-desktop.yml](../../.github/workflows/release-desktop.yml), beside the Windows and Linux installers, and it is the same target the Mac TestFlight upload builds, signed differently: that one is the store's and opens only through it.
+
+- **Signed by `build/package-mac-direct.sh`.** The archive is signed for nobody, as for the store. The script signs the app with the Developer ID Application certificate and the hardened runtime, keeping the sandbox entitlements it was built with and adding none: a Developer ID app has no provisioning profile, and the app asks for nothing that needs one — its session is in the login keychain. Apple notarizes the app, the ticket is stapled to it, and only then is it put in the image with a link to `/Applications`; the image is signed, notarized and stapled in turn. So the app carries its own ticket once it is dragged out, and both open on a Mac that can't reach Apple.
+- **The secrets are the shell's.** `MAC_CSC_LINK` and `MAC_CSC_KEY_PASSWORD` (the certificate, a base64 .p12), and `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for the notary service: the repository's own, which signed the Electron shell's Mac build. Without all of them the job says so and the release has no Mac download: unsigned or un-notarized, Gatekeeper turns the app away.
+- **Which app it is.** A prerelease is built as the TestFlight preview is — `com.hunterahlquist.solo.preview`, "Solo (Preview)", the preview icon — so the downloaded preview and the TestFlight one are one app come by two roads, and share what they keep. A release is the project as it stands: `com.hunterahlquist.solo.native`, "Solo", its own icon. That is not the store app's bundle id, which the repository doesn't hold; given it, the release could be made the store's app in the same way.
+- **Built for every tag, and in no feed.** Nothing points from one release at another's image, so each release gets its own. It is kept out of the updater feeds and the manifest, which are the Electron shell's: the app does not update itself, and an installed copy of the shell is not told about it.
+- **It needs macOS 26**, as the app does, and is universal.
+
+This was run here in full, on an archive built from a clean copy with the preview identity: signed with the real certificate, accepted by the notary service twice, stapled, and taken by Gatekeeper as "Notarized Developer ID", the app and the image both. A copy signed the same way under the project's own id was opened and showed its instance, signed in from the keychain. The job itself — the certificate from the secret, the notary's credentials — is first run by the next tag.
+
 ### TestFlight
 
 A release tag uploads the app to TestFlight, to one of two App Store Connect apps: a `preview-v<version>` tag to the preview app, and a version tag (`v<version>`) to the store app. The preview is described first; what a version tag does differently is at the end.

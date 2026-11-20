@@ -14,7 +14,8 @@ src/Solo.iOS            native SwiftUI client for iPhone, iPad and Mac — an ex
                         Xcode project and README; not in Solo.slnx. A release tag uploads its
                         iPhone and iPad build (release-ios.yml) and its Mac build
                         (release-mac-store.yml) to TestFlight: `preview-v*` to the preview
-                        app, `v*` to the store app; nothing else releases it
+                        app, `v*` to the store app; and release-desktop.yml attaches the Mac
+                        build to the release as a notarized .dmg
 tests/                  Solo.Data.Tests, Solo.Api.Tests, Solo.Client.Tests, plus the harnesses
                         (Solo.Api.Testing, Solo.Client.Testing) and the fixture extension
 extensions/Mcp          an EXTENSION, not core — the reference example (Solo.Mcp.slnx)

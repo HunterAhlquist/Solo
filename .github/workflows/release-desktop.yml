@@ -7,8 +7,8 @@ on:
     # and both attach to the one GitHub release for the tag. `preview-v*` is
     # the same train as a prerelease.
     tags: ["v*", "preview-v*"]
-  # Manual runs build the installers as workflow artifacts without touching
-  # a release — useful for testing the packaging on a branch.
+  # Manual runs build the installers, and the Mac app, as workflow artifacts
+  # without touching a release — useful for testing the packaging on a branch.
   workflow_dispatch:
 
 # Every job starts read-only. The few that publish (the image, the release)
@@ -115,10 +115,11 @@ jobs:
       fail-fast: false
       matrix:
         # Windows and Linux. The shell is no longer built for macOS: a Mac is
-        # left to the native app (src/Solo.iOS), whose preview builds go out
-        # through release-mac-store.yml. package.json keeps its mac target, so
-        # the shell still builds for one locally; and the release job below
-        # still hands the last macOS feed on, for the copies already installed.
+        # left to the native app (src/Solo.iOS), which the `mac` job below
+        # builds for this release and release-mac-store.yml for TestFlight.
+        # package.json keeps its mac target, so the shell still builds for one
+        # locally; and the release job below still hands the last macOS feed
+        # on, for the copies already installed.
         os: [windows-latest, ubuntu-latest]
     defaults:
       run:
@@ -172,6 +173,207 @@ jobs:
             src/Solo.Desktop/dist/*.blockmap
           if-no-files-found: error
 
+  # The Mac download: the native app (src/Solo.iOS), signed with the Developer
+  # ID certificate and notarized, in a disk image. It is the same target
+  # release-mac-store.yml uploads to TestFlight, signed differently: that
+  # build is the store's and opens only through it, and this one is for anyone
+  # who downloads it. It is built for every tag rather than only when the app
+  # changed: nothing points from one release at another's image, as the
+  # updater feeds do for the installers, so a release without one would have
+  # no Mac download at all.
+  #
+  # It is not the shell and is in none of the shell's feeds: an installed
+  # Electron copy reads latest-mac.yml, which goes on naming the last Electron
+  # build (see "Carry the last macOS feed forward"). The image is handed to the
+  # release job under its own artifact name and kept out of the folder the
+  # feeds are written from, where build/updater-feed.mjs would take any .dmg
+  # for the shell's.
+  mac:
+    name: Build the Mac app
+    needs: changes
+    # The Xcode 27 image, as for the TestFlight uploads: it is what the app is
+    # built and tested with. A release Xcode is picked below.
+    runs-on: xcode-27
+    # A backstop, not a budget: the build is a few minutes and each of the two
+    # notarizations is capped by the packaging script.
+    timeout-minutes: 90
+    outputs:
+      built: ${{ steps.gate.outputs.build }}
+    # Lifted to the job because a step's `if:` can read `env` but not
+    # `secrets`: without them the job stops at a notice instead of failing.
+    # They are the ones the shell's Mac build was signed and notarized with.
+    env:
+      # The Developer ID Application certificate, as a base64 .p12.
+      MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    defaults:
+      run:
+        working-directory: src/Solo.iOS
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # All or nothing. Unsigned, or signed and not notarized, the app is one
+      # Gatekeeper turns away, and since macOS 15 there is no way past that
+      # short of System Settings: a release is better without a Mac download
+      # than with that one.
+      - name: Check the signing secrets
+        id: gate
+        working-directory: .
+        run: |
+          set -euo pipefail
+          if [ -z "$MAC_CSC_LINK" ] || [ -z "$MAC_CSC_KEY_PASSWORD" ] || [ -z "$APPLE_ID" ] ||
+             [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::notice::The Developer ID certificate or the notarization credentials aren't set; this release gets no Mac download."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The newest release (non-beta) Xcode 27 on the image, as for TestFlight:
+      # one toolchain builds every copy of the app that leaves here.
+      - name: Select Xcode 27
+        if: steps.gate.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | grep -v -i beta | sort -V | tail -1)"
+          xcodebuild -version
+
+      # Which app the build is made as, by the rule the installers go by
+      # (main/app-identity.js): a version with a prerelease suffix is the
+      # preview, and so is a manual run. The preview is the TestFlight
+      # preview's app — its bundle id, name and icon — so the two are one app
+      # that came by two roads, and share what they keep. The release is the
+      # project as it stands: its own bundle id, name and icon, with nothing
+      # said on the command line. `asset` has no space in it, which GitHub
+      # would rewrite to a dot.
+      - name: Choose the app
+        id: app
+        if: steps.gate.outputs.build == 'true'
+        working-directory: .
+        env:
+          VERSION: ${{ needs.changes.outputs.version || format('0.0.0-preview.{0}', github.run_number) }}
+          PRERELEASE: ${{ needs.changes.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if [ "$PRERELEASE" = false ]; then
+            { echo "bundle_id="; echo "name="; echo "icon="; echo "installed=Solo"
+              echo "asset=Solo-$VERSION-mac.dmg"; } >> "$GITHUB_OUTPUT"
+          else
+            { echo "bundle_id=com.hunterahlquist.solo.preview"; echo "name=Solo (Preview)"; echo "icon=Solo Preview"
+              echo "installed=Solo (Preview)"; echo "asset=Solo-Preview-$VERSION-mac.dmg"; } >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # The project keeps the release's icon (Solo/Solo.icon). The preview's is
+      # in Icons with the desktop's; the app's folder is one the project reads
+      # whole, so a file put in it is in the target without being listed.
+      - name: Stage the preview icon
+        if: steps.gate.outputs.build == 'true' && steps.app.outputs.icon != ''
+        run: cp -R "../../Icons/Solo Preview.icon" "Solo/Solo Preview.icon"
+
+      # Signed for nobody here, as for the store's build: the signature that
+      # matters is put on by build/package-mac-direct.sh, where an identity
+      # given on this command line would be handed to the packages too. The
+      # bundle id goes through SOLO_BUNDLE_ID (see release-ios.yml for why).
+      # The marketing version drops the prerelease suffix, which a bundle
+      # can't carry; the build number is the minute of the build, in UTC.
+      - name: Archive
+        if: steps.gate.outputs.build == 'true'
+        env:
+          VERSION: ${{ steps.app.outputs.version }}
+          BUNDLE_ID: ${{ steps.app.outputs.bundle_id }}
+          APP_NAME: ${{ steps.app.outputs.name }}
+          APP_ICON: ${{ steps.app.outputs.icon }}
+        run: |
+          set -euo pipefail
+          # Said only for the preview: the release's are the project's own.
+          identity=()
+          [ -z "$BUNDLE_ID" ] || identity+=("SOLO_BUNDLE_ID=$BUNDLE_ID")
+          [ -z "$APP_NAME" ] || identity+=("INFOPLIST_KEY_CFBundleDisplayName=$APP_NAME")
+          [ -z "$APP_ICON" ] || identity+=("ASSETCATALOG_COMPILER_APPICON_NAME=$APP_ICON")
+          xcodebuild archive \
+            -project Solo.xcodeproj -scheme Solo -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$RUNNER_TEMP/Solo.xcarchive" \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+            MARKETING_VERSION="${VERSION%%-*}" \
+            CURRENT_PROJECT_VERSION="$(date -u +%Y%m%d%H%M)" \
+            ${identity[@]+"${identity[@]}"}
+
+      # A keychain of the job's own, so the identity is gone with it and
+      # nothing is left in the runner's login keychain.
+      - name: Import signing certificate
+        id: keychain
+        if: steps.gate.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          KEYCHAIN="${RUNNER_TEMP}/solo-signing.keychain-db"
+          # Only ever unlocks this throwaway keychain, on a throwaway runner.
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          CERT="${RUNNER_TEMP}/mac-csc.p12"
+
+          echo "$MAC_CSC_LINK" | base64 --decode > "$CERT"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # No auto-lock: codesign runs unattended, and again after each wait
+          # on the notary service.
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -k "$KEYCHAIN" -P "$MAC_CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # codesign resolves the certificate chain through the search list,
+          # not through --keychain alone; keep the existing keychains on it.
+          # `list-keychains` prints one indented, quoted path per line.
+          EXISTING=()
+          while IFS= read -r line; do
+            EXISTING+=("$(printf '%s' "$line" | sed -e 's/^[[:space:]]*"//' -e 's/"$//')")
+          done < <(security list-keychains -d user)
+          # bash 3.2 (still /bin/bash on the runners) treats an empty array as
+          # unbound under `set -u`, so don't expand one.
+          if [ ${#EXISTING[@]} -gt 0 ]; then
+            security list-keychains -d user -s "$KEYCHAIN" "${EXISTING[@]}"
+          else
+            security list-keychains -d user -s "$KEYCHAIN"
+          fi
+          rm -f "$CERT"
+
+          # find-identity exits 0 even when it found nothing, so the identity
+          # is looked for here rather than discovered as a failed signature.
+          security find-identity -v -p codesigning "$KEYCHAIN" | tee "${RUNNER_TEMP}/identities"
+          grep -q "Developer ID Application" "${RUNNER_TEMP}/identities" || {
+            echo "::error::MAC_CSC_LINK has no Developer ID Application identity — check that it is a base64 .p12 and that MAC_CSC_KEY_PASSWORD matches it."; exit 1; }
+
+      # Signs the archived app, has Apple notarize it, and wraps it in the
+      # image; then does the same for the image. Each wait on Apple is capped
+      # in the script, which says what Apple answered as it goes.
+      - name: Package
+        if: steps.gate.outputs.build == 'true'
+        working-directory: .
+        env:
+          INSTALLED: ${{ steps.app.outputs.installed }}
+          ASSET: ${{ steps.app.outputs.asset }}
+        run: bash build/package-mac-direct.sh "$RUNNER_TEMP/Solo.xcarchive" "$RUNNER_TEMP/mac/$ASSET" "$INSTALLED"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.gate.outputs.build == 'true'
+        with:
+          # Not `desktop-…`: the release job takes those into the folder its
+          # updater feeds are written from.
+          name: native-mac
+          path: ${{ runner.temp }}/mac/*.dmg
+          if-no-files-found: error
+
+      # The runner is ephemeral, but the keychain outlives the job on a
+      # self-hosted one and leaving it on the search list breaks later builds.
+      - name: Remove signing keychain
+        if: always() && steps.keychain.outcome == 'success'
+        run: security delete-keychain "${RUNNER_TEMP}/solo-signing.keychain-db"
+
   release:
     # ci.yml names the same group, so the two workflows never write this tag's
     # release — or merge into its manifest — at the same time.
@@ -179,13 +381,15 @@ jobs:
       group: github-release-${{ github.ref }}
       cancel-in-progress: false
     name: Attach to the GitHub release
-    needs: [changes, build]
+    needs: [changes, build, mac]
     # Runs on every tag push, including one whose installers were deliberately
     # not rebuilt. electron-updater refuses to look past the newest release, so
     # that release has to carry a channel file whether or not this train built
     # one — otherwise an app checking for updates gets a 404 until the next
     # desktop change. A failed build carries the last good feed forward for the
-    # same reason; the run still reports the failure.
+    # same reason; the run still reports the failure. A failed Mac build is
+    # waited for and then done without: the release goes out with no Mac
+    # download, and that job is what reports it.
     if: always() && github.event_name == 'push' && needs.changes.outputs.version != ''
     runs-on: ubuntu-latest
     permissions:
@@ -207,8 +411,21 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.build.result == 'success'
         with:
+          # The installers only. The Mac app's image is not one of them, and in
+          # this folder the feed below would be written as if it were.
+          pattern: desktop-*
           path: artifacts
           merge-multiple: true
+
+      # The native Mac app's image, into a folder of its own: it is attached
+      # to the release and is in no feed. Asked for only when that job got as
+      # far as handing one over: it says it is building before it has built,
+      # and an image that isn't there would stop this job short of the release.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.mac.result == 'success' && needs.mac.outputs.built == 'true'
+        with:
+          name: native-mac
+          path: mac
 
       # The channel files electron-updater reads, pointing at the installers
       # this run is about to attach. Their URLs are absolute, which is why the
@@ -391,6 +608,7 @@ jobs:
           files: |
             release-manifest.json
             artifacts/*
+            mac/*
           # A build that failed with no earlier feed to carry forward leaves
           # artifacts/ empty; the manifest still has to reach the release.
           fail_on_unmatched_files: false
@@ -421,6 +639,17 @@ jobs:
             --jq '.artifacts[] | select(.name | startswith("desktop-")) | "\(.id)\t\(.name)"' |
           while IFS=$'\t' read -r id name; do
             echo "Deleting $name ($id)"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/$id"
+          done
+
+      # The Mac app's image likewise, once it is on the release.
+      - name: Drop the Mac hand-off artifact
+        if: needs.mac.result == 'success' && needs.mac.outputs.built == 'true'
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+            --jq '.artifacts[] | select(.name == "native-mac") | .id' |
+          while read -r id; do
+            echo "Deleting native-mac ($id)"
             gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/$id"
           done
 

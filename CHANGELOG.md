@@ -33,7 +33,7 @@ with its version in parentheses).
 ### Desktop
 - Notifications from your instance show as system notifications while the app is open.
 - Every instance signs in through its sign-in page in the browser or the macOS sign-in sheet, whatever its provider, so a Microsoft or generic instance signs in as a Google one does. Settings no longer lists a per-app OIDC redirect URI: the instance's `/desktop-auth` address replaces it.
-- Releases no longer include the macOS app. A copy that is already installed keeps working and stays on the last version built for macOS; its update check still gets an answer, from that version's feed carried onto each new release.
+- The Mac download is the new app for the Mac, in place of the one releases stopped building: `Solo-<version>-mac.dmg`, signed and notarized, for Apple silicon and Intel on macOS 26 and later. It is a different app from the earlier one and does not update itself; a new version is a new download. A copy of the earlier app that is already installed keeps working and stays on the last version built for it; its update check still gets an answer, from that version's feed carried onto each new release.
 
 ### SDK
 - Contract 1.16.0: the notification and email settings DTOs, `NotificationKind`, `DigestFrequency`, `SmtpSecurity`, `AuthConfigDto.EmailEnabled` and the core user topic `BoardHubConstants.NotificationsTopic`, used by core's own client and API.

@@ -144,7 +144,14 @@ uploaded bytes rather than letting electron-builder generate them, for the
 absolute URLs.
 
 **The release workflow no longer builds the shell for macOS**: it packages
-Windows and Linux, and a Mac is left to the native app (`src/Solo.iOS`). The
+Windows and Linux, and a Mac is left to the native app (`src/Solo.iOS`), which
+the `mac` job builds, signs with the Developer ID certificate, has notarized,
+and attaches as `Solo-<version>-mac.dmg`
+([build/package-mac-direct.sh](../build/package-mac-direct.sh)). That image is
+in none of the feeds and not in the manifest: nothing updates from it. It is
+handed to the release job under its own artifact name and kept out of the
+folder the feeds are written from, where `updater-feed.mjs` would take any
+`.dmg` for the shell's and point installed copies of the shell at it. The
 shell is still installed on Macs, though, and those copies go on reading
 `latest-mac.yml` off the newest release, so the rule above holds for them too.
 The release job hands the last `latest-mac.yml` from release to release
