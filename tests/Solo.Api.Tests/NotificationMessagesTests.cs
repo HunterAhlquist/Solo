@@ -72,6 +72,23 @@ public sealed partial class NotificationMessagesTests
         Assert.Equal(new Message("Alex Johnson assigned you a task.", "Task 'Ship the demo build' was assigned to you."), message);
     }
 
+    /// <summary>What goes into a line is somebody's own words, and is never read as part of the line.</summary>
+    [Fact]
+    public void Fill_leaves_a_value_that_looks_like_a_placeholder_as_it_is()
+    {
+        var values = new Dictionary<string, string>
+        {
+            ["assigner"] = "Alex",
+            ["task"] = "Rename {project} to {assigner}",
+            ["project"] = "Game",
+        };
+
+        var message = Fill(new Template("{assigner}: {task}", "In {project}. {nothing} stays."), values);
+
+        Assert.Equal("Alex: Rename {project} to {assigner}", message.Title);
+        Assert.Equal("In Game. {nothing} stays.", message.Body);
+    }
+
     [Fact]
     public void A_key_always_picks_the_same_line()
     {

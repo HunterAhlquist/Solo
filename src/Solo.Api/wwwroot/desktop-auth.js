@@ -13,7 +13,7 @@
 //    the ID token and the flow's state back to /desktop-auth, which serves
 //    this page again with both in meta tags.
 // Every other provider (Microsoft, generic OIDC) gets the authorization code
-// flow with PKCE, as the web client does: straight to the provider, back here
+// flow with PKCE, as the web client does: on a press, to the provider, back here
 // with ?code=…&state=…, and the code traded for an ID token at the provider's
 // token endpoint from this page. No client secret: Google is only different
 // because its web clients demand one there.
@@ -246,6 +246,15 @@ async function providerMetadata(authority) {
   if (!metadata?.authorization_endpoint || !metadata?.token_endpoint) {
     throw new Error('discovery is missing an endpoint');
   }
+  // The page is sent to one and posts a code to the other: both have to be
+  // web addresses, and encrypted ones unless the provider is on this machine.
+  for (const endpoint of [metadata.authorization_endpoint, metadata.token_endpoint]) {
+    const url = new URL(endpoint);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) {
+      throw new Error('discovery names an endpoint that is not https');
+    }
+  }
   return metadata;
 }
 
@@ -286,6 +295,26 @@ async function redirectToProvider(config) {
     authorize.searchParams.set(name, value);
   }
   location.replace(authorize.href);
+}
+
+// A provider that still has the person signed in answers the redirect without
+// showing anything, so going straight to it would finish a sign-in nobody had
+// to look at: any program on the device can open this page for a flow of its
+// own and be handed the session. The lead says when to go on; this is the
+// going on, and it takes a press. (Google's button is its own press.)
+function askToContinue(config, name) {
+  const proceed = document.createElement('button');
+  proceed.type = 'button';
+  proceed.className = 'continue';
+  proceed.textContent = name === 'Your identity provider' ? 'Continue to sign in' : `Continue with ${name}`;
+  proceed.addEventListener('click', async () => {
+    proceed.disabled = true;
+    lead.textContent = `Opening ${name === 'Your identity provider' ? 'sign-in' : `${name} sign-in`}…`;
+    await redirectToProvider(config);
+    // Still here: the redirect didn't happen, and why is on the page.
+    proceed.remove();
+  }, { once: true });
+  document.getElementById('button').replaceChildren(proceed);
 }
 
 async function redeemCode(config) {
@@ -365,8 +394,7 @@ async function run() {
       lead.textContent = 'Finishing sign-in…';
       await redeemCode(config);
     } else {
-      lead.textContent = `Opening ${name === 'Your identity provider' ? 'sign-in' : `${name} sign-in`}…`;
-      await redirectToProvider(config);
+      askToContinue(config, name);
     }
     return;
   }

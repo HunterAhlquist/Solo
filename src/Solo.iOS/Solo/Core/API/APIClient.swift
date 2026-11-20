@@ -105,7 +105,8 @@ final class APIClient {
         configuration.timeoutIntervalForRequest = 20
         configuration.waitsForConnectivity = false
         configuration.httpAdditionalHeaders = ["Accept": "application/json"]
-        session = URLSession(configuration: configuration)
+        // The session goes to the instance and nowhere a redirect might send it.
+        session = URLSession(configuration: configuration, delegate: RedirectGuard(), delegateQueue: nil)
         cache = ResponseCache(namespace: self.baseURL.absoluteString)
     }
 

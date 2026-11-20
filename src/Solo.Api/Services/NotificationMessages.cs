@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Solo.Api.Services;
 
@@ -23,7 +24,7 @@ namespace Solo.Api.Services;
 /// schedules ahead from <c>api/notifications/upcoming</c> is the text the server
 /// stores when it raises the same reminder.
 /// </remarks>
-public static class NotificationMessages
+public static partial class NotificationMessages
 {
     public enum Situation
     {
@@ -79,16 +80,14 @@ public static class NotificationMessages
     public static Message Fill(Template template, IReadOnlyDictionary<string, string> values) =>
         new(Render(template.Title, values), Render(template.Body, values));
 
-    private static string Render(string text, IReadOnlyDictionary<string, string> values)
-    {
-        var result = new StringBuilder(text);
-        foreach (var (name, value) in values)
-        {
-            result.Replace("{" + name + "}", value);
-        }
+    // In one pass over the line, so that what is put in is never read as part
+    // of the line: a task somebody named "{assigner}" stays that, where filling
+    // one name after another would have filled it in too.
+    private static string Render(string text, IReadOnlyDictionary<string, string> values) =>
+        Placeholder().Replace(text, match => values.TryGetValue(match.Groups[1].Value, out var value) ? value : match.Value);
 
-        return result.ToString();
-    }
+    [GeneratedRegex(@"\{(\w+)\}")]
+    private static partial Regex Placeholder();
 
     private static IReadOnlyDictionary<Situation, IReadOnlyList<Template>> Load()
     {

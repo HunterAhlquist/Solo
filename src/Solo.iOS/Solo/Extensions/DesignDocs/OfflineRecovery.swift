@@ -117,6 +117,18 @@ nonisolated enum OfflineRecovery {
         return restoring(kept ?? old, old)
     }
 
+    /// A path as an archive may carry it: no step up out of the folder it is opened into, none
+    /// to the root of the disk, and nothing in a name that isn't a letter of it. The names are
+    /// the instance's — a note's, a folder's, where a picture is stored — and it holds them to
+    /// this already; the archive is opened by whatever the person has, which may take a path
+    /// at its word, so it is held to it here as well.
+    static func entryName(_ path: String) -> String {
+        let parts = path.split(whereSeparator: { $0 == "/" || $0 == "\\" })
+            .map { String(String.UnicodeScalarView($0.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })) }
+            .filter { !$0.isEmpty && $0 != "." && $0 != ".." }
+        return parts.isEmpty ? "unnamed" : parts.joined(separator: "/")
+    }
+
     static func zip(_ files: [String: Data]) throws -> Data {
         let archive = try Archive(data: Data(), accessMode: .create)
         // A zip's times have no zone and are read as local ones, and the library writes them
@@ -124,9 +136,16 @@ nonisolated enum OfflineRecovery {
         // the archive is from later today.
         let now = Date().addingTimeInterval(TimeInterval(TimeZone.current.secondsFromGMT()))
         // In a settled order: a folder's files together, wherever the archive is listed.
+        var taken: Set<String> = []
         for path in files.keys.sorted() {
             guard let data = files[path] else { continue }
-            try archive.addEntry(with: path, type: .file, uncompressedSize: Int64(data.count), modificationDate: now,
+            // Two paths made the same by that are told apart, so neither is lost.
+            var name = entryName(path), copy = 1
+            while !taken.insert(name).inserted {
+                copy += 1
+                name = "\(copy)-" + entryName(path)
+            }
+            try archive.addEntry(with: name, type: .file, uncompressedSize: Int64(data.count), modificationDate: now,
                                  compressionMethod: .deflate) { position, size in
                 data.subdata(in: Int(position)..<(Int(position) + size))
             }

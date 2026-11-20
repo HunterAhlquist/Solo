@@ -423,6 +423,10 @@ public sealed class DesktopAuthApiTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.Contains("grant_type: 'authorization_code'", script);
         Assert.Contains("nonce: state", script);
         Assert.DoesNotContain("not configured for Google sign-in", script);
+        // It goes to the provider on a press, not as it loads: a provider that still has the
+        // person signed in would otherwise finish a sign-in nobody had to look at.
+        Assert.Contains("askToContinue(config, name);", script);
+        Assert.Equal(2, script.Split("redirectToProvider(config)").Length - 1);
 
         var flow = await StartFlowAsync();
         var page = await _anon.GetStringAsync($"/desktop-auth?state={flow.State}");

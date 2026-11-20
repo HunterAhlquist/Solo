@@ -223,6 +223,23 @@ import ZIPFoundation
         #expect(OfflineRecovery.archiveName("") == "vault-recovery.zip")
     }
 
+    /// The names in an archive are the instance's. Whatever it sends, nothing in the archive
+    /// is addressed to anywhere but the folder the archive is opened into.
+    @Test func nothingInTheArchiveLeadsOutOfIt() throws {
+        #expect(OfflineRecovery.entryName("World/Towns/Deep.md") == "World/Towns/Deep.md")
+        #expect(OfflineRecovery.entryName("../../Library/Preferences/x.plist") == "Library/Preferences/x.plist")
+        #expect(OfflineRecovery.entryName("/etc/hosts") == "etc/hosts")
+        #expect(OfflineRecovery.entryName("a/./b/../c") == "a/b/c")
+        #expect(OfflineRecovery.entryName("..\\..\\up.md") == "up.md")
+        #expect(OfflineRecovery.entryName("Ti\u{0}tle\n.md") == "Title.md")
+        #expect(OfflineRecovery.entryName("../..") == "unnamed")
+
+        // Two that come to the same name are both kept.
+        let data = try OfflineRecovery.zip(["../Note.md": Data("up".utf8), "Note.md": Data("here".utf8)])
+        let archive = try Archive(data: data, accessMode: .read)
+        #expect(archive.map(\.path).sorted() == ["2-Note.md", "Note.md"])
+    }
+
     @Test func aDeletedDesignDocTakesEverything() {
         let delete = command(.vault, .delete, vault, at: 1)
         #expect(OfflineTree.projected(base, [delete]).deleted)

@@ -128,6 +128,27 @@
       display: none;
     }
 
+    /* The press that sends the page to a provider other than Google. Outlined
+       in the accent, not filled with it: a theme's accent may be any colour,
+       and the text on it has to be read. */
+    #button .continue {
+      min-height: 44px;
+      padding: 0 1.5rem;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--fg);
+      font: inherit;
+      font-weight: 700;
+      color-scheme: normal;
+      cursor: pointer;
+    }
+
+    #button .continue:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
     #status:empty {
       display: none;
     }

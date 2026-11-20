@@ -106,7 +106,8 @@ nonisolated enum WorkSummaryClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data: Data, response: URLResponse
         do {
-            (data, response) = try await URLSession(configuration: .ephemeral).data(for: request)
+            (data, response) = try await URLSession(configuration: .ephemeral, delegate: RedirectGuard(), delegateQueue: nil)
+                .data(for: request)
         } catch {
             throw WorkSummaryError.unreachable
         }

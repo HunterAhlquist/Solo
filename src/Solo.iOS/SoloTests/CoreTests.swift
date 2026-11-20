@@ -1423,3 +1423,27 @@ private func symbolExists(_ name: String) -> Bool {
         ])
     }
 }
+
+/// The session is sent to the instance and nowhere a redirect might lead.
+@Suite struct RedirectGuardTests {
+    private func stays(_ from: String, _ to: String) -> Bool {
+        RedirectGuard.staysHome(from: URL(string: from), to: URL(string: to))
+    }
+
+    @Test func aRedirectIsFollowedOnlyOnTheSameServer() {
+        #expect(stays("https://solo.example.com/api/a", "https://solo.example.com/api/b"))
+        #expect(stays("https://Solo.Example.com/api/a", "https://solo.example.com:443/api/a"))
+        #expect(stays("http://10.0.0.4:5155/api/a", "http://10.0.0.4:5155/api/b"))
+        // A proxy sending plain http on to its secure port is the same server.
+        #expect(stays("http://solo.example.com/api/a", "https://solo.example.com/api/a"))
+
+        #expect(!stays("https://solo.example.com/api/a", "https://elsewhere.example/api/a"))
+        #expect(!stays("https://solo.example.com/api/a", "https://solo.example.com.elsewhere.example/api/a"))
+        #expect(!stays("https://solo.example.com/api/a", "https://solo.example.com:8443/api/a"))
+        // Never down from https, though the name is the same.
+        #expect(!stays("https://solo.example.com/api/a", "http://solo.example.com/api/a"))
+        #expect(!stays("http://10.0.0.4:5155/api/a", "http://10.0.0.4:5156/api/a"))
+        #expect(!stays("https://solo.example.com/api/a", "ftp://solo.example.com/a"))
+        #expect(!RedirectGuard.staysHome(from: URL(string: "https://solo.example.com"), to: nil))
+    }
+}
