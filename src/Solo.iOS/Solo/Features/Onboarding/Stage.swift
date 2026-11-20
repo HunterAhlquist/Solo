@@ -150,6 +150,15 @@ extension CSSColor {
     var platform: PlatformColor {
         PlatformColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: CGFloat(alpha))
     }
+
+    /// The colour as amounts of light, which is what a shader adds up: a frame is kept that
+    /// way and turned into sRGB as it is shown.
+    nonisolated var light: SIMD3<Float> {
+        func unbent(_ value: Double) -> Float {
+            Float(value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4))
+        }
+        return [unbent(red), unbent(green), unbent(blue)]
+    }
 }
 
 enum Stage {
@@ -171,10 +180,102 @@ enum Stage {
         return material
     }
 
+    /// Glass in a colour: a fade from one colour at the top to another at the bottom, seen
+    /// through as much as `opacity` leaves, under a hard clear gloss. The fade is laid on
+    /// the model's own UV map, which runs bottom to top.
+    ///
+    /// What is behind shows through it and is not bent by it. Nothing RealityKit offers
+    /// bends it: its materials have no refraction, and a shader of the app's own is not
+    /// given what has already been drawn to bend.
+    static func glass(top: CSSColor, bottom: CSSColor, opacity: Float) -> PhysicallyBasedMaterial {
+        var material = PhysicallyBasedMaterial()
+        if let fade = fade(top: top, bottom: bottom) {
+            material.baseColor = .init(tint: .white, texture: .init(fade))
+        } else {
+            material.baseColor = .init(tint: top.platform)
+        }
+        material.roughness = .init(floatLiteral: 0.12)
+        material.clearcoat = .init(floatLiteral: 1)
+        material.clearcoatRoughness = .init(floatLiteral: 0.04)
+        material.blending = .transparent(opacity: .init(floatLiteral: opacity))
+        return material
+    }
+
+    /// A piece of glass with nothing to it but what it reflects: its colour and its
+    /// bending are laid over it afterwards (`GlassLens`).
+    static func shine() -> PhysicallyBasedMaterial {
+        var material = PhysicallyBasedMaterial()
+        material.baseColor = .init(tint: .black)
+        material.roughness = .init(floatLiteral: 0.1)
+        material.clearcoat = .init(floatLiteral: 1)
+        material.clearcoatRoughness = .init(floatLiteral: 0.04)
+        material.blending = .transparent(opacity: .init(floatLiteral: 0.02))
+        return material
+    }
+
+    private static var fades: [String: TextureResource] = [:]
+
+    /// A strip of the fade, top colour in its top row. The colours are Display P3, as an
+    /// icon's are, and the strip is drawn in that space so they arrive as they were picked.
+    private static func fade(top: CSSColor, bottom: CSSColor) -> TextureResource? {
+        let key = "\(top.hex)-\(bottom.hex)"
+        if let kept = fades[key] { return kept }
+        let space = CGColorSpace(name: CGColorSpace.displayP3) ?? CGColorSpaceCreateDeviceRGB()
+        let width = 4, height = 128
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let gradient = CGGradient(colorSpace: space, colorComponents: [top.red, top.green, top.blue, 1, bottom.red, bottom.green, bottom.blue, 1]
+                                            .map { CGFloat($0) }, locations: [0, 1], count: 2)
+        else { return nil }
+        // A bitmap's y runs upward: the top colour starts at the top edge.
+        context.drawLinearGradient(gradient, start: CGPoint(x: 0, y: height), end: .zero, options: [])
+        guard let image = context.makeImage(),
+              let texture = try? TextureResource(image: image, options: .init(semantic: .color)) else { return nil }
+        fades[key] = texture
+        return texture
+    }
+
+    /// How much brighter than the picture itself the room lights things, as a power of two.
+    static let studioExposure: Float = 2.3
+
+    private static var room: EnvironmentResource?
+
+    /// The room the models are lit by, painted here and not carried as a file: bright
+    /// overhead, dim below, with a few soft panels at head height for the glass to catch.
+    static func studio() async -> EnvironmentResource? {
+        if let room { return room }
+        let width = 512, height = 256
+        let space = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let sky = CGGradient(colorSpace: space, colorComponents: [0.1, 0.1, 0.1, 1, 0.42, 0.42, 0.42, 1, 0.9, 0.9, 0.9, 1],
+                                   locations: [0, 0.5, 1], count: 3)
+        else { return nil }
+        // The picture is the whole sphere laid flat: its width is all the way round, its
+        // height floor to ceiling. A bitmap's y runs upward, so the ceiling is at the top.
+        context.drawLinearGradient(sky, start: .zero, end: CGPoint(x: 0, y: height), options: [])
+        context.setFillColor(CGColor(gray: 1, alpha: 0.9))
+        for panel in 0..<4 {
+            let rect = CGRect(x: Double(panel) * 128 + 34, y: 150, width: 60, height: 52)
+            context.addPath(CGPath(roundedRect: rect, cornerWidth: 10, cornerHeight: 10, transform: nil))
+        }
+        context.fillPath()
+        guard let image = context.makeImage() else { return nil }
+        room = try? await EnvironmentResource(equirectangular: image, withName: "stage")
+        return room
+    }
+
+    private static var models: [String: Entity] = [:]
+
     /// A model the app carries, by its file's name. Nil when it can't be read, and the
-    /// stage is then empty: the screen it is on still says what it has to.
+    /// stage is then empty: the screen it is on still says what it has to. The file is read
+    /// once and every stage is given a copy of its own, so a screen coming in has its model
+    /// already and doesn't arrive empty.
     static func load(_ name: String) async -> Entity? {
-        try? await Entity(named: name, in: .main)
+        if let kept = models[name] { return kept.clone(recursive: true) }
+        guard let model = try? await Entity(named: name, in: .main) else { return nil }
+        models[name] = model
+        return model.clone(recursive: true)
     }
 
     /// Gives the object called `name` this material, whatever its file gave it: the app's
@@ -226,24 +327,115 @@ enum Stage {
 
 // MARK: The view
 
-/// A stage of models: built once for the scheme, framed to fit, and its pieces draggable.
-struct StageView: View {
+/// What a stage shows: a model, how much room it needs, and how it is coloured.
+struct StageScene {
     /// How much of the stage has to be in view, in its own units, about its middle.
     var extent: CGSize
     /// How far the whole thing turns from side to side as it idles, in degrees.
     var sway: Float = 7
-    var build: (StagePalette) async -> Entity?
+    /// The model, with its pieces made.
+    var load: () async -> Entity?
+    /// Its colours for a scheme. Called again when the scheme changes, on the same model.
+    var paint: (Entity, StagePalette) -> Void
+    /// The pieces that are glass and bend what is seen through them (`GlassLens`), for a scheme.
+    var glass: (StagePalette) -> [StageGlass] = { _ in [] }
+}
+
+/// A piece of glass: which object it is, how round its corners are, and its colour — a
+/// fade from top to bottom, and how much of it there is.
+nonisolated struct StageGlass: Sendable {
+    var name: String
+    var corner: Float
+    var top: CSSColor
+    var bottom: CSSColor
+    var opacity: Float
+}
+
+/// What a stage keeps for as long as it is on screen.
+private final class StageRig {
+    let camera = PerspectiveCamera()
+    var model: Entity?
+    var painted: StagePalette?
+
+    /// The glass on this stage, and where the pass that makes it is told it is.
+    let board = LensBoard()
+    private var lenses: [(entity: Entity, glass: StageGlass, localFromLens: simd_float4x4, half: SIMD2<Float>, fade: SIMD4<Float>)] = []
+    /// Whether the pass has the glass, or the stage is still drawing it.
+    private var handed = false
+    var watching: RealityKit.EventSubscription?
+    var hasGlass: Bool { !lenses.isEmpty }
+
+    /// Finds the glass in the model, and draws it as plain tinted glass for now.
+    func find(_ glass: [StageGlass], in model: Entity) {
+        lenses = glass.compactMap { glass in
+            guard let entity = model.findEntity(named: glass.name) else { return nil }
+            let bounds = entity.visualBounds(relativeTo: entity)
+            let space = Lens.lensFromLocal(center: bounds.center, extents: bounds.extents)
+            // Which way is up on the piece is which way is up on the stage, as near as its
+            // own two directions come to it.
+            let localFromLens = space.matrix.inverse
+            let facing = entity.orientation(relativeTo: model)
+            let across = facing.act(simd_make_float3(localFromLens.columns.0)), up = facing.act(simd_make_float3(localFromLens.columns.1))
+            let way = simd_normalize(SIMD2(across.y, up.y))
+            let run = 2 * (abs(way.x) * space.half.x + abs(way.y) * space.half.y)
+            return (entity, glass, localFromLens, space.half, [way.x, way.y, run, 0])
+        }
+        handed = false
+        dress()
+    }
+
+    /// The same glass in another scheme's colours.
+    func recolour(_ glass: [StageGlass]) {
+        for index in lenses.indices {
+            if let match = glass.first(where: { $0.name == lenses[index].glass.name }) { lenses[index].glass = match }
+        }
+        dress()
+    }
+
+    /// Once the pass has it, a piece is left in the scene as its shine alone; until then,
+    /// and for good where the pass can't be had, it is tinted glass drawn by the scene.
+    private func dress() {
+        for lens in lenses {
+            let material = handed ? Stage.shine() : Stage.glass(top: lens.glass.top, bottom: lens.glass.bottom, opacity: lens.glass.opacity)
+            lens.entity.forEachModel { $0.materials = $0.materials.map { _ in material } }
+        }
+    }
+
+    /// Where each piece of glass is as the camera sees it, now.
+    func post() {
+        if !handed, board.works {
+            handed = true
+            dress()
+        }
+        let viewFromWorld = camera.transformMatrix(relativeTo: nil).inverse
+        board.post(lenses.map { lens in
+            let viewFromLens = viewFromWorld * lens.entity.transformMatrix(relativeTo: nil) * lens.localFromLens
+            let top = lens.glass.top.light, bottom = lens.glass.bottom.light
+            return LensShape(lensFromView: viewFromLens.inverse, viewFromLens: viewFromLens,
+                             shape: [lens.half.x, lens.half.y, lens.glass.corner, 0],
+                             top: [top.x, top.y, top.z, lens.glass.opacity], bottom: [bottom.x, bottom.y, bottom.z, 1],
+                             fade: lens.fade)
+        })
+    }
+}
+
+/// A stage of models: built once, framed to fit, and its pieces draggable.
+struct StageView: View {
+    var scene: StageScene
+    /// Called once the stage is set and has something to show.
+    var ready: () -> Void = {}
 
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var camera = PerspectiveCamera()
+    @State private var rig = StageRig()
     @State private var held: Entity?
 
     private static let fieldOfView = 28.0
 
     var body: some View {
         GeometryReader { geometry in
-            let distance = Stage.cameraDistance(extent: extent, view: geometry.size, fieldOfView: Self.fieldOfView)
+            let distance = Stage.cameraDistance(extent: scene.extent, view: geometry.size, fieldOfView: Self.fieldOfView)
+            let palette = StagePalette(dark: scheme == .dark)
             RealityView { content in
                 StageSystem.registerSystem()
                 content.camera = .virtual
@@ -254,25 +446,45 @@ struct StageView: View {
                 var physics = PhysicsSimulationComponent()
                 physics.gravity = .zero
                 root.components.set(physics)
-                root.components.set(Sway(yaw: reduceMotion ? 0 : sway * .pi / 180, pitch: reduceMotion ? 0 : sway * .pi / 360))
-                if let model = await build(StagePalette(dark: scheme == .dark)) { root.addChild(model) }
+                root.components.set(Sway(yaw: reduceMotion ? 0 : scene.sway * .pi / 180, pitch: reduceMotion ? 0 : scene.sway * .pi / 360))
+                // Lit by a picture of a room and not by lamps. A lamp in a second stage — the
+                // next screen's, made while the first is still there — lights nothing, and
+                // that stage arrived dark; the room lights every stage alike, and it is what
+                // the glass has to reflect.
+                if let studio = await Stage.studio() {
+                    root.components.set(ImageBasedLightComponent(source: .single(studio), intensityExponent: Stage.studioExposure))
+                    root.components.set(ImageBasedLightReceiverComponent(imageBasedLight: root))
+                }
+                if let model = await scene.load() {
+                    scene.paint(model, palette)
+                    rig.model = model
+                    rig.painted = palette
+                    root.addChild(model)
+                    rig.find(scene.glass(palette), in: model)
+                }
                 content.add(root)
+                if rig.hasGlass {
+                    content.renderingEffects.customPostProcessing = .effect(GlassLens(board: rig.board))
+                    rig.watching = content.subscribe(to: SceneEvents.Update.self, on: nil, componentType: nil) { [rig] _ in
+                        rig.post()
+                    }
+                }
 
-                // A key light from over the left shoulder, and a softer one to lift what it leaves.
-                let key = DirectionalLight()
-                key.light.intensity = 1700
-                key.look(at: .zero, from: [-1.4, 2.2, 3], relativeTo: nil)
-                content.add(key)
-                let fill = DirectionalLight()
-                fill.light.intensity = 500
-                fill.look(at: .zero, from: [2.4, -0.6, 2], relativeTo: nil)
-                content.add(fill)
-
-                camera.camera.fieldOfViewInDegrees = Float(Self.fieldOfView)
-                camera.position = [0, 0, distance]
-                content.add(camera)
+                rig.camera.camera.fieldOfViewInDegrees = Float(Self.fieldOfView)
+                rig.camera.position = [0, 0, distance]
+                content.add(rig.camera)
+                ready()
             } update: { _ in
-                camera.position = [0, 0, distance]
+                rig.camera.position = [0, 0, distance]
+                // Another scheme is the same model in other colours. The stage is not made
+                // again for it: the system changes the scheme and back as the app leaves the
+                // screen, to take its pictures of it, and a stage rebuilt then came back
+                // without its lights or without anything.
+                if let model = rig.model, rig.painted != palette {
+                    scene.paint(model, palette)
+                    rig.recolour(scene.glass(palette))
+                    rig.painted = palette
+                }
             }
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -291,8 +503,6 @@ struct StageView: View {
                         held = nil
                     })
         }
-        // A model is made in the scheme's colours, so another scheme is another model.
-        .id(scheme)
         .accessibilityHidden(true)
     }
 }

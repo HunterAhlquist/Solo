@@ -779,22 +779,63 @@ private extension Route {
         #expect(Stage.point(CGPoint(x: 1, y: 0), extent: extent, view: view).x == 300)
     }
 
-    @Test func theMarkIsThreeBarsThatClimb() {
-        let bars = SoloLogo.bars
-        #expect(bars.count == 3)
-        // Front to back: each one taller, further right, and more of the accent.
-        for (near, far) in zip(bars, bars.dropFirst()) {
-            #expect(far.frame.height > near.frame.height)
-            #expect(far.frame.midX > near.frame.midX)
-            #expect(far.strength > near.strength)
+    /// The bars are the icon's glass: the one in front is seen through most, and each is a
+    /// fade from a lighter colour to a deeper one.
+    @Test func theLogosBarsAreSeenThroughAsTheIconsAre() {
+        #expect(SoloLogo.bars.map(\.name) == ["BarFront", "BarMiddle", "BarBack"])
+        for (near, far) in zip(SoloLogo.bars, SoloLogo.bars.dropFirst()) {
+            #expect(near.opacity.dark < far.opacity.dark && near.opacity.light < far.opacity.light)
         }
-        // All of them on the tile, which is one unit across about the origin.
-        for bar in bars {
-            #expect(bar.frame.minX > -0.5 && bar.frame.maxX < 0.5 && bar.frame.minY > -0.5 && bar.frame.maxY < 0.5)
+        #expect(SoloLogo.bars.allSatisfy { $0.opacity.dark > 0 && $0.opacity.dark < 1 })
+        for dark in [true, false] {
+            let fill = SoloLogo.fill(dark: dark)
+            #expect(fill.top != fill.bottom)
         }
-        #expect(SoloLogo.face.count == 30)
-        #expect(SoloLogo.face.allSatisfy { (0..<SoloLogo.faceColumns).contains($0.column) && (0..<SoloLogo.faceRows).contains($0.row) })
     }
+
+    /// The shader reads what it is handed by where things are in it. These are the sizes
+    /// its own two structures come to; a field added on one side only would shift the rest.
+    @Test func whatTheGlassPassIsHandedIsLaidOutAsItsShaderExpects() {
+        #expect(MemoryLayout<LensShape>.stride == 2 * 64 + 4 * 16)
+        #expect(MemoryLayout<LensUniforms>.stride == LensUniforms.room * MemoryLayout<LensShape>.stride + 3 * 16)
+    }
+
+    /// A slab is looked through its thinnest side, wherever its file put that.
+    @Test func aSlabsLensLiesAcrossItsThinnestSide() {
+        // As a bar comes from Blender: thin from front to back, which there is y.
+        let lens = Lens.lensFromLocal(center: [0.1, 0, -0.2], extents: [0.36, 0.06, 0.6])
+        #expect(Set([lens.half.x, lens.half.y]) == Set([Float(0.18), 0.3]))
+        // Its middle is the lens's origin, and a step through it is a step along the lens's z.
+        let middle = lens.matrix * SIMD4<Float>(0.1, 0, -0.2, 1)
+        #expect(simd_length(simd_make_float3(middle)) < 0.0001)
+        let through = lens.matrix * SIMD4<Float>(0.1, 0.03, -0.2, 1)
+        #expect(abs(abs(through.z) - 0.03) < 0.0001 && abs(through.x) < 0.0001 && abs(through.y) < 0.0001)
+    }
+
+    /// Docker asks for half its symbol's width left clear all round it. The models stand
+    /// outside that, and every arrow starts outside it and goes away from it.
+    @Test func dockersSymbolIsLeftItsClearSpace() {
+        let clear = HostingModels.symbolClearSpace
+        for arrow in HostingModels.arrows {
+            #expect(!clear.contains(arrow.from) && !clear.contains(arrow.bend) && !clear.contains(arrow.to))
+        }
+        for model in [HostingModels.server, HostingModels.cloud, HostingModels.laptop] {
+            #expect(!clear.contains(model))
+        }
+        // As it is drawn: 1252 by 757.78.
+        #expect(abs(HostingModels.symbol.width / HostingModels.symbol.height - 1252 / 757.78) < 0.001)
+    }
+
+    #if os(iOS)
+    /// The connect screen shows a picture of the app's icon, and there is one for each icon
+    /// a build can wear.
+    @MainActor @Test func theAppCarriesAPictureOfEachOfItsIcons() {
+        #expect(AppIconImage.artwork == "AppIconArtwork")
+        for name in ["AppIconArtwork", "AppIconArtworkPreview"] {
+            #expect((UIImage(named: name)?.size.width ?? 0) >= 256, "no picture called \(name)")
+        }
+    }
+    #endif
 
     /// The app finds its models' parts by the names they have in Blender. An export that
     /// renamed one would leave it unpainted and unable to be picked up, and say nothing.
@@ -812,7 +853,7 @@ private extension Route {
     /// As their file leaves them the logo's pieces are apart, each at a depth of its own:
     /// they are solid, and two that began inside one another would be thrown apart.
     @MainActor @Test func theLogosPiecesStartAtDepthsOfTheirOwn() async throws {
-        let model = try #require(await SoloLogo.model(StagePalette(dark: true)))
+        let model = try #require(await SoloLogo.stage.load())
         let depths = ["Tile", "BarBack", "BarMiddle", "BarFront", "Face"].compactMap {
             model.findEntity(named: $0)?.components[SpringBack.self]?.home.z
         }

@@ -9,6 +9,9 @@
 # eye. The export turns that into the app's stage, y up and z toward the eye, so a model
 # is seen in the app as it is from the front here. The camera and lights in each file are
 # for looking at it in Blender and stay behind, and so does the world.
+#
+# UV maps go along: the logo's bars have one, running bottom to top, which is what the app
+# lays their fade of colour on. A mesh without one exports as it did before.
 import os
 
 import bpy
@@ -31,7 +34,7 @@ bpy.ops.wm.usd_export(
     export_materials=True,
     generate_preview_surface=True,
     export_normals=True,
-    export_uvmaps=False,
+    export_uvmaps=True,
     evaluation_mode='RENDER',
     convert_orientation=True,
     export_global_forward_selection='NEGATIVE_Z',

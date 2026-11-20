@@ -6,6 +6,9 @@
 //   src/Solo.Desktop/about/logo.png            256px, the About window's logo
 //   src/Solo.Client/wwwroot/apple-touch-icon.png   180px, iOS/Safari home screen
 //   src/Solo.Client/wwwroot/favicon.svg        64px light + dark, swapped by media query
+//   src/Solo.iOS/Solo/Assets.xcassets/AppIconArtwork.imageset
+//                                              512px, the native app's picture of its own
+//                                              icon (AppIconArtworkPreview with --preview)
 //
 // macOS is deliberately not in that list. electron-builder compiles the .icon
 // with actool and ships the resulting Assets.car in the bundle, so macOS renders
@@ -32,6 +35,24 @@ const FAVICON_PX = 64;
 const APPLE_TOUCH_PX = 180;
 const MASTER_PX = 1024;
 const ABOUT_PX = 256;
+const NATIVE_PX = 512;
+
+// The native app shows its icon on the screen that asks for an instance. On a
+// Mac it asks the system for it; on an iPhone the catalog won't hand a .icon
+// over as a picture (UIImage(named:) asserts on one), so it carries these.
+const nativeArtworkDir = path.join(repoRoot, 'src', 'Solo.iOS', 'Solo', 'Assets.xcassets',
+    preview ? 'AppIconArtworkPreview.imageset' : 'AppIconArtwork.imageset');
+
+// IconServices bakes in the machine's appearance and ignores any override,
+// so in Light Mode the "dark" render silently comes back light.
+const requireDistinct = (light, dark) => {
+    if (light.equals(dark)) {
+        throw new Error(
+            'The dark render came back identical to the light one.\n' +
+            'macOS renders it through IconServices, which uses the system appearance:\n' +
+            'switch System Settings > Appearance to Dark and run this again.');
+    }
+};
 
 // actool reports its diagnostics on stdout, so keep it quiet on success but
 // replay it when the command fails — otherwise the reason is swallowed.
@@ -104,22 +125,22 @@ try {
         ]);
         render('dark', 'fill', [[FAVICON_PX, 'dark-favicon.png']]);
 
-        // IconServices bakes in the machine's appearance and ignores any override,
-        // so in Light Mode the "dark" render silently comes back light.
         lightFavicon = fs.readFileSync(out('light-favicon.png'));
         darkFavicon = fs.readFileSync(out('dark-favicon.png'));
-        if (lightFavicon.equals(darkFavicon)) {
-            throw new Error(
-                'The dark render came back identical to the light one.\n' +
-                'macOS renders it through IconServices, which uses the system appearance:\n' +
-                'switch System Settings > Appearance to Dark and run this again.');
-        }
+        requireDistinct(lightFavicon, darkFavicon);
     }
+
+    // Cropped to the shape, like the web icons: the app draws it as a picture
+    // of the icon, and a margin would only make it smaller than it is asked for.
+    // The light one only, which is the icon a Home Screen shows unless its
+    // owner has asked for dark ones.
+    render('light', 'fill', [[NATIVE_PX, 'native.png']]);
 
     // 4. Write the assets.
     fs.mkdirSync(desktopBuildDir, { recursive: true });
     fs.copyFileSync(out('light-master.png'), path.join(desktopBuildDir, preview ? 'icon-preview.png' : 'icon.png'));
     fs.copyFileSync(out('light-about.png'), path.join(desktopDir, 'about', preview ? 'logo-preview.png' : 'logo.png'));
+    fs.copyFileSync(out('native.png'), path.join(nativeArtworkDir, 'icon.png'));
     if (!preview) {
         fs.copyFileSync(out('light-apple-touch.png'), path.join(clientWwwroot, 'apple-touch-icon.png'));
 
@@ -136,6 +157,7 @@ try {
     console.log([
         path.join(desktopBuildDir, preview ? 'icon-preview.png' : 'icon.png'),
         path.join(desktopDir, 'about', preview ? 'logo-preview.png' : 'logo.png'),
+        path.join(nativeArtworkDir, 'icon.png'),
         ...(!preview ? [path.join(clientWwwroot, 'apple-touch-icon.png'), path.join(clientWwwroot, 'favicon.svg')] : []),
     ].map((p) => `Wrote ${path.relative(repoRoot, p)}`).join('\n'));
 } finally {

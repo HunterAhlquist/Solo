@@ -23,7 +23,7 @@ struct InstanceEntryView: View {
             ScrollView {
                 VStack(spacing: 28) {
                     VStack(spacing: 10) {
-                        SoloLogoMark()
+                        AppIconImage()
                         Text("Solo")
                             .font(.largeTitle.weight(theme.headingWeight))
                         Text(adding ? "Connect to another instance." : "Connect to your team's instance.")
@@ -133,7 +133,7 @@ struct InstanceEntryView: View {
                     Label("Restart Onboarding", systemImage: "arrow.left")
                         .font(.subheadline.weight(.medium))
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.clearGlass)
                 .buttonBorderShape(.capsule)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
