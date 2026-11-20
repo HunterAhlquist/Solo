@@ -4,8 +4,9 @@ on:
   push:
     # A `preview-v*` tag uploads the iPad and iPhone app to the preview app's
     # TestFlight ("Solo (Preview)"), and a version tag (`v*`) to the store
-    # app's ("Solo"), which is the one SOLO_ASC_APP_ID names. Both are for
-    # internal testers: nothing here reaches external testers or App Review.
+    # app's ("Solo"), which is the one SOLO_ASC_APP_ID names. Either way the
+    # build lands with internal testers and goes no further from here: a
+    # preview can't, and a version tag's only if someone sends it on by hand.
     tags: ["preview-v*", "v*"]
   # Builds and uploads from a branch, under a preview version, without a tag.
   workflow_dispatch:
@@ -121,7 +122,8 @@ jobs:
       # Connect, for the app SOLO_ASC_APP_ID names: an upload is filed by
       # bundle id, so that is what makes the build go to that app and no other
       # (build/asc-app-bundle-id.swift). The store app keeps the project's own
-      # name and icon, "Solo" and Solo/Solo.icon.
+      # name and icon, "Solo" and Solo/Solo.icon. `export` is the export
+      # options the upload goes by, which differ in one thing (see Upload).
       - name: Choose the app
         id: app
         if: steps.gate.outputs.upload == 'true'
@@ -139,9 +141,10 @@ jobs:
               exit 1
             fi
             echo "Building for $bundle, the app SOLO_ASC_APP_ID names."
-            { echo "bundle_id=$bundle"; echo "name="; echo "icon="; } >> "$GITHUB_OUTPUT"
+            { echo "bundle_id=$bundle"; echo "name="; echo "icon="; echo "export=ExportOptions-store.plist"; } >> "$GITHUB_OUTPUT"
           else
-            { echo "bundle_id=com.hunterahlquist.solo.preview"; echo "name=Solo (Preview)"; echo "icon=Solo Preview"; } >> "$GITHUB_OUTPUT"
+            { echo "bundle_id=com.hunterahlquist.solo.preview"; echo "name=Solo (Preview)"; echo "icon=Solo Preview"
+              echo "export=ExportOptions-testflight.plist"; } >> "$GITHUB_OUTPUT"
           fi
 
       # The project keeps the store's icon (Solo/Solo.icon). The preview's is
@@ -192,17 +195,24 @@ jobs:
             SOLO_BUNDLE_ID="$BUNDLE_ID" \
             ${identity[@]+"${identity[@]}"}
 
-      # ExportOptions-testflight.plist uploads straight to App Store Connect
-      # and marks the build internal-only, so it can't reach external testers
-      # or a review by accident. The step's name is how build/testflight-gate.sh
-      # recognises a run that uploaded; rename both together.
+      # Both sets of export options upload straight to App Store Connect. A
+      # preview's (ExportOptions-testflight.plist) also marks the build
+      # internal-only, so it can't reach external testers or a review by
+      # accident. A version tag's (ExportOptions-store.plist) leaves that off:
+      # the mark is the build's for good, and the store app's builds are the
+      # ones that may be given to an external group or submitted for review.
+      # Neither happens from here; both are done by hand in App Store Connect.
+      # The step's name is how build/testflight-gate.sh recognises a run that
+      # uploaded; rename both together.
       - name: Upload
         if: steps.gate.outputs.upload == 'true'
+        env:
+          EXPORT_OPTIONS: ${{ steps.app.outputs.export }}
         run: |
           set -euo pipefail
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Solo.xcarchive" \
-            -exportOptionsPlist ExportOptions-testflight.plist \
+            -exportOptionsPlist "$EXPORT_OPTIONS" \
             -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/asc.p8" \
