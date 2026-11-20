@@ -5,8 +5,9 @@ import SwiftUI
 ///
 /// Touch works the way Calendar's does. A tap opens the task. A press and hold
 /// picks a bar up: dragged sideways it moves its dates, dragged up or down it
-/// changes row, and once picked up it stays selected with a handle on each end
-/// to stretch it by. More bars join the selection with a tap. A press and hold
+/// changes row, and let go where it was picked up it is only selected. A bar
+/// selected alone stands a little larger, with a grip grown into each end to
+/// stretch it by. More bars join the selection with a tap. A press and hold
 /// on an empty day offers to add a task or a milestone there.
 struct TimelineView: View {
     @Environment(\.theme) private var theme
@@ -29,6 +30,14 @@ struct TimelineView: View {
     private static let monthHeight: CGFloat = 26
     private static let dayHeight: CGFloat = 34
     private static var headHeight: CGFloat { monthHeight + dayHeight }
+    /// How far the one selected bar stands out past its days and its row on every side. Its grips
+    /// are its ends, so what makes the bar larger makes them easier to take hold of.
+    private static let swell: CGFloat = 7
+    /// How far a grip can be taken hold of outside its bar, and at most inside it.
+    private static let gripOutside: CGFloat = 12
+    private static let gripInside: CGFloat = 24
+    /// Selecting a bar and letting it go: the spring the system moves its own controls with.
+    private static let selecting = Animation.spring(duration: 0.35, bounce: 0.2)
 
     @State private var scrollX: CGFloat = 0
     @State private var viewport: CGFloat = 0
@@ -37,6 +46,11 @@ struct TimelineView: View {
     @State private var milestoneDrag: (id: UUID, days: Int)?
     @State private var dayMenu: DayTarget?
     @State private var didOpen = false
+    /// The bar under a press that has held long enough to pick it up, for as long as the press
+    /// lasts. It empties however the press ends, which a gesture's own ending does not promise.
+    @GestureState private var holding: UUID?
+    /// The bar a hold was last lifted from, and when.
+    @State private var lifted: (id: UUID, at: Date)?
 
     private struct BarDrag: Equatable {
         enum Kind: Equatable { case undecided, move, row, resize(BarEdge) }
@@ -128,6 +142,11 @@ struct TimelineView: View {
         .clipShape(theme.cardShape)
         .sensoryFeedback(.selection, trigger: store.selected)
         .sensoryFeedback(.impact(weight: .light), trigger: drag?.days)
+        .onChange(of: holding) { held, now in
+            // A press taken away rather than lifted (another gesture winning it, the system
+            // stepping in) never reports its end, and the bar would stay in hand for good.
+            if now == nil, let held { putDown(held) }
+        }
         .onChange(of: store.timeline?.id, initial: true) { _, id in
             // Opens on the oldest work in flight, a day's margin to its left.
             guard id != nil, !didOpen else { return }
@@ -247,29 +266,29 @@ struct TimelineView: View {
         let barWidth = max(CGFloat(end - start + 1) * Self.dayWidth - 4, 12)
         let lift = dragged && drag?.kind == .row ? drag?.translation.height ?? 0 : 0
         let selected = store.selected.contains(entry.id)
+        // Only a bar selected alone can be stretched, so only it grows and shows its grips.
+        let grown = selected && store.selected.count == 1 && store.canWrite
+        let gripped = grown && drag?.kind != .row
+        let swell = grown ? Self.swell : 0
+        let grips = BarGrips(start: gripped && start == place.startIndex && !place.clippedStart,
+                             end: gripped && end == place.endIndex && !place.clippedEnd)
 
-        RoadmapBar(entry: entry, store: store, place: place, selected: selected,
+        RoadmapBar(entry: entry, store: store, place: place, selected: selected, grips: grips,
                    labelInset: min(max(scrollX - barX + 6, 0), max(barWidth - 90, 0)), width: barWidth)
-            .frame(width: barWidth, height: Self.rowHeight - 10)
+            .frame(width: barWidth + swell * 2, height: Self.rowHeight - 10 + swell * 2)
             .overlay {
-                if selected, store.selected.count == 1, store.canWrite, drag?.kind != .row {
-                    handles(entry, place: place, start: start, end: end)
+                if gripped {
+                    handles(entry, grips: grips, width: barWidth + swell * 2)
                 }
             }
-            .offset(x: barX, y: Self.headHeight + CGFloat(line) * Self.rowHeight + 5 + lift)
+            .offset(x: barX - swell, y: Self.headHeight + CGFloat(line) * Self.rowHeight + 5 - swell + lift)
             .zIndex(dragged ? 10 : selected ? 5 : 1)
             .shadow(color: .black.opacity(dragged ? 0.25 : 0), radius: 10, y: 4)
-            .onTapGesture {
-                if store.selected.isEmpty || !store.canWrite {
-                    onOpen(entry)
-                } else if store.selected.contains(entry.id) {
-                    store.selected.remove(entry.id)
-                } else {
-                    store.selected.insert(entry.id)
-                }
-            }
+            .onTapGesture { tapped(entry) }
             .gesture(store.canWrite ? pickUp(entry, line: line) : nil)
             .animation(.snappy(duration: 0.18), value: drag?.days)
+            .animation(Self.selecting, value: grown)
+            .animation(Self.selecting, value: grips)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(barDescription(entry))
             .accessibilityAddTraits(.isButton)
@@ -302,11 +321,36 @@ struct TimelineView: View {
         return "\(store.serial(entry)) \(entry.task.name), \(when)"
     }
 
-    /// Press and hold picks the bar up. The first direction it is then moved in
-    /// sets what the drag does, so a move up or down never changes its dates.
+    /// With nothing selected a tap opens the task; once something is, it adds the bar to the
+    /// selection or takes it out.
+    ///
+    /// A tap is any touch lifted where it landed, however long it stayed there, so the end of a
+    /// hold that never moved arrives here too, before or after the hold's own end. That one is
+    /// not a tap: the hold has selected the bar, and answering it would take the bar out again.
+    private func tapped(_ entry: RoadmapEntry) {
+        if drag?.entryId == entry.id {
+            putDown(entry.id)
+            return
+        }
+        if let lifted, lifted.id == entry.id, Date.now.timeIntervalSince(lifted.at) < 0.1 { return }
+        if store.selected.isEmpty || !store.canWrite {
+            onOpen(entry)
+        } else if store.selected.contains(entry.id) {
+            store.selected.remove(entry.id)
+        } else {
+            store.selected.insert(entry.id)
+        }
+    }
+
+    /// Press and hold picks the bar up, and selects it there and then: let go without moving,
+    /// that is all the hold does. The first direction it is then moved in sets what the drag
+    /// does, so a move up or down never changes its dates.
     private func pickUp(_ entry: RoadmapEntry, line: Int) -> some Gesture {
         LongPressGesture(minimumDuration: 0.28)
             .sequenced(before: DragGesture(minimumDistance: 0))
+            .updating($holding) { value, held, _ in
+                if case .second(true, _) = value { held = entry.id }
+            }
             .onChanged { value in
                 guard case .second(true, let movement) = value else { return }
                 if drag == nil {
@@ -336,27 +380,34 @@ struct TimelineView: View {
                 }
                 drag = active
             }
-            .onEnded { _ in
-                guard let active = drag else { return }
-                drag = nil
-                store.gesturing = false
-                store.report(editing: false)
-                let moving = store.group(of: entry)
-                Task {
-                    switch active.kind {
-                    case .move where active.days != 0:
-                        await store.shift(moving, by: active.days)
-                    case .row:
-                        switch active.target {
-                        case .join(let row): await store.dropOnRow(entry, row: row, join: true)
-                        case .insert(let before): await store.dropOnRow(entry, row: before, join: false)
-                        case nil: break
-                        }
-                    default:
-                        break
-                    }
+            .onEnded { _ in putDown(entry.id) }
+    }
+
+    /// Ends a hold on a bar, saving wherever it was carried to. The gesture's end and the press
+    /// going away both come here, in either order, and the second finds nothing left in hand.
+    private func putDown(_ id: UUID) {
+        guard let active = drag, active.entryId == id else { return }
+        if case .resize = active.kind { return }
+        drag = nil
+        lifted = (id, .now)
+        store.gesturing = false
+        store.report(editing: false)
+        guard let entry = store.entries.first(where: { $0.id == id }) else { return }
+        let moving = store.group(of: entry)
+        Task {
+            switch active.kind {
+            case .move where active.days != 0:
+                await store.shift(moving, by: active.days)
+            case .row:
+                switch active.target {
+                case .join(let row): await store.dropOnRow(entry, row: row, join: true)
+                case .insert(let before): await store.dropOnRow(entry, row: before, join: false)
+                case nil: break
                 }
+            default:
+                break
             }
+        }
     }
 
     /// Dropped on the middle of a row with room for it, a bar joins that row;
@@ -403,29 +454,33 @@ struct TimelineView: View {
         }
     }
 
-    /// The two ends of the selected bar, each a grip to stretch it by.
-    private func handles(_ entry: RoadmapEntry, place: BarPlacement, start: Int, end: Int) -> some View {
-        HStack {
-            if start == place.startIndex, !place.clippedStart {
-                handle(entry, edge: .start)
+    /// Where the selected bar's two grips are taken hold of. The bar draws them; these are the
+    /// room around each, reaching past the bar's end and no further in than leaves its middle
+    /// to pick the bar up by.
+    private func handles(_ entry: RoadmapEntry, grips: BarGrips, width: CGFloat) -> some View {
+        let inside = min(Self.gripInside, width / 3)
+        return HStack(spacing: 0) {
+            if grips.start {
+                handle(entry, edge: .start, width: Self.gripOutside + inside)
             }
             Spacer(minLength: 0)
-            if end == place.endIndex, !place.clippedEnd {
-                handle(entry, edge: .end)
+            if grips.end {
+                handle(entry, edge: .end, width: Self.gripOutside + inside)
             }
         }
-        .padding(.horizontal, -11)
+        .padding(.horizontal, -Self.gripOutside)
+        .padding(.vertical, -1)
     }
 
-    private func handle(_ entry: RoadmapEntry, edge: BarEdge) -> some View {
-        Circle()
-            .fill(.background)
-            .overlay(Circle().strokeBorder(theme.primary, lineWidth: 2.5))
-            .frame(width: 16, height: 16)
-            .padding(10)
+    private func handle(_ entry: RoadmapEntry, edge: BarEdge, width: CGFloat) -> some View {
+        Color.clear
+            .frame(width: width)
+            .frame(maxHeight: .infinity)
             .contentShape(.rect)
             .gesture(
-                DragGesture(minimumDistance: 2)
+                // Measured against the screen: the grip moves with the end it stretches, and a drag
+                // measured against the grip itself would lose a day for every day it gained.
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
                     .onChanged { value in
                         if drag == nil {
                             store.gesturing = true
@@ -566,6 +621,68 @@ struct TimelineView: View {
     }
 }
 
+/// Which ends of a bar show a grip to stretch it by.
+private struct BarGrips: Equatable {
+    var start = false
+    var end = false
+}
+
+/// A grip on one end of a bar, in the bar's outline: a cloth pinned along the edge with a ball
+/// risen under the middle of it. How far it stands in from the edge, at each height `y` of a bar
+/// `h` tall, is
+///
+///     band + (peak - band) * exp(-|(y - h/2) / (spread * h)|^blunt) + fillet(y)
+///
+/// a band the length of the edge, a bell over the ball, and at each end a quarter circle easing the
+/// band into the outline it meets there. `rise` scales all of it: at none the grip lies flat along
+/// the edge, which is where it grows from and goes back to.
+private nonisolated struct BarGrip: Shape {
+    var edge: BarEdge
+    var rise: CGFloat
+
+    var animatableData: CGFloat {
+        get { rise }
+        set { rise = newValue }
+    }
+
+    /// How far the bump stands in from the edge at its highest.
+    static let peak: CGFloat = 18.5
+    /// How thick the cloth lies along the rest of the edge.
+    private static let band: CGFloat = 6.5
+    /// How wide the bump is, as the share of the bar's height its bell falls away over.
+    private static let spread: CGFloat = 0.28
+    /// How flat the top of the bump is: 2 is a bell, more squares its shoulders.
+    private static let blunt: CGFloat = 2.3
+    /// The radius the band turns into the top and bottom outline with, and how thick that outline is.
+    private static let fillet: CGFloat = 8
+    private static let outline: CGFloat = 2
+
+    static func reach(at y: CGFloat, height: CGFloat) -> CGFloat {
+        let fromMiddle = abs(y - height / 2) / (spread * height)
+        let bump = (peak - band) * exp(-pow(fromMiddle, blunt))
+        // How far into the turn this height is: none clear of it, all of it at the outline.
+        let fromEnd = min(y, height - y) - outline
+        let turned = min(max(fillet - fromEnd, 0), fillet)
+        return band + bump + fillet - (fillet * fillet - turned * turned).squareRoot()
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let x = edge == .start ? rect.minX : rect.maxX
+        let inward: CGFloat = edge == .start ? rise : -rise
+        var path = Path()
+        path.move(to: CGPoint(x: x, y: rect.minY))
+        // Drawn as the curve itself, a point for every half point of height: finer than a screen shows.
+        let steps = max(Int(rect.height * 2), 1)
+        for step in 0...steps {
+            let y = rect.height * CGFloat(step) / CGFloat(steps)
+            path.addLine(to: CGPoint(x: x + inward * Self.reach(at: y, height: rect.height), y: rect.minY + y))
+        }
+        path.addLine(to: CGPoint(x: x, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
 /// One task's bar.
 private struct RoadmapBar: View {
     @Environment(\.theme) private var theme
@@ -573,6 +690,7 @@ private struct RoadmapBar: View {
     var store: RoadmapStore
     var place: BarPlacement
     var selected: Bool
+    var grips = BarGrips()
     /// How far the label is pushed in, so it stays in view while the bar's start is scrolled off.
     var labelInset: CGFloat
     var width: CGFloat
@@ -585,6 +703,7 @@ private struct RoadmapBar: View {
         let overrun = TimelineRules.daysPastDeadline(entry)
         let shape = RoundedRectangle(cornerRadius: pill ? 17 : 9, style: .continuous)
         let edge = missed ? theme.error : theme.primary.opacity(0.55)
+        let outline = selected ? theme.primary : edge
 
         HStack(spacing: 6) {
             if place.clippedStart {
@@ -614,8 +733,9 @@ private struct RoadmapBar: View {
                 Image(systemName: "chevron.right").font(.caption2.weight(.bold))
             }
         }
-        .padding(.leading, 10 + labelInset)
-        .padding(.trailing, 8)
+        // The words are level with a grip's bump, and stand clear of it.
+        .padding(.leading, 10 + labelInset + (grips.start ? BarGrip.peak - 3 : 0))
+        .padding(.trailing, 8 + (grips.end ? BarGrip.peak - 3 : 0))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background {
             ZStack(alignment: .leading) {
@@ -625,12 +745,15 @@ private struct RoadmapBar: View {
                 if let label = store.label(task) {
                     Rectangle().fill(Color(hex: label.color)).frame(width: 4)
                 }
+                // The grips are the outline itself grown inward, so they are its colour. They are
+                // always here, flat against their ends until wanted, to have something to grow from.
+                BarGrip(edge: .start, rise: grips.start ? 1 : 0).fill(outline)
+                BarGrip(edge: .end, rise: grips.end ? 1 : 0).fill(outline)
             }
             .clipShape(shape)
         }
         .overlay {
-            shape.strokeBorder(selected ? theme.primary : edge,
-                               style: StrokeStyle(lineWidth: selected ? 2 : 1, dash: pill ? [5, 3] : []))
+            shape.strokeBorder(outline, style: StrokeStyle(lineWidth: selected ? 2 : 1, dash: pill ? [5, 3] : []))
         }
         .opacity(finished ? 0.6 : 1)
         .contentShape(shape)
