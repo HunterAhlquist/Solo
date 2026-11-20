@@ -12,6 +12,29 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4173", "--directory", "site/_site"],
       "port": 4173
+    },
+    {
+      "name": "solo-native-api",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ASPNETCORE_ENVIRONMENT=Development",
+        "ASPNETCORE_URLS=http://0.0.0.0:5155",
+        "ConnectionStrings__Default=Host=127.0.0.1;Port=55432;Database=solo_native;Username=solo;Password=solo",
+        "Extensions__Directory=../../artifacts/native-ext",
+        "dotnet", "run", "--project", "src/Solo.Api", "--no-launch-profile", "--no-build"
+      ],
+      "port": 5155
+    },
+    {
+      "name": "solo-native-api-2",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ASPNETCORE_ENVIRONMENT=Development",
+        "ASPNETCORE_URLS=http://0.0.0.0:5156",
+        "ConnectionStrings__Default=Host=127.0.0.1;Port=55432;Database=solo_native2;Username=solo;Password=solo",
+        "dotnet", "run", "--project", "src/Solo.Api", "--no-launch-profile", "--no-build"
+      ],
+      "port": 5156
     }
   ]
 }
