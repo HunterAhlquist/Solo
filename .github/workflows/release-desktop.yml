@@ -199,16 +199,11 @@ jobs:
     timeout-minutes: 90
     outputs:
       built: ${{ steps.gate.outputs.build }}
-    # Lifted to the job because a step's `if:` can read `env` but not
-    # `secrets`: without them the job stops at a notice instead of failing.
-    # They are the ones the shell's Mac build was signed and notarized with.
-    env:
-      # The Developer ID Application certificate, as a base64 .p12.
-      MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-      MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    # No secret is set for the whole job. The archive step builds other
+    # people's packages, so the certificate and the notary's credentials — the
+    # ones the shell's Mac build was signed and notarized with — are handed
+    # only to the steps that use them, and the step that asks whether they are
+    # there is told yes or no, not what they are.
     defaults:
       run:
         working-directory: src/Solo.iOS
@@ -222,10 +217,11 @@ jobs:
       - name: Check the signing secrets
         id: gate
         working-directory: .
+        env:
+          HAVE_ALL: ${{ secrets.MAC_CSC_LINK != '' && secrets.MAC_CSC_KEY_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         run: |
           set -euo pipefail
-          if [ -z "$MAC_CSC_LINK" ] || [ -z "$MAC_CSC_KEY_PASSWORD" ] || [ -z "$APPLE_ID" ] ||
-             [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+          if [ "$HAVE_ALL" != true ]; then
             echo "::notice::The Developer ID certificate or the notarization credentials aren't set; this release gets no Mac download."
             echo "build=false" >> "$GITHUB_OUTPUT"
           else
@@ -309,6 +305,10 @@ jobs:
       - name: Import signing certificate
         id: keychain
         if: steps.gate.outputs.build == 'true'
+        env:
+          # The Developer ID Application certificate, as a base64 .p12.
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           KEYCHAIN="${RUNNER_TEMP}/solo-signing.keychain-db"
@@ -357,6 +357,10 @@ jobs:
         env:
           INSTALLED: ${{ steps.app.outputs.installed }}
           ASSET: ${{ steps.app.outputs.asset }}
+          # What the script notarizes with.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: bash build/package-mac-direct.sh "$RUNNER_TEMP/Solo.xcarchive" "$RUNNER_TEMP/mac/$ASSET" "$INSTALLED"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
