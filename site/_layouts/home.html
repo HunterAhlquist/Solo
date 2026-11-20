@@ -11,6 +11,7 @@ layout: default
   decoration either way, and says nothing the wordmark beside it doesn't.
 {%- endcomment -%}
 <section class="hero">
+  <div class="hero__layout">
   <div class="hero__logo" data-hero-logo data-model="{{ '/assets/models/SoloLogo.glb' | relative_url }}" aria-hidden="true">
     <img src="{{ '/assets/favicon.svg' | relative_url }}" alt="">
   </div>
@@ -32,6 +33,7 @@ layout: default
         {% include icon.html name="download" %} Run an instance
       </a>
     </div>
+  </div>
   </div>
 </section>
 <script type="module" src="{{ '/assets/js/hero-logo.js' | relative_url }}"></script>

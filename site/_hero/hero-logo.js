@@ -10,6 +10,11 @@
 // refracts, but a piece of it does not see another piece of it, and these bars overlap; so
 // the bars are drawn here, back to front, each looking at a picture of what is behind it.
 //
+// The pieces are solid to each other, as they are in the app: a bar pulled into the next
+// one leans on it and moves it, where a position set outright would pass through. That is
+// cannon-es, a small physics library with nothing in it but JavaScript; the springs only
+// say how hard to push, and it does the pushing and stops one piece at another.
+//
 // The page works without any of this: the slot holds the icon as a picture, and the scene
 // takes its place only once it has drawn.
 
@@ -18,6 +23,7 @@ import {
     PMREMGenerator, Quaternion, Raycaster, Scene, ShaderMaterial, SRGBColorSpace, Vector2, Vector3, WebGLRenderTarget,
     WebGLRenderer,
 } from 'three';
+import { Body, Box, Vec3, World } from 'cannon-es';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
@@ -144,50 +150,69 @@ function pull(dragX, dragY) {
 const xAxis = new Vector3(1, 0, 0), yAxis = new Vector3(0, 1, 0);
 
 class Piece {
-    constructor(mesh, phase) {
+    /// A piece, and the body that stands for it among the others: a box the size of the
+    /// piece, with no weight to pull it anywhere, in the stage's own space, so the pieces
+    /// go with the stage as it turns.
+    constructor(mesh, phase, world) {
         this.mesh = mesh;
         this.home = mesh.position.clone();
         this.facing = mesh.quaternion.clone();
-        this.velocity = new Vector3();
-        this.spin = new Vector3();
         this.held = null;
         this.phase = phase;
         this.clock = 0;
+
+        const box = mesh.geometry.boundingBox;
+        const half = new Vec3((box.max.x - box.min.x) / 2, (box.max.y - box.min.y) / 2, (box.max.z - box.min.z) / 2);
+        this.body = new Body({ mass: 1, shape: new Box(half), linearDamping: 0, angularDamping: 0, allowSleep: false });
+        this.body.position.set(this.home.x, this.home.y, this.home.z);
+        this.body.quaternion.set(this.facing.x, this.facing.y, this.facing.z, this.facing.w);
+        world.addBody(this.body);
     }
 
     /// One step of its spring: pushed toward where it should be and turned toward how it
-    /// should face, harder and with less give while it is in hand.
-    step(dt, still) {
+    /// should face, harder and with less give while it is in hand. Only its speed is
+    /// changed here. Where that takes it is the world's to say, which knows what is in the way.
+    push(dt, still) {
         this.clock += dt;
-        const mesh = this.mesh;
+        const body = this.body;
+        const position = new Vector3(body.position.x, body.position.y, body.position.z);
+        const velocity = new Vector3(body.velocity.x, body.velocity.y, body.velocity.z);
         const drift = still ? 0 : 0.006 * Math.sin(this.clock * 0.9 + this.phase);
         const target = this.home.clone().add(this.held ?? new Vector3()).add(new Vector3(0, drift, 0));
 
         const stiffness = this.held ? 300 : 150, damping = this.held ? 34 : 9;
-        const push = target.sub(mesh.position).multiplyScalar(stiffness).addScaledVector(this.velocity, -damping);
-        this.velocity.addScaledVector(push, dt);
-        mesh.position.addScaledVector(this.velocity, dt);
+        velocity.addScaledVector(target.sub(position).multiplyScalar(stiffness).addScaledVector(velocity, -damping), dt);
+        body.velocity.set(velocity.x, velocity.y, velocity.z);
 
         // Off to one side it turns to face where it has gone, as a card on a string would.
-        const offset = mesh.position.clone().sub(this.home).clampScalar(-reach, reach);
+        // It leans by where it is and not by where it was asked to be, so a piece that was
+        // only pushed there leans too.
+        const offset = position.sub(this.home).clampScalar(-reach, reach);
         const aim = new Quaternion().setFromAxisAngle(yAxis, offset.x * 2.2)
             .multiply(new Quaternion().setFromAxisAngle(xAxis, -offset.y * 2.2))
             .multiply(this.facing);
-        const error = aim.multiply(mesh.quaternion.clone().invert());
+        const turned = new Quaternion(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+        const error = aim.multiply(turned.invert());
         if (error.w < 0) error.set(-error.x, -error.y, -error.z, -error.w);
         const axis = new Vector3(error.x, error.y, error.z), sine = axis.length();
-        const twist = this.spin.clone().multiplyScalar(-14);
+        const spin = new Vector3(body.angularVelocity.x, body.angularVelocity.y, body.angularVelocity.z);
+        const twist = spin.clone().multiplyScalar(-14);
         if (sine > 0.00001) twist.addScaledVector(axis, 120 * 2 * Math.atan2(sine, error.w) / sine);
-        this.spin.addScaledVector(twist, dt);
-        const turned = this.spin.length() * dt;
-        if (turned > 0.000001) {
-            mesh.quaternion.premultiply(new Quaternion().setFromAxisAngle(this.spin.clone().normalize(), turned)).normalize();
-        }
+        spin.addScaledVector(twist, dt);
+        body.angularVelocity.set(spin.x, spin.y, spin.z);
+    }
+
+    /// The piece drawn where its body has got to.
+    settle() {
+        const body = this.body;
+        this.mesh.position.set(body.position.x, body.position.y, body.position.z);
+        this.mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
     }
 
     /// Whether it is anywhere but at rest.
     get moving() {
-        return this.held !== null || this.velocity.lengthSq() > 0.000001 || this.spin.lengthSq() > 0.000001
+        return this.held !== null || this.body.velocity.lengthSquared() > 0.000001
+            || this.body.angularVelocity.lengthSquared() > 0.000001
             || this.mesh.position.distanceToSquared(this.home) > 0.0000001;
     }
 }
@@ -218,13 +243,18 @@ async function mount(host) {
     const stage = new Group();
     scene.add(stage);
 
+    // Where the pieces are solid: nothing falls in it, and nothing bounces.
+    const world = new World({ gravity: new Vec3(0, 0, 0) });
+    world.defaultContactMaterial.restitution = 0;
+    world.defaultContactMaterial.friction = 0.2;
+
     const model = (await new GLTFLoader().loadAsync(host.dataset.model)).scene;
     const tileMaterial = new MeshStandardMaterial({ roughness: 0.32, metalness: 0 });
     const parts = pieces.map((name, index) => {
         const mesh = model.getObjectByName(name);
         if (!mesh?.isMesh) throw new Error(`The model has no ${name}.`);
         mesh.geometry.computeBoundingBox();
-        return new Piece(mesh, index * 1.7);
+        return new Piece(mesh, index * 1.7, world);
     });
     parts.forEach(part => stage.add(part.mesh));
     parts[0].mesh.material = tileMaterial;
@@ -325,7 +355,9 @@ async function mount(host) {
         stage.rotation.set(
             still ? 0 : 3.5 * Math.PI / 180 * Math.sin(clock * 0.41 + 1),
             still ? 0 : 7 * Math.PI / 180 * Math.sin(clock * 0.55), 0, 'YXZ');
-        parts.forEach(part => part.step(dt, still));
+        parts.forEach(part => part.push(dt, still));
+        world.step(dt);
+        parts.forEach(part => part.settle());
     }
 
     function frame(now) {
@@ -368,7 +400,9 @@ async function mount(host) {
         const part = parts.find(candidate => candidate.mesh === hit.object);
         inHand = { part, id: event.pointerId, x: event.clientX, y: event.clientY };
         part.held = new Vector3();
-        canvas.setPointerCapture(event.pointerId);
+        // So that it is still in hand when the pointer leaves the canvas. A pointer the
+        // browser can't hold on to is followed for as long as it stays over the mark.
+        try { canvas.setPointerCapture(event.pointerId); } catch { /* not a pointer to capture */ }
         canvas.classList.add('is-held');
         event.preventDefault();
         wake();
@@ -417,7 +451,7 @@ async function mount(host) {
     paint();
     fit();
     // One frame drawn before it is shown: the picture it replaces stays until then.
-    advance(0);
+    advance(1 / 120);
     draw();
     host.classList.add('is-live');
 
@@ -428,6 +462,7 @@ async function mount(host) {
             draw();
         },
         parts,
+        world,
     };
 }
 

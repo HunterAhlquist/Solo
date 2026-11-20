@@ -5,10 +5,10 @@
 #
 #   docs/images/screenshots/              -> site/assets/screenshots/
 #   src/Solo.Client/wwwroot/favicon.svg   -> site/assets/favicon.svg
-#   site/_hero/hero-logo.js + three.js    -> site/assets/js/hero-logo.js
+#   site/_hero/hero-logo.js + libraries   -> site/assets/js/hero-logo.js
 #
 # The README shows the same screenshots and the app serves the same icon, so
-# each keeps one source; the front page's 3D mark is a script and the library
+# each keeps one source; the front page's 3D mark is a script and the libraries
 # it is written with, which are put together here. All three destinations are
 # in .gitignore. The Pages workflow runs this before its Jekyll build, and
 # build/preview-site.sh before a local one. It needs Node.
@@ -27,9 +27,9 @@ cp "$root"/docs/images/screenshots/*.png "$assets/screenshots/"
 
 cp "$root/src/Solo.Client/wwwroot/favicon.svg" "$assets/favicon.svg"
 
-# The front page's 3D mark: its script, bundled with the parts of three.js it uses.
-# The two packages are pinned in site/_hero/package-lock.json, and nothing of theirs
-# is run on install.
+# The front page's 3D mark: its script, bundled with the parts of three.js and
+# cannon-es it uses. The packages are pinned in site/_hero/package-lock.json, and
+# nothing of theirs is run on install.
 (cd "$root/site/_hero" && npm ci --ignore-scripts --no-audit --no-fund >/dev/null && node build.mjs)
 
 echo "Staged $(find "$assets/screenshots" -name '*.png' | wc -l | tr -d ' ') screenshots and the icon into site/assets."

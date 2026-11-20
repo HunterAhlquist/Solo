@@ -53,13 +53,21 @@ first run, with the same springs and the same glass.
   `blender -b SoloLogo.blend -P export_glb.py`. After changing the `.blend`,
   export it and commit both. The page finds each piece by its name in Blender.
 - **The script** is `_hero/hero-logo.js`, written with
-  [three.js](https://threejs.org). `build/stage-site-assets.sh` bundles the two
-  into `assets/js/hero-logo.js`, which is in `.gitignore`: about 160 KB
-  compressed, loaded by the front page alone. The folder's name starts with an
+  [three.js](https://threejs.org), and with
+  [cannon-es](https://github.com/pmndrs/cannon-es) for what makes the pieces
+  solid to each other: a small physics library that is all JavaScript, chosen
+  for its size over ones that are still being added to and are ten times it.
+  `build/stage-site-assets.sh` bundles the three into `assets/js/hero-logo.js`,
+  which is in `.gitignore`: about 185 KB compressed, loaded by the front page
+  alone, with the libraries' licences at its end. The folder's name starts with an
   underscore so Jekyll leaves it, and its `node_modules`, out of the site.
-  three.js and esbuild are pinned in `_hero/package-lock.json`; to move to a
-  newer one, change the version in `_hero/package.json` and run `npm install`
+  The libraries and esbuild are pinned in `_hero/package-lock.json`; to move to
+  a newer one, change the version in `_hero/package.json` and run `npm install`
   there.
+- **Where it stands.** Beside the words, as tall as the card, while the card is
+  wide enough for both; in a narrower card it is above them. That goes by the
+  card's own width (a container query in `docs.css`) and not the window's,
+  since the card is narrower beside the sidebar than without it.
 - **Without it** the page is whole. The hero holds the icon as a picture, and
   the scene takes its place once it has drawn; where there is no WebGL, or the
   script fails, the picture stays. Someone who has asked for reduced motion gets

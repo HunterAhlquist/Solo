@@ -1083,11 +1083,31 @@ div.highlighter-rouge:hover .copy-button,
         linear-gradient(var(--grid-line) 1px, transparent 1px),
         linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
     background-size: auto, 200px 200px, 200px 200px, 40px 40px, 40px 40px;
-    /* The mark beside the words, as tall as the card. */
+    /* What is inside is laid out by how wide the card itself is, not the window: the
+       card is narrower beside the sidebar than it is without it. */
+    container-type: inline-size;
+}
+
+/* The mark beside the words, as tall as the card. */
+.hero__layout {
     display: grid;
     grid-template-columns: minmax(10rem, min(22rem, 40%)) minmax(0, 1fr);
     column-gap: 1.5rem;
     align-items: center;
+}
+
+/* A card too narrow for the two side by side, where the words were squeezed and cut
+   off at the card's edge: the mark goes above them, and they have the card's width. */
+@container (max-width: 46rem) {
+    .hero__layout {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 0.75rem;
+    }
+
+    .hero__layout .hero__logo {
+        height: 14rem;
+        margin: -1.5rem 0 0;
+    }
 }
 
 /* Where the mark goes. It is given the card's whole height, the padding above and
@@ -1474,14 +1494,12 @@ div.highlighter-rouge:hover .copy-button,
         font-size: 1.1rem;
     }
 
-    /* Too narrow for the two side by side: the mark goes above the words. */
     .hero {
         padding: 2rem 1.25rem;
-        grid-template-columns: minmax(0, 1fr);
-        row-gap: 0.5rem;
     }
 
-    .hero__logo {
+    /* A phone: the mark above the words, a little smaller than on a narrow card. */
+    .hero__layout .hero__logo {
         height: 11rem;
         margin: -1rem 0 0;
     }
