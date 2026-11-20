@@ -19,10 +19,23 @@ html, body {
     height: 100%;
 }
 
-/* Carries past the app's own surfaces, so overscroll and the gap behind a short
-   page don't flash white on a dark theme. */
+/* The page's colour is the root's, and the body paints none of its own.
+   On the root it carries past the app's own surfaces, so overscroll and the gap
+   behind a short page don't flash white on a dark theme; it is the theme's
+   once MudBlazor has emitted the palette, and the boot colour until then.
+
+   MudBlazor gives the body the same colour. With one on the root already, the
+   body's doesn't reach the canvas: it fills the body's own box, which is one
+   screen tall whatever the page's length, and it is painted over anything
+   placed behind the page (.app-backdrop). A theme's picture was hidden for the
+   whole of the first screen and showed only below it, once the page was
+   scrolled. */
 html {
-    background: var(--solo-boot-bg);
+    background: var(--mud-palette-background, var(--solo-boot-bg));
+}
+
+body {
+    background-color: transparent;
 }
 
 /* MudBlazor's own `body` rule is `var(--mud-typography-default-family)`, and
