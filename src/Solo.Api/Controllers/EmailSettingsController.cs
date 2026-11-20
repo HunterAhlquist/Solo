@@ -6,6 +6,7 @@ using Solo.Api.Auth;
 using Solo.Api.Email;
 using Solo.Data;
 using Solo.Data.Entities;
+using Solo.Shared;
 using Solo.Shared.Dtos;
 
 namespace Solo.Api.Controllers;
@@ -43,12 +44,13 @@ public sealed class EmailSettingsController(
         }
 
         var previousHost = settings.SmtpHost;
+        var previousSecurity = settings.Security;
         Apply(settings, request);
         if (request.Password is { } newPassword)
         {
             settings.ProtectedPassword = newPassword.Length == 0 ? null : password.Protect(newPassword);
         }
-        else if (settings.SmtpHost != previousHost)
+        else if (!KeepsPassword(previousHost, previousSecurity, settings))
         {
             // A stored password only ever goes to the server it was typed for,
             // so pointing the settings elsewhere can't be used to collect it.
@@ -78,9 +80,11 @@ public sealed class EmailSettingsController(
         var content = EmailTemplates.Test(await outbox.BrandAsync(db, ct));
         try
         {
-            // Same rule as saving: the stored password goes only to its own server.
+            // Same rule as saving: the stored password goes only to its own
+            // server. The environment's has its own say on where it goes
+            // (SmtpPassword), whatever is stored.
             var smtpPassword = request.Password is { Length: > 0 } typed ? typed
-                : trial.SmtpHost == stored.SmtpHost ? password.Resolve(trial)
+                : password.FromEnvironment || KeepsPassword(stored.SmtpHost, stored.Security, trial) ? password.Resolve(trial)
                 : null;
             await transport.SendAsync(EmailOutbox.OptionsFor(trial, smtpPassword),
                 EmailOutbox.Compose(trial, to, content.Subject, content.Html, content.Text, null), ct);
@@ -127,8 +131,29 @@ public sealed class EmailSettingsController(
             problem ??= "Enter the SMTP server.";
         }
 
+        if (mustBeComplete && SmtpOptions.SignsInUnencryptedTo(Clean(request.SmtpHost), request.Security, Clean(request.Username)))
+        {
+            problem ??= SmtpOptions.UnencryptedSignIn;
+        }
+
+        // Email that is on, or being tried, has to be able to sign in: the
+        // environment's password is only for the server the environment names.
+        // Settings that are off can still be saved, so email can be turned off.
+        if (mustBeComplete)
+        {
+            problem ??= password.Refusal(Clean(request.SmtpHost));
+        }
+
         return problem is null ? null : Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid email settings", detail: problem);
     }
+
+    /// <summary>
+    /// Whether a password kept for one server may go where the settings now
+    /// point: to the same server, and not over a connection that has just been
+    /// left unencrypted, where anyone on the way could read it.
+    /// </summary>
+    private static bool KeepsPassword(string? host, SmtpSecurity security, EmailSettings next) =>
+        next.SmtpHost == host && (next.Security != SmtpSecurity.None || security == SmtpSecurity.None);
 
     private static void Apply(EmailSettings settings, UpdateEmailSettingsRequest request)
     {

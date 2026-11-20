@@ -308,6 +308,17 @@ builder.Services.AddRateLimiter(limiter =>
                 QueueLimit = 0,
             }));
 
+    var invitePermits = builder.Configuration.GetValue("RateLimiting:Invites:PermitLimit", 60);
+    var inviteWindow = TimeSpan.FromSeconds(builder.Configuration.GetValue("RateLimiting:Invites:WindowSeconds", 3600));
+    limiter.AddPolicy(RateLimitPolicies.Invites, context =>
+        RateLimitPartition.GetFixedWindowLimiter(RateLimitPartitions.Client(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = invitePermits,
+                Window = inviteWindow,
+                QueueLimit = 0,
+            }));
+
 });
 
 var app = builder.Build();

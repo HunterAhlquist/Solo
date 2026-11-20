@@ -16,8 +16,8 @@ with its version in parentheses).
 ### Server
 - A bell in the app bar collects your notifications: when someone assigns you to a task or epic, and when a task of yours is due, two weeks before its deadline and again one week before, at 9:00 your time. Clicking one opens the task, and **Clear all** empties the bell.
 - With Solo open, a new notification also shows as a notification from your browser or the desktop app once you allow it. Choose which events notify you under **Notifications** in the account menu.
-- Email: a super admin sets up SMTP under **Email** in Admin settings, with a test email before saving. The password is encrypted at rest, or comes from `Email__Smtp__Password`. Email goes through a queue and is retried for about 2.5 hours before it shows as failed. Emails use the instance theme's colors and fonts, in light or dark to match the mail app.
-- Inviting someone to a project emails them a link to the instance, when email is on. Pending members get a resend button.
+- Email: a super admin sets up SMTP under **Email** in Admin settings, with a test email before saving. The password is encrypted at rest, or comes from `Email__Smtp__Password`, which is sent only to the server that `Email__Smtp__Host` names and is not used without it. A stored password is forgotten when the server changes or the connection is set to unencrypted, and Solo signs in to an SMTP server without encryption only when that server is on `localhost`. Email goes through a queue and is retried for about 2.5 hours before it shows as failed. Emails use the instance theme's colors and fonts, in light or dark to match the mail app.
+- Inviting someone to a project emails them a link to the instance, when email is on. Pending members get a resend button. One person can send 60 invitations an hour (`RateLimiting__Invites__PermitLimit`).
 - Each person gets an email digest: daily or weekly at the hour they pick, or as it happens, batched every 15 minutes. It lists overdue work, work due within 2 weeks with the earliest deadline first, and work recently assigned to them. Mail apps can unsubscribe in one click. People can now pick their time zone in **Notifications**.
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
 - A page that the app for iPhone, iPad and Mac shows from the web client no longer signs in with the app's own session. The app asks the instance for a stand-in (`POST api/auth/sessions/hosted`) that lasts an hour (`Auth__HostedSessionMinutes`), cannot be renewed or turned into any other credential, does not appear among signed-in devices, and stops working when the app's session is revoked or expires. The app replaces it before it ends.
@@ -52,10 +52,11 @@ with its version in parentheses).
 - Rebuilt on contract 1.17.0.
 - A project's owners can create and delete its roadmaps, not only a super admin.
 
-#### Design Docs (1.5.5)
+#### Design Docs (1.5.6)
 - Rebuilt on contract 1.17.0.
 - A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.
+- In a note, a task item (`- [ ] buy milk`, `- [x] done`, `1. [ ] numbered`) shows as a checkbox. Click or tap it to tick or untick it; put the caret in the box to edit it as text. Notes you can only read show the boxes but don't tick.
 
 ## v1.20.1 (2026-11-05)
 

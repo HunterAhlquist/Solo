@@ -4,7 +4,7 @@ import { WikiLink } from './wiki.js';
 import { StateField } from '@codemirror/state';
 import { Decoration, WidgetType, EditorView } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
-import { isSafeUrl } from './markdown.js';
+import { isSafeUrl, taskBox, inCode } from './markdown.js';
 import { mediaType } from '../media/vault-paths.js';
 class Link extends WidgetType {
     constructor(label, url, bridge) { super(); this.label = label; this.url = url; this.bridge=bridge; }
@@ -34,6 +34,29 @@ class ListMarker extends WidgetType {
     eq(other){return this.raw===other.raw;}
     toDOM(){const span=document.createElement('span'),ordered=/^\d/.test(this.raw);span.className='design-docs-list-marker'+(ordered?' is-ordered':'');span.textContent=ordered?this.raw:'•';return span;}
 }
+// The change that ticks or unticks a task. `pos` is where its drawn box starts in the text: the list mark of a
+// bulleted task, the opening bracket of a numbered one. No selection is given, so the caret stays where it is.
+export function taskToggle(state,pos) {
+    if(state.readOnly)return null;
+    const match=/^(?:[-+*][ \t]+)?\[([ xX])\](?=[ \t])/.exec(state.doc.sliceString(pos,state.doc.lineAt(pos).to));
+    if(!match)return null;
+    const at=pos+match[0].length-2;
+    return {changes:{from:at,to:at+1,insert:match[1]===' '?'x':' '},userEvent:'input'};
+}
+class TaskBox extends WidgetType {
+    constructor(checked,locked){super();this.checked=checked;this.locked=locked;}
+    eq(other){return this.checked===other.checked&&this.locked===other.locked;}
+    toDOM(view){
+        const box=document.createElement('span');box.className='design-docs-task-box'+(this.checked?' is-checked':'');
+        box.setAttribute('role','checkbox');box.setAttribute('aria-checked',String(this.checked));if(this.locked)box.setAttribute('aria-disabled','true');
+        // A press would otherwise put the caret beside the box, which turns it back into its text before the click lands.
+        box.addEventListener('mousedown',event=>event.preventDefault());
+        // The box may have moved since it was drawn, so its place is read from the DOM rather than remembered.
+        box.addEventListener('click',()=>{const spec=taskToggle(view.state,view.posAtDOM(box));if(spec)view.dispatch(spec);});
+        return box;
+    }
+    ignoreEvent(){return true;}
+}
 class UnsupportedMedia extends WidgetType {
     constructor(path,kind){super();this.path=path;this.kind=kind;}
     eq(other){return this.path===other.path&&this.kind===other.kind;}
@@ -44,7 +67,7 @@ function build(view, bridge, images) {
     if (view.state.facet(EditorView.editable)) for (const r of view.state.selection.ranges) for (let n=doc.lineAt(r.from).number;n<=doc.lineAt(r.to).number;n++) cursorLines.add(n);
     const touches=(from,to)=>view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(r=>r.from<=to&&r.to>=from);
     const tree=syntaxTree(view.state);
-    const insideCode=from=>{for(let node=tree.resolveInner(from,1);node;node=node.parent)if(/^(FencedCode|CodeBlock|InlineCode)$/.test(node.name))return true;return false;};
+    const insideCode=from=>inCode(tree,from);
     const embedded=[];
     for(let number=1;number<=doc.lines;number++) {
         const line=doc.line(number);
@@ -87,6 +110,18 @@ function build(view, bridge, images) {
         if (node.name === 'InlineCode') ranges.push(Decoration.mark({class:'design-docs-code'}).range(node.from,node.to));
         if (node.name === 'Highlight') ranges.push(Decoration.mark({class:'design-docs-highlight'}).range(node.from,node.to));
         if(node.name==='ListMark'){
+            const task=taskBox(doc.sliceString(node.to,line.to));
+            if(task&&!insideCode(node.to+task.from)){
+                // A task is a box in place of its list mark and brackets. The caret anywhere in what is written, up
+                // to the closing bracket but not the space after it, shows the text so it can be changed by hand.
+                const box={from:node.to+task.from,to:node.to+task.to};
+                if(touches(node.from,box.to))return;
+                const widget=new TaskBox(task.checked,view.state.readOnly),ordered=/^\d/.test(doc.sliceString(node.from,node.to));
+                // A numbered task keeps its number; a bulleted one has the box for a bullet.
+                if(ordered)ranges.push(Decoration.replace({widget:new ListMarker(doc.sliceString(node.from,node.to)),listMarker:true}).range(node.from,node.to));
+                ranges.push(Decoration.replace({widget,task:true}).range(ordered?box.from:node.from,box.to));
+                return;
+            }
             const adjacent=view.state.facet(EditorView.editable)&&view.state.selection.ranges.some(range=>range.from<=node.to&&range.to>=node.from);
             if(!adjacent)ranges.push(Decoration.replace({widget:new ListMarker(doc.sliceString(node.from,node.to)),listMarker:true}).range(node.from,node.to));
         }

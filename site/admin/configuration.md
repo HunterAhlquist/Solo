@@ -30,7 +30,8 @@ A variable name uses two underscores between its parts, for example `Auth__Clien
 | `Auth__HostedSessionMinutes` | `60` | The number of minutes that a page shown inside the app for iPhone, iPad and Mac stays signed in before the app gives it a new sign-in. |
 | `Auth__DesktopRedirect` | `false` | Google only. The desktop app goes directly to Google's sign-in, in one window. See [Desktop sign-in with Google](#desktop-sign-in-with-google). |
 | `Database__AutoMigrate` | `true` | Apply database migrations at startup. |
-| `Email__Smtp__Password` | None | The SMTP password. When you set it, Solo uses it instead of the password in [Admin settings](admin-settings.md#email). |
+| `Email__Smtp__Password` | None | The SMTP password. When you set it, Solo uses it instead of the password in [Admin settings](admin-settings.md#email). Set `Email__Smtp__Host` with it. |
+| `Email__Smtp__Host` | None | The SMTP server that `Email__Smtp__Password` is for. Solo sends that password to this server only. Without it, Solo does not use the password. |
 | `Themes__Directory` | `/data/themes` | The directory that Solo scans for theme packages. |
 | `Extensions__Directory` | `/data/extensions` | The directory that Solo scans for extension packages. |
 | `Extensions__ApiBaseUrl` | The listen address | The address at which background work of an extension reaches the Solo API. |
@@ -38,6 +39,8 @@ A variable name uses two underscores between its parts, for example `Auth__Clien
 | `ForwardedHeaders__ForwardLimit` | `1` | The number of proxies in front of Solo. |
 | `RateLimiting__Auth__PermitLimit` | `10` | The number of sign-in and setup requests that one address can make in one window. |
 | `RateLimiting__Auth__WindowSeconds` | `60` | The length of that window, in seconds. |
+| `RateLimiting__Invites__PermitLimit` | `60` | The number of project invitations that one person can send in one window. |
+| `RateLimiting__Invites__WindowSeconds` | `3600` | The length of that window, in seconds. |
 | `RateLimiting__Api__Burst` | `300` | The number of API requests that one caller can make in a burst. |
 | `RateLimiting__Api__TokensPerPeriod` | `100` | The number of API requests that a caller gets back in each period. |
 | `RateLimiting__Api__PeriodSeconds` | `10` | The length of that period, in seconds. |

@@ -120,6 +120,7 @@ public class SoloApiFactory(
         // would trip on unrelated tests. RateLimitingTests tightens these.
         builder.UseSetting("RateLimiting:Api:Burst", "1000000");
         builder.UseSetting("RateLimiting:Auth:PermitLimit", "1000000");
+        builder.UseSetting("RateLimiting:Invites:PermitLimit", "1000000");
         // Background work calls back into the API over HTTP (ExtensionBackground).
         // There is no socket under a test server, so point it at the server itself.
         builder.UseSetting("Extensions:ApiBaseUrl", "http://localhost/");

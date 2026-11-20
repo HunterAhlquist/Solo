@@ -22,3 +22,8 @@ test('quoted lines hang from the text after their quote markers and any list mar
 test('blank, marker-only and unlisted dash lines have nothing to hang from', () => {
     assert.deepEqual(starts('para\n    \n-\n\n---\n-not a list'), [0, 0, 0, 0, 0, 0]);
 });
+test('a task\'s rows hang from what it says, past its box', () => {
+    assert.deepEqual(starts('- [ ] task\n- [ ]not a task\n- [ ] \n\n12. [x] numbered\n\n> - [X] quoted'), [6, 2, 0, 0, 8, 0, 8]);
+    // Indented this far the brackets are code, not a box.
+    assert.deepEqual(starts('-     [ ] code'), [6]);
+});

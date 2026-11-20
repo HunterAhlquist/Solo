@@ -44,13 +44,18 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         }
     }
 
-    private sealed class EmailFactory(string connectionString) : SoloApiFactory(connectionString)
+    private sealed class EmailFactory(string connectionString, params (string Key, string Value)[] environment)
+        : SoloApiFactory(connectionString)
     {
         public FakeTransport Transport { get; } = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
+            foreach (var (key, value) in environment)
+            {
+                builder.UseSetting(key, value);
+            }
             builder.ConfigureTestServices(services => services.AddSingleton<IEmailTransport>(Transport));
         }
     }
@@ -79,7 +84,8 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    private static object Settings(bool enabled = true, string? password = null, string host = "smtp.example.com") => new
+    private static object Settings(
+        bool enabled = true, string? password = null, string host = "smtp.example.com", string security = "StartTls", uint version = 0) => new
     {
         enabled,
         publicAddress = "https://solo.example.com",
@@ -87,10 +93,10 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         fromAddress = "solo@example.com",
         smtpHost = host,
         smtpPort = 587,
-        security = "StartTls",
+        security,
         username = "solo",
         password,
-        version = 0,
+        version,
     };
 
     private Task<EmailSettingsDto> EnableEmailAsync() =>
@@ -163,6 +169,195 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         var moved = await _admin.PutJson<EmailSettingsDto>("/api/settings/email",
             new { enabled = true, publicAddress = "https://solo.example.com", fromAddress = "solo@example.com", smtpHost = "smtp.elsewhere.example", smtpPort = 465, security = "SslOnConnect", version = kept.Version });
         Assert.False(moved.HasPassword);
+    }
+
+    [SkippableFact]
+    public async Task Settings_ForgetThePassword_WhenTheConnectionIsLeftUnencrypted()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        // A server on this machine is the one that may be signed in to without encryption.
+        // Typed for it while it was signed in to over TLS, the password isn't then sent in the clear.
+        var saved = await _admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(password: "hunter2", host: "localhost"));
+        var bare = await _admin.PutJson<EmailSettingsDto>("/api/settings/email",
+            Settings(host: "localhost", security: "None", version: saved.Version));
+        Assert.False(bare.HasPassword);
+
+        // Typed for a connection that was already unencrypted, it stays.
+        var typed = await _admin.PutJson<EmailSettingsDto>("/api/settings/email",
+            Settings(password: "hunter2", host: "localhost", security: "None", version: bare.Version));
+        var again = await _admin.PutJson<EmailSettingsDto>("/api/settings/email",
+            Settings(host: "localhost", security: "None", version: typed.Version));
+        Assert.True(again.HasPassword);
+
+        // And a trial run from the form follows the same rule as saving.
+        await _admin.PostJson<TestEmailResultDto>("/api/settings/email/test", Settings(enabled: false, host: "localhost", security: "None"));
+        Assert.Equal("hunter2", _factory.Transport.Sent[^1].Options.Password);
+        var secured = await _admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(host: "localhost", version: again.Version));
+        Assert.True(secured.HasPassword);
+        await _admin.PostJson<TestEmailResultDto>("/api/settings/email/test", Settings(enabled: false, host: "localhost", security: "None"));
+        Assert.Null(_factory.Transport.Sent[^1].Options.Password);
+    }
+
+    /// <summary>A username and password sent without encryption can be read by anything on the way.</summary>
+    [SkippableFact]
+    public async Task ARemoteServer_IsNotSignedInTo_WithoutEncryption()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        // Not turned on, and not tried.
+        var turnedOn = await _admin.PutAsJsonAsync("/api/settings/email", Settings(password: "hunter2", security: "None"));
+        Assert.Equal(HttpStatusCode.BadRequest, turnedOn.StatusCode);
+        Assert.Contains("encrypted connection", await turnedOn.Content.ReadAsStringAsync());
+        var tried = await _admin.PostAsJsonAsync("/api/settings/email/test", Settings(enabled: false, password: "hunter2", security: "None"));
+        Assert.Equal(HttpStatusCode.BadRequest, tried.StatusCode);
+        Assert.Empty(_factory.Transport.Sent);
+
+        // A relay that asks for no sign-in has nothing to give away, and is used as it is.
+        var open = new
+        {
+            enabled = true, publicAddress = "https://solo.example.com", fromAddress = "solo@example.com",
+            smtpHost = "relay.example.com", smtpPort = 25, security = "None", version = 0,
+        };
+        Assert.True((await _admin.PutJson<EmailSettingsDto>("/api/settings/email", open)).Enabled);
+
+        // Settings saved before this was asked of them send nothing, and keep what is queued.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SoloDbContext>();
+            db.EmailSettings.Single().Username = "solo";
+            EmailOutbox.Queue(db, "bob@example.com", new EmailContent("Hello", "<p>Hello</p>", "Hello"), "test");
+            await db.SaveChangesAsync();
+        }
+
+        await SendAsync();
+        Assert.Empty(_factory.Transport.Sent);
+        Assert.Null(Db(db => db.EmailMessages.Single().SentAt));
+        Assert.Null(Db(db => db.EmailMessages.Single().FailedAt));
+
+        // Whatever sends makes its options in one place, and none are made that would do it.
+        var unsafeSettings = new Solo.Data.Entities.EmailSettings
+        {
+            SmtpHost = "relay.example.com", SmtpPort = 25, Security = SmtpSecurity.None, Username = "solo",
+        };
+        var refused = Assert.Throws<InvalidOperationException>(() => EmailOutbox.OptionsFor(unsafeSettings, "hunter2"));
+        Assert.Equal(SmtpOptions.UnencryptedSignIn, refused.Message);
+        unsafeSettings.SmtpHost = "localhost";
+        Assert.Equal("hunter2", EmailOutbox.OptionsFor(unsafeSettings, "hunter2").Password);
+
+        Assert.False(new SmtpOptions("localhost", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.False(new SmtpOptions("127.0.0.1", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.False(new SmtpOptions("[::1]", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.False(new SmtpOptions("relay.example.com", 587, SmtpSecurity.StartTls, "solo", "x").SignsInUnencrypted);
+        Assert.True(new SmtpOptions("localhost.example.com", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.True(new SmtpOptions("10.0.0.5", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+    }
+
+    /// <summary>
+    /// An invitation is mail from the instance to whoever the inviter names, with words of
+    /// the inviter's in it. One person can only cause so much of it.
+    /// </summary>
+    [SkippableFact]
+    public async Task Invitations_AreLimitedForEachPerson()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        using var factory = new EmailFactory(await postgres.CreateDatabaseAsync("email"), ("RateLimiting:Invites:PermitLimit", "2"));
+        var admin = factory.As("admin", "admin@example.com", "Admin");
+        await TestClients.CompleteSetupAsync(admin);
+        var project = await admin.PostJson<ProjectDto>("/api/projects", new { name = "Game", alias = "GAME" });
+
+        var first = await admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members", new { email = "one@example.com", role = "ReadWrite" });
+        Assert.Equal(HttpStatusCode.Created, (await admin.PostAsJsonAsync($"/api/projects/{project.Id}/members", new { email = "two@example.com", role = "ReadWrite" })).StatusCode);
+
+        // A third in the hour is turned away, whether it is someone new or the same invite again.
+        var third = await admin.PostAsJsonAsync($"/api/projects/{project.Id}/members", new { email = "three@example.com", role = "ReadWrite" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+        var again = await admin.PostAsync($"/api/projects/{project.Id}/members/{first.Id}/invite", null);
+        Assert.Equal(HttpStatusCode.TooManyRequests, again.StatusCode);
+
+        // Nothing else of theirs is held up by it.
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync($"/api/projects/{project.Id}/members")).StatusCode);
+    }
+
+    /// <summary>
+    /// The settings are a super admin's, who need not be the operator holding the
+    /// password: pointed at a server of their own, they must not be handed it.
+    /// </summary>
+    [SkippableFact]
+    public async Task TheEnvironmentsPassword_GoesOnlyToTheServerTheEnvironmentNames()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        using var factory = new EmailFactory(await postgres.CreateDatabaseAsync("email"),
+            (SmtpPassword.EnvironmentKey, "from-env"), (SmtpPassword.EnvironmentHostKey, "smtp.example.com"));
+        var admin = factory.As("admin", "admin@example.com", "Admin");
+        await TestClients.CompleteSetupAsync(admin);
+
+        // Its own server, however the name is cased: tried before anything is saved, and saved.
+        await admin.PostJson<TestEmailResultDto>("/api/settings/email/test", Settings(enabled: false, host: "SMTP.example.com"));
+        Assert.Equal("from-env", Assert.Single(factory.Transport.Sent).Options.Password);
+        var saved = await admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings());
+        Assert.True(saved.PasswordFromEnvironment);
+
+        // Another server is neither tried nor turned on, and is told whose the password is.
+        var tried = await admin.PostAsJsonAsync("/api/settings/email/test", Settings(enabled: false, host: "smtp.elsewhere.example"));
+        Assert.Equal(HttpStatusCode.BadRequest, tried.StatusCode);
+        Assert.Contains("is for smtp.example.com", await tried.Content.ReadAsStringAsync());
+        var turnedOn = await admin.PutAsJsonAsync("/api/settings/email", Settings(host: "smtp.elsewhere.example", version: saved.Version));
+        Assert.Equal(HttpStatusCode.BadRequest, turnedOn.StatusCode);
+        Assert.Single(factory.Transport.Sent);
+
+        // Settings that got there some other way — saved before the environment named a
+        // server, or the environment changed since — send nothing, and keep what is queued.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SoloDbContext>();
+            db.EmailSettings.Single().SmtpHost = "smtp.elsewhere.example";
+            EmailOutbox.Queue(db, "bob@example.com", new EmailContent("Hello", "<p>Hello</p>", "Hello"), "test");
+            await db.SaveChangesAsync();
+            Assert.Null(factory.Services.GetRequiredService<SmtpPassword>().Resolve(db.EmailSettings.Single()));
+        }
+
+        await factory.Services.GetRequiredService<EmailSender>().SendDueAsync(DateTimeOffset.UtcNow, default);
+        Assert.Single(factory.Transport.Sent);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SoloDbContext>();
+            var waiting = db.EmailMessages.Single();
+            Assert.Null(waiting.SentAt);
+            Assert.Null(waiting.FailedAt);
+
+            // Pointed back at its server, the queue goes out.
+            db.EmailSettings.Single().SmtpHost = "smtp.example.com";
+            await db.SaveChangesAsync();
+        }
+
+        await factory.Services.GetRequiredService<EmailSender>().SendDueAsync(DateTimeOffset.UtcNow, default);
+        Assert.Equal(2, factory.Transport.Sent.Count);
+        Assert.Equal(("smtp.example.com", "from-env"), (factory.Transport.Sent[1].Options.Host, factory.Transport.Sent[1].Options.Password));
+    }
+
+    [SkippableFact]
+    public async Task TheEnvironmentsPassword_IsNotUsed_UntilTheEnvironmentNamesItsServer()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        using var factory = new EmailFactory(await postgres.CreateDatabaseAsync("email"), (SmtpPassword.EnvironmentKey, "from-env"));
+        var admin = factory.As("admin", "admin@example.com", "Admin");
+        await TestClients.CompleteSetupAsync(admin);
+
+        // With no server named for it, any server could be the wrong one: it goes to none.
+        var tried = await admin.PostAsJsonAsync("/api/settings/email/test", Settings(enabled: false));
+        Assert.Equal(HttpStatusCode.BadRequest, tried.StatusCode);
+        Assert.Contains("Email__Smtp__Host", await tried.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PutAsJsonAsync("/api/settings/email", Settings())).StatusCode);
+        Assert.Empty(factory.Transport.Sent);
+
+        // Email can still be left off, or turned off, with whatever is in the form.
+        var off = await admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(enabled: false));
+        Assert.False(off.Enabled);
+        Assert.True(off.PasswordFromEnvironment);
     }
 
     [SkippableFact]
