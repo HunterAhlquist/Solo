@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Solo.Data;
+using Solo.Data.Entities;
 
 namespace Solo.Api.Auth;
 
@@ -41,9 +42,26 @@ public sealed class SessionAuthenticationHandler(
         }
 
         var db = Context.RequestServices.GetRequiredService<SoloDbContext>();
-        var hash = SessionTokens.Hash(token!);
         var now = DateTimeOffset.UtcNow;
 
+        // What an app hands a page it hosts: not a session, but a short-lived
+        // stand-in for one (HostedSessions). It is only as good as the session
+        // it names, read here each time, and using it is not using that
+        // session — nothing slides.
+        if (HostedSessions.IsHostedToken(token))
+        {
+            var hosted = Context.RequestServices.GetRequiredService<HostedSessions>();
+            var parent = hosted.SessionOf(token!) is { } parentId
+                ? await db.AuthSessions.AsNoTracking().Include(s => s.User)
+                    .FirstOrDefaultAsync(s => s.Id == parentId, Context.RequestAborted)
+                : null;
+            return parent is null || parent.ExpiresAt <= now
+                ? AuthenticateResult.Fail("Unknown or expired hosted session token.")
+                : Success(parent.User, AuthConstants.HostedAuthenticationType,
+                    new Claim(AuthConstants.HostedParentClaim, parent.Id.ToString()));
+        }
+
+        var hash = SessionTokens.Hash(token!);
         var session = await db.AuthSessions
             .Include(s => s.User)
             .FirstOrDefaultAsync(s => s.TokenHash == hash, Context.RequestAborted);
@@ -68,12 +86,22 @@ public sealed class SessionAuthenticationHandler(
             }
         }
 
-        var user = session.User;
+        return Success(session.User, Scheme.Name, new Claim(AuthConstants.SessionIdClaim, session.Id.ToString()));
+    }
+
+    /// <summary>
+    /// The principal for a person, with the claim that says which session they
+    /// came by. <paramref name="kind"/> is the identity's authentication type,
+    /// which is what tells a session from what was issued on one's behalf
+    /// (<see cref="CredentialKind"/>).
+    /// </summary>
+    private AuthenticateResult Success(User user, string kind, Claim session)
+    {
         var claims = new List<Claim>
         {
             new("iss", user.Issuer),
             new("sub", user.Subject),
-            new(AuthConstants.SessionIdClaim, session.Id.ToString()),
+            session,
         };
         if (user.Email.Length > 0)
         {
@@ -85,7 +113,7 @@ public sealed class SessionAuthenticationHandler(
             claims.Add(new Claim("name", user.DisplayName));
         }
 
-        var identity = new ClaimsIdentity(claims, Scheme.Name, nameType: "name", roleType: "role");
+        var identity = new ClaimsIdentity(claims, kind, nameType: "name", roleType: "role");
         return AuthenticateResult.Success(
             new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }

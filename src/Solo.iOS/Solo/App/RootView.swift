@@ -68,6 +68,7 @@ struct RootView: View {
             if phase == .active {
                 if day != .today { day = .today }
                 model.session?.hub.resume()
+                model.session?.hosted.cameForward()
                 model.session?.docsOffline.sync()
                 Task {
                     // Out of reach when it was last in front: it may not be now.

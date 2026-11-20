@@ -21,6 +21,8 @@ final class Session {
     let extensions: ExtensionCatalog
     /// What extensions with no native half add to core's screens, drawn here (KitSurface.swift).
     let kit = KitSurfaceHost()
+    /// What the pages the app hosts sign in with, in place of the app's own session.
+    let hosted: HostedCredential
     /// The design docs downloaded to this device (OfflineDocs.swift).
     let docsOffline: OfflineVaults
 
@@ -45,6 +47,7 @@ final class Session {
         self.api = api
         self.config = config
         self.user = user
+        hosted = HostedCredential(api: api)
         hub = HubClient(api: api)
         projects = ProjectNavStore(api: api)
         notifications = NotificationStore(api: api, hub: hub, toasts: toasts)
@@ -253,6 +256,7 @@ final class Session {
         network?.cancel()
         docsOffline.stop()
         kit.reset()
+        hosted.stop()
         await hub.shutDown()
     }
 

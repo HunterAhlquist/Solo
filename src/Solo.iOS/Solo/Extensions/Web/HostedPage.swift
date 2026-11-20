@@ -18,20 +18,24 @@ import WebKit
 enum HostedWeb {
     static let channel = "soloHost"
 
-    /// A web view configuration that tells the web client it is hosted and hands it the app's
-    /// session. The session is put where the web client keeps one it has been handed, for the
-    /// page's lifetime and no longer, and only on the instance that issued it.
-    ///
-    /// - Parameters:
-    ///   - routes: Patterns for the addresses the app has screens of its own for.
-    ///   - baked: Extensions the app draws itself, which a kit surface then leaves out.
-    static func configuration(instance: URL, token: String, user: User, routes: [String], baked: [String],
-                              listener: any WKScriptMessageHandler) -> WKWebViewConfiguration? {
-        guard let profile = (try? JSONEncoder().encode(user)).flatMap({ String(data: $0, encoding: .utf8) }),
-              let handed = (try? JSONSerialization.data(withJSONObject: [address(of: instance), token, profile, routes, baked]))
-                .flatMap({ String(data: $0, encoding: .utf8) }) else { return nil }
-        let configuration = WKWebViewConfiguration()
-        let script = """
+    /// What a hosted page is told about where it is, apart from the session it signs in with.
+    struct Setup {
+        var instance: URL
+        var user: User
+        /// Patterns for the addresses the app has screens of its own for.
+        var routes: [String]
+        /// Extensions the app draws itself, which a kit surface then leaves out.
+        var baked: [String] = []
+    }
+
+    /// The script that tells the web client it is hosted and hands it a session, before any
+    /// of the page's own runs. The session is put where the web client keeps one it has been
+    /// handed, for the page's lifetime and no longer, and only on the instance that issued it.
+    /// It is the one the instance issues for a page (`HostedCredential`), not the app's own.
+    private static func script(_ setup: Setup, token: String) -> String? {
+        guard let profile = (try? JSONEncoder().encode(setup.user)).flatMap({ String(data: $0, encoding: .utf8) }),
+              let handed = literal([address(of: setup.instance), token, profile, setup.routes, setup.baked]) else { return nil }
+        return """
         (() => {
             const [origin, token, user, routes, baked] = \(handed);
             if (location.origin !== origin) return;
@@ -40,10 +44,37 @@ enum HostedWeb {
             window.soloHost = { routes, baked, post: message => window.webkit.messageHandlers.\(channel).postMessage(message) };
         })();
         """
+    }
+
+    /// Values as a JSON array, which is also a JavaScript one: nothing in them can end it early.
+    private static func literal(_ values: [Any]) -> String? {
+        (try? JSONSerialization.data(withJSONObject: values)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
+    /// A web view configuration for a hosted page, with the session it starts with.
+    static func configuration(_ setup: Setup, token: String, listener: any WKScriptMessageHandler) -> WKWebViewConfiguration? {
+        guard let script = script(setup, token: token) else { return nil }
+        let configuration = WKWebViewConfiguration()
         configuration.userContentController.addUserScript(
             WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         configuration.userContentController.add(listener, name: channel)
         return configuration
+    }
+
+    /// A newer session for a page that is already up. It goes in both places the first one
+    /// did: where the page reads it now, so the page carries on without knowing, and into the
+    /// script, so a reload doesn't start the page off with the one that has since ended.
+    static func hand(_ token: String, to view: WKWebView, _ setup: Setup) {
+        guard let script = script(setup, token: token), let handed = literal([address(of: setup.instance), token]) else { return }
+        let controller = view.configuration.userContentController
+        controller.removeAllUserScripts()
+        controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        view.evaluateJavaScript("""
+        (() => {
+            const [origin, token] = \(handed);
+            if (location.origin === origin) sessionStorage.setItem('solo.session.token', token);
+        })();
+        """)
     }
 
     /// The scheme, host and port of an address, as a page's `location.origin` spells them.
@@ -83,11 +114,11 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
     @ObservationIgnored private var siteName = ""
     @ObservationIgnored private var restarts = 0
 
-    func open(path: String, instance: URL, token: String, user: User, siteName: String, routes: [String]) {
+    func open(path: String, setup: HostedWeb.Setup, token: String, siteName: String) {
         close()
+        let instance = setup.instance
         guard let url = URL(string: path, relativeTo: instance)?.absoluteURL,
-              let configuration = HostedWeb.configuration(instance: instance, token: token, user: user, routes: routes,
-                                                          baked: [], listener: self) else {
+              let configuration = HostedWeb.configuration(setup, token: token, listener: self) else {
             problem = "This page's address couldn't be read."
             return
         }
@@ -110,6 +141,12 @@ final class HostedPage: NSObject, WKScriptMessageHandler, WKNavigationDelegate, 
         target = url
         self.siteName = siteName
         view.load(URLRequest(url: url))
+    }
+
+    /// The page couldn't be opened at all, and why.
+    func fail(_ message: String) {
+        close()
+        problem = message
     }
 
     func reload() {
@@ -319,7 +356,10 @@ private struct WebPluginPage: View {
                 } description: {
                     Text(problem)
                 } actions: {
-                    Button("Try Again") { page.reload() }
+                    // A page that never opened has nothing to load again: it is opened.
+                    Button("Try Again") {
+                        if page.webView == nil { Task { await load() } } else { page.reload() }
+                    }
                 }
             } else if !page.isReady {
                 ProgressView().controlSize(.large)
@@ -328,12 +368,11 @@ private struct WebPluginPage: View {
         .themedBackground()
         .navigationTitle(page.title ?? title)
         .toolbarTitleDisplayMode(.inline)
-        .task(id: path) { load() }
+        .task(id: path) { await load() }
         .onDisappear { page.close() }
     }
 
-    private func load() {
-        guard let token = session.api.token else { return }
+    private func load() async {
         page.onNavigate = { path in
             // The page is taken at its word only as far as the app's own list of screens goes.
             switch HostedRoutes.destination(for: path, baked) {
@@ -347,10 +386,21 @@ private struct WebPluginPage: View {
             // own request is refused too, and signing out follows from that as it always does.
             // If it is not, the page only held a stale copy, and gets a fresh one.
             Task {
-                if (try? await session.api.currentUser()) != nil { load() }
+                guard (try? await session.api.currentUser()) != nil else { return }
+                session.hosted.refused()
+                await load()
             }
         }
-        page.open(path: path, instance: session.api.baseURL, token: token, user: session.user,
-                  siteName: session.siteName, routes: HostedRoutes.patterns(baked))
+        // The page signs in with a session the instance issues for it, not with the app's.
+        let setup = HostedWeb.Setup(instance: session.api.baseURL, user: session.user, routes: HostedRoutes.patterns(baked))
+        let token = await session.hosted.token()
+        // Gone while the instance was being asked: nothing is opened for nobody.
+        guard !Task.isCancelled else { return }
+        guard let token else {
+            page.fail("Couldn't sign this page in to \(session.api.host). Check your connection and try again.")
+            return
+        }
+        page.open(path: path, setup: setup, token: token, siteName: session.siteName)
+        if let view = page.webView { session.hosted.track(view, setup) }
     }
 }

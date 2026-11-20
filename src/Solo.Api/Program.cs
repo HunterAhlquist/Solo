@@ -88,6 +88,8 @@ authBuilder.AddScheme<AuthenticationSchemeOptions, BackgroundAuthenticationHandl
     AuthConstants.BackgroundScheme, null);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<HubTickets>();
+// What an app hands the web client it hosts, in place of its own session.
+builder.Services.AddSingleton<HostedSessions>();
 if (!string.IsNullOrEmpty(authority))
 {
     authBuilder.AddJwtBearer(AuthConstants.BearerScheme, options =>

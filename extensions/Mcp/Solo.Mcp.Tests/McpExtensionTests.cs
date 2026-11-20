@@ -128,6 +128,30 @@ public sealed class McpExtensionTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     /// <summary>
+    /// Nor can what core hands a page an app hosts: a stand-in for a session
+    /// that lasts an hour and can't be renewed. Turned into an MCP token it
+    /// would be a credential that lasts, bought with one made not to. The
+    /// session it stands for manages tokens as ever.
+    /// </summary>
+    [SkippableFact]
+    public async Task A_hosted_session_cannot_manage_tokens()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var session = await _admin.PostJson<JsonObject>("/api/auth/sessions", new { description = "app" });
+        var app = McpClient(session["token"]!.GetValue<string>());
+        var hosted = await app.PostJson<JsonObject>("/api/auth/sessions/hosted", new { });
+        var page = McpClient(hosted["token"]!.GetValue<string>());
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await page.PostAsJsonAsync(Tokens, new { }, TestClients.Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await page.GetAsync(Tokens)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await page.DeleteAsync($"{Tokens}/current")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await app.GetAsync(Tokens)).StatusCode);
+    }
+
+    /// <summary>
     /// Nor any other credential. A token that could mint a session would
     /// outlive its own revocation, and a session can mint a token — so the two
     /// would renew each other forever.

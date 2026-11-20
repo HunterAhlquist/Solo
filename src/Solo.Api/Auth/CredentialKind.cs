@@ -19,6 +19,21 @@ public static class CredentialKind
     public static bool IsProviderSignIn(this ClaimsPrincipal user) =>
         user.Identity?.AuthenticationType == AuthConstants.OidcAuthenticationType;
 
+    /// <summary>
+    /// A session itself, from an app's header or the web app's cookie: not a
+    /// provider sign-in, and not something issued on a session's behalf.
+    /// </summary>
+    public static bool IsSession(this ClaimsPrincipal user) =>
+        user.Identity?.AuthenticationType == AuthConstants.SessionScheme;
+
+    /// <summary>
+    /// What an app hands a page it hosts (<see cref="HostedSessions"/>). Not a
+    /// Solo sign-in, deliberately: it is admitted by name where a page needs
+    /// it, and nowhere credentials are minted or managed.
+    /// </summary>
+    public static bool IsHostedSession(this ClaimsPrincipal user) =>
+        user.Identity?.AuthenticationType == AuthConstants.HostedAuthenticationType;
+
     /// <summary>A provider sign-in or a Solo session: the credentials core itself trusts or issues.</summary>
     public static bool IsSoloSignIn(this ClaimsPrincipal user) =>
         user.IsProviderSignIn() || user.Identity?.AuthenticationType == AuthConstants.SessionScheme;

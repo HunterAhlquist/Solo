@@ -277,12 +277,22 @@ public sealed class McpTokensController(McpDbContext db, ISoloQuery query, McpUs
     /// Refuses management of credentials by a credential.
     /// </summary>
     /// <remarks>
-    /// Core applies the same rule to session tokens minting sessions, for the
+    /// <para>Core applies the same rule to session tokens minting sessions, for the
     /// same reason: a leaked MCP token that could mint its own replacement would
-    /// survive every revocation its owner performs.
+    /// survive every revocation its owner performs.</para>
+    ///
+    /// <para>Asked the other way round as well: only somebody signed in manages
+    /// tokens, with the provider's own credential or a Solo session. Core issues
+    /// lesser credentials on a session's behalf — the short-lived one an app
+    /// hands a page it hosts — and one of those turned into an MCP token would
+    /// be a credential that lasts, bought with one that was made not to. The two
+    /// kinds are named by the authentication type core gives them, which the
+    /// contract doesn't carry; a kind core adds later is refused until it is
+    /// named here.</para>
     /// </remarks>
     private ObjectResult? CredentialSelfService() =>
-        User.HasClaim(c => c.Type == McpAuthentication.TokenIdClaim)
+        User.HasClaim(c => c.Type == McpAuthentication.TokenIdClaim) ||
+        User.Identity?.AuthenticationType is not ("SoloOidc" or "SoloSession")
             ? Problem(
                 statusCode: StatusCodes.Status403Forbidden,
                 title: "MCP tokens cannot manage tokens",

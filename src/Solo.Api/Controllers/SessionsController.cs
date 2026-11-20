@@ -52,6 +52,29 @@ public sealed class SessionsController : ApiControllerBase
     }
 
     /// <summary>
+    /// A short-lived stand-in for the caller's session, for an app to hand the
+    /// web client it shows in a web view of its own (<see cref="HostedSessions"/>).
+    /// </summary>
+    /// <remarks>
+    /// Only a session buys one: the app's own, in its header. Not a provider
+    /// sign-in, which has no session for it to stand for, and not another of
+    /// these, or a page could go on renewing what it was handed. Limited as
+    /// the other endpoints that issue credentials are.
+    /// </remarks>
+    [HttpPost("hosted")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public ActionResult<HostedSessionDto> CreateHosted([FromServices] HostedSessions hosted)
+    {
+        if (!User.IsSession() || CurrentSessionId() is not { } sessionId)
+        {
+            return Forbid();
+        }
+
+        var (token, expiresAt) = hosted.Mint(sessionId);
+        return new HostedSessionDto(token, expiresAt);
+    }
+
+    /// <summary>
     /// The web app's exchange: the same session, set as a cookie the page's
     /// scripts can't read (see <see cref="SessionCookie"/>), and only the
     /// profile in the body. <paramref name="persistent"/> is "stay signed in":
@@ -203,3 +226,10 @@ public sealed class SessionsController : ApiControllerBase
         title: "Sign in to manage devices",
         detail: "Signed-in devices can only be managed from Solo itself, in a browser or the desktop app.");
 }
+
+/// <summary>
+/// A hosted session and when it ends, so the app can ask for the next one
+/// ahead of time. Only an app's native code reads it, so it lives here rather
+/// than in Solo.Shared, where any change moves the published extension contract.
+/// </summary>
+public sealed record HostedSessionDto(string Token, DateTimeOffset ExpiresAt);

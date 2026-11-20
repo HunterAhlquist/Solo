@@ -27,6 +27,7 @@ A variable name uses two underscores between its parts, for example `Auth__Clien
 | Variable | Default | Purpose |
 |---|---|---|
 | `Auth__SessionDays` | `30` | The number of days that a session lasts with no use. This applies to the desktop app and to browsers that sign in with Google. |
+| `Auth__HostedSessionMinutes` | `60` | The number of minutes that a page shown inside the app for iPhone, iPad and Mac stays signed in before the app gives it a new sign-in. |
 | `Auth__DesktopRedirect` | `false` | Google only. The desktop app goes directly to Google's sign-in, in one window. See [Desktop sign-in with Google](#desktop-sign-in-with-google). |
 | `Database__AutoMigrate` | `true` | Apply database migrations at startup. |
 | `Email__Smtp__Password` | None | The SMTP password. When you set it, Solo uses it instead of the password in [Admin settings](admin-settings.md#email). |

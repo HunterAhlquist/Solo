@@ -1447,3 +1447,42 @@ private func symbolExists(_ name: String) -> Bool {
         #expect(!RedirectGuard.staysHome(from: URL(string: "https://solo.example.com"), to: nil))
     }
 }
+
+/// What a page the app hosts signs in with is the instance's to issue; when to ask for
+/// the next, and what to do with an instance that has none to give, is the app's.
+@Suite struct HostedCredentialTests {
+    @Test func anInstanceWithoutThemIsToldFromOneThatRefused() {
+        // No such address: an instance from before them, whose pages get the app's session as before.
+        #expect(HostedCredential.isMissing(status: 404))
+        #expect(HostedCredential.isMissing(status: 405))
+        // Anything else is an answer, and the app's session is not what follows from it.
+        for status in [400, 401, 403, 429, 500, 503] {
+            #expect(!HostedCredential.isMissing(status: status))
+        }
+    }
+
+    @Test func theNextIsAskedForBeforeTheLastEnds() {
+        #expect(HostedCredential.renewAfter(lifetime: 3600) == 2700)
+        // However short one is, the instance is not asked more than a few times a minute.
+        #expect(HostedCredential.renewAfter(lifetime: 12) == 20)
+
+        let issued = Date(timeIntervalSinceReferenceDate: 0)
+        let ends = issued.addingTimeInterval(3600)
+        #expect(HostedCredential.worthHanding(expiresAt: ends, issued: issued, now: issued.addingTimeInterval(3000)))
+        // In its last two minutes it is not handed to a page that is only now opening.
+        #expect(!HostedCredential.worthHanding(expiresAt: ends, issued: issued, now: issued.addingTimeInterval(3500)))
+        #expect(!HostedCredential.worthHanding(expiresAt: ends, issued: issued, now: issued.addingTimeInterval(4000)))
+        // A short one is judged by its own length, or it would never be worth handing.
+        let brief = issued.addingTimeInterval(60)
+        #expect(HostedCredential.worthHanding(expiresAt: brief, issued: issued, now: issued.addingTimeInterval(30)))
+        #expect(!HostedCredential.worthHanding(expiresAt: brief, issued: issued, now: issued.addingTimeInterval(50)))
+    }
+
+    @Test func whatTheInstanceIssuesIsRead() throws {
+        let grant = try SoloJSON.decoder.decode(HostedCredential.Grant.self,
+            from: Data(#"{"token":"solo_hosted_abc","expiresAt":"2026-11-20T12:00:00.1234567+00:00"}"#.utf8))
+        #expect(grant.token == "solo_hosted_abc")
+        #expect(abs(grant.expiresAt.timeIntervalSince1970 - 1795176000.123) < 0.01)
+    }
+}
+

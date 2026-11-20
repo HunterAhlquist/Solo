@@ -20,6 +20,7 @@ with its version in parentheses).
 - Inviting someone to a project emails them a link to the instance, when email is on. Pending members get a resend button.
 - Each person gets an email digest: daily or weekly at the hour they pick, or as it happens, batched every 15 minutes. It lists overdue work, work due within 2 weeks with the earliest deadline first, and work recently assigned to them. Mail apps can unsubscribe in one click. People can now pick their time zone in **Notifications**.
 - The web client no longer loads `js/dev-desktop.js`, a local testing shim that was committed by mistake. It did nothing unless a browser had opted in through local storage.
+- A page that the app for iPhone, iPad and Mac shows from the web client no longer signs in with the app's own session. The app asks the instance for a stand-in (`POST api/auth/sessions/hosted`) that lasts an hour (`Auth__HostedSessionMinutes`), cannot be renewed or turned into any other credential, does not appear among signed-in devices, and stops working when the app's session is revoked or expires. The app replaces it before it ends.
 - The web client can be shown inside an app that hosts it in a web view of its own: it leaves out its bars and navigation, signs in with the session the app hands it, and passes a link to a screen the app has back to the app. For such an app it can also run extensions' contributions out of sight and describe the ones built from the kit as data — and what they add to a task's menu, and an extension's whole page when that is built from the kit — so that the app can draw them itself, and it tells the app when one of them opens a dialog or says something in a snackbar. Nothing changes in a browser or in the desktop app.
 - Notifications have a short title, such as "Alex assigned you a task" or "GAME-SP-12 is due in 1 week", and a line under it with more, so a phone's banner no longer cuts them off. The wording comes from a built-in set of lines, some playful, picked at random for an assignment and by the reminder itself for a deadline. The bell, browser and desktop notifications and the email digest show the same text, and notifications you already have keep theirs. The digest's plain-text version puts that line after the title, with the link on its own line.
 - A project's owners can create, close, reopen and delete its boards, not only a super admin. Add board appears in the sidebar for each project you own.
@@ -43,8 +44,9 @@ with its version in parentheses).
 
 ### Extensions
 
-#### MCP Server (1.6.5)
+#### MCP Server (1.6.6)
 - Rebuilt on contract 1.17.0.
+- Only someone signed in to Solo can generate, rotate or revoke an MCP token. A lesser credential that Solo issues for a session, such as the short-lived one an app gives a page it shows, is refused.
 
 #### Roadmaps (1.10.3)
 - Rebuilt on contract 1.17.0.

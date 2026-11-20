@@ -24,12 +24,15 @@ public sealed class HubTicketController : ApiControllerBase
         [FromServices] HubTickets tickets,
         [FromServices] CurrentUserAccessor currentUser)
     {
-        if (!User.IsSoloSignIn() || currentUser.User is not { } user)
+        // A page an app hosts is live as any other is. Its connection is the
+        // session's it stands for, and is dropped when that session is revoked.
+        if (!(User.IsSoloSignIn() || User.IsHostedSession()) || currentUser.User is not { } user)
         {
             return Forbid();
         }
 
-        var sessionId = Guid.TryParse(User.FindFirst(AuthConstants.SessionIdClaim)?.Value, out var id)
+        var sessionClaim = User.FindFirst(AuthConstants.SessionIdClaim) ?? User.FindFirst(AuthConstants.HostedParentClaim);
+        var sessionId = Guid.TryParse(sessionClaim?.Value, out var id)
             ? id
             : (Guid?)null;
         return tickets.Issue(new HubTickets.Holder(user.Issuer, user.Subject, user.Email, user.DisplayName, sessionId));

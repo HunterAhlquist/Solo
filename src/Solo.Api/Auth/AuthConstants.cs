@@ -29,6 +29,20 @@ public static class AuthConstants
     /// <summary>Claim carrying the AuthSession id on session-authenticated principals.</summary>
     public const string SessionIdClaim = "solo:session";
 
+    /// <summary>
+    /// <c>AuthenticationType</c> of an identity built from a hosted session
+    /// (<see cref="HostedSessions"/>): the session scheme validated it, but it
+    /// is not a session, and <see cref="CredentialKind"/> keeps the two apart.
+    /// </summary>
+    public const string HostedAuthenticationType = "SoloHosted";
+
+    /// <summary>
+    /// The session a hosted session stands for. Its own claim and not
+    /// <see cref="SessionIdClaim"/>: what acts on "the caller's session"
+    /// (revoking it, naming it as the current one) must not find one here.
+    /// </summary>
+    public const string HostedParentClaim = "solo:hosted-parent";
+
     public const string SetupScheme = "Setup";
 
     public const string SetupAdminRole = "SetupAdmin";

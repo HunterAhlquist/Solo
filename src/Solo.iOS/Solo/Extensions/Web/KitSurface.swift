@@ -142,6 +142,8 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     @ObservationIgnored private var boxes: [String: KitBox] = [:]
     @ObservationIgnored private var origin: URL?
     @ObservationIgnored private var restarts = 0
+    /// Counts starts, so one that was waiting on the instance knows whether it is still the latest.
+    @ObservationIgnored private var starts = 0
     #if DEBUG
     /// Simulator measurement: when things happened, and how much was sent. Written to the
     /// app's documents after every message, for a script to read.
@@ -252,13 +254,34 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
     }
 
     private func start() {
-        guard state == .idle, worthStarting, let session, let token = session.api.token else { return }
+        guard state == .idle, worthStarting, let session else { return }
+        state = .starting
+        #if DEBUG
+        startedAt = Date()
+        #endif
+        // The page signs in with a session the instance issues for it (`HostedCredential`), so
+        // it is asked for first. Stopped or started again meanwhile, this start is not the one.
+        starts += 1
+        let mine = starts
+        Task { [weak self] in
+            let token = await session.hosted.token()
+            guard let self, self.starts == mine, self.state == .starting, self.webView == nil else { return }
+            guard let token else {
+                // The instance couldn't be asked. Whatever next asks for a place tries again.
+                self.state = .idle
+                return
+            }
+            self.open(session, with: token)
+        }
+    }
+
+    private func open(_ session: Session, with token: String) {
         let instance = session.api.baseURL
         let baked = HostedRoutes.Baked(roadmap: session.extensions.hasRoadmap, designDocs: session.extensions.hasDesignDocs,
                                        mcp: session.extensions.hasMcp)
-        guard let configuration = HostedWeb.configuration(
-            instance: instance, token: token, user: session.user, routes: HostedRoutes.patterns(baked),
-            baked: ExtensionCatalog.bakedIds.sorted(), listener: self) else {
+        let setup = HostedWeb.Setup(instance: instance, user: session.user, routes: HostedRoutes.patterns(baked),
+                                    baked: ExtensionCatalog.bakedIds.sorted())
+        guard let configuration = HostedWeb.configuration(setup, token: token, listener: self) else {
             state = .failed
             return
         }
@@ -274,9 +297,10 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
         #endif
         origin = instance
         webView = view
-        state = .starting
+        session.hosted.track(view, setup)
         #if DEBUG
-        startedAt = Date()
+        // Which it was handed: the instance's stand-in, or, on an instance without them, the app's own.
+        record("credential", token.hasPrefix("solo_hosted_") ? "hosted" : "session")
         #endif
         view.load(URLRequest(url: instance.appending(path: "kit-surface")))
         // A page that loads and then never says it is up — a web client that could not start —
@@ -416,6 +440,7 @@ final class KitSurfaceHost: NSObject, WKScriptMessageHandler, WKNavigationDelega
             Task { [weak self] in
                 guard let self, let session = self.session else { return }
                 if (try? await session.api.currentUser()) != nil, !self.mounts.isEmpty {
+                    session.hosted.refused()
                     self.stop()
                     self.start()
                 }

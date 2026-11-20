@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
+using Solo.Api.Controllers;
 using Solo.Data;
 using Solo.Shared.Dtos;
 using Solo.Shared.Hubs;
@@ -175,6 +176,149 @@ public sealed class SessionsApiTests(PostgresFixture postgres) : IAsyncLifetime
         using var client = WithSessionToken(session.Token);
         var response = await client.GetAsync("/api/users/me");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    // ------------------------------------------------------------------
+    // Hosted sessions: what an app hands the web client it shows in a web
+    // view of its own, in place of its own session (HostedSessions).
+    // ------------------------------------------------------------------
+
+    private static async Task<HostedSessionDto> HostedAsync(HttpClient app) =>
+        await app.PostJson<HostedSessionDto>("/api/auth/sessions/hosted", new { });
+
+    [SkippableFact]
+    public async Task HostedSession_IsThePerson_ForAnHour_AndStaysOffTheirListOfDevices()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var session = await CreateSessionAsync();
+        using var app = WithSessionToken(session.Token);
+        var hosted = await HostedAsync(app);
+
+        Assert.StartsWith("solo_hosted_", hosted.Token);
+        Assert.NotEqual(session.Token, hosted.Token);
+        Assert.InRange(hosted.ExpiresAt - DateTimeOffset.UtcNow, TimeSpan.FromMinutes(55), TimeSpan.FromMinutes(61));
+
+        using var page = WithSessionToken(hosted.Token);
+        Assert.Equal("admin@example.com", (await page.GetJson<UserDto>("/api/users/me")).Email);
+        // It is live, as any page is.
+        Assert.Equal(HttpStatusCode.OK, (await page.PostAsync("/api/auth/hub-ticket", null)).StatusCode);
+
+        // Nothing was added to what they are signed in on: it is not a device.
+        Assert.Single(await app.GetJson<List<AuthSessionDto>>("/api/auth/sessions"));
+    }
+
+    /// <summary>
+    /// A page is handed one so that what it holds is worth little. None of that is true
+    /// if it can turn it into something that lasts.
+    /// </summary>
+    [SkippableFact]
+    public async Task HostedSession_BuysNothing_AndManagesNothing()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var session = await CreateSessionAsync();
+        using var app = WithSessionToken(session.Token);
+        using var page = WithSessionToken((await HostedAsync(app)).Token);
+
+        // Not another of itself, a session, or a cookie.
+        Assert.Equal(HttpStatusCode.Forbidden, (await page.PostAsJsonAsync("/api/auth/sessions/hosted", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await page.PostAsJsonAsync("/api/auth/sessions", new { description = "kept" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await page.PostAsync("/api/auth/sessions/cookie", null)).StatusCode);
+
+        // Nor a look at, or a say over, what the person is signed in on.
+        Assert.Equal(HttpStatusCode.Forbidden, (await page.GetAsync("/api/auth/sessions")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await page.DeleteAsync("/api/auth/sessions")).StatusCode);
+
+        // Asked to end "its" session, it has none of its own to end: the app's goes on.
+        Assert.Equal(HttpStatusCode.NoContent, (await page.DeleteAsync("/api/auth/sessions/current")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await app.GetAsync("/api/users/me")).StatusCode);
+
+        // And only an app's session buys one at all: a provider sign-in has no session for it to stand for.
+        Assert.Equal(HttpStatusCode.Forbidden, (await _admin.PostAsJsonAsync("/api/auth/sessions/hosted", new { })).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task HostedSession_EndsWhenItSays_HoweverMuchItIsUsed()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        // A little over a second.
+        using var factory = _factory.WithWebHostBuilder(builder => builder.UseSetting("Auth:HostedSessionMinutes", "0.02"));
+        var session = await CreateSessionAsync();
+        using var app = factory.CreateClient();
+        app.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session.Token);
+        var hosted = await HostedAsync(app);
+        using var page = factory.CreateClient();
+        page.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", hosted.Token);
+
+        Assert.Equal(HttpStatusCode.OK, (await page.GetAsync("/api/users/me")).StatusCode);
+        await Task.Delay(TimeSpan.FromSeconds(1.6));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await page.GetAsync("/api/users/me")).StatusCode);
+
+        // The app's own session is as it was, and buys the next one.
+        using var next = factory.CreateClient();
+        next.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await HostedAsync(app)).Token);
+        Assert.Equal(HttpStatusCode.OK, (await next.GetAsync("/api/users/me")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task HostedSession_DiesWithTheSessionItStandsFor_AndDoesNotKeepItAlive()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var session = await CreateSessionAsync();
+        using var app = WithSessionToken(session.Token);
+        using var page = WithSessionToken((await HostedAsync(app)).Token);
+        var options = new DbContextOptionsBuilder<SoloDbContext>().UseNpgsql(_connectionString).Options;
+
+        // Used long after the session last was, it moves neither of the session's dates:
+        // a page left running doesn't hold a session open that nobody else is using.
+        await using (var db = new SoloDbContext(options))
+        {
+            await db.AuthSessions.ExecuteUpdateAsync(u => u
+                .SetProperty(s => s.LastUsedAt, DateTimeOffset.UtcNow.AddHours(-5))
+                .SetProperty(s => s.ExpiresAt, DateTimeOffset.UtcNow.AddHours(1)));
+        }
+        Assert.Equal(HttpStatusCode.OK, (await page.GetAsync("/api/users/me")).StatusCode);
+        await using (var db = new SoloDbContext(options))
+        {
+            var row = await db.AuthSessions.AsNoTracking().SingleAsync();
+            Assert.True(row.LastUsedAt < DateTimeOffset.UtcNow.AddHours(-4));
+            Assert.True(row.ExpiresAt < DateTimeOffset.UtcNow.AddHours(2));
+        }
+
+        // The session expires: so does what stood for it.
+        await using (var db = new SoloDbContext(options))
+        {
+            await db.AuthSessions.ExecuteUpdateAsync(u => u.SetProperty(s => s.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
+        }
+        Assert.Equal(HttpStatusCode.Unauthorized, (await page.GetAsync("/api/users/me")).StatusCode);
+
+        // The session is revoked: the same.
+        var other = await CreateSessionAsync();
+        using var otherApp = WithSessionToken(other.Token);
+        using var otherPage = WithSessionToken((await HostedAsync(otherApp)).Token);
+        Assert.Equal(HttpStatusCode.OK, (await otherPage.GetAsync("/api/users/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await otherApp.DeleteAsync("/api/auth/sessions/current")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await otherPage.GetAsync("/api/users/me")).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task HostedSession_ThatIsNotOurs_IsRefused()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        var session = await CreateSessionAsync();
+        using var app = WithSessionToken(session.Token);
+        var hosted = (await HostedAsync(app)).Token;
+
+        // Made up, cut short, or changed by a character.
+        foreach (var token in new[] { "solo_hosted_", "solo_hosted_not-a-token", hosted[..^6], hosted[..^1] + (hosted[^1] == 'A' ? 'B' : 'A') })
+        {
+            using var page = WithSessionToken(token);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await page.GetAsync("/api/users/me")).StatusCode);
+        }
     }
 
     [SkippableFact]
