@@ -782,6 +782,16 @@ private extension Route {
 
     /// The bars are the icon's glass: the one in front is seen through most, and each is a
     /// fade from a lighter colour to a deeper one.
+    /// A stage's view is larger than the room its models are fitted to, and its camera is
+    /// opened wider to match, so the models stay the size they were.
+    @Test func aStageSeenWiderShowsWhatItDidAtTheSameSize() {
+        #expect(abs(Stage.fieldOfView(28, grownBy: 1) - 28) < 0.0001)
+        // Twice as tall a view sees twice as much at any distance.
+        let wider = Stage.fieldOfView(28, grownBy: 2)
+        #expect(abs(tan(wider * .pi / 360) - 2 * tan(28 * .pi / 360)) < 0.0001)
+        #expect(wider > 28 && wider < 56)
+    }
+
     @Test func theLogosBarsAreSeenThroughAsTheIconsAre() {
         #expect(SoloLogo.bars.map(\.name) == ["BarFront", "BarMiddle", "BarBack"])
         for (near, far) in zip(SoloLogo.bars, SoloLogo.bars.dropFirst()) {

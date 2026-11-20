@@ -107,6 +107,8 @@ private struct OnboardingPages: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition($position)
         .scrollIndicators(.hidden)
+        // A stage draws past its room, up under the status bar among other places.
+        .scrollClipDisabled()
         // The buttons are the way from one to the next: there is nothing to swipe back to
         // from a screen that has just been told there is an instance.
         .scrollDisabled(true)
@@ -230,6 +232,12 @@ private struct OnboardingPage<Stage: View, Words: View, Actions: View>: View {
     var body: some View {
         GeometryReader { geometry in
             let sideways = geometry.size.height < 520 && geometry.size.width > geometry.size.height
+            // How far it is from the stage's room to the edge of the screen: to the side, and
+            // above. The stage draws that far past its room, so nothing pulled toward an
+            // edge is cut off short of it.
+            let inset = geometry.safeAreaInsets
+            let side = sideways ? Self.margin : (geometry.size.width - min(geometry.size.width - 2 * Self.margin, Self.widest)) / 2
+            let bleed = CGSize(width: side + max(inset.leading, inset.trailing), height: Self.top + inset.top)
             Group {
                 if sideways {
                     HStack(spacing: 20) {
@@ -241,18 +249,24 @@ private struct OnboardingPage<Stage: View, Words: View, Actions: View>: View {
                 } else {
                     VStack(spacing: 20) {
                         stage
-                            .frame(maxWidth: 720, maxHeight: .infinity)
+                            .frame(maxWidth: Self.widest, maxHeight: .infinity)
                         reading(spacing: 24)
                             .frame(maxWidth: 460)
                     }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 12)
+            .padding(.horizontal, Self.margin)
+            .padding(.top, Self.top)
             .padding(.bottom, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.stageBleed, bleed)
         }
     }
+
+    private static var margin: CGFloat { 24 }
+    private static var top: CGFloat { 12 }
+    /// The widest the stage's room is, however wide the screen.
+    private static var widest: CGFloat { 720 }
 
     /// The words give way before the buttons do: on a small screen it is the text that scrolls.
     private func reading(spacing: CGFloat) -> some View {

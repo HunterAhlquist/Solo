@@ -317,6 +317,13 @@ enum Stage {
         Float(visibleHeight(extent: extent, view: view) / (2 * tan(degrees * .pi / 360)))
     }
 
+    /// The angle a camera needs, top to bottom, to see `grown` times as much as it does at
+    /// `degrees` from where it stands. A view made taller by that much and given this angle
+    /// shows what it showed, the same size and in the same place, with more round it.
+    nonisolated static func fieldOfView(_ degrees: Double, grownBy grown: Double) -> Double {
+        2 * atan(tan(degrees * .pi / 360) * grown) * 180 / .pi
+    }
+
     /// Where a point of the stage at the depth of its middle lands in the view. What is
     /// drawn flat with a stage — an arrow from one model to another — is placed by this.
     nonisolated static func point(_ place: CGPoint, extent: CGSize, view: CGSize) -> CGPoint {
@@ -454,7 +461,19 @@ private final class StageRig {
     }
 }
 
+extension EnvironmentValues {
+    /// How far past the room it is laid out in a stage draws, to each side and above and
+    /// below: see `StageView`.
+    @Entry var stageBleed = CGSize.zero
+}
+
 /// A stage of models: built once, framed to fit, and its pieces draggable.
+///
+/// The models are framed to fit the room the stage is given in the layout, and the view
+/// they are drawn in is larger than that room by `stageBleed`, the same each side and the
+/// same above and below. A piece can be pulled out past where the layout ends, and a view
+/// that stopped there cut it off at a line with nothing on screen to explain it; on a
+/// phone that line was a finger's width inside the edge of the glass.
 struct StageView: View {
     var scene: StageScene
     /// Called once the stage is set and has something to show.
@@ -462,6 +481,7 @@ struct StageView: View {
 
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.stageBleed) private var bleed
     @State private var rig = StageRig()
     @State private var held: Entity?
 
@@ -469,7 +489,12 @@ struct StageView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let distance = Stage.cameraDistance(extent: scene.extent, view: geometry.size, fieldOfView: Self.fieldOfView)
+            // The camera stands where the room it was given says, and is opened wider by as
+            // much as the view is taller than that room: what was in view is where it was.
+            let room = geometry.size
+            let distance = Stage.cameraDistance(extent: scene.extent, view: room, fieldOfView: Self.fieldOfView)
+            let full = CGSize(width: room.width + 2 * bleed.width, height: room.height + 2 * bleed.height)
+            let angle = Float(Stage.fieldOfView(Self.fieldOfView, grownBy: full.height / max(room.height, 1)))
             let palette = StagePalette(dark: scheme == .dark)
             RealityView { content in
                 StageSystem.registerSystem()
@@ -506,11 +531,12 @@ struct StageView: View {
                     }
                 }
 
-                rig.camera.camera.fieldOfViewInDegrees = Float(Self.fieldOfView)
+                rig.camera.camera.fieldOfViewInDegrees = angle
                 rig.camera.position = [scene.middle.x, scene.middle.y, distance]
                 content.add(rig.camera)
                 ready()
             } update: { _ in
+                rig.camera.camera.fieldOfViewInDegrees = angle
                 rig.camera.position = [scene.middle.x, scene.middle.y, distance]
                 // Another scheme is the same model in other colours. The stage is not made
                 // again for it: the system changes the scheme and back as the app leaves the
@@ -538,6 +564,9 @@ struct StageView: View {
                         (held ?? value.entity.piece)?.components[SpringBack.self]?.held = nil
                         held = nil
                     })
+            // Larger than its room, about the room's own middle.
+            .frame(width: full.width, height: full.height)
+            .position(x: room.width / 2, y: room.height / 2)
         }
         .accessibilityHidden(true)
     }
