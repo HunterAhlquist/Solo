@@ -123,7 +123,6 @@ struct NotificationSettingsView: View {
 
     @State private var preferences: NotificationPreferences?
     @State private var permission: UNAuthorizationStatus = .notDetermined
-    @State private var zones: [String] = []
     @State private var pickingZone = false
     @State private var failed = false
     @State private var busy = false
@@ -240,10 +239,9 @@ struct NotificationSettingsView: View {
             } catch {
                 failed = true
             }
-            zones = (try? await session.api.timeZones()) ?? []
         }
         .sheet(isPresented: $pickingZone) {
-            TimeZonePicker(zones: zones, selection: preferences?.timeZone) { zone in
+            TimeZonePicker(selection: preferences?.timeZone) { zone in
                 guard var updated = preferences else { return }
                 updated.timeZone = zone
                 save(updated)
@@ -279,24 +277,52 @@ struct NotificationSettingsView: View {
     }
 }
 
+/// The time zones the instance knows, to pick one from. It asks for them itself: handed
+/// them by the page under it, it was shown the list as it stood before it had arrived —
+/// the page kept it only for this sheet and drew nothing from it, so nothing told the page
+/// to hand the sheet the list once there was one — and opened empty, with nothing to pick
+/// and nothing for a search to find.
 private struct TimeZonePicker: View {
+    @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
     @Environment(\.theme) private var theme
-    var zones: [String]
     var selection: String?
     var onPick: (String) -> Void
+    @State private var zones: [String]?
+    @State private var failed = false
     @State private var query = ""
+
+    /// A zone is written with underscores and searched for with spaces.
+    private var found: [String] {
+        let wanted = query.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " ", with: "_")
+        guard let zones, !wanted.isEmpty else { return zones ?? [] }
+        return zones.filter { $0.localizedCaseInsensitiveContains(wanted) }
+    }
 
     var body: some View {
         NavigationStack {
             GroupedList {
-                let device = TimeZone.current.identifier
-                if query.isEmpty, zones.contains(device) {
-                    Section("This device") { row(device) }
-                }
-                Section {
-                    ForEach(zones.filter { query.isEmpty || $0.localizedCaseInsensitiveContains(query.replacingOccurrences(of: " ", with: "_")) },
-                            id: \.self) { row($0) }
+                if let zones {
+                    let device = TimeZone.current.identifier
+                    if query.isEmpty, zones.contains(device) {
+                        Section("This device") { row(device) }
+                    }
+                    Section {
+                        ForEach(found, id: \.self) { row($0) }
+                        if found.isEmpty {
+                            Text("No time zone matches “\(query)”.")
+                                .foregroundStyle(theme.textSecondary)
+                                .themedRow()
+                        }
+                    }
+                } else if failed {
+                    Section {
+                        Text("Couldn't load the time zones. Try again in a moment.")
+                            .foregroundStyle(theme.error)
+                    }
+                    .themedRow()
+                } else {
+                    Section { ProgressView() }.themedRow()
                 }
             }
             .themedList()
@@ -305,6 +331,13 @@ private struct TimeZonePicker: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+            .task {
+                do {
+                    zones = try await session.api.timeZones()
+                } catch {
+                    failed = true
+                }
             }
         }
     }
@@ -321,6 +354,9 @@ private struct TimeZonePicker: View {
                     Image(systemName: "checkmark").foregroundStyle(theme.primary)
                 }
             }
+            // The whole of the row, on a Mac too, where a button is as wide as what it says.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
         }
         .themedRow()
     }
