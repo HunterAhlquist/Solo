@@ -209,6 +209,7 @@ struct NoteMediaStack: View {
                alignment: .topLeading)
         .fullScreenCover(item: $viewing) { start in
             NoteMediaViewer(entries: entries, context: context, current: start.id, zoom: zoom) { front = $0 }
+                .withoutBackdropPicture()
         }
     }
 }
@@ -320,7 +321,7 @@ struct NoteMediaViewer: View {
             photo = nil
             Task { await replace(with: item) }
         }
-        .fullScreenCover(item: $editing, onDismiss: { context.store.sketchChanged() }) { SketchEditor(model: $0) }
+        .fullScreenCover(item: $editing, onDismiss: { context.store.sketchChanged() }) { SketchEditor(model: $0).withoutBackdropPicture() }
     }
 
     #if os(macOS)

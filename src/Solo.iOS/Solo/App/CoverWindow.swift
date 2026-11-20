@@ -62,6 +62,8 @@ struct CoverWindow: View {
         }
         .environment(model)
         .environment(model.themes)
+        // Beside the main window, not it: the theme's picture is the main window's alone.
+        .withoutBackdropPicture()
         .preferredColorScheme(model.themes.preference.colorScheme)
         .onDisappear {
             if let id { CoverCenter.shared.closed(id) }

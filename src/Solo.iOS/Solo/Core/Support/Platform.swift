@@ -544,28 +544,6 @@ extension View {
     }
 }
 
-extension View {
-    // An iPhone's sheet is the size the screen gives it. A Mac's is the size of what is in it,
-    // and what is in most of these is a list or a page of text, which is as small as it is
-    // let be: a sheet one line tall. So on a Mac a sheet is given room to start from.
-    //
-    // SwiftUI's own `sheet` takes an `onDismiss` too. A call that says none matches these
-    // more closely than it matches SwiftUI's, which would have to fill one in — so the app's
-    // sheets come through here without saying so, and SwiftUI's is reached by naming it.
-    func sheet<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
-        sheet(isPresented: isPresented, onDismiss: nil) { content().sheetSized() }
-    }
-
-    func sheet<Item: Identifiable, Content: View>(item: Binding<Item?>,
-                                                 @ViewBuilder content: @escaping (Item) -> Content) -> some View {
-        sheet(item: item, onDismiss: nil) { content($0).sheetSized() }
-    }
-
-    private func sheetSized() -> some View {
-        frame(minWidth: 540, minHeight: 480)
-    }
-}
-
 extension SearchFieldPlacement {
     /// A Mac's search field is in the window's toolbar and is always showing.
     enum DrawerDisplayMode { case automatic, always }

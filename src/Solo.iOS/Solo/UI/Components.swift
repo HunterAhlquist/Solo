@@ -26,11 +26,17 @@ struct CardBackground: ViewModifier {
 /// instance's accent as a faint wash at the top. The wash is what the glass
 /// above it picks up, and the only place the accent is painted large.
 ///
-/// Over that goes the theme's picture, where it has one for behind the app. Every page, and
-/// every sheet over a page, draws this view for itself at its own size, and the picture is
-/// one picture for the window: each draws the part of it that it is standing in front of.
-/// So it holds still while a page slides in or a panel opens beside one, and a sheet is a
-/// further pane over the same picture rather than a smaller copy of it.
+/// Over that goes the theme's picture, where it has one for behind the app. Every page draws
+/// this view for itself at its own size, and the picture is one picture for the window: each
+/// draws the part of it that it is standing in front of. So it holds still while a page
+/// slides in or a panel opens beside one.
+///
+/// The picture is the main window's alone (`Backdrop`). A cover, and on a Mac the windows
+/// that are not the main one — Settings, a sketch, a picture — draw the wash and no picture:
+/// what is beside the app is told from the app by being plain. A sheet draws nothing at all
+/// here, and stands on what the system gives one: on an iPhone or iPad a pane of glass,
+/// through which the page it rose over is still there, bent, and on a Mac the sheet's own
+/// plain ground.
 ///
 /// It is drawn at a quarter of its strength. Glass carries most of what is read here, but
 /// not all: a section's heading, a page's title and an empty page's one line sit straight
@@ -40,11 +46,18 @@ struct AppBackground: View {
     @Environment(\.theme) private var theme
     @Environment(ThemeStore.self) private var themes: ThemeStore?
     @Environment(\.backdropCanvas) private var canvas
+    @Environment(\.backdrop) private var backdrop
 
     /// How much of the picture shows: what `--solo-backdrop-strength` is on the web.
     private static let strength = 0.25
 
     var body: some View {
+        if backdrop != .none {
+            ground
+        }
+    }
+
+    private var ground: some View {
         ZStack {
             Color.groupedBackground
             LinearGradient(
@@ -52,7 +65,7 @@ struct AppBackground: View {
                 startPoint: .topLeading, endPoint: .bottom)
             RadialGradient(colors: [theme.primary.opacity(theme.isDark ? 0.10 : 0.07), .clear],
                            center: .bottomTrailing, startRadius: 0, endRadius: 520)
-            if let background = themes?.document?.background, let picture = themes?.backdrop(dark: theme.isDark) {
+            if backdrop == .pictured, let background = themes?.document?.background, let picture = themes?.backdrop(dark: theme.isDark) {
                 GeometryReader { proxy in
                     let own = proxy.frame(in: .global)
                     // Without a window to go by — a preview, a window of its own — it fills this.
@@ -71,6 +84,16 @@ struct AppBackground: View {
         .ignoresSafeArea()
         .accessibilityHidden(true)
     }
+}
+
+/// What a page draws behind itself (`AppBackground`), by where the page is.
+nonisolated enum Backdrop: Sendable {
+    /// The main window: the wash, and the theme's picture over it.
+    case pictured
+    /// A cover, or a window beside the main one: the wash alone.
+    case plain
+    /// A sheet: nothing, so what the system gives a sheet is its ground.
+    case none
 }
 
 /// A theme's picture laid out in the room it is given by the theme's `fit` and `position`,
@@ -116,6 +139,10 @@ extension EnvironmentValues {
     /// The size of the window a view is in, where the app's root has measured it.
     @Entry var backdropCanvas: CGSize?
 
+    /// What a page draws behind itself: the theme's picture in the main window, and less
+    /// in whatever is over it or beside it (`withoutBackdropPicture`, the app's `sheet`).
+    @Entry var backdrop = Backdrop.pictured
+
     /// Whether what stands beside a page — the app's sidebar, a design doc's tree — goes over
     /// it instead, taking no room from it. An iPad has room for both and the page is made
     /// narrower. A phone's screen wide enough to have such a pane at all — a folding one
@@ -133,6 +160,43 @@ extension EnvironmentValues {
 }
 
 extension View {
+    /// On what covers the app or is in a window beside it: a cover, Settings. Whatever is in
+    /// it draws its background without the theme's picture.
+    func withoutBackdropPicture() -> some View {
+        environment(\.backdrop, .plain)
+    }
+
+    // Every sheet in the app comes through one of these two, without saying so. SwiftUI's own
+    // `sheet` takes an `onDismiss` too; a call that says none matches these more closely than
+    // it matches SwiftUI's, which would have to fill one in. SwiftUI's is reached by naming it.
+    //
+    // What they do for a sheet. Its pages draw no background of their own, the theme's
+    // picture least of all, and not the wash either: a sheet stands on what the system
+    // gives one. On an iPhone and iPad that is a pane of glass, and a page that painted
+    // itself over it had a second copy of the app's background where the app, bent by the
+    // glass, should show through. On a Mac it is the sheet's own plain ground, and the sheet
+    // is given room to start from: an iPhone's sheet is the size the screen gives it, and a
+    // Mac's is the size of what is in it, which for a list or a page of text is one line tall.
+    func sheet<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
+        sheet(isPresented: isPresented, onDismiss: nil) { content().asSheet() }
+    }
+
+    func sheet<Item: Identifiable, Content: View>(item: Binding<Item?>,
+                                                 @ViewBuilder content: @escaping (Item) -> Content) -> some View {
+        sheet(item: item, onDismiss: nil) { content($0).asSheet() }
+    }
+
+    private func asSheet() -> some View {
+        #if os(macOS)
+        frame(minWidth: 540, minHeight: 480).environment(\.backdrop, .none)
+        #else
+        // Said outright: left to itself a sheet at its full height is given a solid ground,
+        // and only a shorter one the glass.
+        environment(\.backdrop, .none)
+            .presentationBackground { Color.clear.glassEffect(.regular, in: .rect).ignoresSafeArea() }
+        #endif
+    }
+
     func card(padding: CGFloat = 12, outline: Color? = nil, lineWidth: CGFloat = 1) -> some View {
         modifier(CardBackground(padding: padding, outline: outline, lineWidth: lineWidth))
     }

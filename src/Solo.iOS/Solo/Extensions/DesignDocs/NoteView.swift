@@ -170,7 +170,7 @@ struct NoteView: View {
             photo = nil
             Task { await upload(item) }
         }
-        .fullScreenCover(item: $newSketch, onDismiss: { store.sketchChanged() }) { SketchEditor(model: $0) }
+        .fullScreenCover(item: $newSketch, onDismiss: { store.sketchChanged() }) { SketchEditor(model: $0).withoutBackdropPicture() }
     }
 
     // MARK: Pictures
@@ -669,9 +669,9 @@ struct DocAttachmentsSheet: View {
             }
             .confirmation($confirmation)
             .fullScreenCover(item: $viewing) { image in
-                DocPictureLoader(image: image, store: store)
+                DocPictureLoader(image: image, store: store).withoutBackdropPicture()
             }
-            .fullScreenCover(item: $drawing) { SketchEditor(model: $0) }
+            .fullScreenCover(item: $drawing) { SketchEditor(model: $0).withoutBackdropPicture() }
         }
         .task { await load() }
     }
