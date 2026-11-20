@@ -10,6 +10,10 @@ import SwiftUI
 nonisolated enum HostingModels {
     static let extent = CGSize(width: 1.92, height: 1.84)
 
+    /// How far behind the face the models stand: it is below them and off to one side on
+    /// this screen, and from in front of them its light reaches their faces.
+    static let back: Float = 1.0
+
     static let server = CGPoint(x: -0.62, y: 0.2)
     static let cloud = CGPoint(x: 0.5, y: 0.62)
     static let laptop = CGPoint(x: 0.54, y: -0.52)
@@ -38,7 +42,7 @@ nonisolated enum HostingModels {
     /// The three models (`Models/Hosting.blend`), each one a piece. They keep the colours
     /// their file gave them, but for what is the app's accent — the server's lamps, what is
     /// typed on the laptop — and the cloud, which is drawn against a different sky by day.
-    @MainActor static let stage = StageScene(extent: extent, sway: 0) {
+    @MainActor static let stage = StageScene(extent: extent, sway: 0, back: back) {
         guard let model = await Stage.load("Hosting") else { return nil }
         Stage.piece("Server", in: model, drift: 0.01, rock: 0.2, phase: 0.6)
         Stage.piece("Cloud", in: model, drift: 0.02, rock: 0.16, phase: 2.4)

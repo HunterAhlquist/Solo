@@ -66,6 +66,9 @@ nonisolated struct GlowSource: Sendable {
     /// Its colour as light, and how strongly its glow is laid back over the frame.
     var colour: SIMD3<Float>
     var strength: Float
+    /// How much it lights the glass beside it. Apart from the glow's strength: in a light
+    /// room a lamp is seen to glow about as much as in a dark one, and lights far less.
+    var lamp: Float = 0
 }
 
 /// What the glass shader is handed. Laid out as its `Uniforms`.
@@ -83,6 +86,12 @@ nonisolated struct LensUniforms: Sendable {
     /// The box the glow covers on screen, and how strongly it is laid on.
     var glowWindow: SIMD4<Float>
     var glow: SIMD4<Float>
+    /// Where what glows is as a lamp, in the camera's space, and how far off its light is
+    /// down to half; then its colour, and how much the glass makes of it. The scene's own
+    /// lamp lights everything solid. The glass is this pass's, tint and all, so it is lit
+    /// here, by the same light from the same place.
+    var lamp: SIMD4<Float>
+    var lampColour: SIMD4<Float>
 
     static let room = 4
 }
@@ -95,6 +104,9 @@ nonisolated struct BloomUniforms: Sendable {
     var key: SIMD4<Float>
     /// One step of the blur, across or down.
     var step: SIMD4<Float>
+    /// The piece's own box within the frame. Only what is inside it glows: the piece now
+    /// lights what is beside it, and something lit as bright as the piece is not the piece.
+    var inner: SIMD4<Float>
 }
 
 /// Where the glass is now, and what glows. Written by the stage on the main actor each
@@ -140,6 +152,13 @@ nonisolated enum Lens {
     /// the mark on stage is one unit across, so they are the stage's units as they stand.
     static let depth: Float = 0.08515625
     static let strength: Float = 0.34546875
+
+    /// The lamp the glass is lit by, in widths of the piece that glows: how far in front of
+    /// the piece it is, how far off its light is at its full strength before it starts to
+    /// fall away, and how much the glass makes of it.
+    static let lampForward: Float = 1.2
+    static let lampReach: Float = 3.2
+    static let lampOnGlass: Float = 0.8
 
     /// What those come to on stage. The strength is how much nearer its own middle the
     /// glass shows everything behind it — a third nearer, so a third larger, the way a
@@ -285,7 +304,8 @@ nonisolated struct GlassPass: @unchecked Sendable {
         if let glow, let halo {
             // The part of the frame the piece is in, kept where it is the piece's colour and
             // made small; then blurred across and down, between two small pictures.
-            var bloom = BloomUniforms(window: halo, key: [glow.colour.x, glow.colour.y, glow.colour.z, 0.3], step: .zero)
+            var bloom = BloomUniforms(window: halo, key: [glow.colour.x, glow.colour.y, glow.colour.z, 0.3], step: .zero,
+                                      inner: Lens.window(of: glow.corners, projection: projection))
             encoder.setComputePipelineState(bright)
             encoder.setTexture(source, index: 0)
             encoder.setTexture(haze.0, index: 1)
@@ -303,9 +323,9 @@ nonisolated struct GlassPass: @unchecked Sendable {
             }
         }
 
-        let empty = LensShape(lensFromView: matrix_identity_float4x4, viewFromLens: matrix_identity_float4x4, shape: .zero,
+        let none = LensShape(lensFromView: matrix_identity_float4x4, viewFromLens: matrix_identity_float4x4, shape: .zero,
                               top: .zero, bottom: .zero, fade: .zero)
-        let filled = shapes + Array(repeating: empty, count: LensUniforms.room - shapes.count)
+        let filled = shapes + Array(repeating: none, count: LensUniforms.room - shapes.count)
         var uniforms = LensUniforms(
             lenses: (filled[0], filled[1], filled[2], filled[3]),
             frame: [Float(shapes.count), projection.columns.0.x, projection.columns.1.y, Lens.depth],
@@ -313,7 +333,17 @@ nonisolated struct GlassPass: @unchecked Sendable {
             depth: [projection.columns.2.z, projection.columns.3.z, 0, 0],
             origin: .zero,
             glowWindow: halo ?? .zero,
-            glow: [halo == nil ? 0 : glow?.strength ?? 0, 0, 0, 0])
+            glow: [halo == nil ? 0 : glow?.strength ?? 0, 0, 0, 0],
+            lamp: .zero,
+            lampColour: .zero)
+        if let glow, glow.lamp > 0, !glow.corners.isEmpty {
+            // In front of the piece by about its own width, which is where the scene's
+            // lamp is (`Guy.lampForward`): the camera looks down -z, so toward it is +z.
+            let centre = glow.corners.reduce(SIMD3<Float>.zero, +) / Float(glow.corners.count)
+            let width = (glow.corners.map(\.x).max() ?? 0) - (glow.corners.map(\.x).min() ?? 0)
+            uniforms.lamp = [centre.x, centre.y, centre.z + width * Lens.lampForward, width * Lens.lampReach]
+            uniforms.lampColour = [glow.colour.x, glow.colour.y, glow.colour.z, glow.lamp * Lens.lampOnGlass]
+        }
 
         encoder.setComputePipelineState(bend)
         encoder.setTexture(source, index: 0)
@@ -341,8 +371,8 @@ nonisolated struct GlassPass: @unchecked Sendable {
     using namespace metal;
 
     struct Lens { float4x4 lensFromView; float4x4 viewFromLens; float4 shape; float4 top; float4 bottom; float4 fade; float4 window; };
-    struct Uniforms { Lens lenses[4]; float4 frame; float4 bend; float4 depth; float4 origin; float4 glowWindow; float4 glow; };
-    struct Bloom { float4 window; float4 key; float4 step; };
+    struct Uniforms { Lens lenses[4]; float4 frame; float4 bend; float4 depth; float4 origin; float4 glowWindow; float4 glow; float4 lamp; float4 lampColour; };
+    struct Bloom { float4 window; float4 key; float4 step; float4 inner; };
 
     // How far a point is from the edge of a rounded rectangle about the origin: less than
     // nothing inside it.
@@ -416,6 +446,31 @@ nonisolated struct GlassPass: @unchecked Sendable {
             float along = clamp(dot(p, fade.xy) / fade.z + 0.5, 0.0, 1.0);
             float4 top = u.lenses[index].top;
             float3 tint = mix(u.lenses[index].bottom.rgb, top.rgb, along) + pull * pull * u.bend.y;
+
+            // Lit by what glows beside it. The face of the glass is brighter in its own
+            // colour toward the lamp; its rim takes the light in on the side that faces
+            // the lamp and lets a little of it out again at the far side, which is what
+            // light does in a slab of glass; and where the lamp is mirrored to the eye
+            // there is a glint of the lamp's own colour.
+            if (u.lampColour.w > 0) {
+                float3 here = (u.lenses[index].viewFromLens * float4(p, 0, 1)).xyz;
+                float3 toward = u.lamp.xyz - here;
+                float far = max(length(toward), 0.0001);
+                float3 aim = toward / far;
+                // As light falls off: by the square of how far it has come, and never
+                // more than it is at the distance it is given for.
+                float reaching = min(1.0, (u.lamp.w * u.lamp.w) / (far * far));
+                float3 normal = normalize((u.lenses[index].viewFromLens * float4(0, 0, 1, 0)).xyz);
+                float3 eyeward = normalize(-here);
+                if (dot(normal, eyeward) < 0) { normal = -normal; }
+                float facing = max(dot(normal, aim), 0.0);
+                float3 rimward = (u.lenses[index].viewFromLens * float4(outward(p, shape.xy, shape.z), 0, 0)).xyz;
+                float side = dot(normalize(rimward), aim);
+                float rim = pull * (max(side, 0.0) + 0.45 * max(-side, 0.0));
+                float glint = pow(max(dot(normal, normalize(aim + eyeward)), 0.0), 48.0);
+                tint += u.lampColour.rgb * u.lampColour.w * reaching * (tint * facing * 1.1 + rim * 0.6 + glint * 0.5);
+                tint = min(tint, float3(1.0));
+            }
             float share = top.a * cover;
             laid += through * share * float4(tint, 1);
             through *= 1 - share;
@@ -457,6 +512,7 @@ nonisolated struct GlassPass: @unchecked Sendable {
         for (int look = 0; look < 4; look++) {
             float2 nudge = float2(look % 2, look / 2) * 0.5 + 0.25;
             float2 uv = mix(b.window.xy, b.window.zw, (float2(at) + nudge) / size);
+            if (uv.x < b.inner.x || uv.y < b.inner.y || uv.x > b.inner.z || uv.y > b.inner.w) { continue; }
             float4 colour = source.sample(bordered, uv);
             if (colour.a < 0.01) { continue; }
             float3 own = colour.rgb / colour.a;

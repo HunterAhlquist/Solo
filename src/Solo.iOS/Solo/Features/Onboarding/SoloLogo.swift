@@ -26,7 +26,7 @@ nonisolated enum SoloLogo {
     }
 
     /// The view is centred down and to the right of the tile: the face is out that way.
-    @MainActor static let stage = StageScene(extent: CGSize(width: 1.5, height: 1.86), middle: [0.12, -0.1], load: {
+    @MainActor static let stage = StageScene(extent: CGSize(width: 1.5, height: 1.86), middle: [0.12, -0.1], back: back, load: {
         guard let model = await Stage.load("SoloLogo") else { return nil }
         for (index, name) in ["Tile", "BarBack", "BarMiddle", "BarFront"].enumerated() {
             Stage.piece(name, in: model, phase: Float(index) * 1.7)
@@ -58,6 +58,10 @@ nonisolated enum SoloLogo {
 
     /// The radius of a bar's corners in the model: the icon's, at the size the model is made.
     static let corner: Float = 0.089
+
+    /// How far behind the face the mark stands, so that the face is in front of it and
+    /// its light falls across the mark's front, the glass included.
+    static let back: Float = 1.4
 }
 
 /// The app's own icon: the one on the Home Screen or in the Dock, whichever build this is.

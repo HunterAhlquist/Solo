@@ -798,8 +798,8 @@ private extension Route {
     /// its own two structures come to; a field added on one side only would shift the rest.
     @Test func whatTheGlassPassIsHandedIsLaidOutAsItsShaderExpects() {
         #expect(MemoryLayout<LensShape>.stride == 2 * 64 + 5 * 16)
-        #expect(MemoryLayout<LensUniforms>.stride == LensUniforms.room * MemoryLayout<LensShape>.stride + 6 * 16)
-        #expect(MemoryLayout<BloomUniforms>.stride == 3 * 16)
+        #expect(MemoryLayout<LensUniforms>.stride == LensUniforms.room * MemoryLayout<LensShape>.stride + 8 * 16)
+        #expect(MemoryLayout<BloomUniforms>.stride == 4 * 16)
     }
 
     /// The pass works on the part of the frame the glass is in and no more, so the box it
@@ -857,6 +857,29 @@ private extension Route {
         // Behind it, the point just right of the line shows what is nearer the middle: black.
         #expect(after(114, 100).red < 40)
         #expect(after(125, 100).red > 215)
+    }
+
+    /// What gives light lights the glass beside it: brighter on the side toward it, and not
+    /// at all when it gives none.
+    @MainActor @Test func theGlassIsLitByWhatGlowsBesideIt() throws {
+        let frame = try #require(GlassFrame(width: 200, height: 200))
+        frame.fill { _, _ in (0, 0, 0, 255) }
+        // Grey glass in the middle of the view, the same colour all over.
+        let glass = GlassFrame.lens(half: [0.2, 0.2], top: [0.4, 0.4, 0.4, 1], bottom: [0.4, 0.4, 0.4, 1])
+        // Something off to the right of it and a little nearer the eye.
+        let corners = (0..<8).map { corner -> SIMD3<Float> in
+            [corner & 1 == 0 ? 0.3 : 0.5, corner & 2 == 0 ? -0.1 : 0.1, corner & 4 == 0 ? -3.8 : -3.6]
+        }
+        let dark = try #require(frame.run(lenses: [glass], glow: GlowSource(corners: corners, colour: [1, 1, 1], strength: 0)))
+        let lit = try #require(frame.run(lenses: [glass], glow: GlowSource(corners: corners, colour: [1, 1, 1], strength: 0, lamp: 1)))
+
+        // Unlit, the glass is its own colour from side to side.
+        #expect(abs(Int(dark(125, 100).red) - Int(dark(75, 100).red)) <= 2)
+        // Lit, all of it is brighter, and the side toward the light more than the far side.
+        #expect(Int(lit(75, 100).red) > Int(dark(75, 100).red) + 15)
+        #expect(Int(lit(125, 100).red) > Int(lit(75, 100).red) + 15)
+        // What isn't glass is not lit by this: the scene's own lamp sees to that.
+        #expect(lit(100, 10).red == dark(100, 10).red)
     }
 
     /// A piece that gives light has it laid round it, and only round it.

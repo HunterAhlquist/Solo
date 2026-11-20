@@ -225,6 +225,23 @@ enum Guy {
     /// How thick it is, in points of the drawing.
     nonisolated static let thickness: Float = 1.6
 
+    /// The face's lamp: how far toward the eye of the face it is, in the stage's units,
+    /// how far its light carries, and how bright it is.
+    nonisolated static let lampForward: Float = 0.5
+    nonisolated static let lampReach: Float = 4
+    nonisolated static let lampIntensity: Float = 110000
+
+    /// How much of that it gives by day. A lamp in a lit room adds little to what is
+    /// already there, and this one is the accent's colour by day: at its full strength it
+    /// laid that colour over everything beside it.
+    nonisolated static func lampShare(dark: Bool) -> Float { dark ? 1 : 0.3 }
+
+    /// What the lamp gives at its fullest in the colours it is wearing, kept with it: the
+    /// colours are set when the scheme changes, and how flat the face is every frame.
+    private struct LampLevel: Component {
+        var full: Float
+    }
+
     /// The face's size on a stage.
     static var size: CGSize {
         guard let bounds = sheet?.bounds else { return CGSize(width: 0.4, height: 0.3) }
@@ -287,6 +304,14 @@ enum Guy {
                 body.model = ModelComponent(mesh: mesh, materials: [SimpleMaterial()])
             }
             guy.addChild(body)
+            // The face gives light, and not only the look of it: a lamp goes with it, a
+            // little toward the eye, so that what stands beside the face is lit across its
+            // front and not only along the edge nearest.
+            let lamp = Entity()
+            lamp.name = "GuyLamp"
+            lamp.position = [0, 0, lampForward]
+            lamp.components.set(PointLightComponent(color: .white, intensity: 0, attenuationRadius: lampReach))
+            guy.addChild(lamp)
             root.addChild(guy)
             // One body through every expression: the box all of them fit in.
             let half = SIMD3(Float(size.width) / 2, Float(size.height) / 2, width / 12)
@@ -296,9 +321,13 @@ enum Guy {
             // Lit from inside: its own colour given off, with enough of the room's light
             // still on it to show it has sides.
             Stage.dress("GuyBody", in: model, Stage.material(colour(dark: palette.dark), roughness: 0.3, glow: 0.85))
+            let lamp = model.findEntity(named: "GuyLamp")
+            lamp?.components[PointLightComponent.self]?.color = colour(dark: palette.dark).platform
+            lamp?.components.set(LampLevel(full: lampIntensity * lampShare(dark: palette.dark)))
         }, glow: { palette in
             StageGlow(name: "Guy", colour: colour(dark: palette.dark),
-                      strength: look.hidden ? 0 : (palette.dark ? 0.5 : 0.55) * (1 - look.flat))
+                      strength: look.hidden ? 0 : (palette.dark ? 0.5 : 0.55) * (1 - look.flat),
+                      lamp: look.hidden ? 0 : lampShare(dark: palette.dark) * (1 - look.flat))
         }, refresh: { model in
             guard let sheet, let guy = model.findEntity(named: "Guy"), let body = model.findEntity(named: "GuyBody") as? ModelEntity,
                   let mesh = mesh(frame: frame(for: look.pose, in: sheet)) else { return }
@@ -313,6 +342,11 @@ enum Guy {
             guy.components[SpringBack.self]?.facing = look.tilt
             guy.components[SpringBack.self]?.rock = 0.1 * (1 - look.flat)
             guy.components[SpringBack.self]?.drift = 0.008 * (1 - look.flat)
+            // As a picture it lights nothing: the lamp goes down as it lies flat, and out with it.
+            if let lamp = model.findEntity(named: "GuyLamp") {
+                let full = lamp.components[LampLevel.self]?.full ?? 0
+                lamp.components[PointLightComponent.self]?.intensity = look.hidden ? 0 : full * (1 - look.flat)
+            }
         })
     }
 

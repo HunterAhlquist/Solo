@@ -363,6 +363,11 @@ struct StageScene {
     var middle: SIMD2<Float> = .zero
     /// How far the whole group turns from side to side as it idles, in degrees.
     var sway: Float = 7
+    /// How far behind the stage's own plane the group stands, in the stage's units. It is
+    /// made larger by as much as that makes it look smaller, so it takes up the place it
+    /// is given all the same; what changes is what is in front of what. A group that
+    /// stands back has the face before it, and is lit by it across its front.
+    var back: Float = 0
     /// The model, with its pieces made.
     var load: () async -> Entity?
     /// Its colours for a scheme. Called again when the scheme changes, on the same model.
@@ -382,6 +387,8 @@ nonisolated struct StageGlow: Sendable {
     var name: String
     var colour: CSSColor
     var strength: Float
+    /// How much it lights the glass beside it, from 0 for not at all: see `GlowSource.lamp`.
+    var lamp: Float = 0
 }
 
 /// A piece of glass: which object it is, how round its corners are, and its colour — a
@@ -548,13 +555,16 @@ struct StageGroup: Identifiable {
             let unit = room.height / Stage.visibleHeight(extent: group.scene.extent, view: room.size)
             guard unit.isFinite, unit > 0 else { continue }
             stood.unit = unit
-            let size = Float(unit / scale)
+            // Further from the eye, everything of it is that much larger and that much
+            // further from the middle of the view, to be seen where and as it was.
+            let deep = (Self.distance + group.scene.back) / Self.distance
+            let size = Float(unit / scale) * deep
             let middle = CGPoint(x: asked.origin.x + room.midX, y: asked.origin.y + room.midY)
             stood.anchor.scale = SIMD3(repeating: size)
             stood.anchor.position = [
-                Float((middle.x - asked.size.width / 2) / scale) - group.scene.middle.x * size,
-                Float((asked.size.height / 2 - middle.y) / scale) - group.scene.middle.y * size,
-                0,
+                Float((middle.x - asked.size.width / 2) / scale) * deep - group.scene.middle.x * size,
+                Float((asked.size.height / 2 - middle.y) / scale) * deep - group.scene.middle.y * size,
+                -group.scene.back,
             ]
             guard let model = stood.model else { continue }
             // Another scheme is the same model in other colours, not another model.
@@ -596,7 +606,8 @@ struct StageGroup: Identifiable {
                     simd_make_float3(viewFromLocal * SIMD4(corner & 1 == 0 ? low.x : high.x, corner & 2 == 0 ? low.y : high.y,
                                                            corner & 4 == 0 ? low.z : high.z, 1))
                 }
-                glow = GlowSource(corners: corners, colour: lamp.glow.colour.light, strength: lamp.glow.strength)
+                glow = GlowSource(corners: corners, colour: lamp.glow.colour.light, strength: lamp.glow.strength,
+                                  lamp: lamp.glow.lamp)
             }
         }
         board.post(shapes, glow: glow)
