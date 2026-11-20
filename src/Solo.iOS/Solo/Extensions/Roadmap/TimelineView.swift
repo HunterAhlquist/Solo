@@ -46,8 +46,8 @@ struct TimelineView: View {
     @State private var milestoneDrag: (id: UUID, days: Int)?
     @State private var dayMenu: DayTarget?
     @State private var didOpen = false
-    /// The bar under a press that has held long enough to pick it up, for as long as the press
-    /// lasts. It empties however the press ends, which a gesture's own ending does not promise.
+    /// The bar being carried, for as long as the drag carrying it lasts. It empties however the
+    /// drag ends, which a gesture's own ending does not promise.
     @GestureState private var holding: UUID?
     /// The bar a hold was last lifted from, and when.
     @State private var lifted: (id: UUID, at: Date)?
@@ -143,7 +143,7 @@ struct TimelineView: View {
         .sensoryFeedback(.selection, trigger: store.selected)
         .sensoryFeedback(.impact(weight: .light), trigger: drag?.days)
         .onChange(of: holding) { held, now in
-            // A press taken away rather than lifted (another gesture winning it, the system
+            // A drag taken away rather than lifted (another gesture winning it, the system
             // stepping in) never reports its end, and the bar would stay in hand for good.
             if now == nil, let held { putDown(held) }
         }
@@ -345,42 +345,48 @@ struct TimelineView: View {
     /// Press and hold picks the bar up, and selects it there and then: let go without moving,
     /// that is all the hold does. The first direction it is then moved in sets what the drag
     /// does, so a move up or down never changes its dates.
+    ///
+    /// Each half of the gesture is listened to on its own. Listening to the pair for changes has
+    /// it follow every touch from the moment it lands, and a swipe that starts on a bar then
+    /// never reaches the scroll view: with bars across most of a busy roadmap, it hardly scrolls.
     private func pickUp(_ entry: RoadmapEntry, line: Int) -> some Gesture {
         LongPressGesture(minimumDuration: 0.28)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .updating($holding) { value, held, _ in
-                if case .second(true, _) = value { held = entry.id }
+            .onEnded { _ in
+                guard drag == nil else { return }
+                if !store.selected.contains(entry.id) {
+                    store.selected = [entry.id]
+                }
+                store.gesturing = true
+                store.report(editing: true)
+                drag = BarDrag(entryId: entry.id, kind: .undecided)
             }
-            .onChanged { value in
-                guard case .second(true, let movement) = value else { return }
-                if drag == nil {
-                    if !store.selected.contains(entry.id) {
-                        store.selected = [entry.id]
-                    }
-                    store.gesturing = true
-                    store.report(editing: true)
-                    drag = BarDrag(entryId: entry.id, kind: .undecided)
-                }
-                guard let movement, var active = drag else { return }
-                active.translation = movement.translation
-                if active.kind == .undecided, max(abs(movement.translation.width), abs(movement.translation.height)) > 10 {
-                    active.kind = abs(movement.translation.width) >= abs(movement.translation.height) ? .move : .row
-                }
-                switch active.kind {
-                case .move:
-                    let wanted = Int((movement.translation.width / Self.dayWidth).rounded())
-                    active.days = store.group(of: entry).reduce(wanted) { days, moving in
-                        let clamped = store.window.clampMove(TimelineRules.span(moving), by: days)
-                        return abs(clamped) < abs(days) ? clamped : days
-                    }
-                case .row:
-                    active.target = rowTarget(entry, line: line, dy: movement.translation.height)
-                default:
-                    break
-                }
-                drag = active
+            .sequenced(before: DragGesture(minimumDistance: 0)
+                .updating($holding) { _, held, _ in held = entry.id }
+                .onChanged { carry(entry, line: line, by: $0.translation) }
+                .onEnded { _ in putDown(entry.id) })
+    }
+
+    /// Moves the bar in hand to where the finger has taken it.
+    private func carry(_ entry: RoadmapEntry, line: Int, by translation: CGSize) {
+        guard var active = drag, active.entryId == entry.id else { return }
+        if case .resize = active.kind { return }
+        active.translation = translation
+        if active.kind == .undecided, max(abs(translation.width), abs(translation.height)) > 10 {
+            active.kind = abs(translation.width) >= abs(translation.height) ? .move : .row
+        }
+        switch active.kind {
+        case .move:
+            let wanted = Int((translation.width / Self.dayWidth).rounded())
+            active.days = store.group(of: entry).reduce(wanted) { days, moving in
+                let clamped = store.window.clampMove(TimelineRules.span(moving), by: days)
+                return abs(clamped) < abs(days) ? clamped : days
             }
-            .onEnded { _ in putDown(entry.id) }
+        case .row:
+            active.target = rowTarget(entry, line: line, dy: translation.height)
+        default:
+            break
+        }
+        drag = active
     }
 
     /// Ends a hold on a bar, saving wherever it was carried to. The gesture's end and the press
@@ -602,22 +608,22 @@ struct TimelineView: View {
         .zIndex(4)
     }
 
+    /// Listened to in halves, as a bar's hold is, so a swipe across a flag still scrolls.
     private func moveMilestone(_ milestone: RoadmapMilestone) -> some Gesture {
         LongPressGesture(minimumDuration: 0.28)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .onChanged { value in
-                guard case .second(true, let movement?) = value else { return }
-                store.gesturing = true
-                milestoneDrag = (milestone.id, Int((movement.translation.width / Self.dayWidth).rounded()))
-            }
-            .onEnded { _ in
-                let days = milestoneDrag?.days ?? 0
-                milestoneDrag = nil
-                store.gesturing = false
-                guard days != 0 else { return }
-                let day = min(max(milestone.day.adding(days: days), store.window.first), store.window.last)
-                Task { await store.saveMilestone(milestone, name: milestone.name, day: day, color: milestone.color) }
-            }
+            .sequenced(before: DragGesture(minimumDistance: 0)
+                .onChanged { movement in
+                    store.gesturing = true
+                    milestoneDrag = (milestone.id, Int((movement.translation.width / Self.dayWidth).rounded()))
+                }
+                .onEnded { _ in
+                    let days = milestoneDrag?.days ?? 0
+                    milestoneDrag = nil
+                    store.gesturing = false
+                    guard days != 0 else { return }
+                    let day = min(max(milestone.day.adding(days: days), store.window.first), store.window.last)
+                    Task { await store.saveMilestone(milestone, name: milestone.name, day: day, color: milestone.color) }
+                })
     }
 }
 
