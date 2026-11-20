@@ -9,6 +9,10 @@ import SwiftUI
 /// selected alone stands a little larger, with a grip grown into each end to
 /// stretch it by. More bars join the selection with a tap. A press and hold
 /// on an empty day offers to add a task or a milestone there.
+///
+/// A Mac's pointer adds two things. A click with Command held takes a bar into
+/// the selection or out of it whatever else is selected, and a drag across
+/// empty days sweeps out a box that selects every bar it touches.
 struct TimelineView: View {
     @Environment(\.theme) private var theme
     @Bindable var store: RoadmapStore
@@ -19,6 +23,8 @@ struct TimelineView: View {
     var onEditMilestone: (RoadmapMilestone) -> Void
     /// Bumped by the page to bring a day into view.
     var scrollRequest: ScrollRequest?
+    /// The page's commands for what is selected, to hang under the selection itself.
+    var selectionBar: AnyView?
 
     struct ScrollRequest: Equatable {
         var day: Day
@@ -51,6 +57,10 @@ struct TimelineView: View {
     @GestureState private var holding: UUID?
     /// The bar a hold was last lifted from, and when.
     @State private var lifted: (id: UUID, at: Date)?
+    /// The box being swept out across empty days, and what was selected before it began.
+    @State private var sweep: CGRect?
+    @State private var sweptOnto: Set<UUID> = []
+    @State private var selectionBarSize: CGSize = .zero
 
     private struct BarDrag: Equatable {
         enum Kind: Equatable { case undecided, move, row, resize(BarEdge) }
@@ -98,6 +108,9 @@ struct TimelineView: View {
                     .offset(y: Self.headHeight)
                     .onTapGesture { store.selected = [] }
                     .gesture(emptyPress(layout: layout))
+                    #if os(macOS)
+                    .simultaneousGesture(sweeping(layout: layout))
+                    #endif
                     // With a pointer, the secondary button asks for the same thing a press and hold does.
                     .gesture(SecondaryClick { point in
                         guard store.canWrite else { return }
@@ -115,6 +128,30 @@ struct TimelineView: View {
                     if let line = layout.line(of: entry.id), place.startIndex <= last, place.endIndex >= first {
                         bar(entry, place: place, line: line, first: first, last: last)
                     }
+                }
+
+                if let sweep {
+                    Rectangle()
+                        .fill(theme.accentWash)
+                        .overlay(Rectangle().strokeBorder(theme.primary.opacity(0.8), lineWidth: 1))
+                        .frame(width: sweep.width, height: sweep.height)
+                        .offset(x: sweep.minX, y: sweep.minY)
+                        .allowsHitTesting(false)
+                        .zIndex(30)
+                }
+
+                // Out of the way while a bar is being carried or a box swept: it would only be chasing them.
+                if let selectionBar, drag == nil, sweep == nil,
+                   let spot = selectionBarSpot(layout: layout, height: height) {
+                    selectionBar
+                        .fixedSize()
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { selectionBarSize = $0 }
+                        // Placed from its size, which it has only once it has been laid out.
+                        .opacity(selectionBarSize == .zero ? 0 : 1)
+                        .offset(x: spot.x, y: spot.y)
+                        .animation(.snappy(duration: 0.22), value: store.selected)
+                        .zIndex(20)
+                        .transition(.opacity)
                 }
 
                 if store.entries.isEmpty {
@@ -266,8 +303,9 @@ struct TimelineView: View {
         let barWidth = max(CGFloat(end - start + 1) * Self.dayWidth - 4, 12)
         let lift = dragged && drag?.kind == .row ? drag?.translation.height ?? 0 : 0
         let selected = store.selected.contains(entry.id)
-        // Only a bar selected alone can be stretched, so only it grows and shows its grips.
-        let grown = selected && store.selected.count == 1 && store.canWrite
+        // Only a bar selected alone can be stretched, so only it grows and shows its grips. Not
+        // while a box is being swept, where being the first of several touched is a moment's state.
+        let grown = selected && store.selected.count == 1 && store.canWrite && sweep == nil
         let gripped = grown && drag?.kind != .row
         let swell = grown ? Self.swell : 0
         let grips = BarGrips(start: gripped && start == place.startIndex && !place.clippedStart,
@@ -333,6 +371,10 @@ struct TimelineView: View {
             return
         }
         if let lifted, lifted.id == entry.id, Date.now.timeIntervalSince(lifted.at) < 0.1 { return }
+        if commandIsDown, store.canWrite {
+            store.selected.formSymmetricDifference([entry.id])
+            return
+        }
         if store.selected.isEmpty || !store.canWrite {
             onOpen(entry)
         } else if store.selected.contains(entry.id) {
@@ -354,7 +396,8 @@ struct TimelineView: View {
             .onEnded { _ in
                 guard drag == nil else { return }
                 if !store.selected.contains(entry.id) {
-                    store.selected = [entry.id]
+                    // With Command held the bar joins what is selected, as its click would have it.
+                    store.selected = commandIsDown ? store.selected.union([entry.id]) : [entry.id]
                 }
                 store.gesturing = true
                 store.report(editing: true)
@@ -516,8 +559,78 @@ struct TimelineView: View {
             .sequenced(before: DragGesture(minimumDistance: 0))
             .onEnded { value in
                 guard store.canWrite, case .second(true, let press?) = value else { return }
+                // A pointer that went on to move was sweeping out a box, not asking for the menu.
+                if Platform.isMac, max(abs(press.translation.width), abs(press.translation.height)) > 4 { return }
                 showDayMenu(at: press.startLocation, layout: layout)
             }
+    }
+
+    /// Whether Command is held: what makes a Mac's click add to the selection.
+    private var commandIsDown: Bool {
+        #if os(macOS)
+        NSEvent.modifierFlags.contains(.command)
+        #else
+        false
+        #endif
+    }
+
+    /// A pointer dragged across empty days sweeps out a box, and what the box touches is selected:
+    /// in place of what was, or with Command held, as well as it.
+    private func sweeping(layout: TimelineLayout) -> some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if sweep == nil {
+                    sweptOnto = commandIsDown ? store.selected : []
+                }
+                let box = CGRect(x: min(value.startLocation.x, value.location.x),
+                                 y: min(value.startLocation.y, value.location.y),
+                                 width: abs(value.location.x - value.startLocation.x),
+                                 height: abs(value.location.y - value.startLocation.y))
+                sweep = box
+                let touched = store.entries.filter { entry in
+                    guard let line = layout.line(of: entry.id) else { return false }
+                    return barFrame(store.place(entry), line: line).intersects(box)
+                }
+                let selection = sweptOnto.union(touched.map(\.id))
+                if selection != store.selected { store.selected = selection }
+            }
+            .onEnded { _ in sweep = nil }
+    }
+
+    /// Where a bar is drawn in the grid, the whole of it and at rest.
+    private func barFrame(_ place: BarPlacement, line: Int) -> CGRect {
+        CGRect(x: CGFloat(place.startIndex) * Self.dayWidth + 2,
+               y: Self.headHeight + CGFloat(line) * Self.rowHeight + 5,
+               width: CGFloat(place.endIndex - place.startIndex + 1) * Self.dayWidth - 4,
+               height: Self.rowHeight - 10)
+    }
+
+    /// Where the page's commands hang: under the selection, in the middle of as much of it as is
+    /// in view. Over it instead where the grid ends too soon below.
+    private func selectionBarSpot(layout: TimelineLayout, height: CGFloat) -> CGPoint? {
+        var around: CGRect?
+        for entry in store.entries where store.selected.contains(entry.id) {
+            guard let line = layout.line(of: entry.id) else { continue }
+            let frame = barFrame(store.place(entry), line: line)
+            around = around?.union(frame) ?? frame
+        }
+        guard var around else { return nil }
+        if store.selected.count == 1, store.canWrite { around = around.insetBy(dx: -Self.swell, dy: -Self.swell) }
+
+        let size = selectionBarSize
+        let seen = around.intersection(CGRect(x: scrollX, y: around.minY, width: viewport, height: around.height))
+        var middle = around.midX
+        if !seen.isNull, seen.width > 0 {
+            let room = (scrollX + size.width / 2 + 8)...max(scrollX + viewport - size.width / 2 - 8, scrollX + size.width / 2 + 8)
+            middle = min(max(seen.midX, room.lowerBound), room.upperBound)
+        }
+        let gap: CGFloat = 6
+        var top = around.maxY + gap
+        if top + size.height > height - 4 {
+            let above = around.minY - gap - size.height
+            top = above >= Self.headHeight ? above : height - size.height - 4
+        }
+        return CGPoint(x: middle - size.width / 2, y: top)
     }
 
     /// Offers to add something on the day at a place in the grid.

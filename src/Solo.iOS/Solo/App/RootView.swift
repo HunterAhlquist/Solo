@@ -35,7 +35,7 @@ struct RootView: View {
                             .environment(session.toasts)
                             .environment(session.navigator)
                             .overlay { RestartOverlay(session: session) }
-                            .overlay { ToastOverlay().environment(session.toasts) }
+                            .overlay { ToastOverlay(isMain: true).environment(session.toasts) }
                             .id([AnyHashable(ObjectIdentifier(session)), AnyHashable(day)])
                             // Going from one instance to another, the last one's shell is still
                             // fading out as the next one's arrives. A Mac's window has one bar and

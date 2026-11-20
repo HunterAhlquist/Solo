@@ -82,7 +82,7 @@ struct RoadmapPage: View {
                 // Embedded in Your Tasks, which does the scrolling.
                 content
                     .overlay(alignment: .bottom) {
-                        if !store.selected.isEmpty {
+                        if !store.selected.isEmpty, !Platform.isMac {
                             selectionBar.padding(.bottom, 8)
                         }
                     }
@@ -91,7 +91,7 @@ struct RoadmapPage: View {
                     content.padding(16)
                 }
                 .safeAreaInset(edge: .bottom) {
-                    if !store.selected.isEmpty {
+                    if !store.selected.isEmpty, !Platform.isMac {
                         selectionBar.padding(.bottom, 8)
                     }
                 }
@@ -185,7 +185,8 @@ struct RoadmapPage: View {
                 onAddTask: { day, beside in picking = PickTarget(day: day, beside: beside) },
                 onAddMilestone: { milestone = MilestoneDraft(day: $0) },
                 onEditMilestone: { milestone = MilestoneDraft(existing: $0) },
-                scrollRequest: scrollRequest)
+                scrollRequest: scrollRequest,
+                selectionBar: Platform.isMac && !store.selected.isEmpty ? AnyView(selectionBar) : nil)
 
             missedSection
         }
@@ -203,6 +204,8 @@ struct RoadmapPage: View {
     // MARK: Selection
 
     /// What a press-and-hold selects is acted on here: the same commands the web puts in its bar menu.
+    /// Under a thumb it sits at the bottom of the page. On a Mac the pointer is at the selection, so
+    /// the timeline is handed it to hang there.
     private var selectionBar: some View {
         let targets = store.entries.filter { store.selected.contains($0.id) }
         let planned = targets.filter { $0.schedule != nil }
