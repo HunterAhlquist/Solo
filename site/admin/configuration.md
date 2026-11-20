@@ -38,6 +38,8 @@ A variable name uses two underscores between its parts, for example `Auth__Clien
 | `ForwardedHeaders__ForwardLimit` | `1` | The number of proxies in front of Solo. |
 | `RateLimiting__Auth__PermitLimit` | `10` | The number of sign-in and setup requests that one address can make in one window. |
 | `RateLimiting__Auth__WindowSeconds` | `60` | The length of that window, in seconds. |
+| `RateLimiting__Invites__PermitLimit` | `60` | The number of project invitations that one person can send in one window. |
+| `RateLimiting__Invites__WindowSeconds` | `3600` | The length of that window, in seconds. |
 | `RateLimiting__Api__Burst` | `300` | The number of API requests that one caller can make in a burst. |
 | `RateLimiting__Api__TokensPerPeriod` | `100` | The number of API requests that a caller gets back in each period. |
 | `RateLimiting__Api__PeriodSeconds` | `10` | The length of that period, in seconds. |

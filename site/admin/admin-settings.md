@@ -42,7 +42,7 @@ Solo encrypts the password before it stores it, and never shows it again. The fi
 
 To keep the password out of the database, set `Email__Smtp__Password` and `Email__Smtp__Host` in the environment. See [Configuration](configuration.md). The password field is then disabled, and the SMTP server in the form must be the one that `Email__Smtp__Host` names. Solo sends the password to no other server, so a super admin cannot point the settings at a different server to get it.
 
-If you change the connection security to **None**, Solo forgets the stored password, so that it is not sent without encryption. Enter it again to use it that way.
+Solo does not sign in to an SMTP server on a connection that has no encryption, because that sends the username and password where other computers on the network can read them. With the connection security set to **None**, leave the username empty. The exception is an SMTP server on the same computer as Solo (`localhost`).
 
 Emails use the colors and fonts of the instance [theme](#theme), in light or dark to match the mail app of the reader. A font that only the theme package has is replaced with a font that all devices have.
 

@@ -131,6 +131,11 @@ public sealed class EmailSettingsController(
             problem ??= "Enter the SMTP server.";
         }
 
+        if (mustBeComplete && SmtpOptions.SignsInUnencryptedTo(Clean(request.SmtpHost), request.Security, Clean(request.Username)))
+        {
+            problem ??= SmtpOptions.UnencryptedSignIn;
+        }
+
         // Email that is on, or being tried, has to be able to sign in: the
         // environment's password is only for the server the environment names.
         // Settings that are off can still be saved, so email can be turned off.
