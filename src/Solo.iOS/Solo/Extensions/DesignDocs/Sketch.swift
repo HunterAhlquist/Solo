@@ -935,7 +935,7 @@ struct SketchEditor: View {
                 }
             }
 
-            Menu {
+            RowMenu {
                 Picker("Width", selection: $level) {
                     ForEach(0..<5, id: \.self) { Text("\(SketchRaster.widths[$0]) px").tag($0) }
                 }

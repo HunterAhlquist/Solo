@@ -196,7 +196,7 @@ struct DetailView: View {
     private func taskFields(_ task: TaskItem) -> some View {
         VStack(spacing: 0) {
             FieldRow(title: "Status", symbol: task.status.symbol) {
-                Menu {
+                RowMenu {
                     Picker("Status", selection: Binding(get: { task.status }, set: { setStatus(task, $0) })) {
                         ForEach(TaskState.allCases) { status in
                             Label(status.title, systemImage: status.symbol).tag(status)
@@ -240,14 +240,14 @@ struct DetailView: View {
             // A start only means something against a deadline, so it waits for one.
             FieldRow(title: "Start", symbol: "calendar.badge.clock") {
                 DayField(day: task.startAt, placeholder: "Created \(task.createdAt.formatted(.dateTime.day().month(.abbreviated)))",
-                         latest: task.deadlineAt, disabled: !canWrite || task.deadlineAt == nil) { start in
+                         latest: task.deadlineAt, disabled: !canWrite || task.deadlineAt == nil, lens: true) { start in
                     guard task.startAt != start else { return }
                     await saveSchedule(task, start: start, deadline: task.deadlineAt)
                 }
             }
             Divider().overlay(theme.divider)
             FieldRow(title: "Deadline", symbol: "flag.checkered") {
-                DayField(day: task.deadlineAt, placeholder: "No deadline", disabled: !canWrite) { deadline in
+                DayField(day: task.deadlineAt, placeholder: "No deadline", disabled: !canWrite, lens: true) { deadline in
                     guard task.deadlineAt != deadline else { return }
                     // A start left with no deadline, or stranded past a new one, goes rather than blocks.
                     let start = deadline.flatMap { end in task.startAt.flatMap { $0 <= end ? $0 : nil } }
@@ -431,7 +431,7 @@ struct AssigneeField: View {
 
     var body: some View {
         let row = FieldRow(title: "Assignees", symbol: "person.2") {
-            Menu {
+            RowMenu {
                 ForEach(store.members.filter { $0.userId != nil }) { member in
                     let userId = member.userId!
                     Toggle(isOn: Binding(

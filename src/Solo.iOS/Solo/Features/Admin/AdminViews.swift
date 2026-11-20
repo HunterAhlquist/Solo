@@ -264,7 +264,7 @@ struct AdminUsersView: View {
                                     .font(.caption).foregroundStyle(theme.textSecondary)
                             }
                             Spacer(minLength: 0)
-                            Menu("User actions", systemImage: "ellipsis") {
+                            RowMenu("User actions", systemImage: "ellipsis") {
                                 Button(user.isSuperAdmin ? "Remove Super Admin" : "Make Super Admin",
                                        systemImage: user.isSuperAdmin ? "shield.slash" : "shield") {
                                     confirmAdmin(user, !user.isSuperAdmin)
@@ -278,7 +278,6 @@ struct AdminUsersView: View {
                                     confirmSignOut(user)
                                 }
                             }
-                            .labelStyle(.iconOnly)
                         }
                     }
                 } footer: {
