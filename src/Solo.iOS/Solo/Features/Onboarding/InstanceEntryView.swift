@@ -8,6 +8,9 @@ struct InstanceEntryView: View {
     /// True in the sheet that adds an instance. The address is asked whether it answers
     /// before anything is left for it, and the sheet closes once it has.
     var adding = false
+    /// On the first launch's screen: back to the start of what led here. Nil in the sheet,
+    /// which is opened by someone who is already using the app.
+    var restart: (() -> Void)?
     @State private var address = ""
     @State private var problem: String?
     @State private var connecting = false
@@ -20,11 +23,7 @@ struct InstanceEntryView: View {
             ScrollView {
                 VStack(spacing: 28) {
                     VStack(spacing: 10) {
-                        Image(systemName: "rectangle.split.3x1.fill")
-                            .font(.system(size: 44, weight: .semibold))
-                            .foregroundStyle(theme.primary)
-                            .padding(22)
-                            .glassEffect(.regular.tint(theme.primary.opacity(0.12)), in: .rect(cornerRadius: 28))
+                        SoloLogoMark()
                         Text("Solo")
                             .font(.largeTitle.weight(theme.headingWeight))
                         Text(adding ? "Connect to another instance." : "Connect to your team's instance.")
@@ -123,8 +122,24 @@ struct InstanceEntryView: View {
                 .padding(.horizontal, 24)
                 .frame(maxWidth: 460)
                 .frame(maxWidth: .infinity)
+                // Room under the last recent address for the button that sits over the corner.
+                .padding(.bottom, restart == nil ? 0 : 64)
             }
             .scrollBounceBehavior(.basedOnSize)
+        }
+        .overlay(alignment: .bottomLeading) {
+            if let restart {
+                Button(action: restart) {
+                    Label("Restart Onboarding", systemImage: "arrow.left")
+                        .font(.subheadline.weight(.medium))
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+                // It stays in its corner under the keyboard and doesn't ride up over the field.
+                .ignoresSafeArea(.keyboard)
+            }
         }
     }
 

@@ -19,7 +19,7 @@ struct RootView: View {
                 case .launching:
                     LaunchView()
                 case .needsInstance:
-                    InstanceEntryView()
+                    FirstRunView()
                 case .setupRequired:
                     SetupRequiredView()
                 case .signedOut:

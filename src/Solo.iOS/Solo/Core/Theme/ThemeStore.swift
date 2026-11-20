@@ -179,6 +179,9 @@ private struct OnAccent: ViewModifier {
     @Environment(\.isEnabled) private var isEnabled
 
     func body(content: Content) -> some View {
-        content.foregroundStyle(theme.onPrimary.opacity(isEnabled ? 1 : 0.45))
+        // A button that can't be pressed isn't filled with the accent: it is grey glass, and
+        // what reads on the accent — black, on a bright one — is lost on that. It gets the
+        // system's own dimmed label.
+        content.foregroundStyle(isEnabled ? AnyShapeStyle(theme.onPrimary) : AnyShapeStyle(.secondary))
     }
 }

@@ -1,4 +1,6 @@
 import Foundation
+import RealityKit
+import simd
 import SwiftUI
 import Testing
 #if canImport(UIKit)
@@ -697,6 +699,127 @@ private extension Route {
             #expect(abs(Double(drawn.red) - accent.red) < 0.005)
             #expect(abs(Double(drawn.green) - accent.green) < 0.005)
             #expect(abs(Double(drawn.blue) - accent.blue) < 0.005)
+        }
+    }
+}
+
+@Suite struct OnboardingTests {
+    @Test func aFirstLaunchStartsAtTheWelcome() {
+        #expect(Onboarding.start(seen: false, knowsAnInstance: false) == .welcome)
+    }
+
+    /// Someone who has been through it, or who had an instance once, is asked for the address.
+    @Test func anyoneWhoKnowsWhatAnInstanceIsGoesStraightToConnecting() {
+        #expect(Onboarding.start(seen: true, knowsAnInstance: false) == .connect)
+        #expect(Onboarding.start(seen: false, knowsAnInstance: true) == .connect)
+    }
+
+    @Test func aPieceIsPulledSlightlyAndNoFurther() {
+        #expect(PieceSpring.pull(for: .zero) == .zero)
+        let near = PieceSpring.pull(for: [0.02, 0])
+        let far = PieceSpring.pull(for: [5, 0])
+        let farther = PieceSpring.pull(for: [50, 0])
+        // It follows a short drag nearly all the way, and a long one hardly at all.
+        #expect(near.x > 0.018 && near.x < 0.02)
+        #expect(far.x <= PieceSpring.reach && farther.x <= PieceSpring.reach)
+        #expect(farther.x - far.x < 0.001)
+        // The way it was dragged, and toward the eye.
+        let up = PieceSpring.pull(for: [0, 0.3])
+        #expect(up.x == 0 && up.y > 0 && up.z > 0)
+    }
+
+    /// Let go anywhere, at any speed, it is home and still within a few seconds: pushed the
+    /// way the spring says for as long as that takes.
+    @Test func aPieceLetGoComesHome() {
+        var position = SIMD3<Float>(0.2, -0.15, 0.06), velocity = SIMD3<Float>(1, 0, -2)
+        let step: Float = 1.0 / 60
+        for _ in 0..<(60 * 4) {
+            velocity += PieceSpring.push(toward: .zero, from: position, velocity: velocity, held: false) * step
+            position += velocity * step
+        }
+        #expect(simd_length(position) < 0.001)
+        #expect(simd_length(velocity) < 0.01)
+    }
+
+    /// In the hand it goes where it is held without passing it, even at a slow frame rate.
+    @Test func aHeldPieceFollowsWithoutOvershooting() {
+        let target = SIMD3<Float>(0.18, 0, 0)
+        var position = SIMD3<Float>.zero, velocity = SIMD3<Float>.zero
+        let step: Float = 1.0 / 30
+        var farthest: Float = 0
+        for _ in 0..<60 {
+            velocity += PieceSpring.push(toward: target, from: position, velocity: velocity, held: true) * step
+            position += velocity * step
+            farthest = max(farthest, position.x)
+        }
+        #expect(abs(position.x - target.x) < 0.002)
+        #expect(farthest < target.x * 1.05)
+    }
+
+    @Test func aPieceTurnsBackTheShortWayRound() {
+        let home = simd_quatf(angle: 0, axis: [0, 1, 0])
+        let turned = simd_quatf(angle: 0.4, axis: [0, 1, 0])
+        // Turned one way about y, it is pushed back the other way about y, and about nothing else.
+        let back = PieceSpring.twist(toward: home, from: turned, spin: .zero)
+        #expect(back.y < 0 && abs(back.x) < 0.0001 && abs(back.z) < 0.0001)
+        // The same facing written the other way round is no turn at all.
+        let same = PieceSpring.twist(toward: home, from: simd_quatf(vector: -home.vector), spin: .zero)
+        #expect(simd_length(same) < 0.0001)
+    }
+
+    /// The stage shows all of what it is asked to, in a view of any shape.
+    @Test func aStageFitsWhatItHoldsIntoAnyView() {
+        let extent = CGSize(width: 2, height: 1)
+        #expect(Stage.visibleHeight(extent: extent, view: CGSize(width: 400, height: 100)) == 1)
+        #expect(Stage.visibleHeight(extent: extent, view: CGSize(width: 100, height: 100)) == 2)
+        // The middle of the stage is the middle of the view, and up is up.
+        let view = CGSize(width: 300, height: 200)
+        #expect(Stage.point(.zero, extent: extent, view: view) == CGPoint(x: 150, y: 100))
+        #expect(Stage.point(CGPoint(x: 0, y: 0.5), extent: extent, view: view).y < 100)
+        #expect(Stage.point(CGPoint(x: 1, y: 0), extent: extent, view: view).x == 300)
+    }
+
+    @Test func theMarkIsThreeBarsThatClimb() {
+        let bars = SoloLogo.bars
+        #expect(bars.count == 3)
+        // Front to back: each one taller, further right, and more of the accent.
+        for (near, far) in zip(bars, bars.dropFirst()) {
+            #expect(far.frame.height > near.frame.height)
+            #expect(far.frame.midX > near.frame.midX)
+            #expect(far.strength > near.strength)
+        }
+        // All of them on the tile, which is one unit across about the origin.
+        for bar in bars {
+            #expect(bar.frame.minX > -0.5 && bar.frame.maxX < 0.5 && bar.frame.minY > -0.5 && bar.frame.maxY < 0.5)
+        }
+        #expect(SoloLogo.face.count == 30)
+        #expect(SoloLogo.face.allSatisfy { (0..<SoloLogo.faceColumns).contains($0.column) && (0..<SoloLogo.faceRows).contains($0.row) })
+    }
+
+    /// The app finds its models' parts by the names they have in Blender. An export that
+    /// renamed one would leave it unpainted and unable to be picked up, and say nothing.
+    @MainActor @Test func theModelsCarryThePartsTheAppLooksFor() async {
+        let logo = await Stage.load("SoloLogo")
+        for name in ["Tile", "BarFront", "BarMiddle", "BarBack", "Face"] {
+            #expect(logo?.findEntity(named: name) != nil, "SoloLogo has no \(name)")
+        }
+        let hosting = await Stage.load("Hosting")
+        for name in ["Server", "ServerLamps", "Cloud", "Laptop", "LaptopType"] {
+            #expect(hosting?.findEntity(named: name) != nil, "Hosting has no \(name)")
+        }
+    }
+
+    /// As their file leaves them the logo's pieces are apart, each at a depth of its own:
+    /// they are solid, and two that began inside one another would be thrown apart.
+    @MainActor @Test func theLogosPiecesStartAtDepthsOfTheirOwn() async throws {
+        let model = try #require(await SoloLogo.model(StagePalette(dark: true)))
+        let depths = ["Tile", "BarBack", "BarMiddle", "BarFront", "Face"].compactMap {
+            model.findEntity(named: $0)?.components[SpringBack.self]?.home.z
+        }
+        #expect(depths.count == 5)
+        // Back to front, and no two within a slab's thickness of each other.
+        for (behind, before) in zip(depths, depths.dropFirst()) {
+            #expect(before - behind > 0.07)
         }
     }
 }

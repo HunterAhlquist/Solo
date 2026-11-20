@@ -159,6 +159,14 @@ final class AppModel {
         }
         #endif
 
+        #if DEBUG || PERF
+        // One of the first-run screens, with whatever is kept left as it is.
+        if Onboarding.forced != nil {
+            phase = .needsInstance
+            return
+        }
+        #endif
+
         guard let stored = UserDefaults.standard.string(forKey: Self.instanceKey), let url = URL(string: stored) else {
             // Nothing was showing, but something may be kept: an instance was removed and the app quit.
             if let first = instances.first {
