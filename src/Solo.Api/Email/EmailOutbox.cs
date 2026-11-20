@@ -64,8 +64,24 @@ public sealed class EmailOutbox(ThemeCatalog themes)
     /// <summary>The public address with one trailing slash, ready to have app paths appended.</summary>
     public static string BaseAddress(EmailSettings settings) => settings.PublicAddress!.TrimEnd('/') + "/";
 
-    public static SmtpOptions OptionsFor(EmailSettings settings, string? password) =>
-        new(settings.SmtpHost!, settings.SmtpPort, settings.Security, settings.Username, password);
+    /// <summary>
+    /// What the transport is handed, from settings and the password for them.
+    /// </summary>
+    /// <remarks>
+    /// Everything that sends makes its options here, so this is where settings
+    /// that would sign in over an unencrypted connection stop
+    /// (<see cref="SmtpOptions.SignsInUnencrypted"/>). Saving and trying such
+    /// settings is refused sooner, with the same words
+    /// (EmailSettingsController), and the sender holds its queue for ones saved
+    /// before that was asked of them (EmailSender); this is what is behind
+    /// both. It is here and not in the transport so that the transport signs
+    /// in or doesn't by what it is handed, with no say of its own in it.
+    /// </remarks>
+    public static SmtpOptions OptionsFor(EmailSettings settings, string? password)
+    {
+        var options = new SmtpOptions(settings.SmtpHost!, settings.SmtpPort, settings.Security, settings.Username, password);
+        return options.SignsInUnencrypted ? throw new InvalidOperationException(SmtpOptions.UnencryptedSignIn) : options;
+    }
 
     public static MimeMessage Compose(EmailSettings settings, string to, string subject, string html, string text, string? unsubscribeUrl)
     {

@@ -39,13 +39,6 @@ public sealed class MailKitTransport : IEmailTransport
 {
     public async Task SendAsync(SmtpOptions options, MimeMessage message, CancellationToken ct)
     {
-        // Settings are stopped short of this (EmailSettingsController); said
-        // here as well, for any saved before they were.
-        if (options.SignsInUnencrypted)
-        {
-            throw new InvalidOperationException(SmtpOptions.UnencryptedSignIn);
-        }
-
         using var client = new SmtpClient { Timeout = (int)TimeSpan.FromSeconds(30).TotalMilliseconds };
         await client.ConnectAsync(options.Host, options.Port, options.Security switch
         {

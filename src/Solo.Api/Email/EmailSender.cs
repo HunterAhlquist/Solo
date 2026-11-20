@@ -69,7 +69,14 @@ public sealed class EmailSender(
         // The environment's password is for one server, and the settings name
         // another: nothing is sent, and signed in to nowhere, until they agree.
         // What is queued waits.
-        if (password.Refusal(settings.SmtpHost) is { } refusal)
+        //
+        // Likewise settings that would sign in without encryption, saved before
+        // saving them was refused: nothing goes until they are put right.
+        var refusal = password.Refusal(settings.SmtpHost)
+            ?? (SmtpOptions.SignsInUnencryptedTo(settings.SmtpHost, settings.Security, settings.Username)
+                ? SmtpOptions.UnencryptedSignIn
+                : null);
+        if (refusal is not null)
         {
             if (refusal != _refusal)
             {
