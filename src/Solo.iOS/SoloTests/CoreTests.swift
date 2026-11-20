@@ -970,8 +970,11 @@ private extension Route {
         let start = try? #require(guide.flight?.start)
         let half = (start ?? now).addingTimeInterval(5)
         #expect(abs(guide.page(at: half) - 0.5) < 0.0001)
-        let middle = guide.place(at: half)
-        #expect(abs((middle?.rect.midX ?? 0) - 150) < 0.01 && abs((middle?.rect.width ?? 0) - 80) < 0.01)
+        // The screens are there in the time they were given. The face, which set off with
+        // them, is still on its way, and comes down a while after.
+        let screensThere = (start ?? now).addingTimeInterval(10)
+        #expect(guide.page(at: screensThere) == 1)
+        #expect(guide.place(at: screensThere)?.rect != guide.anchors[.hosting])
         // It is there, and no further, however long after.
         let after = (start ?? now).addingTimeInterval(60)
         #expect(guide.page(at: after) == 1)
@@ -984,6 +987,59 @@ private extension Route {
         #expect(abs((guide.flight?.fromPage ?? -1) - guide.page(at: .now)) < 0.01)
         let end = (guide.flight?.start ?? now).addingTimeInterval(60)
         #expect(guide.place(at: end)?.flat == 1 && guide.page(at: end) == 2)
+    }
+
+    /// The face doesn't slide from one place to the next: it goes there, as something alive
+    /// would. What that is made of is held here to what it has to stay within — it starts
+    /// and ends exactly where it was told, and is on the screen all the way.
+    @MainActor @Test func theFaceFliesThereAndLandsExactly() {
+        let level = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        let from = OnboardingGuide.Place(rect: CGRect(x: 240, y: 400, width: 110, height: 90), flat: 0, tilt: Stage.turn(8, -14, -9))
+        let to = OnboardingGuide.Place(rect: CGRect(x: 44, y: 520, width: 62, height: 51), flat: 1, tilt: level)
+        func at(_ share: Double) -> OnboardingGuide.Place { OnboardingGuide.flying(from: from, to: to, share: share) }
+        func near(_ a: CGRect, _ b: CGRect) -> Bool {
+            abs(a.minX - b.minX) < 0.001 && abs(a.minY - b.minY) < 0.001 && abs(a.width - b.width) < 0.001 && abs(a.height - b.height) < 0.001
+        }
+
+        // Exactly where it set off from, and exactly where it was sent: flat, and square to the eye.
+        #expect(near(at(0).rect, from.rect) && at(0).flat == 0)
+        #expect(near(at(1).rect, to.rect) && at(1).flat == 1)
+        #expect(abs(at(1).tilt.angle) < 0.001)
+        #expect(near(at(-3).rect, from.rect) && near(at(7).rect, to.rect))
+
+        // Not along the straight line between the two: at its farthest it is well off it, above.
+        let a = CGPoint(x: from.rect.midX, y: from.rect.midY), b = CGPoint(x: to.rect.midX, y: to.rect.midY)
+        let length = hypot(b.x - a.x, b.y - a.y)
+        let shares = stride(from: 0.0, through: 1.0, by: 0.02).map { $0 }
+        let off = shares.map { share -> CGFloat in
+            let p = at(share).rect
+            // How far to the side of the line it is; less than nothing is above it, going leftward and down.
+            return ((b.x - a.x) * (p.midY - a.y) - (b.y - a.y) * (p.midX - a.x)) / length
+        }
+        #expect((off.max() ?? 0) > 30)
+        // It leaves upward, before it has gone anywhere much sideways.
+        #expect(at(0.15).rect.midY < from.rect.midY)
+        // And comes down past its place by a little before it settles.
+        #expect(shares.contains { at($0).rect.midY > to.rect.midY + 1 })
+
+        // Nearer the eye on the way than a thing merely changing size would be.
+        #expect(at(0.5).rect.width > (from.rect.width + to.rect.width) / 2 + 4)
+        // Turned and leaning on the way, by more than the turn it started with.
+        #expect(at(0.5).tilt.angle > at(0).tilt.angle)
+        // It stays a solid thing for the first half of the way, and lies down in the second.
+        #expect(at(0.5).flat == 0 && at(0.8).flat > 0.3 && at(0.8).flat < 1)
+        // Getting up from flat is the other way about: at once.
+        #expect(OnboardingGuide.flying(from: to, to: from, share: 0.5).flat == 0)
+
+        // Never off the screen it is crossing, with room to spare.
+        for share in shares {
+            let p = at(share).rect
+            #expect(p.minX > 0 && p.maxX < 420 && p.minY > 200 && p.maxY < 700)
+        }
+
+        // Going nowhere, it does none of it.
+        let still = OnboardingGuide.flying(from: from, to: from, share: 0.5)
+        #expect(near(still.rect, from.rect) && abs(still.tilt.angle - from.tilt.angle) < 0.001)
     }
 
     /// It stops for breath where a sentence does, and for less at a comma.

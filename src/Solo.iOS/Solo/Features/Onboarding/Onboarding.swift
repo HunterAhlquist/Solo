@@ -254,13 +254,24 @@ extension EnvironmentValues {
         var fromPage: Double
         var to: Onboarding.Step
         var start: Date
+        /// How long the screens take to change places.
         var seconds: Double
 
-        /// How far along it is at a moment, from 0 to 1: away slowly, and in slowly.
-        func along(at date: Date) -> Double {
-            let share = min(max(date.timeIntervalSince(start) / max(seconds, 0.001), 0), 1)
-            return share * share * (3 - 2 * share)
+        /// How many times longer than the screens the face takes over it. The screens
+        /// slide and are there; the face is something alive crossing the room, which
+        /// sets off with them and comes down a moment after they have stopped.
+        static let linger = 1.7
+
+        /// How long the face's own way takes.
+        var faceSeconds: Double { seconds * Self.linger }
+
+        /// How much of a stretch of time has gone by at a moment, from 0 to 1.
+        func share(at date: Date, of length: Double) -> Double {
+            min(max(date.timeIntervalSince(start) / max(length, 0.001), 0), 1)
         }
+
+        /// How far along the screens are at a moment, from 0 to 1: away slowly, and in slowly.
+        func along(at date: Date) -> Double { OnboardingGuide.eased(share(at: date, of: seconds)) }
     }
 
     /// Where the face is, how flat on the page, and which way it is turned.
@@ -294,13 +305,68 @@ extension EnvironmentValues {
     func place(at date: Date) -> Place? {
         guard let flight else { return rest(on: step) }
         guard let end = rest(on: flight.to) else { return flight.from }
-        let eased = flight.along(at: date)
-        let from = flight.from.rect, to = end.rect
+        return Self.flying(from: flight.from, to: end, share: flight.share(at: date, of: flight.faceSeconds))
+    }
+
+    /// Away slowly, and in slowly.
+    nonisolated static func eased(_ share: Double) -> Double { share * share * (3 - 2 * share) }
+
+    /// How far through a flight the face is over the place it is going to; what is left is its landing.
+    nonisolated static let arrival = 0.82
+
+    /// Where the face is a share of the way through a flight from one place to another.
+    ///
+    /// Not a straight line at an even pace, which is how a thing is moved and not how one
+    /// goes. It lifts off before it travels and comes in from above, on a curve; it is a
+    /// little nearer the eye in the middle of the way than at either end; it turns to look
+    /// where it is going and leans into it; and it sinks a touch past its place as it lands
+    /// and comes back up. All of that is gone by the end, where it is exactly the place it
+    /// was sent to — the last one is a picture, which a face out of true would not match.
+    static func flying(from: Place, to: Place, share: Double) -> Place {
+        let t = min(max(share, 0), 1)
+        // It is over its place a little before the end, and the rest is the landing.
+        let eased = eased(min(t / Self.arrival, 1))
+        let a = CGPoint(x: from.rect.midX, y: from.rect.midY), b = CGPoint(x: to.rect.midX, y: to.rect.midY)
+        let across = b.x - a.x, down = b.y - a.y
+        let distance = (across * across + down * down).squareRoot()
+        // How much is made of it goes by how far there is to go: over no distance at all
+        // it stays where it is, with none of this.
+        let much = min(distance / 220, 1)
+        let lift = min(distance * 0.3, 150)
+
+        // A curve from where it was to where it is going, pulled upward at both ends: up
+        // and a little back from the way it is headed at the start, and at the end from
+        // above its place and a little beyond it.
+        let first = CGPoint(x: a.x - across * 0.08, y: a.y - lift)
+        let second = CGPoint(x: b.x + across * 0.12, y: b.y - lift * 0.9)
+        let u = 1 - eased
+        var centre = CGPoint(
+            x: u * u * u * a.x + 3 * u * u * eased * first.x + 3 * u * eased * eased * second.x + eased * eased * eased * b.x,
+            y: u * u * u * a.y + 3 * u * u * eased * first.y + 3 * u * eased * eased * second.y + eased * eased * eased * b.y)
+        // Landing: its weight carries it down past its place by a little, and it comes
+        // back up, setting off and coming to rest gently.
+        let landing = min(max((t - Self.arrival) / (1 - Self.arrival), 0), 1)
+        centre.y += min(lift * 0.1, 9) * pow(sin(.pi * landing), 2)
+
+        // Nearer the eye in the middle of the way.
+        let swell = 1 + 0.16 * much * sin(.pi * t)
+        let width = (from.rect.width + (to.rect.width - from.rect.width) * eased) * swell
+        let height = (from.rect.height + (to.rect.height - from.rect.height) * eased) * swell
+
+        // Turned toward where it is going, leaning into it, its chin up as it leaves and
+        // down as it arrives.
+        let way: Float = across >= 0 ? 1 : -1
+        let middle = Float(much * sin(.pi * t))
+        let lean = Stage.turn(Float(much) * -9 * Float(sin(2 * .pi * t)), way * 24 * middle, way * -14 * middle)
+
+        // It lies down flat late in the way, and stands up from flat early: for most of
+        // the way it is a solid thing.
+        let flattening = to.flat >= from.flat ? min(max((t - 0.5) / 0.5, 0), 1) : min(t / 0.5, 1)
+
         return Place(
-            rect: CGRect(x: from.minX + (to.minX - from.minX) * eased, y: from.minY + (to.minY - from.minY) * eased,
-                         width: from.width + (to.width - from.width) * eased, height: from.height + (to.height - from.height) * eased),
-            flat: flight.from.flat + (end.flat - flight.from.flat) * eased,
-            tilt: simd_slerp(flight.from.tilt, end.tilt, Float(eased)))
+            rect: CGRect(x: centre.x - width / 2, y: centre.y - height / 2, width: width, height: height),
+            flat: from.flat + (to.flat - from.flat) * Self.eased(flattening),
+            tilt: simd_slerp(from.tilt, to.tilt, Float(eased)) * lean)
     }
 
     /// Which screen is in view at a moment, counted from the left: a whole number at rest,
@@ -330,7 +396,8 @@ extension EnvironmentValues {
         settled = false
         if next == .hosting { typed = 0 }
         script = Task {
-            try? await Task.sleep(for: .seconds(seconds))
+            // Until the face is down, which is after the screens have stopped.
+            try? await Task.sleep(for: .seconds(seconds * Flight.linger))
             guard !Task.isCancelled else { return }
             step = next
             flight = nil
@@ -459,6 +526,8 @@ struct HostingView: View {
     /// How wide the face is here, and how far in from the bubble's edge it stands.
     private static let guyWidth: CGFloat = 62
     private static let guyInset: CGFloat = 20
+    /// How far above the bubble's point the face stands.
+    private static let guyClearance: CGFloat = 14
 
     var body: some View {
         // The bubble sees to its own fitting: it stays whole, and its words scroll inside it.
@@ -469,7 +538,9 @@ struct HostingView: View {
                 StageSlot(step: .hosting)
             }
         } words: {
-            VStack(alignment: .leading, spacing: 2) {
+            // The face stands clear of the bubble: its glow reaches some way past it, and
+            // right up against the bubble the two ran together.
+            VStack(alignment: .leading, spacing: Self.guyClearance) {
                 // Room for the face, which is not in this screen but over it.
                 Color.clear
                     .frame(width: Self.guyWidth, height: Self.guyWidth * Guy.size.height / Guy.size.width)
