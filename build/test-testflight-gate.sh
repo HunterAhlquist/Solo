@@ -9,7 +9,8 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 # Runs are lines of "<id> <sha>" in $RUNS (newest first, as the API returns
-# them); a run whose Upload step succeeded has a file $UPLOADED/<id>. The stub
+# them), with the tag or branch the run was for after them where it matters; a
+# run whose Upload step succeeded has a file $UPLOADED/<id>. The stub
 # answers with the API's JSON shape and applies the gate's own --jq filter, so
 # the filters are tested too. Every run's other steps succeed and a run that
 # didn't upload has its Upload step skipped, as a gated-off run does.
@@ -23,7 +24,7 @@ filter=.
 [ "${3:-}" = --jq ] && filter=$4
 case "$2" in
     */workflows/*/runs*)
-        jq -Rn '{workflow_runs: [inputs | select(length > 0) | split(" ") | {id: (.[0] | tonumber), head_sha: .[1]}]}' < "$RUNS"
+        jq -Rn '{workflow_runs: [inputs | select(length > 0) | split(" ") | {id: (.[0] | tonumber), head_sha: .[1], head_branch: .[2]}]}' < "$RUNS"
         ;;
     */runs/*/jobs)
         id=${2%/jobs}; id=${id##*/}
@@ -137,6 +138,21 @@ mobile=$(commit src/Solo.iOS/Solo/App/SoloApp.swift)
 printf '300 %s\n200 %s\n' "$mobile" "$reset" > "$RUNS"
 rm -f "$UPLOADED"/*; touch "$UPLOADED/200"
 expect "a newer run that didn't upload isn't the baseline" ios true
+# A version tag's upload went to the store's app, and isn't what the preview's
+# testers have: it is passed over, and the preview upload before it is the
+# baseline. Here the app changed between the two, so there is something to send.
+printf '400 %s v1.22.0\n200 %s preview-v1.22.0-mobile.1\n' "$mobile" "$reset" > "$RUNS"
+rm -f "$UPLOADED"/*; touch "$UPLOADED/400" "$UPLOADED/200"
+expect "a version tag's upload isn't the preview's baseline" ios true
+# With nothing but version tags behind it, a preview is the first of its kind.
+printf '400 %s v1.22.0\n' "$mobile" > "$RUNS"
+expect "a preview after only version tags uploads" mac true
+# The same runs as preview tags are the baseline, and there is nothing new.
+printf '400 %s preview-v1.22.0-mobile.2\n200 %s preview-v1.22.0-mobile.1\n' "$mobile" "$reset" > "$RUNS"
+expect "a preview tag's upload is the baseline" ios false
+printf '300 %s\n200 %s\n' "$mobile" "$reset" > "$RUNS"
+rm -f "$UPLOADED"/*; touch "$UPLOADED/200"
+
 # One target, two platforms: a change to the app reaches both.
 expect "an app change uploads Mac too" mac true
 touch "$UPLOADED/300"

@@ -21,6 +21,12 @@
 # the next tag. The baseline may sit on another branch, and that is still the
 # right comparison: it is the build testers have.
 #
+# This is asked for previews only. A version tag (`v*`) goes to the other app,
+# the store's, and always uploads: its jobs don't come here. But they are runs
+# of the same workflows, so the ones that uploaded are passed over when looking
+# for the baseline: what went to the store's app says nothing about what the
+# preview's testers have.
+#
 # Whenever the answer is not certain — a manual run, no earlier upload, the
 # API unreadable, the baseline commit missing — it uploads. An unneeded upload
 # costs a few minutes; a wrongly skipped one leaves testers on a stale app with
@@ -92,14 +98,16 @@ if [ "${GITHUB_EVENT_NAME:-}" = workflow_dispatch ]; then
 fi
 
 if ! runs=$(gh api "repos/$repository/actions/workflows/$workflow/runs?status=success&per_page=50" \
-        --jq '.workflow_runs[] | "\(.id) \(.head_sha)"' 2>&1); then
+        --jq '.workflow_runs[] | "\(.id) \(.head_sha) \(.head_branch // "")"' 2>&1); then
     decide true "" "Couldn't list earlier $workflow runs, so it uploads anyway: $runs"
 fi
 
 baseline=""
-while read -r id sha; do
+while read -r id sha ref; do
     [ -n "$id" ] || continue
     [ "$id" = "$current_run" ] && continue
+    # A run for a version tag, whose build went to the store's app.
+    case "$ref" in v[0-9]*) continue ;; esac
     if ! uploaded=$(gh api "repos/$repository/actions/runs/$id/jobs" \
             --jq '[.jobs[].steps[]? | select(.name == "Upload" and .conclusion == "success")] | length' 2>&1); then
         decide true "" "Couldn't read the steps of run $id, so it uploads anyway: $uploaded"

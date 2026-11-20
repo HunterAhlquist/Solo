@@ -2,10 +2,11 @@ name: iOS TestFlight
 
 on:
   push:
-    # Previews only, for now: a `preview-v*` tag uploads the iPad and iPhone
-    # app to TestFlight for internal testers. Stable `v*` tags don't, until the
-    # app is ready for App Review.
-    tags: ["preview-v*"]
+    # A `preview-v*` tag uploads the iPad and iPhone app to the preview app's
+    # TestFlight ("Solo (Preview)"), and a version tag (`v*`) to the store
+    # app's ("Solo"), which is the one SOLO_ASC_APP_ID names. Both are for
+    # internal testers: nothing here reaches external testers or App Review.
+    tags: ["preview-v*", "v*"]
   # Builds and uploads from a branch, under a preview version, without a tag.
   workflow_dispatch:
 
@@ -24,7 +25,9 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 45
     # The App Store Connect key can publish builds, so it lives in an
-    # environment whose deployment rules limit it to preview tags.
+    # environment whose deployment rules limit it to these tags. The rules are
+    # the environment's own (Settings → Environments → testflight): a tag
+    # pattern that isn't listed there is turned away before any step runs.
     environment: testflight
     # Lifted to the job because a step's `if:` can read `env` but not
     # `secrets`: without a key the run stops at a notice instead of failing.
@@ -33,6 +36,10 @@ jobs:
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # The store app's Apple ID in App Store Connect (App Information). A
+      # version tag's build is made for whichever app this names
+      # (build/asc-app-bundle-id.swift); a preview's isn't, and doesn't read it.
+      STORE_ASC_APP_ID: ${{ vars.SOLO_ASC_APP_ID }}
     defaults:
       run:
         working-directory: src/Solo.iOS
@@ -49,19 +56,28 @@ jobs:
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            # Which of the two apps the tag is for. A version tag is the store
+            # app's whether or not its version has a suffix (v1.22.0-rc.1).
+            case "$GITHUB_REF_NAME" in
+              v*) echo "app=store" ;;
+              *)  echo "app=preview" ;;
+            esac >> "$GITHUB_OUTPUT"
           else
-            printf 'version=0.0.0-preview.%s\npackage_label=\n' "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+            printf 'version=0.0.0-preview.%s\npackage_label=\napp=preview\n' "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
           fi
 
       # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
       # an extension zip, not the app. Otherwise build/testflight-gate.sh skips
-      # a tag that leaves the app as testers already have it, which is most of
-      # them: the app talks to its instance over the API and carries none of
-      # the server, so a server change doesn't reach it.
+      # a preview tag that leaves the app as testers already have it, which is
+      # most of them: the app talks to its instance over the API and carries
+      # none of the server, so a server change doesn't reach it. A version tag
+      # isn't asked: there are few of them, each is a release made on purpose
+      # under a version the store app hasn't had, and it always uploads.
       - name: Check what this run uploads
         id: gate
         working-directory: .
         env:
+          APP: ${{ steps.channel.outputs.app }}
           PACKAGE_LABEL: ${{ steps.channel.outputs.package_label }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -72,6 +88,14 @@ jobs:
           elif [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$APPLE_TEAM_ID" ]; then
             echo "::notice::No App Store Connect key in the testflight environment; skipping the upload."
             echo "upload=false" >> "$GITHUB_OUTPUT"
+          elif [ "$APP" = store ]; then
+            if [ -z "$STORE_ASC_APP_ID" ]; then
+              echo "::notice::SOLO_ASC_APP_ID isn't set in the testflight environment, so there is no store app to upload to; skipping the upload."
+              echo "upload=false" >> "$GITHUB_OUTPUT"
+            else
+              printf '### TestFlight upload\n\nA version tag: it uploads to the store app, the one SOLO_ASC_APP_ID names.\n' >> "$GITHUB_STEP_SUMMARY"
+              echo "upload=true" >> "$GITHUB_OUTPUT"
+            fi
           else
             bash build/testflight-gate.sh ios >> "$GITHUB_OUTPUT"
           fi
@@ -85,21 +109,49 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | grep -v -i beta | sort -V | tail -1)"
           xcodebuild -version
 
-      # The project keeps the store's icon (Solo/Solo.icon). The preview's is
-      # in Icons with the desktop's; the app's folder is one the project reads
-      # whole, so a file put in it is in the target without being listed.
-      - name: Stage the preview icon
-        if: steps.gate.outputs.upload == 'true'
-        run: cp -R "../../Icons/Solo Preview.icon" "Solo/Solo Preview.icon"
-
       - name: Write the App Store Connect key
         if: steps.gate.outputs.upload == 'true'
         working-directory: .
         run: build/write-asc-key.sh "$RUNNER_TEMP/asc.p8"
 
-      # Release, under the preview name, icon and bundle id. The bundle id is
-      # the Capacitor preview's, so this is the same App Store Connect app and
-      # testers get it as an update to the one they have; it goes through
+      # Which app the build is made as: its bundle id, and for the preview its
+      # own name and icon. The preview's bundle id is the Capacitor preview's,
+      # so it is the same App Store Connect app and testers get this as an
+      # update to the one they have. The store app's is asked of App Store
+      # Connect, for the app SOLO_ASC_APP_ID names: an upload is filed by
+      # bundle id, so that is what makes the build go to that app and no other
+      # (build/asc-app-bundle-id.swift). The store app keeps the project's own
+      # name and icon, "Solo" and Solo/Solo.icon.
+      - name: Choose the app
+        id: app
+        if: steps.gate.outputs.upload == 'true'
+        working-directory: .
+        env:
+          APP: ${{ steps.channel.outputs.app }}
+        run: |
+          set -euo pipefail
+          if [ "$APP" = store ]; then
+            bundle=$(swift build/asc-app-bundle-id.swift "$RUNNER_TEMP/asc.p8" "$STORE_ASC_APP_ID")
+            # Never the preview's: that would put a version tag's build in
+            # front of the preview's testers, as theirs.
+            if [ "$bundle" = com.hunterahlquist.solo.preview ]; then
+              echo "::error::SOLO_ASC_APP_ID names the preview app. It should be the store app's Apple ID."
+              exit 1
+            fi
+            echo "Building for $bundle, the app SOLO_ASC_APP_ID names."
+            { echo "bundle_id=$bundle"; echo "name="; echo "icon="; } >> "$GITHUB_OUTPUT"
+          else
+            { echo "bundle_id=com.hunterahlquist.solo.preview"; echo "name=Solo (Preview)"; echo "icon=Solo Preview"; } >> "$GITHUB_OUTPUT"
+          fi
+
+      # The project keeps the store's icon (Solo/Solo.icon). The preview's is
+      # in Icons with the desktop's; the app's folder is one the project reads
+      # whole, so a file put in it is in the target without being listed.
+      - name: Stage the preview icon
+        if: steps.gate.outputs.upload == 'true' && steps.app.outputs.icon != ''
+        run: cp -R "../../Icons/Solo Preview.icon" "Solo/Solo Preview.icon"
+
+      # Release, as the app chosen above. The bundle id goes through
       # SOLO_BUNDLE_ID, which the app, its widgets and its tests each build
       # their own from, where PRODUCT_BUNDLE_IDENTIFIER on the command line
       # would give every target, the packages included, the same one. The team
@@ -116,8 +168,15 @@ jobs:
         if: steps.gate.outputs.upload == 'true'
         env:
           VERSION: ${{ steps.channel.outputs.version }}
+          BUNDLE_ID: ${{ steps.app.outputs.bundle_id }}
+          APP_NAME: ${{ steps.app.outputs.name }}
+          APP_ICON: ${{ steps.app.outputs.icon }}
         run: |
           set -euo pipefail
+          # Said only for the preview: the store app's are the project's own.
+          identity=()
+          [ -z "$APP_NAME" ] || identity+=("INFOPLIST_KEY_CFBundleDisplayName=$APP_NAME")
+          [ -z "$APP_ICON" ] || identity+=("ASSETCATALOG_COMPILER_APPICON_NAME=$APP_ICON")
           xcodebuild archive \
             -project Solo.xcodeproj -scheme Solo -configuration Release \
             -destination 'generic/platform=iOS' \
@@ -130,9 +189,8 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             MARKETING_VERSION="${VERSION%%-*}" \
             CURRENT_PROJECT_VERSION="$(date -u +%Y%m%d%H%M)" \
-            SOLO_BUNDLE_ID=com.hunterahlquist.solo.preview \
-            INFOPLIST_KEY_CFBundleDisplayName="Solo (Preview)" \
-            ASSETCATALOG_COMPILER_APPICON_NAME="Solo Preview"
+            SOLO_BUNDLE_ID="$BUNDLE_ID" \
+            ${identity[@]+"${identity[@]}"}
 
       # ExportOptions-testflight.plist uploads straight to App Store Connect
       # and marks the build internal-only, so it can't reach external testers

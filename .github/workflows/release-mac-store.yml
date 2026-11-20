@@ -2,12 +2,13 @@ name: Mac TestFlight
 
 on:
   push:
-    # Previews only: a `preview-v*` tag uploads the Mac build of the native app
-    # to TestFlight for internal testers, beside the iPhone and iPad one
-    # (release-ios.yml). Stable `v*` tags don't, and there is no manual run,
-    # until the app is ready for more than that. The direct-download app
-    # (release-desktop.yml) is unaffected either way.
-    tags: ["preview-v*"]
+    # The Mac build of the native app, beside the iPhone and iPad one
+    # (release-ios.yml) and to the same two apps: a `preview-v*` tag to the
+    # preview app's TestFlight ("Solo (Preview)"), a version tag (`v*`) to the
+    # store app's ("Solo"), which is the one SOLO_ASC_APP_ID names. Both are
+    # where internal testers see it and nobody else. There is no manual run.
+    # The direct-download app (release-desktop.yml) is unaffected either way.
+    tags: ["preview-v*", "v*"]
 
 permissions:
   contents: read
@@ -24,7 +25,8 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 45
     # The same environment as the iOS upload: the App Store Connect key can
-    # publish builds, so its deployment rules limit it to preview tags.
+    # publish builds, so its deployment rules limit it to these tags, and a
+    # tag pattern they don't list is turned away before any step runs.
     environment: testflight
     # Lifted to the job because a step's `if:` can read `env` but not
     # `secrets`: without them the run stops at a notice instead of failing.
@@ -36,11 +38,18 @@ jobs:
       # Distribution identities, base64.
       MAS_CERTIFICATES: ${{ secrets.MAS_CERTIFICATES }}
       MAS_CERTIFICATES_PASSWORD: ${{ secrets.MAS_CERTIFICATES_PASSWORD }}
-      # The Mac App Store profile for com.hunterahlquist.solo.preview, base64.
-      MAS_PROVISIONING_PROFILE: ${{ secrets.MAS_PREVIEW_PROVISIONING_PROFILE }}
-      # The app's Apple ID in App Store Connect (App Information), which altool
-      # files the build under. Shared with the iOS preview: one app, two platforms.
-      ASC_APP_ID: ${{ vars.SOLO_PREVIEW_ASC_APP_ID }}
+      # A Mac App Store profile for each app's bundle id, base64: the preview's
+      # (com.hunterahlquist.solo.preview) and the store app's. Both are handed
+      # in and one chosen below, by a step and not by an expression here: an
+      # expression that falls back to the other when one is empty would sign
+      # a version tag's build as the preview.
+      PREVIEW_PROVISIONING_PROFILE: ${{ secrets.MAS_PREVIEW_PROVISIONING_PROFILE }}
+      STORE_PROVISIONING_PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+      # Each app's Apple ID in App Store Connect (App Information), which altool
+      # files the build under. Each is shared with the iOS upload: one app, two
+      # platforms. Chosen below, for the same reason.
+      PREVIEW_ASC_APP_ID: ${{ vars.SOLO_PREVIEW_ASC_APP_ID }}
+      STORE_ASC_APP_ID: ${{ vars.SOLO_ASC_APP_ID }}
     defaults:
       run:
         working-directory: src/Solo.iOS
@@ -53,34 +62,52 @@ jobs:
       - name: Classify the release
         id: channel
         working-directory: .
-        run: bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          bash build/release-channel.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          # Which of the two apps the tag is for. A version tag is the store
+          # app's whether or not its version has a suffix (v1.22.0-rc.1).
+          case "$GITHUB_REF_NAME" in
+            v*) echo "app=store" ;;
+            *)  echo "app=preview" ;;
+          esac >> "$GITHUB_OUTPUT"
 
       # A Design Docs package preview (preview-v…-design-docs-<label>.N) ships
       # an extension zip, not the app. Otherwise build/testflight-gate.sh skips
-      # a tag that leaves the app as testers already have it, which is most of
-      # them: the app talks to its instance over the API and carries none of
-      # the server.
+      # a preview tag that leaves the app as testers already have it, which is
+      # most of them: the app talks to its instance over the API and carries
+      # none of the server. A version tag isn't asked, as on iOS: it always
+      # uploads. What is missing is named, since the two apps need different
+      # things: the store app has a profile and an Apple ID of its own.
       - name: Check what this run uploads
         id: gate
         working-directory: .
         env:
+          APP: ${{ steps.channel.outputs.app }}
           PACKAGE_LABEL: ${{ steps.channel.outputs.package_label }}
-          PRERELEASE: ${{ steps.channel.outputs.prerelease }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # The trigger already limits this to preview tags; this keeps a
-          # stable version from uploading if that ever changes.
-          if [ "$PRERELEASE" != true ]; then
-            echo "::notice::Not a preview version; only previews go to TestFlight for now."
-            echo "upload=false" >> "$GITHUB_OUTPUT"
-          elif [ -n "$PACKAGE_LABEL" ]; then
+          if [ "$APP" = store ]; then
+            app_id=$STORE_ASC_APP_ID; profile=$STORE_PROVISIONING_PROFILE
+            needs="SOLO_ASC_APP_ID and MAS_PROVISIONING_PROFILE"
+          else
+            app_id=$PREVIEW_ASC_APP_ID; profile=$PREVIEW_PROVISIONING_PROFILE
+            needs="SOLO_PREVIEW_ASC_APP_ID and MAS_PREVIEW_PROVISIONING_PROFILE"
+          fi
+          if [ -n "$PACKAGE_LABEL" ]; then
             echo "::notice::A Design Docs package preview; no app upload."
             echo "upload=false" >> "$GITHUB_OUTPUT"
-          elif [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_APP_ID" ] ||
-               [ -z "$MAS_CERTIFICATES" ] || [ -z "$MAS_CERTIFICATES_PASSWORD" ] || [ -z "$MAS_PROVISIONING_PROFILE" ]; then
-            echo "::notice::The testflight environment is missing the Mac App Store secrets or SOLO_PREVIEW_ASC_APP_ID; skipping the upload."
+          elif [ -z "$ASC_KEY" ] || [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] ||
+               [ -z "$MAS_CERTIFICATES" ] || [ -z "$MAS_CERTIFICATES_PASSWORD" ]; then
+            echo "::notice::The testflight environment is missing the App Store Connect key or the Mac App Store certificates; skipping the upload."
             echo "upload=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$app_id" ] || [ -z "$profile" ]; then
+            echo "::notice::The testflight environment is missing one of $needs, which this app's Mac upload needs; skipping the upload."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+          elif [ "$APP" = store ]; then
+            printf '### TestFlight upload\n\nA version tag: it uploads to the store app, the one SOLO_ASC_APP_ID names.\n' >> "$GITHUB_STEP_SUMMARY"
+            echo "upload=true" >> "$GITHUB_OUTPUT"
           else
             bash build/testflight-gate.sh mac >> "$GITHUB_OUTPUT"
           fi
@@ -94,16 +121,51 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | grep -v -i beta | sort -V | tail -1)"
           xcodebuild -version
 
+      # Written before the build and not just before the upload: the store
+      # app's bundle id is asked of App Store Connect with it.
+      - name: Write the App Store Connect key
+        if: steps.gate.outputs.upload == 'true'
+        working-directory: .
+        run: build/write-asc-key.sh "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
+      # Which app the build is made as, as on iOS (release-ios.yml): the
+      # preview under its own bundle id, name and icon, and the store app under
+      # the bundle id of whichever app SOLO_ASC_APP_ID names, with the
+      # project's own name and icon. `installed` is what it is called in
+      # /Applications, and `package` the .pkg that is uploaded.
+      - name: Choose the app
+        id: app
+        if: steps.gate.outputs.upload == 'true'
+        working-directory: .
+        env:
+          APP: ${{ steps.channel.outputs.app }}
+        run: |
+          set -euo pipefail
+          if [ "$APP" = store ]; then
+            bundle=$(swift build/asc-app-bundle-id.swift "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" "$STORE_ASC_APP_ID")
+            # Never the preview's: that would put a version tag's build in
+            # front of the preview's testers, as theirs.
+            if [ "$bundle" = com.hunterahlquist.solo.preview ]; then
+              echo "::error::SOLO_ASC_APP_ID names the preview app. It should be the store app's Apple ID."
+              exit 1
+            fi
+            echo "Building for $bundle, the app SOLO_ASC_APP_ID names."
+            { echo "bundle_id=$bundle"; echo "name="; echo "icon="; echo "installed=Solo"; echo "package=Solo.pkg"; } >> "$GITHUB_OUTPUT"
+          else
+            { echo "bundle_id=com.hunterahlquist.solo.preview"; echo "name=Solo (Preview)"; echo "icon=Solo Preview"
+              echo "installed=Solo (Preview)"; echo "package=Solo-Preview.pkg"; } >> "$GITHUB_OUTPUT"
+          fi
+
       # As for the iOS upload: the project keeps the store's icon, and a file
       # put in the app's folder is in the target without being listed.
       - name: Stage the preview icon
-        if: steps.gate.outputs.upload == 'true'
+        if: steps.gate.outputs.upload == 'true' && steps.app.outputs.icon != ''
         run: cp -R "../../Icons/Solo Preview.icon" "Solo/Solo Preview.icon"
 
-      # The same target as the iOS app, built for the Mac under the same
-      # preview name, icon and bundle id (see release-ios.yml for why the id
-      # goes through SOLO_BUNDLE_ID), so the two are one App Store Connect app
-      # with two platforms. Signed for nobody here: the store's signature needs
+      # The same target as the iOS app, built for the Mac as the same app (see
+      # release-ios.yml for why the id goes through SOLO_BUNDLE_ID), so the two
+      # are one App Store Connect app with two platforms. Signed for nobody
+      # here: the store's signature needs
       # the certificates below, and is put on by build/package-mac-store.sh,
       # where a manual identity and profile given on this command line would be
       # handed to the packages too, which can't take a profile. So no team, no
@@ -115,8 +177,15 @@ jobs:
         if: steps.gate.outputs.upload == 'true'
         env:
           VERSION: ${{ steps.channel.outputs.version }}
+          BUNDLE_ID: ${{ steps.app.outputs.bundle_id }}
+          APP_NAME: ${{ steps.app.outputs.name }}
+          APP_ICON: ${{ steps.app.outputs.icon }}
         run: |
           set -euo pipefail
+          # Said only for the preview: the store app's are the project's own.
+          identity=()
+          [ -z "$APP_NAME" ] || identity+=("INFOPLIST_KEY_CFBundleDisplayName=$APP_NAME")
+          [ -z "$APP_ICON" ] || identity+=("ASSETCATALOG_COMPILER_APPICON_NAME=$APP_ICON")
           xcodebuild archive \
             -project Solo.xcodeproj -scheme Solo -configuration Release \
             -destination 'generic/platform=macOS' \
@@ -125,9 +194,8 @@ jobs:
             CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
             MARKETING_VERSION="${VERSION%%-*}" \
             CURRENT_PROJECT_VERSION="$(date -u +%Y%m%d%H%M)" \
-            SOLO_BUNDLE_ID=com.hunterahlquist.solo.preview \
-            INFOPLIST_KEY_CFBundleDisplayName="Solo (Preview)" \
-            ASSETCATALOG_COMPILER_APPICON_NAME="Solo Preview"
+            SOLO_BUNDLE_ID="$BUNDLE_ID" \
+            ${identity[@]+"${identity[@]}"}
 
       # A keychain of the job's own, so the identities are gone with it and
       # nothing is left in the runner's login keychain. productbuild is allowed
@@ -171,22 +239,27 @@ jobs:
             echo "::error::MAS_CERTIFICATES has no Mac Installer Distribution identity (named \"3rd Party Mac Developer Installer\")."; exit 1; }
 
       # Signs the archived app as the store's and wraps it in a signed .pkg.
-      # It goes into /Applications as "Solo (Preview)", the name the Electron
-      # preview had there, so it sits beside a downloaded Solo instead of on it.
+      # The preview goes into /Applications as "Solo (Preview)", the name the
+      # Electron preview had there, so it sits beside a Solo instead of on it;
+      # the store app is Solo. The profile is the chosen app's: one made for
+      # the other bundle id is refused by the packaging, not signed with.
       - name: Package
         if: steps.gate.outputs.upload == 'true'
         working-directory: .
+        env:
+          APP: ${{ steps.channel.outputs.app }}
+          INSTALLED: ${{ steps.app.outputs.installed }}
+          PACKAGE: ${{ steps.app.outputs.package }}
         run: |
           set -euo pipefail
           PROFILE="${RUNNER_TEMP}/solo-mas.provisionprofile"
-          echo "$MAS_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE"
+          if [ "$APP" = store ]; then
+            echo "$STORE_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE"
+          else
+            echo "$PREVIEW_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE"
+          fi
           bash build/package-mac-store.sh "$RUNNER_TEMP/Solo.xcarchive" "$PROFILE" \
-            "$RUNNER_TEMP/mas/Solo-Preview.pkg" "Solo (Preview)"
-
-      - name: Write the App Store Connect key
-        if: steps.gate.outputs.upload == 'true'
-        working-directory: .
-        run: build/write-asc-key.sh "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+            "$RUNNER_TEMP/mas/$PACKAGE" "$INSTALLED"
 
       # Lands in TestFlight, where only internal testers see it: nothing reaches
       # external testers or App Review until someone adds it there by hand. The
@@ -199,12 +272,15 @@ jobs:
         if: steps.gate.outputs.upload == 'true'
         env:
           API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/private_keys
+          APP: ${{ steps.channel.outputs.app }}
+          PACKAGE: ${{ steps.app.outputs.package }}
         run: |
           set -euo pipefail
+          if [ "$APP" = store ]; then ASC_APP_ID=$STORE_ASC_APP_ID; else ASC_APP_ID=$PREVIEW_ASC_APP_ID; fi
           INFO="$RUNNER_TEMP/Solo.xcarchive/Products/Applications/Solo.app/Contents/Info.plist"
           value() { /usr/libexec/PlistBuddy -c "Print :$1" "$INFO"; }
           LOG="${RUNNER_TEMP}/altool.log"
-          xcrun altool --upload-package "$RUNNER_TEMP/mas/Solo-Preview.pkg" --type macos \
+          xcrun altool --upload-package "$RUNNER_TEMP/mas/$PACKAGE" --type macos \
             --apple-id "$ASC_APP_ID" --bundle-id "$(value CFBundleIdentifier)" \
             --bundle-version "$(value CFBundleVersion)" \
             --bundle-short-version-string "$(value CFBundleShortVersionString)" \
