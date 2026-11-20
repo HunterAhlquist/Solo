@@ -221,13 +221,29 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
         };
         Assert.True((await _admin.PutJson<EmailSettingsDto>("/api/settings/email", open)).Enabled);
 
-        // The transport holds to it too, for settings saved before this was asked of them.
-        var transport = new MailKitTransport();
-        var message = EmailOutbox.Compose(new Solo.Data.Entities.EmailSettings { FromAddress = "solo@example.com" },
-            "bob@example.com", "Hello", "<p>Hello</p>", "Hello", null);
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => transport.SendAsync(
-            new SmtpOptions("relay.example.com", 25, SmtpSecurity.None, "solo", "hunter2"), message, default));
+        // Settings saved before this was asked of them send nothing, and keep what is queued.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SoloDbContext>();
+            db.EmailSettings.Single().Username = "solo";
+            EmailOutbox.Queue(db, "bob@example.com", new EmailContent("Hello", "<p>Hello</p>", "Hello"), "test");
+            await db.SaveChangesAsync();
+        }
+
+        await SendAsync();
+        Assert.Empty(_factory.Transport.Sent);
+        Assert.Null(Db(db => db.EmailMessages.Single().SentAt));
+        Assert.Null(Db(db => db.EmailMessages.Single().FailedAt));
+
+        // Whatever sends makes its options in one place, and none are made that would do it.
+        var unsafeSettings = new Solo.Data.Entities.EmailSettings
+        {
+            SmtpHost = "relay.example.com", SmtpPort = 25, Security = SmtpSecurity.None, Username = "solo",
+        };
+        var refused = Assert.Throws<InvalidOperationException>(() => EmailOutbox.OptionsFor(unsafeSettings, "hunter2"));
         Assert.Equal(SmtpOptions.UnencryptedSignIn, refused.Message);
+        unsafeSettings.SmtpHost = "localhost";
+        Assert.Equal("hunter2", EmailOutbox.OptionsFor(unsafeSettings, "hunter2").Password);
 
         Assert.False(new SmtpOptions("localhost", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
         Assert.False(new SmtpOptions("127.0.0.1", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
