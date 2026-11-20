@@ -791,24 +791,42 @@ private struct ProjectDisclosureRow: View {
     static let gap: CGFloat = 10
 
     var body: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.25)) { configuration.isExpanded.toggle() }
-        } label: {
-            HStack(spacing: Self.gap) {
-                #if os(macOS)
-                chevron.frame(width: Self.chevronWidth)
-                #endif
-                configuration.label
-                    .foregroundStyle(theme.textPrimary)
-                Spacer(minLength: 0)
-                #if os(iOS)
-                chevron
-                #endif
-            }
-            .contentShape(.rect)
+        // A button on an iPad. On a Mac the row is what a project is dragged by, to put the
+        // projects in another order, and a button takes the press the list would have begun
+        // the drag with: a row that was one button from edge to edge could not be moved at
+        // all. So there it is the same row with a click on it, which leaves the press to
+        // the list until it is known to be a click.
+        #if os(macOS)
+        row
+            .onTapGesture(perform: toggle)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, toggle)
+            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+        #else
+        Button(action: toggle) { row }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+        #endif
+    }
+
+    private func toggle() {
+        withAnimation(.snappy(duration: 0.25)) { configuration.isExpanded.toggle() }
+    }
+
+    private var row: some View {
+        HStack(spacing: Self.gap) {
+            #if os(macOS)
+            chevron.frame(width: Self.chevronWidth)
+            #endif
+            configuration.label
+                .foregroundStyle(theme.textPrimary)
+            Spacer(minLength: 0)
+            #if os(iOS)
+            chevron
+            #endif
         }
-        .buttonStyle(.plain)
-        .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+        .contentShape(.rect)
     }
 
     private var chevron: some View {
