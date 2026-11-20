@@ -45,7 +45,8 @@ nonisolated struct LensShape: Sendable {
     /// From the camera's space into the lens's, and back.
     var lensFromView: simd_float4x4
     var viewFromLens: simd_float4x4
-    /// Half its width, half its height, the radius of its corners.
+    /// Half its width, half its height, the radius of its corners, all in its own units,
+    /// and how many of the camera's units one of those is.
     var shape: SIMD4<Float>
     /// Its colour at the top and at the bottom, as light and not as sRGB, and in `top`'s
     /// last place how much of the colour there is: the rest is seen through.
@@ -103,12 +104,20 @@ nonisolated final class LensBoard: @unchecked Sendable {
     private var shapes: [LensShape] = []
     private var light: GlowSource?
     private var compiled = false
+    private var frame: SIMD2<Int>?
 
     /// Whether the pass is there to make the glass. Until it is, and if it never is, the
     /// stage draws its glass itself.
     var works: Bool {
         get { lock.lock(); defer { lock.unlock() }; return compiled }
         set { lock.lock(); compiled = newValue; lock.unlock() }
+    }
+
+    /// How big the picture the pass was last handed is, across and down. The stage reads
+    /// it to see that the picture is still the shape of its view (`StageRig.frame`).
+    var drawn: SIMD2<Int>? {
+        get { lock.lock(); defer { lock.unlock() }; return frame }
+        set { lock.lock(); frame = newValue; lock.unlock() }
     }
 
     func post(_ shapes: [LensShape], glow: GlowSource?) {
@@ -211,6 +220,7 @@ nonisolated struct GlassLens: PostProcessEffect {
 
     mutating func postProcess(context: borrowing PostProcessEffectContext<any MTLCommandBuffer>) {
         let posted = board.read()
+        board.drawn = [context.targetColorTexture.width, context.targetColorTexture.height]
         if let pass {
             pass.encode(into: context.commandBuffer, source: context.sourceColorTexture, depth: context.sourceDepthTexture,
                         target: context.targetColorTexture, projection: context.projection, lenses: posted.lenses, glow: posted.glow)
@@ -392,11 +402,11 @@ nonisolated struct GlassPass: @unchecked Sendable {
 
             // Glass behind something solid is not there to be looked through.
             if (solid < 0) { solid = u.depth.y / (u.depth.x + depths.sample(nearest, uv)); }
-            if (solid < reach - 0.08) { continue; }
+            if (solid < reach - 0.08 * shape.w) { continue; }
 
-            // A point of the picture is this much of the glass across: its edge is eased
-            // over one of them, as the edge of anything drawn is.
-            float grain = 2 * reach / (u.frame.z * size.y);
+            // A point of the picture is this much of the glass across, in the glass's own
+            // units: its edge is eased over one of them, as the edge of anything drawn is.
+            float grain = 2 * reach / (u.frame.z * size.y) / max(shape.w, 0.0001);
             float cover = clamp(inside / grain, 0.0, 1.0);
 
             float near = 1 - clamp(inside / u.frame.w, 0.0, 1.0);

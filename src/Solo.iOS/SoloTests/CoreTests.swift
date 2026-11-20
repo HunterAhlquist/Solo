@@ -782,16 +782,6 @@ private extension Route {
 
     /// The bars are the icon's glass: the one in front is seen through most, and each is a
     /// fade from a lighter colour to a deeper one.
-    /// A stage's view is larger than the room its models are fitted to, and its camera is
-    /// opened wider to match, so the models stay the size they were.
-    @Test func aStageSeenWiderShowsWhatItDidAtTheSameSize() {
-        #expect(abs(Stage.fieldOfView(28, grownBy: 1) - 28) < 0.0001)
-        // Twice as tall a view sees twice as much at any distance.
-        let wider = Stage.fieldOfView(28, grownBy: 2)
-        #expect(abs(tan(wider * .pi / 360) - 2 * tan(28 * .pi / 360)) < 0.0001)
-        #expect(wider > 28 && wider < 56)
-    }
-
     @Test func theLogosBarsAreSeenThroughAsTheIconsAre() {
         #expect(SoloLogo.bars.map(\.name) == ["BarFront", "BarMiddle", "BarBack"])
         for (near, far) in zip(SoloLogo.bars, SoloLogo.bars.dropFirst()) {
@@ -925,11 +915,91 @@ private extension Route {
     }
     #endif
 
+    /// The face is read from its Aseprite file by the app: the frames it has, and the tags
+    /// that say which is which.
+    @Test func theFacesDrawingIsReadAsItWasDrawn() throws {
+        let sheet = try #require(Guy.sheet)
+        #expect(sheet.width == 16 && sheet.height == 16)
+        #expect(sheet.tags["Smile"]?.count == 1 && sheet.tags["Idle"]?.count == 2 && sheet.tags["Talk"]?.count == 2)
+        #expect(sheet.frames.count == 5 && sheet.frames.allSatisfy { $0.filled.count == 256 && $0.filled.contains(true) })
+        // Each thing it does is a frame of its own, and the second of a pair is not the first.
+        let poses: [GuyPose] = [.smile, .idle(blinking: false), .idle(blinking: true), .talk(open: false), .talk(open: true)]
+        let frames = poses.map { Guy.frame(for: $0, in: sheet) }
+        #expect(Set(frames).count == 5)
+        #expect(sheet.frames[frames[1]].filled != sheet.frames[frames[2]].filled)
+        // What isn't such a file is nothing, and is not read past its end.
+        #expect(AsepriteSheet(data: Data([1, 2, 3])) == nil)
+        #expect(AsepriteSheet(data: Data(repeating: 0, count: 400)) == nil)
+    }
+
+    /// A drawing made of square points is cut out along closed lines, one round each part
+    /// of it, and one more round each hole.
+    @Test func aDrawingsEdgeGoesRoundEachOfItsParts() {
+        func loops(_ rows: [String]) -> [[SIMD2<Int>]] {
+            PixelOutline.loops(filled: rows.joined().map { $0 == "#" }, width: rows[0].count, height: rows.count)
+        }
+        // A bar two points long is one box, and only its corners are kept.
+        #expect(loops(["##"]) == [[[0, 0], [2, 0], [2, 1], [0, 1]]])
+        // A ring is its outside and its hole, going opposite ways round.
+        let ring = loops(["###", "#.#", "###"])
+        #expect(ring.count == 2 && ring.allSatisfy { $0.count == 4 })
+        func turning(_ loop: [SIMD2<Int>]) -> Int {
+            zip(loop, loop.dropFirst() + [loop[0]]).reduce(0) { $0 + $1.0.x * $1.1.y - $1.1.x * $1.0.y }
+        }
+        #expect(turning(ring[0]) * turning(ring[1]) < 0)
+        // Two points that meet only at a corner are two parts, not one with a waist.
+        let corner = loops(["#.", ".#"])
+        #expect(corner.count == 2 && corner.allSatisfy { $0.count == 4 })
+        // An L is one part with six corners.
+        #expect(loops(["#.", "##"]).map(\.count) == [6])
+    }
+
+    /// The face is where its screen has it, and on the way between two screens it is
+    /// between their places, as the row of screens is between the two.
+    @MainActor @Test func theFaceGoesFromOneScreensPlaceToTheNext() {
+        let guide = OnboardingGuide(start: .welcome)
+        guide.anchors = [.welcome: CGRect(x: 200, y: 400, width: 100, height: 80),
+                         .hosting: CGRect(x: 20, y: 500, width: 60, height: 48),
+                         .connect: CGRect(x: 180, y: 800, width: 40, height: 32)]
+        let now = Date.now
+        #expect(guide.place(at: now)?.rect == guide.anchors[.welcome])
+        #expect(guide.page(at: now) == 0)
+        #expect(guide.landed == false && guide.settled == false)
+
+        guide.go(to: .hosting, over: 10)
+        let start = try? #require(guide.flight?.start)
+        let half = (start ?? now).addingTimeInterval(5)
+        #expect(abs(guide.page(at: half) - 0.5) < 0.0001)
+        let middle = guide.place(at: half)
+        #expect(abs((middle?.rect.midX ?? 0) - 150) < 0.01 && abs((middle?.rect.width ?? 0) - 80) < 0.01)
+        // It is there, and no further, however long after.
+        let after = (start ?? now).addingTimeInterval(60)
+        #expect(guide.page(at: after) == 1)
+        #expect(guide.place(at: after)?.rect == guide.anchors[.hosting])
+        // Standing up all the way: it is only on the last screen that it lies flat.
+        #expect(guide.place(at: after)?.flat == 0)
+
+        // Sent on before it has arrived, it sets off from where it has got to.
+        guide.go(to: .connect, over: 10)
+        #expect(abs((guide.flight?.fromPage ?? -1) - guide.page(at: .now)) < 0.01)
+        let end = (guide.flight?.start ?? now).addingTimeInterval(60)
+        #expect(guide.place(at: end)?.flat == 1 && guide.page(at: end) == 2)
+    }
+
+    /// It stops for breath where a sentence does, and for less at a comma.
+    @Test func theFaceStopsWhereTheWordsDo() {
+        #expect(OnboardingGuide.pause(after: ".") > OnboardingGuide.pause(after: ","))
+        #expect(OnboardingGuide.pause(after: ",") > OnboardingGuide.pause(after: "a"))
+        #expect(OnboardingGuide.pause(after: "a") == OnboardingGuide.pause(after: " "))
+        // What it says is what was asked for, down to the provider.
+        #expect(OnboardingGuide.speech.contains("OIDC") && !OnboardingGuide.speech.contains("OAuth"))
+    }
+
     /// The app finds its models' parts by the names they have in Blender. An export that
     /// renamed one would leave it unpainted and unable to be picked up, and say nothing.
     @MainActor @Test func theModelsCarryThePartsTheAppLooksFor() async {
         let logo = await Stage.load("SoloLogo")
-        for name in ["Tile", "BarFront", "BarMiddle", "BarBack", "Face"] {
+        for name in ["Tile", "BarFront", "BarMiddle", "BarBack"] {
             #expect(logo?.findEntity(named: name) != nil, "SoloLogo has no \(name)")
         }
         let hosting = await Stage.load("Hosting")
@@ -942,10 +1012,10 @@ private extension Route {
     /// they are solid, and two that began inside one another would be thrown apart.
     @MainActor @Test func theLogosPiecesStartAtDepthsOfTheirOwn() async throws {
         let model = try #require(await SoloLogo.stage.load())
-        let depths = ["Tile", "BarBack", "BarMiddle", "BarFront", "Face"].compactMap {
+        let depths = ["Tile", "BarBack", "BarMiddle", "BarFront"].compactMap {
             model.findEntity(named: $0)?.components[SpringBack.self]?.home.z
         }
-        #expect(depths.count == 5)
+        #expect(depths.count == 4)
         // Back to front, and no two within a slab's thickness of each other.
         for (behind, before) in zip(depths, depths.dropFirst()) {
             #expect(before - behind > 0.07)
@@ -972,7 +1042,7 @@ private extension Route {
     static func lens(half: SIMD2<Float>, top: SIMD4<Float>, bottom: SIMD4<Float>) -> LensShape {
         var viewFromLens = matrix_identity_float4x4
         viewFromLens.columns.3 = [0, 0, -4, 1]
-        return LensShape(lensFromView: viewFromLens.inverse, viewFromLens: viewFromLens, shape: [half.x, half.y, 0.05, 0],
+        return LensShape(lensFromView: viewFromLens.inverse, viewFromLens: viewFromLens, shape: [half.x, half.y, 0.05, 1],
                          top: top, bottom: bottom, fade: [0, 1, half.y * 2, 0])
     }
 

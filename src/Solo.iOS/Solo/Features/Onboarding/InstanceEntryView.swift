@@ -11,6 +11,9 @@ struct InstanceEntryView: View {
     /// On the first launch's screen: back to the start of what led here. Nil in the sheet,
     /// which is opened by someone who is already using the app.
     var restart: (() -> Void)?
+    /// The first run's face, when this is the last of its screens.
+    @Environment(OnboardingGuide.self) private var guide: OnboardingGuide?
+    @State private var restartHeight: CGFloat = 34
     @State private var address = ""
     @State private var problem: String?
     @State private var connecting = false
@@ -129,12 +132,27 @@ struct InstanceEntryView: View {
         }
         .overlay(alignment: .bottomLeading) {
             if let restart {
-                Button(action: restart) {
-                    Label("Restart Onboarding", systemImage: "arrow.left")
-                        .font(.subheadline.weight(.medium))
+                HStack(spacing: 10) {
+                    Button(action: restart) {
+                        Label("Restart Onboarding", systemImage: "arrow.left")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.clearGlass)
+                    .buttonBorderShape(.capsule)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { restartHeight = $0 }
+
+                    // Where the face comes to rest, as tall as the button. It is the picture
+                    // of the face that stays here: the one that came down from the screen
+                    // before is over it until it has arrived, and then this is shown in its
+                    // place.
+                    GuyMark()
+                        .frame(height: restartHeight)
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Onboarding.pageSpace)) }) {
+                            guide?.anchors[.connect] = $0
+                        }
+                        .opacity(guide?.landed ?? true ? 1 : 0)
+                        .animation(.easeOut(duration: 0.18), value: guide?.landed)
                 }
-                .buttonStyle(.clearGlass)
-                .buttonBorderShape(.capsule)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
                 // It stays in its corner under the keyboard and doesn't ride up over the field.

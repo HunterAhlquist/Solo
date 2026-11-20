@@ -63,6 +63,8 @@ nonisolated enum HostingModels {
 struct HostingDiagram: View {
     @Environment(\.theme) private var theme
     @Environment(\.colorScheme) private var scheme
+    /// Shown without the models: a symbol stands where each would be.
+    @Environment(\.onboardingIsFlat) private var flat
 
     /// Docker's "Zero" and "Ether".
     private var ink: Color {
@@ -103,6 +105,16 @@ struct HostingDiagram: View {
                 .frame(width: symbol.width * unit, height: symbol.height * unit)
                 .position(place(CGPoint(x: symbol.midX, y: symbol.midY)))
                 .accessibilityLabel("Docker")
+
+            if flat {
+                ForEach([("xserve", HostingModels.server), ("cloud.fill", HostingModels.cloud), ("laptopcomputer", HostingModels.laptop)], id: \.0) { name, at in
+                    Image(systemName: name)
+                        .font(.system(size: unit * 0.3))
+                        .foregroundStyle(theme.textSecondary)
+                        .position(place(at))
+                        .accessibilityHidden(true)
+                }
+            }
         }
     }
 }

@@ -12,6 +12,23 @@ import SwiftUI
 // The models are made in Blender. Their sources are `Models/*.blend` beside the project,
 // and what the app carries is each one exported (`Models/export_usdz.py`) into the folder
 // next to this file. An object's name there is the name it is found by here.
+//
+// There is one stage, and one view of it, the size of the screen, for everything 3D the
+// first run has: each thing on it is a group, and is put where the screens say it goes.
+// One view and not one for each thing, because a view of RealityKit's turned out to stand
+// very little being done to it, each of these found by its going wrong:
+// - It is not carried along when the view it is in is animated somewhere else.
+// - One that is off the screen stops every other one drawing but once a second.
+// - One that has been out of the screen's views and put back draws, and is never shown
+//   again: it goes on showing its last frame. Taking it away and making another does
+//   that, and so does telling it to take no touches, and so does putting it in front of
+//   or behind something else.
+// So the view is made once, fills the screen, is never moved, hidden or reordered, and
+// takes no touches from the day it is made: what is touched is the screens, which tell
+// the stage where (`StageRig.grab`).
+//
+// Its size may change, and its picture is made again to fit — but not when the device is
+// turned, which it has to be nudged into noticing (`StageRig.fit`).
 
 // MARK: Motion
 
@@ -290,7 +307,13 @@ enum Stage {
     /// is the box it fits in, which for a slab or a server is the thing itself.
     static func piece(_ name: String, in model: Entity, drift: Float = 0.006, rock: Float = 0, phase: Float = 0) {
         guard let entity = model.findEntity(named: name) else { return }
-        let bounds = entity.visualBounds(relativeTo: entity)
+        piece(entity, in: model, drift: drift, rock: rock, phase: phase)
+    }
+
+    /// The same for a piece in hand. Its body is `box` where one is given — a piece whose
+    /// shape changes keeps one body through all of them — and otherwise the box it fits in now.
+    static func piece(_ entity: Entity, in model: Entity, box: BoundingBox? = nil, drift: Float = 0.006, rock: Float = 0, phase: Float = 0) {
+        let bounds = box ?? entity.visualBounds(relativeTo: entity)
         let shape = ShapeResource.generateBox(size: bounds.extents).offsetBy(translation: bounds.center)
         entity.components.set(InputTargetComponent())
         entity.components.set(CollisionComponent(shapes: [shape]))
@@ -305,27 +328,23 @@ enum Stage {
                                          drift: drift, rock: rock, phase: phase))
     }
 
-    /// How much of the stage, top to bottom, a view of this shape shows when `extent` of it
-    /// has to fit: all of its height, or more where the view is too narrow for its width.
+    /// How much of a group, top to bottom, a room of this shape shows when `extent` of it
+    /// has to fit: all of its height, or more where the room is too narrow for its width.
     nonisolated static func visibleHeight(extent: CGSize, view: CGSize) -> CGFloat {
         guard view.width > 0, view.height > 0 else { return extent.height }
         return max(extent.height, extent.width * view.height / view.width)
     }
 
-    /// How far back the camera stands for that, with its angle measured top to bottom.
-    nonisolated static func cameraDistance(extent: CGSize, view: CGSize, fieldOfView degrees: Double) -> Float {
-        Float(visibleHeight(extent: extent, view: view) / (2 * tan(degrees * .pi / 360)))
+    /// A turn, in degrees: about the upright first, then the level, then the line of sight.
+    nonisolated static func turn(_ x: Float, _ y: Float, _ z: Float) -> simd_quatf {
+        let degree = Float.pi / 180
+        return simd_quatf(angle: y * degree, axis: [0, 1, 0]) * simd_quatf(angle: x * degree, axis: [1, 0, 0])
+            * simd_quatf(angle: z * degree, axis: [0, 0, 1])
     }
 
-    /// The angle a camera needs, top to bottom, to see `grown` times as much as it does at
-    /// `degrees` from where it stands. A view made taller by that much and given this angle
-    /// shows what it showed, the same size and in the same place, with more round it.
-    nonisolated static func fieldOfView(_ degrees: Double, grownBy grown: Double) -> Double {
-        2 * atan(tan(degrees * .pi / 360) * grown) * 180 / .pi
-    }
-
-    /// Where a point of the stage at the depth of its middle lands in the view. What is
-    /// drawn flat with a stage — an arrow from one model to another — is placed by this.
+    /// Where a point of a group at the depth of its middle lands in the room the group is
+    /// given. What is drawn flat with a group — an arrow from one model to another — is
+    /// placed by this.
     nonisolated static func point(_ place: CGPoint, extent: CGSize, view: CGSize) -> CGPoint {
         let scale = view.height / visibleHeight(extent: extent, view: view)
         return CGPoint(x: view.width / 2 + place.x * scale, y: view.height / 2 - place.y * scale)
@@ -334,15 +353,15 @@ enum Stage {
 
 // MARK: The view
 
-/// What a stage shows: a model, how much room it needs, and how it is coloured.
+/// What a group on the stage shows: a model, how much room it needs, and how it is coloured.
 struct StageScene {
-    /// How much of the stage has to be in view, in its own units, about its middle.
+    /// How much of the group has to fit in the place it is given, in its own units, about
+    /// its middle.
     var extent: CGSize
-    /// Where that middle is, when it isn't the model's own: what a model takes up on
-    /// screen can reach further one way than another — a glow does, round a piece that is
-    /// off to one side — and the view is centred on all of it.
+    /// Where that middle is, when it isn't the model's own: what a model takes up can
+    /// reach further one way than another, and it is all of it that is centred.
     var middle: SIMD2<Float> = .zero
-    /// How far the whole thing turns from side to side as it idles, in degrees.
+    /// How far the whole group turns from side to side as it idles, in degrees.
     var sway: Float = 7
     /// The model, with its pieces made.
     var load: () async -> Entity?
@@ -352,6 +371,9 @@ struct StageScene {
     var glass: (StagePalette) -> [StageGlass] = { _ in [] }
     /// The piece that gives light, and has a glow round it for that.
     var glow: (StagePalette) -> StageGlow? = { _ in nil }
+    /// What changes from one frame to the next, done to the model each time: a model is
+    /// built once, and anything about it that isn't fixed is set here.
+    var refresh: (Entity) -> Void = { _ in }
 }
 
 /// A piece that gives light: which object it is, the colour of its light, and how strong
@@ -372,32 +394,110 @@ nonisolated struct StageGlass: Sendable {
     var opacity: Float
 }
 
-/// What a stage keeps for as long as it is on screen.
-private final class StageRig {
-    let camera = PerspectiveCamera()
-    var model: Entity?
-    var painted: StagePalette?
+/// One of the things on the stage: its scene, and the part of the view it is to fill.
+struct StageGroup: Identifiable {
+    var id: String
+    var scene: StageScene
+    /// Where it goes, in the space the screens measure in. It may be off the view.
+    var rect: CGRect
+}
 
-    /// The glass on this stage, and where the pass that makes it is told it is.
+/// The stage itself: its camera, its groups, and what the view last asked of them.
+@MainActor final class StageRig {
+    /// How many points of the view one unit of the stage is, at the depth things stand at,
+    /// and how far back the camera is. The camera's angle follows from the view's height.
+    static let pointsPerUnit: CGFloat = 250
+    static let distance: Float = 5
+
+    let camera = PerspectiveCamera()
+    let root = Entity()
+    /// Where the glass is and what glows, for the pass that makes both.
     let board = LensBoard()
-    private var lenses: [(entity: Entity, glass: StageGlass, localFromLens: simd_float4x4, half: SIMD2<Float>, fade: SIMD4<Float>)] = []
+    var watching: RealityKit.EventSubscription?
+
+    /// A group as it stands on the stage.
+    private final class Standing {
+        /// What the group's model hangs from: placed and sized to the group's room, and
+        /// the space its pieces are held in, so they go with it.
+        let anchor = Entity()
+        var model: Entity?
+        var painted: StagePalette?
+        var lenses: [(entity: Entity, glass: StageGlass, localFromLens: simd_float4x4, half: SIMD2<Float>, fade: SIMD4<Float>)] = []
+        var lamp: (entity: Entity, glow: StageGlow, box: BoundingBox)?
+        /// Points of the view to one of the group's own units, as it was last placed.
+        var unit: CGFloat = 250
+    }
+
+    private var standing: [String: Standing] = [:]
+    private var asked: (groups: [StageGroup], palette: StagePalette, size: CGSize, origin: CGPoint)?
     /// Whether the pass has the glass, or the stage is still drawing it.
     private var handed = false
-    var watching: RealityKit.EventSubscription?
-    /// The piece that glows, and the box it fits in, in its own space.
-    private var lamp: (entity: Entity, glow: StageGlow, box: BoundingBox)?
-    /// Whether there is anything on this stage for the pass to make.
-    var needsPass: Bool { !lenses.isEmpty || lamp != nil }
+    private var held: Entity?
 
-    func find(_ glow: StageGlow?, in model: Entity) {
-        lamp = glow.flatMap { glow in
-            model.findEntity(named: glow.name).map { ($0, glow, $0.visualBounds(relativeTo: $0)) }
+    /// Set by the view: has it made a little narrower, or its own width again. See `fit`.
+    var squeeze: (Bool) -> Void = { _ in }
+    private var misfit = 0
+    private var squeezed = false
+
+    /// Sees that the picture is the shape of the view it is shown in. The framework makes
+    /// its picture again whenever its view changes size, except when the device is turned:
+    /// then it goes on at the size it had, a tall picture in a wide view, with everything
+    /// in the wrong place and most of it off the edge. Any change of size after that puts
+    /// it right, so a picture that has been the wrong shape for a few frames has its view
+    /// made a point narrower, and then its own width again, until it is the right one.
+    private func fit(to size: CGSize) {
+        guard let drawn = board.drawn, drawn.x > 0, drawn.y > 0 else { return }
+        let off = (Double(drawn.x) / Double(drawn.y)) / (size.width / size.height)
+        misfit = abs(off - 1) > 0.05 ? misfit + 1 : 0
+        // Squeezed for a couple of frames at a time, and at least a few apart: the first
+        // tries come while the device is still turning, and are passed over as the turn was.
+        if squeezed, misfit == 0 || misfit.isMultiple(of: 3) {
+            squeezed = false
+            squeeze(false)
+        } else if !squeezed, misfit > 0, misfit.isMultiple(of: 10) {
+            squeezed = true
+            squeeze(true)
         }
     }
 
-    /// Finds the glass in the model, and draws it as plain tinted glass for now.
-    func find(_ glass: [StageGlass], in model: Entity) {
-        lenses = glass.compactMap { glass in
+    /// Whether anything here needs the pass.
+    var needsPass: Bool { standing.values.contains { !$0.lenses.isEmpty || $0.lamp != nil } }
+
+    /// Told each time the view is drawn: which groups, where, in which colours, and how
+    /// big the view is and where the screens' space starts in it. Acted on at the next
+    /// frame (`frame`), and not by the view's own update, which is not run for a change
+    /// of this kind: a face given a new expression that way went on wearing the old.
+    func ask(_ groups: [StageGroup], palette: StagePalette, size: CGSize, origin: CGPoint) {
+        asked = (groups, palette, size, origin)
+    }
+
+    /// Puts a group on the stage: loads its model, and finds its glass and its light.
+    func add(_ group: StageGroup, palette: StagePalette) async {
+        guard standing[group.id] == nil else { return }
+        let stood = Standing()
+        standing[group.id] = stood
+        // The group's own space for its pieces: they are carried with it as it is moved
+        // and turned, and nothing in it has weight.
+        var physics = PhysicsSimulationComponent()
+        physics.gravity = .zero
+        stood.anchor.components.set(physics)
+        stood.anchor.components.set(Sway(yaw: group.scene.sway * .pi / 180, pitch: group.scene.sway * .pi / 360))
+        root.addChild(stood.anchor)
+        guard let model = await group.scene.load() else { return }
+        group.scene.paint(model, palette)
+        stood.model = model
+        stood.painted = palette
+        stood.anchor.addChild(model)
+        find(group.scene.glass(palette), in: model, for: stood)
+        stood.lamp = group.scene.glow(palette).flatMap { glow in
+            model.findEntity(named: glow.name).map { ($0, glow, $0.visualBounds(relativeTo: $0)) }
+        }
+        group.scene.refresh(model)
+    }
+
+    /// Finds the glass in a model, and draws it as plain tinted glass for now.
+    private func find(_ glass: [StageGlass], in model: Entity, for stood: Standing) {
+        stood.lenses = glass.compactMap { glass in
             guard let entity = model.findEntity(named: glass.name) else { return nil }
             let bounds = entity.visualBounds(relativeTo: entity)
             let space = Lens.lensFromLocal(center: bounds.center, extents: bounds.extents)
@@ -410,165 +510,207 @@ private final class StageRig {
             let run = 2 * (abs(way.x) * space.half.x + abs(way.y) * space.half.y)
             return (entity, glass, localFromLens, space.half, [way.x, way.y, run, 0])
         }
-        handed = false
-        dress()
+        dress(stood)
     }
 
-    /// The same glass, and the same light, in another scheme's colours.
-    func recolour(_ glass: [StageGlass], glow: StageGlow?) {
-        for index in lenses.indices {
-            if let match = glass.first(where: { $0.name == lenses[index].glass.name }) { lenses[index].glass = match }
-        }
-        if let glow, lamp != nil { lamp?.glow = glow }
-        dress()
-    }
-
-    /// Once the pass has it, a piece is left in the scene as its shine alone; until then,
-    /// and for good where the pass can't be had, it is tinted glass drawn by the scene.
-    private func dress() {
-        for lens in lenses {
+    /// Once the pass has it, a piece of glass is left in the scene as its shine alone;
+    /// until then, and for good where the pass can't be had, it is tinted glass drawn by
+    /// the scene.
+    private func dress(_ stood: Standing) {
+        for lens in stood.lenses {
             let material = handed ? Stage.shine() : Stage.glass(top: lens.glass.top, bottom: lens.glass.bottom, opacity: lens.glass.opacity)
             lens.entity.forEachModel { $0.materials = $0.materials.map { _ in material } }
         }
     }
 
-    /// Where each piece of glass is as the camera sees it, now.
-    func post() {
+    /// Every frame: the camera opened to the view, each group where it was last asked to
+    /// be and in the colours and state last asked for, and the pass told where things are.
+    func frame() {
+        guard let asked, asked.size.width > 0, asked.size.height > 0 else { return }
+        fit(to: asked.size)
+        let scale = Self.pointsPerUnit
+        camera.position = [0, 0, Self.distance]
+        camera.camera.fieldOfViewInDegrees = 2 * atan(Float(asked.size.height / scale) / (2 * Self.distance)) * 180 / .pi
         if !handed, board.works {
             handed = true
-            dress()
+            standing.values.forEach(dress)
         }
-        let viewFromWorld = camera.transformMatrix(relativeTo: nil).inverse
-        let shapes = lenses.map { lens in
-            let viewFromLens = viewFromWorld * lens.entity.transformMatrix(relativeTo: nil) * lens.localFromLens
-            let top = lens.glass.top.light, bottom = lens.glass.bottom.light
-            return LensShape(lensFromView: viewFromLens.inverse, viewFromLens: viewFromLens,
-                             shape: [lens.half.x, lens.half.y, lens.glass.corner, 0],
-                             top: [top.x, top.y, top.z, lens.glass.opacity], bottom: [bottom.x, bottom.y, bottom.z, 1],
-                             fade: lens.fade)
-        }
-        // The glow is made by the same pass, so it waits for it as the glass does.
-        let glow = handed ? lamp.map { lamp in
-            let viewFromLocal = viewFromWorld * lamp.entity.transformMatrix(relativeTo: nil)
-            let low = lamp.box.min, high = lamp.box.max
-            let corners = (0..<8).map { corner in
-                simd_make_float3(viewFromLocal * SIMD4(corner & 1 == 0 ? low.x : high.x, corner & 2 == 0 ? low.y : high.y,
-                                                       corner & 4 == 0 ? low.z : high.z, 1))
+
+        for group in asked.groups {
+            guard let stood = standing[group.id] else { continue }
+            // The group's own units to the stage's, so that what it has to show fits its room.
+            let room = group.rect
+            let unit = room.height / Stage.visibleHeight(extent: group.scene.extent, view: room.size)
+            guard unit.isFinite, unit > 0 else { continue }
+            stood.unit = unit
+            let size = Float(unit / scale)
+            let middle = CGPoint(x: asked.origin.x + room.midX, y: asked.origin.y + room.midY)
+            stood.anchor.scale = SIMD3(repeating: size)
+            stood.anchor.position = [
+                Float((middle.x - asked.size.width / 2) / scale) - group.scene.middle.x * size,
+                Float((asked.size.height / 2 - middle.y) / scale) - group.scene.middle.y * size,
+                0,
+            ]
+            guard let model = stood.model else { continue }
+            // Another scheme is the same model in other colours, not another model.
+            if stood.painted != asked.palette {
+                group.scene.paint(model, asked.palette)
+                let glass = group.scene.glass(asked.palette)
+                for index in stood.lenses.indices {
+                    if let match = glass.first(where: { $0.name == stood.lenses[index].glass.name }) { stood.lenses[index].glass = match }
+                }
+                dress(stood)
+                stood.painted = asked.palette
             }
-            return GlowSource(corners: corners, colour: lamp.glow.colour.light, strength: lamp.glow.strength)
-        } : nil
+            group.scene.refresh(model)
+            if let glow = group.scene.glow(asked.palette), stood.lamp != nil { stood.lamp?.glow = glow }
+        }
+        if needsPass { post() }
+    }
+
+    /// Where each piece of glass is as the camera sees it, now, and what glows.
+    private func post() {
+        let viewFromWorld = camera.transformMatrix(relativeTo: nil).inverse
+        var shapes: [LensShape] = []
+        var glow: GlowSource?
+        for stood in standing.values {
+            let size = stood.anchor.scale.x
+            for lens in stood.lenses {
+                let viewFromLens = viewFromWorld * lens.entity.transformMatrix(relativeTo: nil) * lens.localFromLens
+                let top = lens.glass.top.light, bottom = lens.glass.bottom.light
+                shapes.append(LensShape(lensFromView: viewFromLens.inverse, viewFromLens: viewFromLens,
+                                        shape: [lens.half.x, lens.half.y, lens.glass.corner, size],
+                                        top: [top.x, top.y, top.z, lens.glass.opacity], bottom: [bottom.x, bottom.y, bottom.z, 1],
+                                        fade: lens.fade))
+            }
+            // The glow is made by the same pass, so it waits for it as the glass does.
+            if handed, let lamp = stood.lamp, lamp.glow.strength > 0 {
+                let viewFromLocal = viewFromWorld * lamp.entity.transformMatrix(relativeTo: nil)
+                let low = lamp.box.min, high = lamp.box.max
+                let corners = (0..<8).map { corner in
+                    simd_make_float3(viewFromLocal * SIMD4(corner & 1 == 0 ? low.x : high.x, corner & 2 == 0 ? low.y : high.y,
+                                                           corner & 4 == 0 ? low.z : high.z, 1))
+                }
+                glow = GlowSource(corners: corners, colour: lamp.glow.colour.light, strength: lamp.glow.strength)
+            }
+        }
         board.post(shapes, glow: glow)
+    }
+
+    // MARK: Touch
+
+    /// Takes hold of whatever piece is under a point of the screens, if one is. The view
+    /// takes no touches of its own, so a screen that is touched where it has left room for
+    /// the stage asks here.
+    func grab(at point: CGPoint) -> Bool {
+        guard let asked, let scene = root.scene else { return false }
+        // The line of sight through that point: the camera looks straight down -z.
+        let across = Float((asked.origin.x + point.x - asked.size.width / 2) / Self.pointsPerUnit)
+        let up = Float((asked.size.height / 2 - asked.origin.y - point.y) / Self.pointsPerUnit)
+        let eye = SIMD3<Float>(0, 0, Self.distance)
+        let hit = scene.raycast(origin: eye, direction: simd_normalize(SIMD3(across, up, 0) - eye), length: 40, query: .nearest).first
+        guard let piece = hit?.entity.piece else { return false }
+        held = piece
+        Haptics.shared.play(.pickUp)
+        return true
+    }
+
+    /// Pulls the piece in hand as far as a drag of this many points says.
+    func drag(by translation: CGSize) {
+        guard let held, let stood = standing.values.first(where: { held.isDescendant(of: $0.anchor) }) else { return }
+        let drag = SIMD2(Float(translation.width / stood.unit), Float(-translation.height / stood.unit))
+        held.components[SpringBack.self]?.held = PieceSpring.pull(for: drag)
+    }
+
+    func release() {
+        held?.components[SpringBack.self]?.held = nil
+        held = nil
     }
 }
 
-extension EnvironmentValues {
-    /// How far past the room it is laid out in a stage draws, to each side and above and
-    /// below: see `StageView`.
-    @Entry var stageBleed = CGSize.zero
-}
-
-/// A stage of models: built once, framed to fit, and its pieces draggable.
-///
-/// The models are framed to fit the room the stage is given in the layout, and the view
-/// they are drawn in is larger than that room by `stageBleed`, the same each side and the
-/// same above and below. A piece can be pulled out past where the layout ends, and a view
-/// that stopped there cut it off at a line with nothing on screen to explain it; on a
-/// phone that line was a finger's width inside the edge of the glass.
+/// The one view of the stage: see the top of this file for why there is one, and why it is
+/// left so strictly alone.
 struct StageView: View {
-    var scene: StageScene
-    /// Called once the stage is set and has something to show.
+    var rig: StageRig
+    var groups: [StageGroup]
+    /// Where the space the groups' places are given in starts, in this view.
+    var origin: CGPoint
+    /// Called once everything is on the stage.
     var ready: () -> Void = {}
 
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.stageBleed) private var bleed
-    @State private var rig = StageRig()
-    @State private var held: Entity?
-
-    private static let fieldOfView = 28.0
+    @State private var squeezed = false
 
     var body: some View {
         GeometryReader { geometry in
-            // The camera stands where the room it was given says, and is opened wider by as
-            // much as the view is taller than that room: what was in view is where it was.
-            let room = geometry.size
-            let distance = Stage.cameraDistance(extent: scene.extent, view: room, fieldOfView: Self.fieldOfView)
-            let full = CGSize(width: room.width + 2 * bleed.width, height: room.height + 2 * bleed.height)
-            let angle = Float(Stage.fieldOfView(Self.fieldOfView, grownBy: full.height / max(room.height, 1)))
             let palette = StagePalette(dark: scheme == .dark)
+            let _ = rig.ask(groups, palette: palette, size: geometry.size, origin: origin)
             RealityView { content in
                 StageSystem.registerSystem()
                 content.camera = .virtual
 
-                // The physics is the stage's own: its pieces are carried round with it as it
-                // turns, and nothing in it has weight.
-                let root = Entity()
-                var physics = PhysicsSimulationComponent()
-                physics.gravity = .zero
-                root.components.set(physics)
-                root.components.set(Sway(yaw: reduceMotion ? 0 : scene.sway * .pi / 180, pitch: reduceMotion ? 0 : scene.sway * .pi / 360))
-                // Lit by a picture of a room and not by lamps. A lamp in a second stage — the
-                // next screen's, made while the first is still there — lights nothing, and
-                // that stage arrived dark; the room lights every stage alike, and it is what
-                // the glass has to reflect.
+                // Lit by a picture of a room and not by lamps, which light nothing in a view
+                // made after another; the room is also what the glass has to reflect.
                 if let studio = await Stage.studio() {
-                    root.components.set(ImageBasedLightComponent(source: .single(studio), intensityExponent: Stage.studioExposure))
-                    root.components.set(ImageBasedLightReceiverComponent(imageBasedLight: root))
+                    rig.root.components.set(ImageBasedLightComponent(source: .single(studio), intensityExponent: Stage.studioExposure))
+                    rig.root.components.set(ImageBasedLightReceiverComponent(imageBasedLight: rig.root))
                 }
-                if let model = await scene.load() {
-                    scene.paint(model, palette)
-                    rig.model = model
-                    rig.painted = palette
-                    root.addChild(model)
-                    rig.find(scene.glass(palette), in: model)
-                    rig.find(scene.glow(palette), in: model)
-                }
-                content.add(root)
+                for group in groups { await rig.add(group, palette: palette) }
+                content.add(rig.root)
                 if rig.needsPass {
                     content.renderingEffects.customPostProcessing = .effect(GlassLens(board: rig.board))
-                    rig.watching = content.subscribe(to: SceneEvents.Update.self, on: nil, componentType: nil) { [rig] _ in
-                        rig.post()
-                    }
                 }
-
-                rig.camera.camera.fieldOfViewInDegrees = angle
-                rig.camera.position = [scene.middle.x, scene.middle.y, distance]
+                rig.watching = content.subscribe(to: SceneEvents.Update.self, on: nil, componentType: nil) { [rig] _ in
+                    rig.frame()
+                }
+                rig.frame()
                 content.add(rig.camera)
                 ready()
-            } update: { _ in
-                rig.camera.camera.fieldOfViewInDegrees = angle
-                rig.camera.position = [scene.middle.x, scene.middle.y, distance]
-                // Another scheme is the same model in other colours. The stage is not made
-                // again for it: the system changes the scheme and back as the app leaves the
-                // screen, to take its pictures of it, and a stage rebuilt then came back
-                // without its lights or without anything.
-                if let model = rig.model, rig.painted != palette {
-                    scene.paint(model, palette)
-                    rig.recolour(scene.glass(palette), glow: scene.glow(palette))
-                    rig.painted = palette
-                }
             }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .targetedToAnyEntity()
-                    .onChanged { value in
-                        guard let piece = value.entity.piece else { return }
-                        if held == nil { Haptics.shared.play(.pickUp) }
-                        held = piece
-                        // A point on screen is this much of the stage at the depth it stands at.
-                        let scale = 2 * distance * Float(tan(Self.fieldOfView * .pi / 360)) / Float(max(geometry.size.height, 1))
-                        let drag = SIMD2(Float(value.gestureValue.translation.width), Float(-value.gestureValue.translation.height)) * scale
-                        piece.components[SpringBack.self]?.held = PieceSpring.pull(for: drag)
-                    }
-                    .onEnded { value in
-                        (held ?? value.entity.piece)?.components[SpringBack.self]?.held = nil
-                        held = nil
-                    })
-            // Larger than its room, about the room's own middle.
-            .frame(width: full.width, height: full.height)
-            .position(x: room.width / 2, y: room.height / 2)
+            // A point given up and taken back is how the picture is made again at the
+            // view's own shape after the device has been turned: `StageRig.fit`.
+            .padding(.trailing, squeezed ? 1 : 0)
+            .onAppear { rig.squeeze = { squeezed = $0 } }
         }
+        // From the first, and never changed: see the top of this file.
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// Lets what is on the stage be taken hold of through this view: the stage's own view
+    /// takes no touches, so the part of a screen that has left room for something on it
+    /// passes on the ones it gets. `space` is the one the stage's places are given in.
+    func touchesStage(_ rig: StageRig?, in space: String) -> some View {
+        modifier(StageTouch(rig: rig, space: space))
+    }
+}
+
+private struct StageTouch: ViewModifier {
+    var rig: StageRig?
+    var space: String
+    @State private var began = false
+    @State private var holding = false
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named(space))
+                    .onChanged { value in
+                        if !began {
+                            began = true
+                            holding = rig?.grab(at: value.startLocation) ?? false
+                        }
+                        if holding { rig?.drag(by: value.translation) }
+                    }
+                    .onEnded { _ in
+                        if holding { rig?.release() }
+                        began = false
+                        holding = false
+                    },
+                isEnabled: rig != nil)
     }
 }
 
@@ -583,7 +725,7 @@ extension Entity {
     }
 }
 
-private extension Entity {
+extension Entity {
     /// The piece this is, or is part of: a touch lands on the smallest thing under it.
     var piece: Entity? {
         var entity: Entity? = self
@@ -592,5 +734,15 @@ private extension Entity {
             entity = candidate.parent
         }
         return nil
+    }
+
+    /// Whether this hangs, however far down, from `other`.
+    func isDescendant(of other: Entity) -> Bool {
+        var entity = parent
+        while let candidate = entity {
+            if candidate === other { return true }
+            entity = candidate.parent
+        }
+        return false
     }
 }
