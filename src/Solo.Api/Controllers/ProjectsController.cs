@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Solo.Api.Auth;
 using Solo.Api.Email;
@@ -172,6 +173,7 @@ public sealed class ProjectsController(
     /// </summary>
     [HttpPost("{projectId:guid}/members")]
     [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
+    [EnableRateLimiting(RateLimitPolicies.Invites)]
     public async Task<ActionResult<ProjectMemberDto>> InviteMember(
         Guid projectId, InviteMemberRequest request, CancellationToken ct)
     {
@@ -212,6 +214,7 @@ public sealed class ProjectsController(
     /// <summary>Emails a pending invite again, for when the first one went astray.</summary>
     [HttpPost("{projectId:guid}/members/{memberId:guid}/invite")]
     [Authorize(Policy = AuthConstants.ProjectOwnerPolicy)]
+    [EnableRateLimiting(RateLimitPolicies.Invites)]
     public async Task<IActionResult> ResendInvite(Guid projectId, Guid memberId, CancellationToken ct)
     {
         var member = await db.ProjectMembers.AsNoTracking()

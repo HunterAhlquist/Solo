@@ -12,6 +12,15 @@ public static class RateLimitPolicies
     /// minting, and desktop sign-in flow creation.
     /// </summary>
     public const string Auth = "auth";
+
+    /// <summary>
+    /// Per person, for the endpoints that send an invitation: adding someone
+    /// to a project by email, and sending a pending invite again. Either puts
+    /// mail from the instance in the inbox of whoever the caller names, with
+    /// the caller's own name and the project's in it, so how much of it one
+    /// person can cause is held to what inviting a team takes.
+    /// </summary>
+    public const string Invites = "invites";
 }
 
 /// <summary>Partition keys shared by the rate-limit policies.</summary>

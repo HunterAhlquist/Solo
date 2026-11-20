@@ -176,24 +176,92 @@ public sealed class EmailApiTests(PostgresFixture postgres) : IAsyncLifetime
     {
         postgres.SkipUnlessDockerAvailable();
 
-        // Typed for a server that was signed in to over TLS: it isn't then sent in the clear.
-        var saved = await EnableEmailAsync();
-        var bare = await _admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(security: "None", version: saved.Version));
+        // A server on this machine is the one that may be signed in to without encryption.
+        // Typed for it while it was signed in to over TLS, the password isn't then sent in the clear.
+        var saved = await _admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(password: "hunter2", host: "localhost"));
+        var bare = await _admin.PutJson<EmailSettingsDto>("/api/settings/email",
+            Settings(host: "localhost", security: "None", version: saved.Version));
         Assert.False(bare.HasPassword);
 
         // Typed for a connection that was already unencrypted, it stays.
         var typed = await _admin.PutJson<EmailSettingsDto>("/api/settings/email",
-            Settings(password: "hunter2", security: "None", version: bare.Version));
-        var again = await _admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(security: "None", version: typed.Version));
+            Settings(password: "hunter2", host: "localhost", security: "None", version: bare.Version));
+        var again = await _admin.PutJson<EmailSettingsDto>("/api/settings/email",
+            Settings(host: "localhost", security: "None", version: typed.Version));
         Assert.True(again.HasPassword);
 
         // And a trial run from the form follows the same rule as saving.
-        await _admin.PostJson<TestEmailResultDto>("/api/settings/email/test", Settings(enabled: false, security: "None"));
+        await _admin.PostJson<TestEmailResultDto>("/api/settings/email/test", Settings(enabled: false, host: "localhost", security: "None"));
         Assert.Equal("hunter2", _factory.Transport.Sent[^1].Options.Password);
-        var secured = await _admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(version: again.Version));
+        var secured = await _admin.PutJson<EmailSettingsDto>("/api/settings/email", Settings(host: "localhost", version: again.Version));
         Assert.True(secured.HasPassword);
-        await _admin.PostJson<TestEmailResultDto>("/api/settings/email/test", Settings(enabled: false, security: "None"));
+        await _admin.PostJson<TestEmailResultDto>("/api/settings/email/test", Settings(enabled: false, host: "localhost", security: "None"));
         Assert.Null(_factory.Transport.Sent[^1].Options.Password);
+    }
+
+    /// <summary>A username and password sent without encryption can be read by anything on the way.</summary>
+    [SkippableFact]
+    public async Task ARemoteServer_IsNotSignedInTo_WithoutEncryption()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        // Not turned on, and not tried.
+        var turnedOn = await _admin.PutAsJsonAsync("/api/settings/email", Settings(password: "hunter2", security: "None"));
+        Assert.Equal(HttpStatusCode.BadRequest, turnedOn.StatusCode);
+        Assert.Contains("encrypted connection", await turnedOn.Content.ReadAsStringAsync());
+        var tried = await _admin.PostAsJsonAsync("/api/settings/email/test", Settings(enabled: false, password: "hunter2", security: "None"));
+        Assert.Equal(HttpStatusCode.BadRequest, tried.StatusCode);
+        Assert.Empty(_factory.Transport.Sent);
+
+        // A relay that asks for no sign-in has nothing to give away, and is used as it is.
+        var open = new
+        {
+            enabled = true, publicAddress = "https://solo.example.com", fromAddress = "solo@example.com",
+            smtpHost = "relay.example.com", smtpPort = 25, security = "None", version = 0,
+        };
+        Assert.True((await _admin.PutJson<EmailSettingsDto>("/api/settings/email", open)).Enabled);
+
+        // The transport holds to it too, for settings saved before this was asked of them.
+        var transport = new MailKitTransport();
+        var message = EmailOutbox.Compose(new Solo.Data.Entities.EmailSettings { FromAddress = "solo@example.com" },
+            "bob@example.com", "Hello", "<p>Hello</p>", "Hello", null);
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => transport.SendAsync(
+            new SmtpOptions("relay.example.com", 25, SmtpSecurity.None, "solo", "hunter2"), message, default));
+        Assert.Equal(SmtpOptions.UnencryptedSignIn, refused.Message);
+
+        Assert.False(new SmtpOptions("localhost", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.False(new SmtpOptions("127.0.0.1", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.False(new SmtpOptions("[::1]", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.False(new SmtpOptions("relay.example.com", 587, SmtpSecurity.StartTls, "solo", "x").SignsInUnencrypted);
+        Assert.True(new SmtpOptions("localhost.example.com", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+        Assert.True(new SmtpOptions("10.0.0.5", 25, SmtpSecurity.None, "solo", "x").SignsInUnencrypted);
+    }
+
+    /// <summary>
+    /// An invitation is mail from the instance to whoever the inviter names, with words of
+    /// the inviter's in it. One person can only cause so much of it.
+    /// </summary>
+    [SkippableFact]
+    public async Task Invitations_AreLimitedForEachPerson()
+    {
+        postgres.SkipUnlessDockerAvailable();
+
+        using var factory = new EmailFactory(await postgres.CreateDatabaseAsync("email"), ("RateLimiting:Invites:PermitLimit", "2"));
+        var admin = factory.As("admin", "admin@example.com", "Admin");
+        await TestClients.CompleteSetupAsync(admin);
+        var project = await admin.PostJson<ProjectDto>("/api/projects", new { name = "Game", alias = "GAME" });
+
+        var first = await admin.PostJson<ProjectMemberDto>($"/api/projects/{project.Id}/members", new { email = "one@example.com", role = "ReadWrite" });
+        Assert.Equal(HttpStatusCode.Created, (await admin.PostAsJsonAsync($"/api/projects/{project.Id}/members", new { email = "two@example.com", role = "ReadWrite" })).StatusCode);
+
+        // A third in the hour is turned away, whether it is someone new or the same invite again.
+        var third = await admin.PostAsJsonAsync($"/api/projects/{project.Id}/members", new { email = "three@example.com", role = "ReadWrite" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+        var again = await admin.PostAsync($"/api/projects/{project.Id}/members/{first.Id}/invite", null);
+        Assert.Equal(HttpStatusCode.TooManyRequests, again.StatusCode);
+
+        // Nothing else of theirs is held up by it.
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync($"/api/projects/{project.Id}/members")).StatusCode);
     }
 
     /// <summary>
