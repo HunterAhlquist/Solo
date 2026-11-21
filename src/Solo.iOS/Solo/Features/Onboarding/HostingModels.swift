@@ -5,7 +5,7 @@ import SwiftUI
 /// as a drawing: a server at home, somebody's cloud, the laptop that was put away.
 ///
 /// The stage is a little under two units square about its middle. Docker's symbol is drawn
-/// flat at the middle of it, with an arrow out to each model, so where the models stand in
+/// flat at the middle of it, its name under it, with an arrow out to each model, so where the models stand in
 /// their file is written down here as well, for the drawing to point at.
 nonisolated enum HostingModels {
     static let extent = CGSize(width: 1.92, height: 1.84)
@@ -25,6 +25,40 @@ nonisolated enum HostingModels {
     /// The room Docker asks to be left round its symbol: half its width, on every side.
     static var symbolClearSpace: CGRect { symbol.insetBy(dx: -symbol.width / 2, dy: -symbol.width / 2) }
 
+    /// Where the weight of each drawing is, as a share of its width from its left edge: the
+    /// middle of its ink and not of its box, measured from the drawings. The whale's tail
+    /// stands out to the right of a body that is most of it, and the name ends on an open "r".
+    static let symbolWeight: CGFloat = 0.436
+    static let logotypeWeight: CGFloat = 0.478
+    /// How far down the name's height its small letters begin. Above that is only the stems
+    /// of the "d" and the "k", which the eye does not count as the top of the word.
+    static let logotypeStems: CGFloat = 0.268
+    /// The width of the "o" in the name, which Docker measures its name's clear space in: 548
+    /// of the drawing's 3164.78.
+    static var logotypeO: CGFloat { logotype.width * 548 / 3164.78 }
+
+    /// Where Docker's name is drawn: under the symbol and as wide as it, placed by eye and not
+    /// by box. Its weight is under the symbol's weight, which puts it a little to the left of
+    /// the symbol's edges, and its small letters begin one "o" below the symbol, the stems
+    /// reaching up into that. Its height follows from its drawing, which is 3164.78 by 757.78.
+    ///
+    /// That is nearer than the room Docker asks to be left round its symbol. The two are to be
+    /// read as one mark here, and at that distance they read as two things.
+    static var logotype: CGRect {
+        let width = symbol.width
+        let height = width * 757.78 / 3164.78
+        let o = width * 548 / 3164.78
+        return CGRect(x: symbol.minX + symbol.width * symbolWeight - width * logotypeWeight,
+                      y: symbol.minY - o - height * (1 - logotypeStems), width: width, height: height)
+    }
+
+    /// The room Docker asks to be left round its name: the width of its "o" on every side.
+    static var logotypeClearSpace: CGRect { logotype.insetBy(dx: -logotypeO, dy: -logotypeO) }
+
+    /// The symbol and the name together: what is pressed to go to Docker's own pages.
+    static var dockerLink: CGRect { symbol.union(logotype) }
+    static let dockerHome = URL(string: "https://www.docker.com")!
+
     /// An arrow from the symbol out to a model: where it leaves, what it bends toward, and
     /// where its head lands. Each leaves from outside the symbol's clear space.
     struct Arrow: Equatable, Sendable {
@@ -34,7 +68,7 @@ nonisolated enum HostingModels {
     }
 
     static let arrows: [Arrow] = [
-        Arrow(from: CGPoint(x: -0.22, y: -0.37), bend: CGPoint(x: -0.52, y: -0.56), to: CGPoint(x: -0.66, y: -0.16)),
+        Arrow(from: CGPoint(x: -0.3, y: -0.37), bend: CGPoint(x: -0.56, y: -0.54), to: CGPoint(x: -0.66, y: -0.16)),
         Arrow(from: CGPoint(x: -0.08, y: 0.25), bend: CGPoint(x: -0.12, y: 0.72), to: CGPoint(x: 0.2, y: 0.7)),
         Arrow(from: CGPoint(x: 0.32, y: -0.04), bend: CGPoint(x: 0.62, y: 0.1), to: CGPoint(x: 0.6, y: -0.2)),
     ]
@@ -58,12 +92,16 @@ nonisolated enum HostingModels {
 
 // MARK: The drawing
 
-/// What is flat on the hosting stage: Docker's symbol, and an arrow from it to each model.
+/// What is flat on the hosting stage: Docker's symbol with its name under it, and an arrow
+/// from the symbol to each model.
 ///
-/// The symbol is Docker's own drawing, from its brand guidelines
-/// (docker.com/company/newsroom/media-resources), and is used the way they ask: alone, as
-/// it is drawn, in one of its two colours — the light one on a dark ground, the dark one
-/// on a light — with half its width clear on every side and nothing laid over it.
+/// The symbol and the name are Docker's own drawings, from its brand guidelines
+/// (docker.com/company/newsroom/media-resources), and each is used the way they ask of it:
+/// as it is drawn, in one of its two colours — the light one on a dark ground, the dark one
+/// on a light — with nothing laid over it, and with its clear space kept from everything but
+/// the other. The guidelines have a mark of the two together, side by side, and ask that its
+/// parts not be moved about; one over the other, as close as they are here, is not an
+/// arrangement they give. It is how this screen was asked to show them.
 struct HostingDiagram: View {
     @Environment(\.theme) private var theme
     @Environment(\.colorScheme) private var scheme
@@ -102,13 +140,22 @@ struct HostingDiagram: View {
                 }
             }
 
+            // Read out and pressed as one thing, by what is laid over them (`DockerLink`).
             let symbol = HostingModels.symbol
             Image("DockerSymbol")
                 .resizable()
                 .foregroundStyle(ink)
                 .frame(width: symbol.width * unit, height: symbol.height * unit)
                 .position(place(CGPoint(x: symbol.midX, y: symbol.midY)))
-                .accessibilityLabel("Docker")
+                .accessibilityHidden(true)
+
+            let logotype = HostingModels.logotype
+            Image("DockerLogotype")
+                .resizable()
+                .foregroundStyle(ink)
+                .frame(width: logotype.width * unit, height: logotype.height * unit)
+                .position(place(CGPoint(x: logotype.midX, y: logotype.midY)))
+                .accessibilityHidden(true)
 
             if flat {
                 ForEach([("xserve", HostingModels.server), ("cloud.fill", HostingModels.cloud), ("laptopcomputer", HostingModels.laptop)], id: \.0) { name, at in
@@ -119,6 +166,40 @@ struct HostingDiagram: View {
                         .accessibilityHidden(true)
                 }
             }
+        }
+    }
+}
+
+/// What is pressed to go to Docker's own pages: its symbol and its name, and the space between.
+///
+/// Laid over the room the models are in, since that room takes every touch in it for the
+/// models. A touch here is not one of those: no model stands on the symbol.
+struct DockerLink: View {
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        GeometryReader { geometry in
+            let view = geometry.size
+            let link = HostingModels.dockerLink
+            let middle = Stage.point(CGPoint(x: link.midX, y: link.midY), extent: HostingModels.extent, view: view)
+            let unit = Stage.point(CGPoint(x: 1, y: 0), extent: HostingModels.extent, view: view).x
+                - Stage.point(.zero, extent: HostingModels.extent, view: view).x
+
+            Button {
+                openURL(HostingModels.dockerHome)
+            } label: {
+                Color.clear.contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            // A little past the drawing on every side: a name a few points tall is a small thing to hit.
+            .frame(width: link.width * unit + 16, height: link.height * unit + 16)
+            .position(middle)
+            .accessibilityLabel("Docker")
+            .accessibilityHint("Opens docker.com")
+            .accessibilityAddTraits(.isLink)
+            #if os(macOS)
+            .pointerStyle(.link)
+            #endif
         }
     }
 }

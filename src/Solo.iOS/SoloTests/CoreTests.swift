@@ -913,18 +913,27 @@ private extension Route {
         #expect(abs(abs(through.z) - 0.03) < 0.0001 && abs(through.x) < 0.0001 && abs(through.y) < 0.0001)
     }
 
-    /// Docker asks for half its symbol's width left clear all round it. The models stand
-    /// outside that, and every arrow starts outside it and goes away from it.
-    @Test func dockersSymbolIsLeftItsClearSpace() {
-        let clear = HostingModels.symbolClearSpace
-        for arrow in HostingModels.arrows {
-            #expect(!clear.contains(arrow.from) && !clear.contains(arrow.bend) && !clear.contains(arrow.to))
+    /// Docker asks for half its symbol's width left clear all round it, and the width of its
+    /// name's "o" round its name. The models stand outside both, and every arrow starts outside
+    /// them and goes away from them. The name is under the symbol by eye: its weight under the
+    /// symbol's, and its small letters one "o" below.
+    @Test func dockersSymbolAndNameAreLeftTheirClearSpace() {
+        for clear in [HostingModels.symbolClearSpace, HostingModels.logotypeClearSpace] {
+            for arrow in HostingModels.arrows {
+                #expect(!clear.contains(arrow.from) && !clear.contains(arrow.bend) && !clear.contains(arrow.to))
+            }
+            for model in [HostingModels.server, HostingModels.cloud, HostingModels.laptop] {
+                #expect(!clear.contains(model))
+            }
         }
-        for model in [HostingModels.server, HostingModels.cloud, HostingModels.laptop] {
-            #expect(!clear.contains(model))
-        }
-        // As it is drawn: 1252 by 757.78.
+        let symbol = HostingModels.symbol, name = HostingModels.logotype
+        #expect(abs((symbol.minX + symbol.width * HostingModels.symbolWeight)
+                    - (name.minX + name.width * HostingModels.logotypeWeight)) < 0.0001)
+        // Up is the greater y here: the small letters' tops are that far under the symbol's foot.
+        #expect(abs(symbol.minY - (name.maxY - name.height * HostingModels.logotypeStems) - HostingModels.logotypeO) < 0.0001)
+        // As they are drawn: 1252 by 757.78, and 3164.78 by 757.78.
         #expect(abs(HostingModels.symbol.width / HostingModels.symbol.height - 1252 / 757.78) < 0.001)
+        #expect(abs(HostingModels.logotype.width / HostingModels.logotype.height - 3164.78 / 757.78) < 0.001)
     }
 
     #if os(iOS)

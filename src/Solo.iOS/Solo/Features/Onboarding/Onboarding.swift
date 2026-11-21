@@ -621,6 +621,7 @@ struct HostingView: View {
                     // The drawing is behind the models: a model pulled across an arrow covers it.
                     HostingDiagram()
                     StageSlot(step: .hosting)
+                    DockerLink()
                 }
             } words: {
                 if grows {
