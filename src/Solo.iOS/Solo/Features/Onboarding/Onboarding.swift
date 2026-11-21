@@ -138,6 +138,21 @@ private struct OnboardingPages: View {
                     } else if !solid {
                         FlatGuyLayer(guide: guide)
                     }
+
+                    // The speech bubble, over the stage and not under it with the rest of its
+                    // screen: it is glass, and glass bends what is behind it. Under the stage it
+                    // had only the page behind it, and the face pulled across it went over the top.
+                    if let bubble = guide.bubble {
+                        let along = CGFloat(Onboarding.Step.allCases.firstIndex(of: .hosting) ?? 0) - at
+                        SpeechBubble(text: OnboardingGuide.speech, typed: guide.typed, tail: bubble.tail,
+                                     grown: bubble.grown, scrolls: bubble.scrolls)
+                            .frame(width: bubble.rect.width, height: bubble.rect.height)
+                            // A tap on it is asking for the rest now.
+                            .onTapGesture { guide.skip() }
+                            .offset(x: bubble.rect.minX + along * stride, y: bubble.rect.minY)
+                            .allowsHitTesting(current == .hosting)
+                            .accessibilityHidden(current != .hosting)
+                    }
                 }
             }
         }
@@ -145,6 +160,7 @@ private struct OnboardingPages: View {
         // would carry a second copy of it across the first.
         .environment(\.backdrop, .none)
         .environment(\.onboardingIsFlat, !solid)
+        .environment(\.onboardingLiftsBubble, true)
         .environment(\.stageRig, staged ? rig : nil)
         .environment(guide)
         .task {
@@ -215,6 +231,9 @@ private struct OnboardingPages: View {
 extension EnvironmentValues {
     /// True when the first run is shown without its 3D: see `Onboarding.spent`.
     @Entry var onboardingIsFlat = false
+    /// Whether the speech bubble is drawn over the screens, by whoever holds them, and a screen
+    /// is only to keep its place.
+    @Entry var onboardingLiftsBubble = false
     /// The stage, for a screen to pass on the touches that are meant for what is on it.
     @Entry var stageRig: StageRig? = nil
 }
@@ -235,6 +254,16 @@ extension EnvironmentValues {
     var anchors: [Onboarding.Step: CGRect] = [:]
     /// The room each screen leaves for its part of the stage, in the screen's own space.
     var slots: [Onboarding.Step: CGRect] = [:]
+    /// Where the speech bubble is, in its screen's space, and how it is drawn there. The screen
+    /// only keeps its place: it is drawn over the stage, so that it has the stage behind it.
+    var bubble: BubblePlace?
+
+    struct BubblePlace: Equatable {
+        var rect: CGRect
+        var tail: CGFloat
+        var grown: CGFloat
+        var scrolls: Bool
+    }
     /// Whether the face's stage is up, and there is a face to move.
     var ready = false
     var reduceMotion = false
@@ -559,6 +588,7 @@ struct HostingView: View {
     @Environment(\.openURL) private var openURL
     @Environment(OnboardingGuide.self) private var guide: OnboardingGuide?
     @Environment(\.stageRig) private var rig
+    @Environment(\.onboardingLiftsBubble) private var lifted
     var haveOne: () -> Void
 
     /// How wide the face is here, and how far in from the bubble's edge it stands.
@@ -566,40 +596,153 @@ struct HostingView: View {
     private static let guyInset: CGFloat = 20
     /// How far above the bubble's point the face stands.
     private static let guyClearance: CGFloat = 14
+    /// How wide the words are at their own size.
+    private static let wordsWidth: CGFloat = 460
+    /// The sizes the face and what it says are tried at, largest first, as so many times their
+    /// own. A window or a screen can be far taller than the drawing has any use for, and what
+    /// was left over was an empty band between the drawing and a small face.
+    private static let growths: [CGFloat] = stride(from: 24, to: 10, by: -1).map { CGFloat($0) / 10 }
+
+    /// How tall the face and its words are at their own size, and how tall the buttons.
+    @State private var plainHeight: CGFloat = 0
+    @State private var actionsHeight: CGFloat = 0
+    /// How wide the face and its words have come out, for the buttons to be as wide.
+    @State private var wordsCameOut: CGFloat = HostingView.wordsWidth
 
     var body: some View {
-        // The bubble sees to its own fitting: it stays whole, and its words scroll inside it.
-        OnboardingPage(wordsScroll: false) {
-            ZStack {
-                // The drawing is behind the models: a model pulled across an arrow covers it.
-                HostingDiagram()
-                StageSlot(step: .hosting)
-            }
-        } words: {
-            // The face stands clear of the bubble: its glow reaches some way past it, and
-            // right up against the bubble the two ran together.
-            VStack(alignment: .leading, spacing: Self.guyClearance) {
-                // Room for the face, which is not in this screen but over it.
-                Color.clear
-                    .frame(width: Self.guyWidth, height: Self.guyWidth * Guy.size.height / Guy.size.width)
-                    .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(Onboarding.pageSpace)) }) {
-                        guide?.anchors[.hosting] = $0
-                    }
-                    .touchesStage(rig, in: Onboarding.pageSpace)
-                    .padding(.leading, Self.guyInset)
-                SpeechBubble(text: OnboardingGuide.speech, typed: guide?.typed ?? OnboardingGuide.speech.count,
-                             tail: Self.guyInset + Self.guyWidth / 2)
-                    // A tap on it is asking for the rest now.
-                    .onTapGesture { guide?.skip() }
-            }
-        } actions: {
-            VStack(spacing: 10) {
-                OnboardingButton("Installing Solo Server", systemImage: "arrow.up.right", prominent: false) {
-                    openURL(Onboarding.installGuide)
+        GeometryReader { page in
+            // Not where the picture is beside the words: there is nothing under it to fill.
+            let grows = !OnboardingLayout.isSideways(page.size)
+            let room = grows ? stageRoom(in: page.size) : nil
+            // The bubble sees to its own fitting: it stays whole, and its words scroll inside it.
+            OnboardingPage(wordsScroll: false, widestWords: grows ? OnboardingLayout.widest : Self.wordsWidth,
+                           stageMinHeight: room?.height, gap: room?.gap ?? OnboardingLayout.gap) {
+                ZStack {
+                    // The drawing is behind the models: a model pulled across an arrow covers it.
+                    HostingDiagram()
+                    StageSlot(step: .hosting)
                 }
-                OnboardingButton("I have an Instance!", systemImage: "arrow.right", prominent: true, action: haveOne)
+            } words: {
+                if grows {
+                    // The largest that leaves the drawing its room. All but the last are whole or
+                    // nothing; the last is the words at their own size, which scroll if they must.
+                    ViewThatFits(in: .vertical) {
+                        ForEach(Self.growths, id: \.self) { speaker(grown: $0, scrolls: false) }
+                        speaker(grown: 1, scrolls: true)
+                    }
+                } else {
+                    speaker(grown: 1, scrolls: true)
+                }
+            } actions: {
+                VStack(spacing: 10) {
+                    OnboardingButton("Installing Solo Server", systemImage: "arrow.up.right", prominent: false) {
+                        openURL(Onboarding.installGuide)
+                    }
+                    OnboardingButton("I have an Instance!", systemImage: "arrow.right", prominent: true, action: haveOne)
+                }
+                .frame(maxWidth: grows ? max(wordsCameOut, Self.wordsWidth) : nil)
+                .onGeometryChange(for: CGFloat.self, of: \.size.height) { actionsHeight = $0 }
+            }
+            // Where the face and the bubble are, as said by the one size of them that is shown. Said
+            // up the tree and not by each as its place changes: a size being taken away has its place
+            // change too, on its way out, and said it after the one coming in had said its own.
+            .onPreferenceChange(FacePlaceKey.self) { [guide] place in
+                Task { @MainActor in
+                    if let place { guide?.anchors[.hosting] = place }
+                }
+            }
+            .onPreferenceChange(BubblePlaceKey.self) { [guide] place in
+                Task { @MainActor in
+                    guide?.bubble = place
+                    if let place { wordsCameOut = place.rect.width }
+                }
+            }
+            .background {
+                // Measured to one side, never shown: what the words need at their own size is
+                // what says how much the drawing can be left.
+                speaker(grown: 1, scrolls: false, live: false)
+                    .frame(width: min(Self.wordsWidth, max(page.size.width - OnboardingLayout.margin * 2, 1)))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { plainHeight = $0 }
+                    .hidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
+    }
+
+    /// The face and what it says, `grown` times their own size: all of it together, the type and
+    /// the bubble's own measures with it, though no wider than the drawing's room.
+    private func speaker(grown: CGFloat, scrolls: Bool, live: Bool = true) -> some View {
+        // The face stands clear of the bubble: its glow reaches some way past it, and
+        // right up against the bubble the two ran together.
+        VStack(alignment: .leading, spacing: Self.guyClearance * grown) {
+            // Room for the face, which is not in this screen but over it.
+            Color.clear
+                .frame(width: Self.guyWidth * grown, height: Self.guyWidth * grown * Guy.size.height / Guy.size.width)
+                .background {
+                    if live {
+                        GeometryReader { room in
+                            Color.clear.preference(key: FacePlaceKey.self, value: room.frame(in: .named(Onboarding.pageSpace)))
+                        }
+                    }
+                }
+                .touchesStage(live ? rig : nil, in: Onboarding.pageSpace)
+                .padding(.leading, Self.guyInset * grown)
+            let tail = (Self.guyInset + Self.guyWidth / 2) * grown
+            let bubble = SpeechBubble(text: OnboardingGuide.speech, typed: guide?.typed ?? OnboardingGuide.speech.count,
+                                      tail: tail, grown: grown, scrolls: scrolls)
+            if lifted, let guide {
+                // Only its place: it is drawn over the stage (`OnboardingPages`), from where this says it is.
+                bubble
+                    .hidden()
+                    .accessibilityHidden(true)
+                    .background {
+                        if live {
+                            GeometryReader { room in
+                                Color.clear.preference(key: BubblePlaceKey.self, value: .init(
+                                    rect: room.frame(in: .named(Onboarding.pageSpace)), tail: tail, grown: grown, scrolls: scrolls))
+                            }
+                        }
+                    }
+            } else {
+                // A tap on it is asking for the rest now.
+                bubble.onTapGesture { guide?.skip() }
+            }
+        }
+        .frame(maxWidth: min(Self.wordsWidth * grown, OnboardingLayout.widest))
+    }
+
+    /// The least height the drawing's room is to be left, and how far the words may come up into
+    /// the foot of it. The room is left what the drawing fills at its widest, or all that the
+    /// words at their own size and the buttons can spare, whichever is less: the drawing is as
+    /// large as it would have been, and what is over goes to the face and the words. The drawing
+    /// keeps a margin under its lowest model for a model to be pulled about in, and the face may
+    /// stand in some of that.
+    private func stageRoom(in page: CGSize) -> (height: CGFloat, gap: CGFloat)? {
+        guard plainHeight > 0, actionsHeight > 0 else { return nil }
+        let extent = HostingModels.extent
+        let width = min(page.width - OnboardingLayout.margin * 2, OnboardingLayout.widest)
+        let filled = width * extent.height / extent.width
+        let spare = page.height - OnboardingLayout.top - OnboardingLayout.bottom
+            - plainHeight - OnboardingLayout.readingGap - actionsHeight - OnboardingLayout.gap
+        let height = max(OnboardingLayout.shortest, min(filled, spare))
+        let unit = min(height / extent.height, width / extent.width)
+        return (height, OnboardingLayout.gap - unit * 0.1)
+    }
+}
+
+/// Where the face's room is on the hosting screen, in the screen's space, as said by the room.
+private struct FacePlaceKey: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) { value = value ?? nextValue() }
+}
+
+/// Where the speech bubble's place is kept, and how it is to be drawn there.
+private struct BubblePlaceKey: PreferenceKey {
+    static let defaultValue: OnboardingGuide.BubblePlace? = nil
+    static func reduce(value: inout OnboardingGuide.BubblePlace?, nextValue: () -> OnboardingGuide.BubblePlace?) {
+        value = value ?? nextValue()
     }
 }
 
@@ -613,6 +756,14 @@ private struct SpeechBubble: View {
     var typed: Int
     /// How far along the bubble's top its tail is.
     var tail: CGFloat
+    /// How many times its own size it is drawn: its type, its padding and its corners together.
+    var grown: CGFloat = 1
+    /// Whether words too tall for it scroll inside it. Not where it is one of several sizes being
+    /// tried: one that scrolled would fit anywhere, and the largest would always be the one.
+    var scrolls = true
+    /// The size of its type at its own size: a Mac's body, and elsewhere the callout at
+    /// whatever size the reader has asked for text to be.
+    @ScaledMetric(relativeTo: .callout) private var typeSize: CGFloat = Platform.isMac ? 13 : 16
     @State private var position = ScrollPosition(edge: .top)
     /// How tall all the words are, and how much of that there is room to show.
     @State private var wordsHeight: CGFloat = 0
@@ -629,28 +780,35 @@ private struct SpeechBubble: View {
 
     private var words: some View {
         Text(said)
-            .font(Platform.isMac ? .body : .callout)
+            .font(grown == 1 ? (Platform.isMac ? .body : .callout) : .system(size: typeSize * grown))
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            words
-            ScrollView {
-                words.onGeometryChange(for: CGFloat.self, of: \.size.height) { wordsHeight = $0 }
+        let shape = BubbleShape(tail: tail, grown: grown)
+        return Group {
+            if scrolls {
+                ViewThatFits(in: .vertical) {
+                    words
+                    ScrollView {
+                        words.onGeometryChange(for: CGFloat.self, of: \.size.height) { wordsHeight = $0 }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollPosition($position)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { roomHeight = $0 }
+                    .onChange(of: typed) { follow() }
+                }
+            } else {
+                words
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollPosition($position)
-            .onGeometryChange(for: CGFloat.self, of: \.size.height) { roomHeight = $0 }
-            .onChange(of: typed) { follow() }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 13)
-        .padding(.top, BubbleShape.tailHeight)
-        .glassEffect(.regular, in: BubbleShape(tail: tail))
-        .contentShape(BubbleShape(tail: tail))
+        .padding(.horizontal, 16 * grown)
+        .padding(.vertical, 13 * grown)
+        .padding(.top, shape.tailHeight)
+        .glassEffect(.regular, in: shape)
+        .contentShape(shape)
         .accessibilityElement()
         .accessibilityLabel(text)
     }
@@ -668,15 +826,17 @@ private struct SpeechBubble: View {
 /// A rounded box with a point on its top edge, toward whoever is speaking.
 nonisolated private struct BubbleShape: Shape {
     var tail: CGFloat
-    static let tailHeight: CGFloat = 9
+    /// How many times its own size: its point and its corners grow with what is in it.
+    var grown: CGFloat = 1
+    var tailHeight: CGFloat { 9 * grown }
 
     func path(in rect: CGRect) -> Path {
-        let box = CGRect(x: rect.minX, y: rect.minY + Self.tailHeight, width: rect.width, height: rect.height - Self.tailHeight)
-        var path = Path(roundedRect: box, cornerRadius: min(20, box.height / 2), style: .continuous)
-        let tip = min(max(rect.minX + tail, rect.minX + 30), rect.maxX - 30)
-        path.move(to: CGPoint(x: tip - 9, y: box.minY + 1))
+        let box = CGRect(x: rect.minX, y: rect.minY + tailHeight, width: rect.width, height: rect.height - tailHeight)
+        var path = Path(roundedRect: box, cornerRadius: min(20 * grown, box.height / 2), style: .continuous)
+        let tip = min(max(rect.minX + tail, rect.minX + 30 * grown), rect.maxX - 30 * grown)
+        path.move(to: CGPoint(x: tip - 9 * grown, y: box.minY + 1))
         path.addLine(to: CGPoint(x: tip, y: rect.minY))
-        path.addLine(to: CGPoint(x: tip + 9, y: box.minY + 1))
+        path.addLine(to: CGPoint(x: tip + 9 * grown, y: box.minY + 1))
         path.closeSubpath()
         return path
     }
@@ -712,6 +872,26 @@ private struct StageSlot: View {
     }
 }
 
+/// The measures of a first-run screen, for the screen that has to work out its own from them.
+private enum OnboardingLayout {
+    static let margin: CGFloat = 24
+    static let top: CGFloat = 12
+    static let bottom: CGFloat = 20
+    /// Between the stage's room and the words, and between the words and the buttons.
+    static let gap: CGFloat = 20
+    static let readingGap: CGFloat = 24
+    /// The widest the stage's room is, however wide the screen.
+    static let widest: CGFloat = 720
+    /// The least height the stage's room is given before the words are.
+    static let shortest: CGFloat = 180
+
+    /// Whether a screen this shape has its picture beside its words: no height for one over
+    /// the other, as on a phone on its side.
+    static func isSideways(_ size: CGSize) -> Bool {
+        size.height < 520 && size.width > size.height
+    }
+}
+
 /// A first-run screen: something to look at, something to read, and what to press, top to
 /// bottom — or, where there is no height for that (a phone on its side), the picture
 /// beside the rest.
@@ -719,13 +899,19 @@ private struct OnboardingPage<Stage: View, Words: View, Actions: View>: View {
     /// Whether words too tall for the screen are put in a scroll view here. False for
     /// words that see to that themselves.
     var wordsScroll = true
+    /// The widest the words and the buttons are.
+    var widestWords: CGFloat = 460
+    /// The least height the stage's room is given before the words are, where a screen has
+    /// worked out its own, and how far the words stand below the room.
+    var stageMinHeight: CGFloat?
+    var gap: CGFloat = OnboardingLayout.gap
     @ViewBuilder var stage: Stage
     @ViewBuilder var words: Words
     @ViewBuilder var actions: Actions
 
     var body: some View {
         GeometryReader { geometry in
-            let sideways = geometry.size.height < 520 && geometry.size.width > geometry.size.height
+            let sideways = OnboardingLayout.isSideways(geometry.size)
             Group {
                 if sideways {
                     HStack(spacing: 20) {
@@ -735,31 +921,25 @@ private struct OnboardingPage<Stage: View, Words: View, Actions: View>: View {
                             .frame(width: min(380, geometry.size.width * 0.46))
                     }
                 } else {
-                    VStack(spacing: 20) {
+                    VStack(spacing: gap) {
                         // The words are given the height they ask for first, and the stage
                         // what is left, down to the least its models can be made out in:
                         // shared evenly, a short screen cut the words off with room to spare.
                         stage
-                            .frame(maxWidth: Self.widest, minHeight: Self.shortest, maxHeight: .infinity)
-                        reading(spacing: 24)
-                            .frame(maxWidth: 460)
+                            .frame(maxWidth: OnboardingLayout.widest, minHeight: stageMinHeight ?? OnboardingLayout.shortest,
+                                   maxHeight: .infinity)
+                        reading(spacing: OnboardingLayout.readingGap)
+                            .frame(maxWidth: widestWords)
                             .layoutPriority(1)
                     }
                 }
             }
-            .padding(.horizontal, Self.margin)
-            .padding(.top, Self.top)
-            .padding(.bottom, 20)
+            .padding(.horizontal, OnboardingLayout.margin)
+            .padding(.top, OnboardingLayout.top)
+            .padding(.bottom, OnboardingLayout.bottom)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
-
-    private static var margin: CGFloat { 24 }
-    private static var top: CGFloat { 12 }
-    /// The widest the stage's room is, however wide the screen.
-    private static var widest: CGFloat { 720 }
-    /// The least height the stage's room is given before the words are.
-    private static var shortest: CGFloat { 180 }
 
     /// The words give way before the buttons do: on a small screen it is the text that scrolls.
     private func reading(spacing: CGFloat) -> some View {
