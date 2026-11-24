@@ -212,6 +212,21 @@ nonisolated struct LiveMarkdown {
     /// A task item's marker: the list's own, then the box.
     nonisolated(unsafe) private static let task = regex(#"^(?:[-*+]|\d{1,9}[.)])[ \t]+(\[[ xX]\])(?=[ \t])"#)
 
+    /// Whether a place in the note is in a block of code, where what is typed is not Markdown.
+    func isCode(at offset: Int) -> Bool {
+        var found = false
+        func walk(_ node: Markup) {
+            guard !found else { return }
+            if node is CodeBlock || node is HTMLBlock {
+                if let range = map.range(node), range.location <= offset, offset <= NSMaxRange(range) { found = true }
+                return
+            }
+            for child in node.children { walk(child) }
+        }
+        walk(document)
+        return found
+    }
+
     /// The spans for the whole note. `selection` is the caret or the selected
     /// range; nil — a note that isn't being typed in — leaves all syntax hidden.
     func spans(selection: NSRange?) -> [LiveSpan] {

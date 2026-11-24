@@ -240,6 +240,9 @@ struct SyncedTextEditor: NSViewRepresentable {
         private var selectionViews: [NSView] = []
         private var caretTask: Task<Void, Never>?
         private var restyling = false
+        private var restylePending = false
+        /// Return's own edit is being made, which is not itself a Return to be answered.
+        private var carrying = false
         private var placing = false
         private var placementPending = false
         private var layout = NoteLayout()
@@ -488,12 +491,33 @@ struct SyncedTextEditor: NSViewRepresentable {
 
         // MARK: Live formatting
 
+        /// Styles the note once the change being made to its text is over: asked for any number
+        /// of times in the meantime, done once.
+        private func restyleAfterEdit() {
+            guard !restylePending else { return }
+            restylePending = true
+            DispatchQueue.main.async { [weak self] in
+                self?.restylePending = false
+                self?.restyle()
+            }
+        }
+
         /// Styles the note for where the caret is now. Cheap to call: the text
         /// is parsed again only when it changed, and only runs whose look
         /// changed are touched.
         func restyle() {
             // Restyling under an input method's marked text would end its composition.
             guard let view = textView, let storage = view.textStorage, !view.hasMarkedText(), !restyling else { return }
+            // A caret moved by a change to the text is reported while the change is still being
+            // made: the storage has yet to tell the layout what changed. Attributes set now would
+            // be in place before it does, the pass that follows the change would find nothing left
+            // to set, and the lines they are on would never be laid out again — a code block's
+            // fence, folded in name, stayed drawn at full height. So this waits for the change to
+            // be done with.
+            guard storage.editedMask.isEmpty else {
+                restyleAfterEdit()
+                return
+            }
             restyling = true
             defer { restyling = false }
             let text = storage.string
@@ -633,6 +657,36 @@ struct SyncedTextEditor: NSViewRepresentable {
         // MARK: The text view's
 
         func textDidChange(_ notification: Notification) { changedLocally() }
+
+        /// Return carries a list or a quote on, or ends one (`NoteReturn`).
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            commandSelector == #selector(NSResponder.insertNewline(_:)) && carryOn(textView, from: textView.selectedRange())
+        }
+
+        /// A new line that comes some other way than the key — dictated, or put in by whatever
+        /// is typing for someone — carries a list on as the key does. Not one that Undo is
+        /// putting back, which is to go back as it was.
+        func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString: String?) -> Bool {
+            guard replacementString == "\n", !carrying, textView.undoManager?.isUndoing != true,
+                  textView.undoManager?.isRedoing != true else { return true }
+            return !carryOn(textView, from: range)
+        }
+
+        /// Makes Return's edit where there is one to make. False where it is only a new line.
+        private func carryOn(_ textView: NSTextView, from selection: NSRange) -> Bool {
+            guard sync.canWrite, !textView.hasMarkedText() else { return false }
+            let source = textView.string
+            if parsed?.text != source { parsed = (source, LiveMarkdown(source)) }
+            guard let edit = NoteReturn.edit(in: source as NSString, selection: selection,
+                                             inCode: parsed?.markdown.isCode(at: selection.location) ?? false) else { return false }
+            carrying = true
+            defer { carrying = false }
+            // Through the input system rather than the storage, so Undo takes it back.
+            textView.insertText(edit.text, replacementRange: edit.range)
+            textView.setSelectedRange(NSRange(location: edit.caret, length: 0))
+            changedLocally()
+            return true
+        }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !restyling else { return }

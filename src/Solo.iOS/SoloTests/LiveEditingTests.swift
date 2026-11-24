@@ -260,3 +260,87 @@ import Testing
         #expect(NoteMediaStack.size(count: 40).width == 316)
     }
 }
+
+/// What Return does in a note: a list or a quote carries on, and ends on an empty line of it.
+@Suite struct NoteReturnTests {
+    /// The text after Return is pressed with the caret where `|` is, the caret shown the same way.
+    private func pressed(_ marked: String, inCode: Bool = false) -> String {
+        let caret = (marked as NSString).range(of: "|").location
+        let text = marked.replacingOccurrences(of: "|", with: "") as NSString
+        guard let edit = NoteReturn.edit(in: text, selection: NSRange(location: caret, length: 0), inCode: inCode) else {
+            // Only a new line, as the text view puts one down itself.
+            return text.replacingCharacters(in: NSRange(location: caret, length: 0), with: "\n|")
+        }
+        let after = text.replacingCharacters(in: edit.range, with: edit.text) as NSString
+        return after.replacingCharacters(in: NSRange(location: edit.caret, length: 0), with: "|")
+    }
+
+    @Test func aBulletCarriesOnWithItsOwnMarker() {
+        #expect(pressed("- one|") == "- one\n- |")
+        #expect(pressed("* one|") == "* one\n* |")
+        #expect(pressed("  + one|") == "  + one\n  + |")
+        // In the middle of an item, what is after the caret goes to the new one.
+        #expect(pressed("- one| two") == "- one\n- | two")
+    }
+
+    @Test func aNumberedListCountsOn() {
+        #expect(pressed("1. one|") == "1. one\n2. |")
+        #expect(pressed("9) nine|") == "9) nine\n10) |")
+        // And the items after it count on from the new one.
+        #expect(pressed("1. one|\n2. two\n3. three\n\nafter") == "1. one\n2. |\n3. two\n4. three\n\nafter")
+        // What belongs to an item is passed over on the way.
+        #expect(pressed("1. one|\n   - inside\n2. two") == "1. one\n2. |\n   - inside\n3. two")
+        // A list numbered all alike was not counting, and is left as it is.
+        #expect(pressed("1. one|\n1. two") == "1. one\n2. |\n1. two")
+    }
+
+    @Test func aTaskCarriesOnWithAnEmptyBox() {
+        #expect(pressed("- [x] done|") == "- [x] done\n- [ ] |")
+        #expect(pressed("1. [ ] one|") == "1. [ ] one\n2. [ ] |")
+    }
+
+    @Test func aQuoteCarriesOn() {
+        #expect(pressed("> said|") == "> said\n> |")
+        #expect(pressed("> > twice|") == "> > twice\n> > |")
+        #expect(pressed("> - item|") == "> - item\n> - |")
+    }
+
+    @Test func returnOnAnEmptyOneEndsIt() {
+        // A blank line is left above the caret: straight under it, the next line would be more of it.
+        #expect(pressed("- one\n- |") == "- one\n\n|")
+        #expect(pressed("1. one\n2. |") == "1. one\n\n|")
+        #expect(pressed("> said\n> |") == "> said\n\n|")
+        #expect(pressed("- one\n- |\nafter") == "- one\n\n|\nafter")
+        // With nothing above to be more of, the marker only goes.
+        #expect(pressed("- [ ] |") == "|")
+        #expect(pressed("text\n\n> |") == "text\n\n|")
+        // One level at a time: an item in a quote is left the quote, a quote in a quote the outer one.
+        #expect(pressed("> - |") == "> |")
+        #expect(pressed("> > |") == "> |")
+    }
+
+    @Test func anEmptyItemInsideAnotherGoesOutALevel() {
+        #expect(pressed("- one\n  - two\n  - |") == "- one\n  - two\n- |")
+        #expect(pressed("1. one\n   - two\n   - |") == "1. one\n   - two\n2. |")
+        // With no list further out to go to, it is only ended.
+        #expect(pressed("  - |") == "|")
+    }
+
+    @Test func elsewhereReturnIsOnlyANewLine() {
+        #expect(pressed("plain|") == "plain\n|")
+        // In front of the marker the whole line goes down.
+        #expect(pressed("|- one") == "\n|- one")
+        // A dash is a dash in code, and a word that starts with one is a word.
+        #expect(pressed("- one|", inCode: true) == "- one\n|")
+        #expect(pressed("-one|") == "-one\n|")
+        #expect(pressed("1.5 metres|") == "1.5 metres\n|")
+    }
+
+    @Test func aPlaceInACodeBlockIsKnown() {
+        let text = "- a\n\n```\n- b\n```\n\n- c"
+        let markdown = LiveMarkdown(text)
+        #expect(!markdown.isCode(at: 3))
+        #expect(markdown.isCode(at: 12))
+        #expect(!markdown.isCode(at: (text as NSString).length))
+    }
+}

@@ -253,6 +253,7 @@ struct SyncedTextEditor: UIViewRepresentable {
         private var selectionViews: [UIView] = []
         private var caretTask: Task<Void, Never>?
         private var restyling = false
+        private var restylePending = false
         private var placing = false
         private var placementPending = false
         private var layout = NoteLayout()
@@ -290,6 +291,17 @@ struct SyncedTextEditor: UIViewRepresentable {
                     self.placeCarets()
                 }
             }
+        }
+
+        /// The glyph swap that draws a list's marker as a bullet is the layout manager's own; the
+        /// text view makes its coordinator the delegate, so it is passed on. Not passed on, every
+        /// bullet was the dash it is written with.
+        nonisolated func layoutManager(_ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+                                       properties: UnsafePointer<NSLayoutManager.GlyphProperty>,
+                                       characterIndexes: UnsafePointer<Int>, font: UIFont, forGlyphRange glyphRange: NSRange) -> Int {
+            (layoutManager as? NoteLayoutManager)?.layoutManager(layoutManager, shouldGenerateGlyphs: glyphs, properties: properties,
+                                                                 characterIndexes: characterIndexes, font: font,
+                                                                 forGlyphRange: glyphRange) ?? 0
         }
 
         @objc private func textSizeChanged() {
@@ -487,12 +499,33 @@ struct SyncedTextEditor: UIViewRepresentable {
 
         // MARK: Live formatting
 
+        /// Styles the note once the change being made to its text is over: asked for any number
+        /// of times in the meantime, done once.
+        private func restyleAfterEdit() {
+            guard !restylePending else { return }
+            restylePending = true
+            DispatchQueue.main.async { [weak self] in
+                self?.restylePending = false
+                self?.restyle()
+            }
+        }
+
         /// Styles the note for where the caret is now. Cheap to call: the text
         /// is parsed again only when it changed, and only runs whose look
         /// changed are touched.
         func restyle() {
             // Restyling under an input method's marked text would end its composition.
             guard let view = textView, view.markedTextRange == nil, !restyling else { return }
+            // A caret moved by a change to the text is reported while the change is still being
+            // made: the storage has yet to tell the layout what changed. Attributes set now would
+            // be in place before it does, the pass that follows the change would find nothing left
+            // to set, and the lines they are on would never be laid out again — a code block's
+            // fence, folded in name, stayed drawn at full height. So this waits for the change to
+            // be done with.
+            guard view.textStorage.editedMask.isEmpty else {
+                restyleAfterEdit()
+                return
+            }
             restyling = true
             defer { restyling = false }
             let text = view.textStorage.string
@@ -666,6 +699,25 @@ struct SyncedTextEditor: UIViewRepresentable {
         // MARK: UITextViewDelegate
 
         func textViewDidChange(_ textView: UITextView) { changedLocally() }
+
+        /// Return carries a list or a quote on, or ends one (`NoteReturn`).
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            // Not a new line that Undo is putting back, which is to go back as it was.
+            guard text == "\n", sync.canWrite, textView.markedTextRange == nil,
+                  textView.undoManager?.isUndoing != true, textView.undoManager?.isRedoing != true else { return true }
+            let source = textView.textStorage.string
+            if parsed?.text != source { parsed = (source, LiveMarkdown(source)) }
+            guard let edit = NoteReturn.edit(in: source as NSString, selection: range,
+                                             inCode: parsed?.markdown.isCode(at: range.location) ?? false),
+                  let start = textView.position(from: textView.beginningOfDocument, offset: edit.range.location),
+                  let end = textView.position(from: start, offset: edit.range.length),
+                  let target = textView.textRange(from: start, to: end) else { return true }
+            // Through the input system rather than the storage, so Undo takes it back.
+            textView.replace(target, withText: edit.text)
+            textView.selectedRange = NSRange(location: edit.caret, length: 0)
+            changedLocally()
+            return false
+        }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
             restyle()
