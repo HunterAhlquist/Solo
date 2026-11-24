@@ -306,14 +306,14 @@ import Testing
     }
 
     @Test func returnOnAnEmptyOneEndsIt() {
-        // A blank line is left above the caret: straight under it, the next line would be more of it.
-        #expect(pressed("- one\n- |") == "- one\n\n|")
-        #expect(pressed("1. one\n2. |") == "1. one\n\n|")
-        #expect(pressed("> said\n> |") == "> said\n\n|")
-        #expect(pressed("- one\n- |\nafter") == "- one\n\n|\nafter")
-        // With nothing above to be more of, the marker only goes.
+        // The marker goes and the caret stays on its line.
+        #expect(pressed("- one\n- |") == "- one\n|")
+        #expect(pressed("1. one\n2. |") == "1. one\n|")
+        #expect(pressed("> said\n> |") == "> said\n|")
+        #expect(pressed("- one\n- |\nafter") == "- one\n|\nafter")
         #expect(pressed("- [ ] |") == "|")
-        #expect(pressed("text\n\n> |") == "text\n\n|")
+        // And Return again, on the line that is now empty, is only a new line.
+        #expect(pressed("- one\n|") == "- one\n\n|")
         // One level at a time: an item in a quote is left the quote, a quote in a quote the outer one.
         #expect(pressed("> - |") == "> |")
         #expect(pressed("> > |") == "> |")

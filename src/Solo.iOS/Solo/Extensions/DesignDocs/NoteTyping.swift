@@ -5,7 +5,7 @@ import Foundation
 // Return carries a list or a quote on to the next line, the way Markdown editors do: the
 // next item's marker is written for you, a numbered list counts on, a task gets an empty
 // box. Return on an item with nothing in it means the list is over, and takes the marker
-// away again. Worked out from the text alone and handed back as one edit, so that the two
+// away again, leaving the caret on the line it was on. Worked out from the text alone and handed back as one edit, so that the two
 // editors — a phone's and a Mac's — make it the same way and Undo takes it back whole.
 
 nonisolated enum NoteReturn {
@@ -141,19 +141,14 @@ nonisolated enum NoteReturn {
     /// An item inside another goes out a level, to carry on the list it was in; otherwise the
     /// marker goes, and from a quote in a quote, the innermost mark.
     ///
-    /// Out of the last of them, the caret is put a line further down, with the emptied line
-    /// left blank above it. Markdown reads a line written straight under a list or a quote as
-    /// more of it, so what was typed next would still have been in what had just been ended.
+    /// The caret stays on the line it emptied. Markdown reads a line written straight under a
+    /// list or a quote as more of it, so to be clear of what was ended takes a blank line — but
+    /// that is the next Return's to give, which is by then only a new line, and not for this
+    /// one to take the caret somewhere it was not sent.
     private static func ended(_ line: Line, in text: NSString) -> Edit {
         let start = line.range.location
         func replacing(with lead: String) -> Edit {
             Edit(range: NSRange(location: start, length: line.range.length), text: lead, caret: start + lead.utf16.count)
-        }
-        func out() -> Edit {
-            guard start > 0 else { return replacing(with: "") }
-            let above = self.line(at: start - 1, in: text)
-            let blank = text.substring(with: above.range).trimmingCharacters(in: .whitespaces).isEmpty
-            return blank ? replacing(with: "") : Edit(range: NSRange(location: start, length: line.range.length), text: "\n", caret: start + 1)
         }
         if line.isItem {
             // The nearest item above that is further out, in the same quote, is the list it was in.
@@ -169,13 +164,13 @@ nonisolated enum NoteReturn {
                 if above.box { marker += "[ ] " }
                 return replacing(with: line.quotes + above.indent + marker)
             }
-            return line.quotes.contains(">") ? replacing(with: line.quotes) : out()
+            return replacing(with: line.quotes)
         }
         // A quote: the last of its marks goes, with the space after it.
         var marks = line.quotes
         if let last = marks.lastIndex(of: ">") {
             marks = String(marks[..<last])
         }
-        return marks.contains(">") ? replacing(with: marks) : out()
+        return replacing(with: marks.contains(">") ? marks : "")
     }
 }

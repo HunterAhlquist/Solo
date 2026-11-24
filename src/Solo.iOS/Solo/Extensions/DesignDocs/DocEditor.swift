@@ -254,6 +254,11 @@ struct SyncedTextEditor: UIViewRepresentable {
         private var caretTask: Task<Void, Never>?
         private var restyling = false
         private var restylePending = false
+        /// Return's own edit is being made, which is not itself a Return to be answered.
+        private var carrying = false
+        /// The edit Return is to make once the keyboard's new line is in: the edit, what was
+        /// selected when the key was pressed, and how long the text was then.
+        private var afterReturn: (edit: NoteReturn.Edit, selection: NSRange, length: Int)?
         private var placing = false
         private var placementPending = false
         private var layout = NoteLayout()
@@ -698,25 +703,51 @@ struct SyncedTextEditor: UIViewRepresentable {
 
         // MARK: UITextViewDelegate
 
-        func textViewDidChange(_ textView: UITextView) { changedLocally() }
+        func textViewDidChange(_ textView: UITextView) {
+            finishReturn(in: textView)
+            changedLocally()
+        }
 
         /// Return carries a list or a quote on, or ends one (`NoteReturn`).
+        ///
+        /// The keyboard's own new line is let in, and the rest of the edit made straight after it
+        /// (`finishReturn`), rather than the key being turned down and the edit made in its place.
+        /// The keyboard keeps its own account of what has been typed. Turned down, with no new line
+        /// to show for its key — a list ended on the line it was on — that account was left out of
+        /// step, and it took the next words typed for a slip of the fingers: two words went in, and
+        /// it "corrected" them to the first.
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
             // Not a new line that Undo is putting back, which is to go back as it was.
-            guard text == "\n", sync.canWrite, textView.markedTextRange == nil,
+            guard text == "\n", !carrying, sync.canWrite, textView.markedTextRange == nil,
                   textView.undoManager?.isUndoing != true, textView.undoManager?.isRedoing != true else { return true }
             let source = textView.textStorage.string
             if parsed?.text != source { parsed = (source, LiveMarkdown(source)) }
-            guard let edit = NoteReturn.edit(in: source as NSString, selection: range,
-                                             inCode: parsed?.markdown.isCode(at: range.location) ?? false),
-                  let start = textView.position(from: textView.beginningOfDocument, offset: edit.range.location),
-                  let end = textView.position(from: start, offset: edit.range.length),
-                  let target = textView.textRange(from: start, to: end) else { return true }
-            // Through the input system rather than the storage, so Undo takes it back.
-            textView.replace(target, withText: edit.text)
+            afterReturn = NoteReturn.edit(in: source as NSString, selection: range,
+                                          inCode: parsed?.markdown.isCode(at: range.location) ?? false)
+                .map { ($0, range, (source as NSString).length) }
+            return true
+        }
+
+        /// What Return's edit does beyond the new line, now that the keyboard has put that in.
+        private func finishReturn(in textView: UITextView) {
+            guard let (edit, selection, length) = afterReturn else { return }
+            afterReturn = nil
+            // Only over the change it was worked out for: the selection gone, and a new line there.
+            let text = textView.textStorage.string as NSString
+            guard text.length == length - selection.length + 1, selection.location < text.length,
+                  text.character(at: selection.location) == 10 else { return }
+            carrying = true
+            defer { carrying = false }
+            // The edit is written against the text as it was. In the text as it is now, the selection
+            // it covered is one new line. Made as typing is made — the range selected, then typed
+            // over or rubbed out — so that Undo takes it back as it does typing.
+            textView.selectedRange = NSRange(location: edit.range.location, length: edit.range.length - selection.length + 1)
+            if edit.text.isEmpty {
+                textView.deleteBackward()
+            } else {
+                textView.insertText(edit.text)
+            }
             textView.selectedRange = NSRange(location: edit.caret, length: 0)
-            changedLocally()
-            return false
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
