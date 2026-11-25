@@ -708,7 +708,9 @@ struct DocAttachmentsSheet: View {
         .buttonStyle(.plain)
         .swipeActions(edge: .trailing) {
             if canWrite {
+                // Red said outright: left to the app's tint it is the accent, with white on it.
                 Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete(item) }
+                    .tint(theme.error)
             }
         }
         .swipeActions(edge: .leading) {

@@ -148,7 +148,11 @@ struct DevicesView: View {
                         }
                         .swipeActions {
                             if !item.isCurrent {
+                                // Red said outright: the app's tint reaches a swipe action too, the
+                                // destructive ones included, and the system's white on a bright
+                                // accent could not be read.
                                 Button("Sign Out", role: .destructive) { Task { await revoke(item) } }
+                                    .tint(theme.error)
                             }
                         }
                         .contextMenu {

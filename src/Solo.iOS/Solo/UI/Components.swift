@@ -382,10 +382,24 @@ private struct ThemedRowBackground: View {
             // A row's glass is let out past the row on every side, where the list cuts it
             // off: glass bends what is behind it along its edge, and with an edge to every
             // row a section was a stack of lenses and not a pane.
+            //
+            // It is drawn no further sideways than the row is, though. A row slid aside for its
+            // swipe actions takes what is behind it along, and glass that reached past the row's
+            // end lay over the near edge of the button the swipe had uncovered.
             Color.clear.glassEffect(.regular, in: .rect).padding(-24)
+                .clipShape(RowSpan(over: 24))
         } else {
             Color.groupedRowBackground.opacity(0.55)
         }
+    }
+}
+
+/// A row's own width, and so much more than its height above and below.
+private nonisolated struct RowSpan: Shape {
+    var over: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: 0, dy: -over))
     }
 }
 
