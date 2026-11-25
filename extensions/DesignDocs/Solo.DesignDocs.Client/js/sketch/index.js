@@ -1,9 +1,9 @@
 import {sketchStrokes,moveStroke} from './objects.js';
-import { presenceTheme,SketchPresence } from '../presence.js';
+import { presenceTheme,SketchPresence,viewportPoint } from '../presence.js';
 import { bindDesktopRotation } from './rotation.js';
 import * as Y from 'yjs';
 import { Provider } from '../sync/provider.js';
-import { pageSize,paint,connectedRegion,splitSelection,shape,pressureWidth } from './render.js';
+import { pageSize,paint,connectedRegion,splitSelection,shape,pressureWidth,markCentre } from './render.js';
 import { loadFont,textSize,textLayout,uniformFace,runFont } from './font.js';
 import { rangeAttributes } from './text-format.js';
 import { caretAt,selectionRects,offsetAt,shiftAnchor,wordAt } from './text-caret.js';
@@ -33,6 +33,11 @@ export async function mountSketch(root,bridge,options){
     const status=document.createElement('output');status.className='design-docs-sketch-status';status.setAttribute('aria-live','polite');
     root.classList.add('design-docs-sketch-editor');root.append(viewport,status);viewport.append(canvas,selectionCanvas);
     const peerCursors=new SketchPresence(viewport);
+    // This pen's own cursor: a circle the size of the mark the pen or the eraser would leave,
+    // where it would leave it, and nothing else — as a paint program draws its brush. The
+    // page's own pointer is put away under it. `brushAt` is where the pen is, on the page.
+    const brush=document.createElement('span');brush.className='design-docs-brush-cursor';brush.setAttribute('aria-hidden','true');brush.hidden=true;viewport.append(brush);
+    let brushAt=null;
     const explosion=new Image();explosion.className='design-docs-clear-explosion';explosion.alt='';explosion.hidden=true;viewport.append(explosion);
     const effectReady=fetch(options.explosionUrl).then(response=>response.ok?response.blob():null).catch(()=>null);
     const sound=new Audio(options.explosionSoundUrl);sound.preload='auto';
@@ -77,7 +82,16 @@ export async function mountSketch(root,bridge,options){
         const left=72,right=20,top=118,bottom=64,availableW=Math.max(40,viewport.clientWidth-left-right),availableH=Math.max(40,viewport.clientHeight-top-bottom);
         zoom=Math.max(.01,Math.min(availableW/w,availableH/h));angle=0;pan=[left+(availableW-w*zoom)/2,top+(availableH-h*zoom)/2];fitPending=false;transform();
     }
+    function placeBrush(){
+        const draws=['pen','eraser'].includes(tool)&&provider.canWrite&&!clearing&&!closing;canvas.style.cursor=draws?'none':'';
+        const [w,h]=pageSize(getMeta()),p=brushAt?.point;
+        if(!draws||!p||p[0]<0||p[1]<0||p[0]>=w||p[1]>=h){brush.hidden=true;return;}
+        // Under a stroke it is as wide as the pen is pressing; held over the page, as wide as its lightest touch.
+        const width=pressureWidth(active?.level??level,p[2]??0,brushAt.type),[x,y]=viewportPoint(currentView(),markCentre(p,width));
+        brush.hidden=false;brush.style.width=brush.style.height=width*zoom+'px';brush.style.transform=`translate(${x}px,${y}px) translate(-50%,-50%)`;
+    }
     function transform(){
+        placeBrush();
         peerCursors.render([...provider.awareness.getStates()].filter(([id])=>id!==provider.doc.clientID),currentView());
         const [w,h]=pageSize(getMeta()),value=`translate(${pan[0]}px,${pan[1]}px) rotate(${angle}deg) scale(${zoom})`;
         canvas.style.transform=value;explosion.style.width=w+'px';explosion.style.height=h+'px';explosion.style.transform=value;
@@ -118,7 +132,7 @@ export async function mountSketch(root,bridge,options){
         return bounds?{region,textIds,bounds,ids:new Set([...region.owners].map(n=>sketchStrokes(provider.doc)[n-1]?.id)),dx:0,dy:0}:null;
     }
     function draw(){
-        if(disposed)return;const preview=[];
+        if(disposed)return;placeBrush();const preview=[];
         if(active)preview.push(active.tool==='rectangle'||active.tool==='ellipse'?{...active,tool:'pen',points:shape(active.tool,active.points[0],active.points.at(-1),constrain||active.shift)}:active);
         for(const stroke of feed.values())preview.push(stroke);
         const floating=scene.render(context,{texts:getTexts(),extra:preview,selection:selected,selectionContext,font,frame:reduced.matches?0:frame});
@@ -288,7 +302,7 @@ export async function mountSketch(root,bridge,options){
             const existing=textBoxes().reverse().find(t=>contains(t.bounds,p));if(existing){editText(texts.get(existing.id),existing.id);return;}
             const id=crypto.randomUUID(),box=new Y.Map(),text=new Y.Text();undo.stopCapturing();provider.doc.transact(()=>{box.set('x',Math.round(p[0]));box.set('y',Math.round(p[1]));box.set('ink',ink);box.set('scale',2);box.set('text',text);texts.set(id,box);},local);editText(box,id);return;
         }
-        active={id:crypto.randomUUID(),pointerId:e.pointerId,pointerType:e.pointerType,tool,ink,level,seed:Math.floor(Math.random()*2147483647),points:[p],shift:e.shiftKey};undo.stopCapturing();updateAwareness(p,e.pointerType);draw();
+        active={id:crypto.randomUUID(),pointerId:e.pointerId,pointerType:e.pointerType,tool,ink,level,seed:Math.floor(Math.random()*2147483647),points:[p],shift:e.shiftKey};undo.stopCapturing();brushAt={point:p,type:e.pointerType};updateAwareness(p,e.pointerType);draw();
     }
     function move(e){
         tap.move(e);
@@ -300,6 +314,8 @@ export async function mountSketch(root,bridge,options){
         if(selected?.pointer===e.pointerId){selected.dx=Math.round(p[0]-selected.start[0]);selected.dy=Math.round(p[1]-selected.start[1]);requestDraw();return;}
         if(marquee?.pointer===e.pointerId){if(marquee.kind==='lasso')marquee.points.push(p);else marquee.points[1]=p;requestDraw();return;}
         if(active?.pointerId===e.pointerId){const samples=e.getCoalescedEvents?.();for(const sample of samples?.length?samples:[e])active.points.push(point(sample));active.shift=e.shiftKey;requestDraw();}
+        // A finger has no cursor until it draws: nothing says where one is before it lands.
+        if(e.pointerType!=='touch'||active?.pointerId===e.pointerId){brushAt={point:p,type:e.pointerType};placeBrush();}
         if(e.pointerType!=='touch')updateAwareness(p,e.pointerType);
     }
     function up(e,retainDraft=false){
@@ -340,7 +356,7 @@ export async function mountSketch(root,bridge,options){
             provider.doc.transact(()=>ops.push([stroke]),local);undo.stopCapturing();
         }
         const pointerType=active.pointerType;inputMode.finish(active);active=null;
-        provider.awareness.setLocalStateField('stroke',null);if(pointerType!=='mouse'){lastPointer=null;provider.awareness.setLocalStateField('pointer',null);}draw();
+        provider.awareness.setLocalStateField('stroke',null);if(pointerType!=='mouse'){lastPointer=null;brushAt=null;provider.awareness.setLocalStateField('pointer',null);}draw();
     }
     // Runs after up(), which has already dropped the pinch and any stroke the
     // first finger began. The tap's own jitter still nudged the view, so put it back.
@@ -428,8 +444,8 @@ export async function mountSketch(root,bridge,options){
     function wheel(e){if(e.target.closest('textarea'))return;e.preventDefault();if(!safariGesture)setView(wheelView(currentView(),e,localPoint(e)));}
     function keydown(e){if(e.target.tagName==='TEXTAREA')return;if(e.code==='Space'){space=true;e.preventDefault();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();command(e.shiftKey?'redo':'undo');}}
     function keyup(e){if(e.code==='Space')space=false;}
-    function blur(){space=false;lastPointer=null;provider.awareness.setLocalStateField('pointer',null);}
-    const leavePointer=()=>{if(!active){lastPointer=null;provider.awareness.setLocalStateField('pointer',null);}};
+    function blur(){space=false;lastPointer=null;brushAt=null;placeBrush();provider.awareness.setLocalStateField('pointer',null);}
+    const leavePointer=()=>{if(!active){lastPointer=null;brushAt=null;placeBrush();provider.awareness.setLocalStateField('pointer',null);}};
     function gestureStart(e){e.preventDefault();active=null;safariGesture={...currentView(),anchor:localPoint(e)};}
     function gestureChange(e){if(!safariGesture)return;e.preventDefault();setView(anchoredView(safariGesture,safariGesture.anchor,safariGesture.zoom*e.scale,safariGesture.angle+e.rotation));}
     function gestureEnd(e){e.preventDefault();safariGesture=null;}

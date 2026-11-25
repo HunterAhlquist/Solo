@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {pressureWidth,jitter,rasterize,connectedRegion,splitMove,pageSize,shape} from './render.js';
+import {pressureWidth,jitter,rasterize,connectedRegion,splitMove,pageSize,shape,markCentre} from './render.js';
 const stroke={id:'a',tool:'pen',ink:'theme',level:0,pointerType:'mouse',seed:27,points:[[5,20,1],[55,20,1]]};
 test('pressure rises from the selected minimum and mouse ignores it',()=>{assert.equal(pressureWidth(0,0,'pen'),1);assert.equal(pressureWidth(0,1,'pen'),8);assert.equal(pressureWidth(3,0,'pen'),5);assert.equal(pressureWidth(3,1,'mouse'),5);});
 test('seeded raster frames repeat deterministically and jitter stays within one pixel',()=>{assert.deepEqual(rasterize([stroke],64,40),rasterize([stroke],64,40));for(let i=0;i<100;i++)assert.ok(jitter(27,i,2).every(n=>Math.abs(n)<=1));});
@@ -27,4 +27,16 @@ test('a long continuous stroke renders to its last sample',()=>{
     const points=[];for(let pass=0;pass<200;pass++)points.push([pass%2?400:20,20,.5]);points.push([300,500,.5]);
     const raster=rasterize([{...stroke,pointerType:'pen',points}],420,595);
     assert.ok(raster.pixels[500*420+300]||raster.pixels[499*420+300]||raster.pixels[501*420+300],'the end of a long stroke must be drawn');
+});
+
+// The pen's cursor is drawn about this point, as wide as the stamp. One sample is stamped
+// twice, each nudged by the line's wobble, so the ink is the mark and that.
+test('the brush cursor sits on the mark a stamp leaves',()=>{
+    const seed=7,a=jitter(seed,0,0),b=jitter(seed,1,0),w=640,h=420;
+    for(let size=1;size<=8;size++)for(const at of [[100.2,80.7],[51.5,60.49],[300,200]]){
+        const {pixels}=rasterize([{id:'a',tool:'pen',ink:'theme',level:0,seed,pointerType:'pen',points:[[...at,(size-1)/7]]}],w,h);
+        let left=w,right=-1,top=h,bottom=-1;pixels.forEach((ink,i)=>{if(!ink)return;const x=i%w,y=Math.floor(i/w);left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);});
+        const [cx,cy]=markCentre(at,size),half=size/2;
+        assert.deepEqual([left,right+1,top,bottom+1],[cx-half+Math.min(a[0],b[0]),cx+half+Math.max(a[0],b[0]),cy-half+Math.min(a[1],b[1]),cy+half+Math.max(a[1],b[1])],`size ${size} at ${at}`);
+    }
 });

@@ -52,7 +52,8 @@ with its version in parentheses).
 - Rebuilt on contract 1.17.0.
 - A project's owners can create and delete its roadmaps, not only a super admin.
 
-#### Design Docs (1.5.6)
+#### Design Docs (1.5.7)
+- In the sketch editor, the pen and the eraser show their size: a circle as wide as the mark, where the pointer or a hovering Apple Pencil is, in place of the arrow. It grows as a pen presses.
 - Rebuilt on contract 1.17.0.
 - A project's owners can create, rename, close, reopen and delete its design docs, not only a super admin.
 - In the sketch editor, a two-finger tap undoes and a three-finger tap redoes. A tap has to be quick and still, so pinching and panning work as before, and the finger that lands first never leaves a stray mark.

@@ -2,6 +2,9 @@ export const sizes={A4:[595,842],A5:[420,595],A3:[842,1191],Letter:[612,792]};
 export const widths=[1,2,3,5,8];
 export function pageSize(meta){const size=sizes[meta.pageSize]??sizes.A4;return meta.orientation==='landscape'?[size[1],size[0]]:[...size];}
 export function pressureWidth(level,pressure,type){const base=widths[Math.max(0,Math.min(4,level))];return type==='mouse'?base:Math.round(base+(8-base)*Math.max(0,Math.min(1,pressure)));}
+// The middle of the mark one stamp of this width leaves for a sample taken here, before the
+// line's wobble: a stamp is laid on whole pixels, about the pixel its sample rounds to.
+export function markCentre(point,width){const first=-Math.floor(width/2),half=width/2;return [Math.round(point[0])+first+half,Math.round(point[1])+first+half];}
 export function jitter(seed,index,frame){let value=(seed^(index*374761393)^(frame*668265263))|0;value=Math.imul(value^(value>>>13),1274126177);return [(value>>>0)%3-1,(value>>>8)%3-1];}
 // Budgets only stop crafted strokes from hanging the page. They are sized well past any
 // drawn stroke: a lower cap cut long strokes off mid-line, by length rather than time.

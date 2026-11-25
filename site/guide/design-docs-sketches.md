@@ -39,6 +39,8 @@ Releasing the selection applies the move.
 Use **Constrain shapes**, or hold **Shift**, to draw a square or circle.
 The color controls offer theme ink, red, blue, green, and purple.
 The five brush buttons set the base width.
+With **Pen** or **Eraser**, a circle the size of the mark replaces the pointer over the page.
+It follows a mouse, a trackpad, and an Apple Pencil held just above the screen on devices that sense it.
 Text uses the instance theme's font.
 
 ## Pencil and touch
