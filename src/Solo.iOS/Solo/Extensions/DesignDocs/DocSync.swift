@@ -320,7 +320,17 @@ final class DocSync {
         seq = max(seq, here.seq)
         checkpoint = max(checkpoint, here.seq)
         synced = true
-        if !session.hub.isConnected { setWritable(here.canWrite) }
+        // In reach, it is the instance that says whether this may be written in. It says
+        // nothing at all about a document made here that it has yet to be sent, so until it
+        // has been (`reachedInstance`) the device's word stands, as it does out of reach.
+        if !session.hub.isConnected || session.docsOffline.awaitsCreation(documentId) { setWritable(here.canWrite) }
+    }
+
+    /// A document made on this device has been sent to the instance, which can now be asked
+    /// about it: who else is in it, and what they have written.
+    func reachedInstance() {
+        guard started else { return }
+        connect()
     }
 
     /// Changes the download read from the instance, for the open document to take as it

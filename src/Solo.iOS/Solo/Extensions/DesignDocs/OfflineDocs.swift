@@ -300,6 +300,11 @@ final class OfflineVaults {
         return documents[documentId].map(owes) ?? false
     }
 
+    /// Whether a note or a sketch was made here and the instance has yet to be told of it.
+    func awaitsCreation(_ documentId: UUID) -> Bool {
+        commands.contains { $0.action == .create && $0.targetId == documentId }
+    }
+
     func problems(in vaultId: UUID) -> [OfflineProblem] {
         _ = revision
         let view = view(vaultId)
@@ -1151,6 +1156,10 @@ final class OfflineVaults {
         if command.entity == .vault, command.action == .delete {
             forget(command.vaultId)
             return
+        }
+        // An editor opened on it before the instance had it was told nothing when it asked.
+        if command.action == .create, command.entity == .note || command.entity == .sketch {
+            open[command.targetId]?.sync?.reachedInstance()
         }
         change(command.vaultId) { vault in
             guard var base = vault.base else { return }

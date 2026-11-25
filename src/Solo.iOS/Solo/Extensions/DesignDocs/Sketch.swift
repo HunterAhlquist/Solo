@@ -728,13 +728,25 @@ struct SketchBlast: Equatable {
             }
             self.frames = frames
             self.duration = duration
+            #if os(iOS)
+            // A bang over whatever is playing, and not in its place: left as it comes, the
+            // app's audio is the kind that silences every other app's.
+            try? AVAudioSession.sharedInstance().setCategory(.ambient)
+            #endif
+            // Not made ready ahead of time. That takes the audio hardware there and then —
+            // when the editor opens, which is when music stopped — and not when a page is cleared.
             player = sound.flatMap { try? AVAudioPlayer(data: $0) }
-            player?.prepareToPlay()
         }
 
         func playSound() {
-            player?.currentTime = 0
-            player?.play()
+            guard let player else { return }
+            // Off the main thread: the first playing is what takes up the audio, and that can
+            // hold up whoever asks for it — here, as the explosion starts.
+            nonisolated(unsafe) let sound = player
+            DispatchQueue.global(qos: .userInitiated).async {
+                sound.currentTime = 0
+                sound.play()
+            }
         }
     }
 }
