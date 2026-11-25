@@ -123,6 +123,7 @@ struct DevicesView: View {
     @State private var sessions: [AuthSession]?
     @State private var failed: String?
     @State private var busy = false
+    @State private var confirmation: Confirmation?
 
     var body: some View {
         GlassList {
@@ -171,15 +172,23 @@ struct DevicesView: View {
 
                 if sessions.contains(where: { !$0.isCurrent }) {
                     Section {
+                        // Asked first: one press takes every other browser and app out at once,
+                        // and none of them can be put back from here.
                         Button("Sign Out All Other Devices", role: .destructive) {
-                            Task {
-                                busy = true
-                                if await session.perform({ try await session.api.revokeOtherSessions() }) {
-                                    session.toasts.show("Signed out every other device.", .success)
+                            let others = sessions.count { !$0.isCurrent }
+                            confirmation = Confirmation(
+                                title: "Sign out all other devices?",
+                                message: (others == 1 ? "The other device" : "All \(others) other devices")
+                                    + " signed in to your account will have to sign in again before "
+                                    + "\(others == 1 ? "it" : "they") can reach \(session.siteName).",
+                                action: "Sign Out") {
+                                    busy = true
+                                    if await session.perform({ try await session.api.revokeOtherSessions() }) {
+                                        session.toasts.show("Signed out every other device.", .success)
+                                    }
+                                    busy = false
+                                    await load()
                                 }
-                                busy = false
-                                await load()
-                            }
                         }
                         .disabled(busy)
                     }
@@ -194,6 +203,7 @@ struct DevicesView: View {
         .themedList()
         .navigationTitle("Signed-in Devices")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmation($confirmation)
         .task { await load() }
         .reloads { await load() }
     }
