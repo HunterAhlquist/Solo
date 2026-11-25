@@ -247,6 +247,13 @@ nonisolated struct SketchRaster: Sendable {
         return Int((Double(base) + Double(8 - base) * min(max(pressure, 0), 1) + 0.5).rounded(.down))
     }
 
+    /// The middle of the mark a stamp of this size leaves for a sample taken here, before the
+    /// line's wobble: a stamp is laid on whole pixels, about the pixel its sample rounds to.
+    static func markCentre(_ point: CGPoint, size: Int) -> CGPoint {
+        let first = Double(-(size / 2)), half = Double(size) / 2
+        return CGPoint(x: Double(Self.round(Double(point.x))) + first + half, y: Double(Self.round(Double(point.y))) + first + half)
+    }
+
     /// The stamp's wobble for one sample: a hash of the stroke's seed and the sample's index, as 32-bit integer arithmetic.
     static func jitter(seed: Int, index: Int, frame: Int = 0) -> (Int, Int) {
         var value = Int32(truncatingIfNeeded: seed) ^ Int32(truncatingIfNeeded: Int64(index) &* 374_761_393)
@@ -965,15 +972,104 @@ struct SketchEditor: View {
     }
 }
 
+/// The pen's or the eraser's own cursor: a circle the size of the mark it would leave, where
+/// it would leave it, and nothing else — as a paint program draws its brush. It is on the
+/// page, so it is zoomed with it and is as large as the mark is drawn. Light over dark, to show
+/// on any paper and any ink.
+final class SketchBrushCursor {
+    let layer = CALayer()
+    private let halo = CAShapeLayer()
+    private let ring = CAShapeLayer()
+    private var zoom: CGFloat = 1
+    private(set) var size = 1
+    private(set) var isShown = false
+
+    init() {
+        layer.isHidden = true
+        // Over everyone else's pens.
+        layer.zPosition = 1
+        halo.strokeColor = CGColor(gray: 0, alpha: 0.55)
+        ring.strokeColor = CGColor(gray: 1, alpha: 0.95)
+        for line in [halo, ring] {
+            line.fillColor = nil
+            layer.addSublayer(line)
+        }
+    }
+
+    func show(at point: CGPoint, size: Int) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.position = SketchRaster.markCentre(point, size: size)
+        if size != self.size || !isShown {
+            self.size = size
+            draw()
+        }
+        layer.isHidden = false
+        isShown = true
+        CATransaction.commit()
+    }
+
+    func hide() {
+        guard isShown else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.isHidden = true
+        isShown = false
+        CATransaction.commit()
+    }
+
+    /// The line keeps its weight on the screen however the page is zoomed; the circle is the
+    /// page's, and goes with it.
+    func viewChanged(zoom: CGFloat) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        self.zoom = zoom
+        draw()
+        CATransaction.commit()
+    }
+
+    /// The circle, in the page's pixels.
+    static func outline(size: Int) -> CGPath {
+        let radius = CGFloat(size) / 2
+        return CGPath(ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2), transform: nil)
+    }
+
+    private func draw() {
+        let point = 1 / max(zoom, 0.01)
+        let path = Self.outline(size: size)
+        halo.path = path
+        ring.path = path
+        halo.lineWidth = 3 * point
+        ring.lineWidth = 1.25 * point
+    }
+}
+
 #if os(iOS)
 /// The page itself: the picture of it, everyone else's pens over it, and the stroke being
 /// drawn. It takes no touches — the viewport around it does, and says which of them draw.
 final class SketchPageView: UIView {
     weak var model: SketchModel?
-    var canDraw = false
+    var canDraw = false {
+        didSet { if canDraw != oldValue { showCursor() } }
+    }
     var tool = "pen"
     var ink: SketchInk = .theme
-    var level = 1
+    var level = 1 {
+        didSet { if level != oldValue { showCursor() } }
+    }
+    /// Where a Pencil held over the glass, or a pointer, is on the page.
+    var hover: CGPoint? {
+        didSet {
+            if hover != nil { rest = nil }
+            showCursor()
+        }
+    }
+
+    private let cursor = SketchBrushCursor()
+    /// Where a Pencil or a pointer last drew, for the moment between its lifting and its being
+    /// heard of again above the glass: the cursor waits there rather than blink.
+    private var rest: CGPoint?
+    private var resting: DispatchWorkItem?
 
     private var active: SketchOp?
     /// The touch that is drawing, while one is.
@@ -1017,6 +1113,22 @@ final class SketchPageView: UIView {
         self.zoom = zoom
         self.angle = angle
         markers.values.forEach { $0.viewChanged(zoom: zoom, angle: angle) }
+        cursor.viewChanged(zoom: zoom)
+    }
+
+    /// Puts this pen's own cursor where it is: on the stroke in hand, as wide as it is being
+    /// pressed; else where it is held over the page, as wide as the lightest touch would draw.
+    private func showCursor() {
+        guard canDraw else { return cursor.hide() }
+        if let active, let last = active.points?.last, last.count >= 2 {
+            cursor.show(at: CGPoint(x: last[0], y: last[1]),
+                        size: SketchRaster.pressureWidth(level: active.level ?? level, pressure: last.count > 2 ? last[2] : 0,
+                                                         pointerType: active.pointerType))
+        } else if let at = hover ?? rest, bounds.contains(at) {
+            cursor.show(at: at, size: SketchRaster.pressureWidth(level: level, pressure: 0, pointerType: "pen"))
+        } else {
+            cursor.hide()
+        }
     }
 
     /// Plays the explosion over the page — stretched to it, as on the web, and so zoomed and
@@ -1053,6 +1165,7 @@ final class SketchPageView: UIView {
         // by drawing the page aside at the size it is zoomed to, which is the first thing to
         // give out as it grows (`ZoomLimit`).
         layer.shadowPath = UIBezierPath(rect: bounds).cgPath
+        layer.addSublayer(cursor.layer)
         isAccessibilityElement = true
         accessibilityLabel = "Sketch page"
     }
@@ -1087,6 +1200,9 @@ final class SketchPageView: UIView {
                           seed: Int.random(in: 0..<2_147_483_647), pointerType: kind, points: [point(touch)])
         model.sync.report(editing: true)
         if let active { model.preview(active) }
+        resting?.cancel()
+        rest = nil
+        showCursor()
     }
 
     /// The stroke follows its touch, through every sample taken since the last frame.
@@ -1096,6 +1212,7 @@ final class SketchPageView: UIView {
             active?.points?.append(point(sample))
         }
         if let active { model.preview(active) }
+        showCursor()
     }
 
     /// The touch lifted: the stroke is on the page.
@@ -1105,6 +1222,18 @@ final class SketchPageView: UIView {
         drawing = nil
         model.commit(stroke)
         model.sync.report(editing: false)
+        // A finger that lifts is gone. A Pencil or a pointer is about to be heard of again
+        // just above where it was.
+        if stroke.pointerType != "touch", let last = stroke.points?.last, last.count >= 2 {
+            rest = CGPoint(x: last[0], y: last[1])
+            let over = DispatchWorkItem { [weak self] in
+                self?.rest = nil
+                self?.showCursor()
+            }
+            resting = over
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: over)
+        }
+        showCursor()
     }
 
     /// The stroke was not one after all — a second finger landed, or the system took the touch.
@@ -1114,6 +1243,7 @@ final class SketchPageView: UIView {
         drawing = nil
         model?.discardPreview()
         model?.sync.report(editing: false)
+        showCursor()
     }
 }
 

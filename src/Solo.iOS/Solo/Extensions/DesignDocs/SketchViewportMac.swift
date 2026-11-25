@@ -85,6 +85,11 @@ final class SketchViewport: NSView, NSUserInterfaceValidations {
     private var size: CGSize = .zero
     /// A drag that is carrying the page: where it began, and where the page was then.
     private var drag: (from: CGPoint, pan: CGPoint)?
+    /// Where the pointer is in the view, while it is over it. Kept as that, since the page can
+    /// be moved under it without its moving.
+    private var hoverSpot: CGPoint? {
+        didSet { placeHover() }
+    }
 
     /// How far in this page may go on this screen.
     private var mostZoom: CGFloat {
@@ -105,6 +110,13 @@ final class SketchViewport: NSView, NSUserInterfaceValidations {
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
         setAccessibilityLabel("Sketch page")
+        #if DEBUG || PERF
+        // A pointer held over the page, for a window that isn't under the real one: "x,y" in the page's pixels.
+        if let held = ProcessInfo.processInfo.environment["SOLO_SKETCH_HOVER"]?.split(separator: ",").compactMap({ Double($0) }),
+           held.count == 2 {
+            page.hover = CGPoint(x: held[0], y: held[1])
+        }
+        #endif
     }
 
     @available(*, unavailable)
@@ -121,8 +133,37 @@ final class SketchViewport: NSView, NSUserInterfaceValidations {
         page.scale = window?.backingScaleFactor ?? 2
     }
 
+    /// Over the page the pen's own cursor is the pointer, and the system's is put away: a
+    /// circle the size of the mark, as a paint program has it. The rectangle is the one the
+    /// page fits in as it is turned, which is a little more than the page when it is.
     override func resetCursorRects() {
-        if page.canDraw { addCursorRect(bounds, cursor: .crosshair) }
+        guard page.canDraw else { return }
+        let corners = [CGPoint.zero, CGPoint(x: page.size.width, y: 0), CGPoint(x: 0, y: page.size.height),
+                       CGPoint(x: page.size.width, y: page.size.height)].map(view.viewPoint)
+        let xs = corners.map(\.x), ys = corners.map(\.y)
+        let over = CGRect(x: xs.min() ?? 0, y: ys.min() ?? 0, width: (xs.max() ?? 0) - (xs.min() ?? 0),
+                          height: (ys.max() ?? 0) - (ys.min() ?? 0)).intersection(bounds)
+        if !over.isEmpty { addCursorRect(over, cursor: Self.noPointer) }
+    }
+
+    /// A pointer with nothing in it.
+    private static let noPointer = NSCursor(image: NSImage(size: NSSize(width: 16, height: 16)), hotSpot: NSPoint(x: 8, y: 8))
+
+    /// The pointer is followed wherever it goes over the view, for the pen's cursor, whether or
+    /// not the window is the one being typed in.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hoverSpot = spot(event) }
+    override func mouseMoved(with event: NSEvent) { hoverSpot = spot(event) }
+    override func mouseExited(with event: NSEvent) { hoverSpot = nil }
+
+    private func placeHover() {
+        page.hover = hoverSpot.map(view.pagePoint)
     }
 
     // MARK: Where the page is
@@ -200,6 +241,9 @@ final class SketchViewport: NSView, NSUserInterfaceValidations {
         page.layer.setAffineTransform(CGAffineTransform(rotationAngle: view.angle).scaledBy(x: view.zoom, y: view.zoom))
         page.viewChanged(zoom: view.zoom, angle: view.angle)
         CATransaction.commit()
+        if hoverSpot != nil { placeHover() }
+        // Where the pointer is put away moves with the page.
+        window?.invalidateCursorRects(for: self)
     }
 
     // MARK: The pointer
@@ -209,6 +253,7 @@ final class SketchViewport: NSView, NSUserInterfaceValidations {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let at = spot(event), onPage = view.pagePoint(at)
+        hoverSpot = at
         if page.canDraw, page.contains(onPage) {
             page.begin(at: onPage, event: event)
         } else {
@@ -218,6 +263,8 @@ final class SketchViewport: NSView, NSUserInterfaceValidations {
 
     override func mouseDragged(with event: NSEvent) {
         let at = spot(event)
+        // No movement is reported while a button is down: this is where the pointer is.
+        hoverSpot = at
         if page.isDrawing {
             page.extend(to: view.pagePoint(at), event: event)
         } else {
@@ -295,13 +342,22 @@ final class SketchViewport: NSView, NSUserInterfaceValidations {
 final class SketchPageLayer {
     let layer = CALayer()
     weak var model: SketchModel?
-    var canDraw = false
+    var canDraw = false {
+        didSet { if canDraw != oldValue { showCursor() } }
+    }
     var tool = "pen"
     var ink: SketchInk = .theme
-    var level = 1
+    var level = 1 {
+        didSet { if level != oldValue { showCursor() } }
+    }
+    /// Where the pointer is on the page, while it is over the view.
+    var hover: CGPoint? {
+        didSet { showCursor() }
+    }
     /// The screen's pixels to a point, for the pens' initials to be drawn sharp at.
     var scale: CGFloat = 2
 
+    private let cursor = SketchBrushCursor()
     private var active: SketchOp?
     var isDrawing: Bool { active != nil }
     private var blastLayer: CALayer?
@@ -323,6 +379,7 @@ final class SketchPageLayer {
         layer.shadowOffset = CGSize(width: 0, height: 2)
         // Said outright, so that the shadow is not worked out from the page itself (`ZoomLimit`).
         layer.shadowPath = CGPath(rect: layer.bounds, transform: nil)
+        layer.addSublayer(cursor.layer)
     }
 
     var size: CGSize {
@@ -382,6 +439,22 @@ final class SketchPageLayer {
         self.zoom = zoom
         self.angle = angle
         markers.values.forEach { $0.viewChanged(zoom: zoom, angle: angle) }
+        cursor.viewChanged(zoom: zoom)
+    }
+
+    /// Puts this pen's own cursor where it is: on the stroke in hand, as wide as a tablet's pen
+    /// is being pressed; else where the pointer is over the page, as wide as the mouse draws.
+    private func showCursor() {
+        guard canDraw else { return cursor.hide() }
+        if let active, let last = active.points?.last, last.count >= 2 {
+            cursor.show(at: CGPoint(x: last[0], y: last[1]),
+                        size: SketchRaster.pressureWidth(level: active.level ?? level, pressure: last.count > 2 ? last[2] : 0,
+                                                         pointerType: active.pointerType))
+        } else if let hover, contains(hover) {
+            cursor.show(at: hover, size: SketchRaster.pressureWidth(level: level, pressure: 0, pointerType: "mouse"))
+        } else {
+            cursor.hide()
+        }
     }
 
     /// Plays the explosion over the page — stretched to it, as on the web, and so zoomed and
@@ -424,6 +497,7 @@ final class SketchPageLayer {
                           points: [self.point(point, event)])
         model.sync.report(editing: true)
         if let active { model.preview(active) }
+        showCursor()
     }
 
     /// The stroke follows the pointer.
@@ -431,6 +505,7 @@ final class SketchPageLayer {
         guard active != nil, let model else { return }
         active?.points?.append(self.point(point, event))
         if let active { model.preview(active) }
+        showCursor()
     }
 
     /// The button came up: the stroke is on the page.
@@ -439,6 +514,7 @@ final class SketchPageLayer {
         active = nil
         model.commit(stroke)
         model.sync.report(editing: false)
+        showCursor()
     }
 
     /// The stroke was not one after all.
@@ -447,6 +523,7 @@ final class SketchPageLayer {
         active = nil
         model?.discardPreview()
         model?.sync.report(editing: false)
+        showCursor()
     }
 }
 

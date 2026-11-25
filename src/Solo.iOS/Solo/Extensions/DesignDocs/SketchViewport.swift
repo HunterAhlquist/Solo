@@ -190,7 +190,7 @@ struct SketchCanvas: UIViewRepresentable {
     }
 }
 
-final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecognizerDelegate {
+final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecognizerDelegate, UIPointerInteractionDelegate {
     let pageView: SketchPageView
     private(set) var view = SketchView()
     var fingerDraws = true
@@ -219,6 +219,11 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
     private var drag: (touch: UITouch, from: CGPoint, pan: CGPoint)?
     private var tap = SketchTouchTap()
     private var beforeTap: (view: SketchView, fitted: Bool)?
+    /// Where a Pencil held over the glass, or a pointer, is in the view. Kept as that, since
+    /// the page can be moved under it without its moving.
+    private var hoverSpot: CGPoint? {
+        didSet { placeHover() }
+    }
 
     init(page: CGSize) {
         pageView = SketchPageView(frame: CGRect(origin: .zero, size: page))
@@ -245,10 +250,21 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
         zoom.allowedTouchTypes = pointer
         let turn = UIRotationGestureRecognizer(target: self, action: #selector(turned))
         turn.allowedTouchTypes = pointer
-        for recognizer in [scroll, zoom, turn] {
+        // A Pencil held over the glass, where the iPad and the Pencil can tell, and a pointer:
+        // the pen's cursor follows them. The pointer's own dot is put away over the page.
+        let hover = UIHoverGestureRecognizer(target: self, action: #selector(hovered))
+        for recognizer in [scroll, zoom, turn, hover] {
             recognizer.delegate = self
             addGestureRecognizer(recognizer)
         }
+        addInteraction(UIPointerInteraction(delegate: self))
+        #if DEBUG || PERF
+        // A Pencil held over the page, for a simulator, which has none: "x,y" in the page's pixels.
+        if let held = ProcessInfo.processInfo.environment["SOLO_SKETCH_HOVER"]?.split(separator: ",").compactMap({ Double($0) }),
+           held.count == 2 {
+            pageView.hover = CGPoint(x: held[0], y: held[1])
+        }
+        #endif
     }
 
     @available(*, unavailable)
@@ -325,6 +341,32 @@ final class SketchViewport: UIView, UIPencilInteractionDelegate, UIGestureRecogn
         pageView.center = view.pan
         pageView.transform = CGAffineTransform(rotationAngle: view.angle).scaledBy(x: view.zoom, y: view.zoom)
         pageView.viewChanged(zoom: view.zoom, angle: view.angle)
+        if hoverSpot != nil { placeHover() }
+    }
+
+    // MARK: The pen's cursor
+
+    private func placeHover() {
+        pageView.hover = hoverSpot.map(view.pagePoint)
+    }
+
+    @objc private func hovered(_ recognizer: UIHoverGestureRecognizer) {
+        switch recognizer.state {
+        case .began, .changed: hoverSpot = recognizer.location(in: self)
+        default: hoverSpot = nil
+        }
+    }
+
+    /// Asked again whenever the pointer leaves what is answered, so a small answer keeps it
+    /// true at the page's edge however the page is turned.
+    func pointerInteraction(_ interaction: UIPointerInteraction, regionFor request: UIPointerRegionRequest,
+                            defaultRegion: UIPointerRegion) -> UIPointerRegion? {
+        guard pageView.canDraw, pageView.bounds.contains(view.pagePoint(request.location)) else { return nil }
+        return UIPointerRegion(rect: CGRect(x: request.location.x - 4, y: request.location.y - 4, width: 8, height: 8))
+    }
+
+    func pointerInteraction(_ interaction: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? {
+        .hidden()
     }
 
     // MARK: Fingers and the Pencil

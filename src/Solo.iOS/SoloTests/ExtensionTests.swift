@@ -732,6 +732,39 @@ import ZIPFoundation
                              lastEditedBy: nil, lastEditedAt: nil, version: 1, path: "attachments/x/Test.sketch"))
     }
 
+    /// The pen's cursor is put where the rasterizer puts the mark, and is as wide: a stamp is
+    /// laid on whole pixels, to one side of its sample when its width is even. A single sample
+    /// is stamped twice, each nudged by the line's wobble, so the ink is the mark and that.
+    @Test func theCursorIsWhereTheMarkLands() throws {
+        let seed = 7
+        let first = SketchRaster.jitter(seed: seed, index: 0), second = SketchRaster.jitter(seed: seed, index: 1)
+        for size in 1...8 {
+            for at in [CGPoint(x: 100.2, y: 80.7), CGPoint(x: 51.5, y: 60.49), CGPoint(x: 300, y: 200)] {
+                var raster = SketchRaster(page: page)
+                raster.paint(SketchOp(id: "a", tool: "pen", ink: "theme", level: 0, seed: seed, pointerType: "pen",
+                                      points: [[at.x, at.y, Double(size - 1) / 7]]))
+                let inked = raster.pixels.indices.filter { raster.pixels[$0] != 0 }
+                let xs = inked.map { $0 % page.width }, ys = inked.map { $0 / page.width }
+                let left = try #require(xs.min()), right = try #require(xs.max())
+                let top = try #require(ys.min()), bottom = try #require(ys.max())
+                let centre = SketchRaster.markCentre(at, size: size), half = Double(size) / 2
+                #expect(Double(left) == centre.x - half + Double(min(first.0, second.0)), "size \(size) at \(at)")
+                #expect(Double(right + 1) == centre.x + half + Double(max(first.0, second.0)), "size \(size) at \(at)")
+                #expect(Double(top) == centre.y - half + Double(min(first.1, second.1)), "size \(size) at \(at)")
+                #expect(Double(bottom + 1) == centre.y + half + Double(max(first.1, second.1)), "size \(size) at \(at)")
+            }
+        }
+    }
+
+    /// The cursor is a circle as wide as the mark, and nothing else.
+    @MainActor @Test func theCursorIsACircleTheWidthOfTheMark() {
+        for size in [1, 2, 5, 8] {
+            let box = SketchBrushCursor.outline(size: size).boundingBoxOfPath
+            #expect(abs(box.width - CGFloat(size)) < 0.001 && abs(box.height - CGFloat(size)) < 0.001)
+            #expect(abs(box.midX) < 0.001 && abs(box.midY) < 0.001)
+        }
+    }
+
     @Test func pagesTurnWithTheirOrientation() {
         #expect(page.width == 595 && page.height == 420)
     }
