@@ -290,6 +290,17 @@ jobs:
             exit 1
           fi
 
+      # A preview's older builds are expired once a new one is up, leaving the
+      # newest three on TestFlight for this platform: testers are offered every
+      # build that hasn't been, and only the last few are the ones meant. The
+      # preview app only — the store app's builds are the ones that may go on
+      # to a review — and never a reason to fail the job
+      # (build/asc-expire-builds.swift).
+      - name: Expire the preview's older builds
+        if: steps.gate.outputs.upload == 'true' && steps.channel.outputs.app != 'store'
+        working-directory: .
+        run: swift build/asc-expire-builds.swift "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" MAC_OS 3
+
       - name: Remove the key and profile
         if: always()
         run: rm -rf "$RUNNER_TEMP/private_keys" "$RUNNER_TEMP/solo-mas.provisionprofile"

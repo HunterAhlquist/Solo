@@ -219,6 +219,17 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
+      # A preview's older builds are expired once a new one is up, leaving the
+      # newest three on TestFlight for this platform: testers are offered every
+      # build that hasn't been, and only the last few are the ones meant. The
+      # preview app only — the store app's builds are the ones that may go on
+      # to a review — and never a reason to fail the job
+      # (build/asc-expire-builds.swift).
+      - name: Expire the preview's older builds
+        if: steps.gate.outputs.upload == 'true' && steps.channel.outputs.app != 'store'
+        working-directory: .
+        run: swift build/asc-expire-builds.swift "$RUNNER_TEMP/asc.p8" IOS 3
+
       # Signing the archive made an "Apple Development: Created via API"
       # certificate whose key leaves with this runner; left alone, they pile
       # up until Apple refuses another. This revokes that one, matched by
