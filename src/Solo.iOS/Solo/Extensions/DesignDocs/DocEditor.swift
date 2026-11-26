@@ -216,7 +216,7 @@ struct SyncedTextEditor: UIViewRepresentable {
         if coordinator.setHeader(header) { stale = true }
         if coordinator.mediaRevision != mediaRevision {
             coordinator.mediaRevision = mediaRevision
-            coordinator.forgetMedia()
+            coordinator.refreshMedia()
             stale = true
         }
         // The text first, then whether it can be typed in: it only becomes
@@ -346,11 +346,14 @@ struct SyncedTextEditor: UIViewRepresentable {
             sides = (insets.leading, insets.trailing)
             guard let view = textView else { return }
             let wanted = UIEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: 0)
+            // The scroller stays beside what stands over the trailing side — a design doc's
+            // tree — and not under it.
+            let scroller = UIEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: insets.trailing)
+            if view.verticalScrollIndicatorInsets != scroller { view.verticalScrollIndicatorInsets = scroller }
             guard view.contentInset != wanted else { return }
             // A view resting at its top stays there when the top moves — as it does when it first learns the bar's height.
             let atTop = view.contentOffset.y <= -view.contentInset.top + 1
             view.contentInset = wanted
-            view.verticalScrollIndicatorInsets = wanted
             if atTop { view.contentOffset.y = -wanted.top }
         }
 
@@ -695,10 +698,20 @@ struct SyncedTextEditor: UIViewRepresentable {
             host.removeFromParent()
         }
 
-        /// Drops the rows on show, so the next pass builds them afresh.
-        func forgetMedia() {
-            mediaHosts.values.forEach(remove)
-            mediaHosts = [:]
+        /// What the rows show has changed: each is handed what it shows now. A row that is
+        /// already there is kept and not built afresh, since it may have a picture or a sketch
+        /// open over the screen, which would close with it.
+        func refreshMedia() {
+            for (key, host) in mediaHosts {
+                // A key is the row's text and which of its occurrences this is.
+                let row = String(key[..<(key.lastIndex(of: "#") ?? key.endIndex)])
+                if let content = media.row(row) {
+                    host.rootView = content
+                } else {
+                    remove(host)
+                    mediaHosts[key] = nil
+                }
+            }
         }
 
         // MARK: UITextViewDelegate

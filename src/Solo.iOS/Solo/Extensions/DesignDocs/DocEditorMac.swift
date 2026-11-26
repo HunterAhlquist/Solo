@@ -203,7 +203,7 @@ struct SyncedTextEditor: NSViewRepresentable {
         if coordinator.setHeader(header) { stale = true }
         if coordinator.mediaRevision != mediaRevision {
             coordinator.mediaRevision = mediaRevision
-            coordinator.forgetMedia()
+            coordinator.refreshMedia()
             stale = true
         }
         // The text first, then whether it can be typed in: it only becomes
@@ -313,12 +313,16 @@ struct SyncedTextEditor: NSViewRepresentable {
             sides = (insets.leading, insets.trailing)
             guard let view = textView, let scroll = view.enclosingScrollView else { return }
             let wanted = NSEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: 0)
+            // The scroller stays beside what stands over the trailing side — a design doc's
+            // tree — and not under it.
+            let scroller = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: insets.trailing)
+            if scroll.scrollerInsets.right != scroller.right { scroll.scrollerInsets = scroller }
             let current = scroll.contentInsets
             guard current.top != wanted.top || current.bottom != wanted.bottom else { return }
             // A view resting at its top stays there when the top moves — as it does when it first learns the bar's height.
             let atTop = scroll.contentView.bounds.minY <= -current.top + 1
             scroll.contentInsets = wanted
-            scroll.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+            scroll.scrollerInsets = scroller
             if atTop {
                 scroll.contentView.setBoundsOrigin(NSPoint(x: 0, y: -wanted.top))
                 scroll.reflectScrolledClipView(scroll.contentView)
@@ -648,10 +652,20 @@ struct SyncedTextEditor: NSViewRepresentable {
             view.addSubview(host.view)
         }
 
-        /// Drops the rows on show, so the next pass builds them afresh.
-        func forgetMedia() {
-            mediaHosts.values.forEach { $0.view.removeFromSuperview() }
-            mediaHosts = [:]
+        /// What the rows show has changed: each is handed what it shows now. A row that is
+        /// already there is kept and not built afresh, since it may have a picture or a sketch
+        /// open in a window, which would close with it.
+        func refreshMedia() {
+            for (key, host) in mediaHosts {
+                // A key is the row's text and which of its occurrences this is.
+                let row = String(key[..<(key.lastIndex(of: "#") ?? key.endIndex)])
+                if let content = media.row(row) {
+                    host.rootView = content
+                } else {
+                    host.view.removeFromSuperview()
+                    mediaHosts[key] = nil
+                }
+            }
         }
 
         // MARK: The text view's

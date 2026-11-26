@@ -109,14 +109,19 @@ struct DesignDocsView: View {
                                 if treeShown { treePanel(store, editable: editable, selected: note?.id) }
                             }
                     } else {
-                        HStack(spacing: 0) {
-                            page(store, note, editable: editable)
-                                // The note takes its new width at once while the tree slides. Animated, its
-                                // text is laid out again at every width on the way, and the page jitters
-                                // for as long as that takes.
-                                .animation(nil, value: treeShown)
-                            if treeShown { treePanel(store, editable: editable, selected: note?.id) }
-                        }
+                        // Beside the note, the tree stands in the page's trailing margin as the
+                        // app's sidebar stands in its leading one: the page still runs from edge
+                        // to edge behind it and keeps its text clear. Side by side, the page
+                        // ended where the tree began, and so did what the bar draws over a
+                        // note scrolled under it.
+                        page(store, note, editable: editable)
+                            // The note takes its new width at once while the tree slides. Animated, its
+                            // text is laid out again at every width on the way, and the page jitters
+                            // for as long as that takes.
+                            .animation(nil, value: treeShown)
+                            .safeAreaInset(edge: .trailing, spacing: 0) {
+                                if treeShown { treePanel(store, editable: editable, selected: note?.id) }
+                            }
                     }
                 }
                 // The tree's button is in one place, the trailing corner of where its panel

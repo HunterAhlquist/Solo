@@ -180,11 +180,12 @@ struct NoteView: View {
         NoteMediaContext(store: store, note: note, canWrite: canWrite, removeEmbeds: removeEmbeds, openNote: onOpenNote)
     }
 
-    /// Everything that changes what the editor's rows show.
+    /// Everything that changes what the editor's rows show. Which pictures and sketches there
+    /// are, and not the order they are listed in: drawing in a sketch moves it up the list.
     private var mediaRevision: Int {
         var hasher = Hasher()
-        hasher.combine(store.images.map(\.id))
-        hasher.combine(store.sketches.map(\.id))
+        hasher.combine(Set(store.images.map(\.id)))
+        hasher.combine(Set(store.sketches.map(\.id)))
         hasher.combine(canWrite)
         hasher.combine(theme.primary)
         // Pictures are drawn to the text's size, as the web's are.
